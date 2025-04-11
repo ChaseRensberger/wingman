@@ -1,2 +1,4 @@
 .DS_Store
 .env
+gitignore/
+__pycache__/
