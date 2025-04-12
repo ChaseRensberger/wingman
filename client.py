@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional
 from contextlib import AsyncExitStack
+from tts import ElevenLabsClient
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -16,6 +17,7 @@ class MCPClient:
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
+        self.tts = ElevenLabsClient()
 
     async def connect_to_server(self, server_script_path: str):
         """Connect to an MCP server
@@ -122,7 +124,9 @@ class MCPClient:
                     
                 response = await self.process_query(query)
                 print("\n" + response)
-                    
+                audio = self.tts.text_to_speech(response)
+                self.tts.play_audio(audio)
+
             except Exception as e:
                 print(f"\nError: {str(e)}")
     
