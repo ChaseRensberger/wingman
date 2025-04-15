@@ -43,7 +43,6 @@ class MCPClient:
         
         await self.session.initialize()
         
-        # List available tools
         response = await self.session.list_tools()
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])

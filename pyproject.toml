@@ -9,7 +9,11 @@ dependencies = [
     "dotenv>=0.9.9",
     "elevenlabs>=1.56.0",
     "httpx>=0.28.1",
+    "marqo>=3.12.0",
     "mcp[cli]>=1.6.0",
+    "openai-whisper>=20240930",
+    "pyaudio>=0.2.14",
     "requests>=2.32.3",
+    "speechrecognition>=3.14.2",
     "textual>=3.1.0",
 ]

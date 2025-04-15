@@ -1,0 +1,7 @@
+services:
+  marqo:
+    image: marqoai/marqo:latest
+    container_name: marqo
+    ports:
+      - "8882:8882"
+    restart: unless-stopped
