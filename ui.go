@@ -5,26 +5,30 @@ import (
 	"github.com/charmbracelet/lipgloss/v2"
 )
 
-type model struct {
+type mainModel struct{}
+
+type appModel struct {
 	canvas        *lipgloss.Canvas
 	width, height int
+
+	main *mainModel
 }
 
-func initialModel() model {
-	return model{
+func initialModel() appModel {
+	return appModel{
 		canvas: lipgloss.NewCanvas(),
 		width:  0,
 		height: 0,
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m appModel) Init() tea.Cmd {
 	return tea.Batch(
 		tea.RequestBackgroundColor,
 	)
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -39,7 +43,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() tea.View {
+func (m appModel) View() tea.View {
+
+	// mainLayer :=
+
 	v := tea.NewView("wingman")
 	v.BackgroundColor = lipgloss.Black
 	v.AltScreen = true
