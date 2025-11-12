@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/joho/godotenv"
+	"wingman/ui"
 )
 
 func main() {
@@ -47,7 +48,7 @@ func main() {
 	// 	})
 	// }
 
-	if _, err := tea.NewProgram(initialModel()).Run(); err != nil {
+	if _, err := tea.NewProgram(ui.InitialAppModel()).Run(); err != nil {
 		os.Exit(1)
 	}
 

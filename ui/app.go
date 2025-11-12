@@ -1,24 +1,24 @@
-package main
+package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 )
 
-type mainModel struct{}
-
 type appModel struct {
-	canvas        *lipgloss.Canvas
-	width, height int
+	// components
+	messagesComponent *messagesModel
 
-	main *mainModel
+	// state
+	width, height    int
+	focusedComponent string
 }
 
-func initialModel() appModel {
+func InitialAppModel() appModel {
 	return appModel{
-		canvas: lipgloss.NewCanvas(),
-		width:  0,
-		height: 0,
+		width:             0,
+		height:            0,
+		messagesComponent: initialMessagesModel(),
 	}
 }
 
@@ -45,11 +45,17 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m appModel) View() tea.View {
 
-	// mainLayer :=
+	messagesLayer := m.messagesComponent.view()
 
-	v := tea.NewView("wingman")
+	canvas := lipgloss.NewCanvas(
+		messagesLayer,
+	)
+
+	v := tea.NewView("")
 	v.BackgroundColor = lipgloss.Black
 	v.AltScreen = true
 	v.WindowTitle = "wingman"
+	v.SetContent(canvas.Render())
+
 	return v
 }
