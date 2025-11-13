@@ -3,9 +3,13 @@ module wingman
 go 1.25.3
 
 require (
-	charm.land/bubbletea/v2 v2.0.0-rc.1 // indirect
+	charm.land/bubbletea/v2 v2.0.0-rc.1
+	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.3
+	github.com/joho/godotenv v1.5.1
+)
+
+require (
 	github.com/charmbracelet/colorprofile v0.3.2 // indirect
-	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251104185819-20e68c88fe84 // indirect
 	github.com/charmbracelet/x/ansi v0.10.3 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
@@ -15,7 +19,6 @@ require (
 	github.com/clipperhouse/displaywidth v0.4.1 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
