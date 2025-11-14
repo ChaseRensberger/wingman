@@ -1,18 +1,20 @@
 package ui
 
 import (
-	"strconv"
+	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 type model struct {
-	count int
+	input  string
+	cursor int
 }
 
 func InitialModel() *model {
 	return &model{
-		count: 0,
+		input:  "",
+		cursor: 0,
 	}
 }
 
@@ -26,10 +28,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Key().Code {
 		case tea.KeyEsc:
 			return m, tea.Quit
-		case tea.KeyUp:
-			m.count++
-		case tea.KeyDown:
-			m.count--
+		case tea.KeyEnter:
+			m.input = ""
+			m.cursor = 0
+		case tea.KeyBackspace:
+			if m.cursor > 0 {
+				m.input = m.input[:m.cursor-1] + m.input[m.cursor:]
+				m.cursor--
+			}
+		case tea.KeyLeft:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+
+		case tea.KeyRight:
+			if m.cursor < len(m.input) {
+				m.cursor++
+			}
+		default:
+			key := msg.Key()
+			if key.Text != "" && key.Mod == 0 {
+				m.input = m.input[:m.cursor] + key.Text + m.input[m.cursor:]
+				m.cursor += len(key.Text)
+			}
 		}
 
 	}
@@ -37,7 +58,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() tea.View {
-	view := tea.NewView(strconv.Itoa(m.count) + "\n\nPress Esc to quit")
+	var display string
+	if m.cursor < len(m.input) {
+		display = m.input[:m.cursor] + "█" + m.input[m.cursor+1:]
+	} else {
+		display = m.input + "█"
+	}
+	s := fmt.Sprintf(
+		"Type a message:\n%s\n\n"+
+			"Enter to send, Ctrl+C to quit",
+		display,
+	)
+	view := tea.NewView(s)
 	view.AltScreen = true
 	return view
 }
