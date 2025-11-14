@@ -5,6 +5,7 @@ go 1.25.3
 require github.com/joho/godotenv v1.5.1
 
 require (
+	charm.land/bubbletea/v2 v2.0.0-rc.1 // indirect
 	github.com/charmbracelet/colorprofile v0.3.2 // indirect
 	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251104185819-20e68c88fe84 // indirect
