@@ -66,7 +66,7 @@ func (m *model) View() tea.View {
 	}
 	s := fmt.Sprintf(
 		"Type a message:\n%s\n\n"+
-			"Enter to send, Ctrl+C to quit",
+			"Enter to send, Esc to quit",
 		display,
 	)
 	view := tea.NewView(s)
