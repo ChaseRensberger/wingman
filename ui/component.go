@@ -6,6 +6,6 @@ import (
 
 type Component interface {
 	Init() tea.Cmd
-	Update() (tea.Model, tea.Cmd)
+	Update(msg tea.Msg) (Component, tea.Cmd)
 	View() string
 }
