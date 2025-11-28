@@ -1,13 +1,17 @@
 package session
 
-import "context"
+import (
+	"context"
+
+	"wingman/provider"
+)
 
 type Session struct {
-	inferenceProvider InferenceProvider
+	inferenceProvider provider.InferenceProvider
 	history           []any
 }
 
-func CreateSession(inferenceProvider InferenceProvider) *Session {
+func CreateSession(inferenceProvider provider.InferenceProvider) *Session {
 	return &Session{
 		inferenceProvider: inferenceProvider,
 		history:           []any{},

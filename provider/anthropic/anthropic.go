@@ -9,7 +9,15 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"wingman/provider"
 )
+
+func init() {
+	provider.Register("anthropic", func(config map[string]any) (provider.InferenceProvider, error) {
+		return CreateAnthropicClient(config)
+	})
+}
 
 type AnthropicMessage struct {
 	Role    string `json:"role"`
