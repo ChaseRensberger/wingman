@@ -13,23 +13,23 @@ type InferenceProvider interface {
 type ProviderFactory func(config map[string]any) (InferenceProvider, error)
 
 type registry struct {
-	mu        sync.RWMutex
-	factories map[string]ProviderFactory
+	mu                sync.RWMutex
+	providerFactories map[string]ProviderFactory
 }
 
 var globalRegistry = &registry{
-	factories: make(map[string]ProviderFactory),
+	providerFactories: make(map[string]ProviderFactory),
 }
 
 func Register(name string, factory ProviderFactory) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
-	globalRegistry.factories[name] = factory
+	globalRegistry.providerFactories[name] = factory
 }
 
 func CreateProvider(name string, config map[string]any) (InferenceProvider, error) {
 	globalRegistry.mu.RLock()
-	factory, ok := globalRegistry.factories[name]
+	factory, ok := globalRegistry.providerFactories[name]
 	globalRegistry.mu.RUnlock()
 
 	if !ok {
