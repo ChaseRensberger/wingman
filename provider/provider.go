@@ -10,7 +10,7 @@ import (
 )
 
 type InferenceProvider interface {
-	RunInference(ctx context.Context, messages []models.WingmanMessage) (*models.WingmanMessageResponse, error)
+	RunInference(ctx context.Context, messages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error)
 }
 
 func GetProviderFromRegistry(name string, config map[string]any) (InferenceProvider, error) {

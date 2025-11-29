@@ -108,7 +108,7 @@ func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
 	}, nil
 }
 
-func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
+func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
 	// TODO: this should be standardized across providers
 	anthropicMessages := make([]AnthropicMessage, len(wingmanMessages))
 	for i, msg := range wingmanMessages {
@@ -123,6 +123,7 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		MaxTokens:   ac.maxTokens,
 		Temperature: ac.temperature,
 		Messages:    anthropicMessages,
+		System:      instructions,
 	}
 
 	jsonData, err := json.Marshal(req)
@@ -159,7 +160,7 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Convert anthropic response to wingman format
+	// TODO: this should be standardized across providers
 	wingmanContentBlocks := make([]models.WingmanContentBlock, len(anthropicResp.Content))
 	for i, block := range anthropicResp.Content {
 		wingmanContentBlocks[i] = models.WingmanContentBlock{

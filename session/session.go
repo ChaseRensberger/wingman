@@ -19,8 +19,8 @@ func CreateSession(inferenceProvider provider.InferenceProvider) *Session {
 	}
 }
 
-func (s *Session) RunInference(ctx context.Context, messages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
-	result, err := s.inferenceProvider.RunInference(ctx, messages)
+func (s *Session) RunInference(ctx context.Context, messages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
+	result, err := s.inferenceProvider.RunInference(ctx, messages, instructions)
 	if err != nil {
 		return nil, err
 	}

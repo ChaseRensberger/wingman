@@ -14,6 +14,7 @@ type Agent struct {
 	session      *session.Session
 	config       map[string]any
 	providerName string
+	instructions string
 }
 
 func CreateAgent(name string) *Agent {
@@ -48,9 +49,14 @@ func (a *Agent) WithConfig(cfg map[string]any) *Agent {
 	return a
 }
 
+func (a *Agent) WithInstructions(instructions string) *Agent {
+	a.instructions = instructions
+	return a
+}
+
 func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
 	if a.session == nil {
 		return nil, fmt.Errorf("agent not properly initialized - no session")
 	}
-	return a.session.RunInference(ctx, messages)
+	return a.session.RunInference(ctx, messages, a.instructions)
 }
