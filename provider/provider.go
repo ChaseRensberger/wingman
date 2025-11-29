@@ -3,13 +3,14 @@ package provider
 import (
 	"context"
 	"fmt"
+	"wingman/models"
 	"wingman/provider/registry"
 
 	_ "wingman/provider/anthropic"
 )
 
 type InferenceProvider interface {
-	RunInference(ctx context.Context, input any) (any, error)
+	RunInference(ctx context.Context, message models.WingmanMessage) (any, error)
 }
 
 func GetProviderFromRegistry(name string, config map[string]any) (InferenceProvider, error) {
