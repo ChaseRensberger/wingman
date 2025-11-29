@@ -12,7 +12,7 @@ type InferenceProvider interface {
 	RunInference(ctx context.Context, input any) (any, error)
 }
 
-func CreateProvider(name string, config map[string]any) (InferenceProvider, error) {
+func GetProviderFromRegistry(name string, config map[string]any) (InferenceProvider, error) {
 	builder, err := registry.GetBuilder(name)
 	if err != nil {
 		return nil, err
