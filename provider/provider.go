@@ -3,38 +3,38 @@ package provider
 import (
 	"context"
 	"fmt"
-	"sync"
 )
 
 type InferenceProvider interface {
 	RunInference(ctx context.Context, input any) (any, error)
 }
 
-type ProviderFactory func(config map[string]any) (InferenceProvider, error)
+type ProviderBuilder func(config map[string]any) (InferenceProvider, error)
 
 type registry struct {
-	mu                sync.RWMutex
-	providerFactories map[string]ProviderFactory
+	providerBuilders map[string]ProviderBuilder
 }
 
-var globalRegistry = &registry{
-	providerFactories: make(map[string]ProviderFactory),
+var wingmanRegistry = &registry{
+	providerBuilders: make(map[string]ProviderBuilder),
 }
 
-func Register(name string, factory ProviderFactory) {
-	globalRegistry.mu.Lock()
-	defer globalRegistry.mu.Unlock()
-	globalRegistry.providerFactories[name] = factory
+func Register(name string, providerBuilder ProviderBuilder) {
+	wingmanRegistry.providerBuilders[name] = providerBuilder
 }
 
 func CreateProvider(name string, config map[string]any) (InferenceProvider, error) {
-	globalRegistry.mu.RLock()
-	factory, ok := globalRegistry.providerFactories[name]
-	globalRegistry.mu.RUnlock()
+	providerBuilder, ok := wingmanRegistry.providerBuilders[name]
 
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", name)
 	}
 
-	return factory(config)
+	return providerBuilder(config)
+}
+
+func PrintProvidersInRegistry() {
+	for name := range wingmanRegistry.providerBuilders {
+		fmt.Println(name)
+	}
 }

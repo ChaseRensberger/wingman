@@ -1,5 +1,9 @@
 package main
 
-func main() {
+import (
+	"wingman/provider"
+)
 
+func main() {
+	provider.PrintProvidersInRegistry()
 }
