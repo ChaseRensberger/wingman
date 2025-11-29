@@ -14,6 +14,7 @@ func main() {
 
 	agent := agent.CreateAgent("wingman").
 		WithProvider("anthropic").
+		WithInstructions("You are a helpful assistant that provides accurate and concise answers.").
 		WithConfig(map[string]any{
 			"max_tokens":  2048,
 			"temperature": 1.0,

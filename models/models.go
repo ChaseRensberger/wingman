@@ -6,8 +6,8 @@ type WingmanMessage struct {
 }
 
 type WingmanContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type string
+	Text string
 }
 
 type WingmanUsage struct {
