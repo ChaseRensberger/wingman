@@ -13,12 +13,12 @@ import (
 func main() {
 	godotenv.Load(".env.local")
 
-	inferenceProvider, err := provider.GetProviderFromRegistry("anthropic", map[string]any{})
+	anthropicClient, err := provider.GetProviderFromRegistry("anthropic", map[string]any{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	basicSession := session.CreateSession(inferenceProvider)
+	anthropicSession := session.CreateSession(anthropicClient)
 
 	ctx := context.Background()
 
@@ -29,7 +29,7 @@ func main() {
 		},
 	}
 
-	result, err := basicSession.RunInference(ctx, messages)
+	result, err := anthropicSession.RunInference(ctx, messages)
 	if err != nil {
 		log.Fatal(err)
 	}
