@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"wingman/models"
 	"wingman/provider"
 	"wingman/session"
 )
@@ -47,9 +48,9 @@ func (a *Agent) WithConfig(cfg map[string]any) *Agent {
 	return a
 }
 
-func (a *Agent) RunInference(ctx context.Context, input any) (any, error) {
+func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
 	if a.session == nil {
 		return nil, fmt.Errorf("agent not properly initialized - no session")
 	}
-	return a.session.RunInference(ctx, input)
+	return a.session.RunInference(ctx, messages)
 }

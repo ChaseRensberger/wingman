@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/joho/godotenv"
 	"log"
+	"wingman/models"
 	"wingman/provider"
-	"wingman/provider/anthropic"
 	"wingman/session"
 )
 
@@ -22,27 +22,22 @@ func main() {
 
 	ctx := context.Background()
 
-	messages := []anthropic.AnthropicMessage{
+	message := []models.WingmanMessage{
 		{
 			Role:    "user",
 			Content: "Hello! What is the capital of France?",
 		},
 	}
 
-	result, err := anthropicSession.RunInference(ctx, messages)
+	result, err := anthropicSession.RunInference(ctx, message)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	response, ok := result.(*anthropic.AnthropicMessageResponse)
-	if !ok {
-		log.Fatal("failed to cast response")
-	}
-
 	fmt.Println("\nRESPONSE 1:")
 	fmt.Println("=========================")
-	if len(response.Content) > 0 {
-		fmt.Println(response.Content[0].Text)
+	if len(result.Content) > 0 {
+		fmt.Println(result.Content[0].Text)
 	}
-	fmt.Printf("Tokens used - Input: %d, Output: %d\n", response.Usage.InputTokens, response.Usage.OutputTokens)
+	fmt.Printf("Tokens used - Input: %d, Output: %d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 }

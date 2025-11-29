@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"wingman/models"
 	"wingman/provider/registry"
 )
 
@@ -107,17 +108,21 @@ func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
 	}, nil
 }
 
-func (ac *AnthropicClient) RunInference(ctx context.Context, input any) (any, error) {
-	messages, ok := input.([]AnthropicMessage)
-	if !ok {
-		return nil, fmt.Errorf("input must be []AnthropicMessage")
+func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
+	// TODO: this should be standardized across providers
+	anthropicMessages := make([]AnthropicMessage, len(wingmanMessages))
+	for i, msg := range wingmanMessages {
+		anthropicMessages[i] = AnthropicMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
 	}
 
 	req := AnthropicMessageRequest{
 		Model:       ac.model,
 		MaxTokens:   ac.maxTokens,
 		Temperature: ac.temperature,
-		Messages:    messages,
+		Messages:    anthropicMessages,
 	}
 
 	jsonData, err := json.Marshal(req)
@@ -149,10 +154,29 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, input any) (any, er
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var msgResp AnthropicMessageResponse
-	if err := json.Unmarshal(body, &msgResp); err != nil {
+	var anthropicResp AnthropicMessageResponse
+	if err := json.Unmarshal(body, &anthropicResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return &msgResp, nil
+	// Convert anthropic response to wingman format
+	wingmanContentBlocks := make([]models.WingmanContentBlock, len(anthropicResp.Content))
+	for i, block := range anthropicResp.Content {
+		wingmanContentBlocks[i] = models.WingmanContentBlock{
+			Type: block.Type,
+			Text: block.Text,
+		}
+	}
+
+	wingmanResp := &models.WingmanMessageResponse{
+		ID:         anthropicResp.ID,
+		Content:    wingmanContentBlocks,
+		StopReason: anthropicResp.StopReason,
+		Usage: models.WingmanUsage{
+			InputTokens:  anthropicResp.Usage.InputTokens,
+			OutputTokens: anthropicResp.Usage.OutputTokens,
+		},
+	}
+
+	return wingmanResp, nil
 }
