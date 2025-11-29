@@ -3,38 +3,30 @@ package provider
 import (
 	"context"
 	"fmt"
+	"wingman/provider/registry"
+
+	_ "wingman/provider/anthropic"
 )
 
 type InferenceProvider interface {
 	RunInference(ctx context.Context, input any) (any, error)
 }
 
-type ProviderBuilder func(config map[string]any) (InferenceProvider, error)
-
-type registry struct {
-	providerBuilders map[string]ProviderBuilder
-}
-
-var wingmanRegistry = &registry{
-	providerBuilders: make(map[string]ProviderBuilder),
-}
-
-func Register(name string, providerBuilder ProviderBuilder) {
-	wingmanRegistry.providerBuilders[name] = providerBuilder
-}
-
 func CreateProvider(name string, config map[string]any) (InferenceProvider, error) {
-	providerBuilder, ok := wingmanRegistry.providerBuilders[name]
+	builder, err := registry.GetBuilder(name)
+	if err != nil {
+		return nil, err
+	}
 
+	provider, err := builder(config)
+	if err != nil {
+		return nil, err
+	}
+
+	inferenceProvider, ok := provider.(InferenceProvider)
 	if !ok {
-		return nil, fmt.Errorf("unknown provider: %s", name)
+		return nil, fmt.Errorf("provider %s does not implement InferenceProvider", name)
 	}
 
-	return providerBuilder(config)
-}
-
-func PrintProvidersInRegistry() {
-	for name := range wingmanRegistry.providerBuilders {
-		fmt.Println(name)
-	}
+	return inferenceProvider, nil
 }

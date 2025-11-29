@@ -10,11 +10,18 @@ import (
 	"os"
 	"time"
 
-	"wingman/provider"
+	"wingman/provider/registry"
+)
+
+const (
+	defaultModel       = "claude-haiku-4-5-20251001"
+	defaultMaxTokens   = 4096
+	defaultTemperature = 1.0
+	httpTimeout        = 2 * time.Minute
 )
 
 func init() {
-	provider.Register("anthropic", func(config map[string]any) (provider.InferenceProvider, error) {
+	registry.Register("anthropic", func(config map[string]any) (any, error) {
 		return CreateAnthropicClient(config)
 	})
 }
@@ -64,30 +71,29 @@ type AnthropicClient struct {
 }
 
 func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
-	apiKey := ""
-	if key, ok := config["api_key"].(string); ok {
-		apiKey = key
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
+	apiKey := func() string {
+		if key, ok := config["api_key"].(string); ok && key != "" {
+			return key
+		}
+		return os.Getenv("ANTHROPIC_API_KEY")
+	}()
 	if apiKey == "" {
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
 	}
 
-	model := "claude-haiku-4-5-20251001"
-	if m, ok := config["model"].(string); ok && m != "" {
-		model = m
+	model, ok := config["model"].(string)
+	if !ok || model == "" {
+		model = defaultModel
 	}
 
-	maxTokens := 4096
-	if mt, ok := config["max_tokens"].(int); ok && mt > 0 {
-		maxTokens = mt
+	maxTokens, ok := config["max_tokens"].(int)
+	if !ok || maxTokens <= 0 {
+		maxTokens = defaultMaxTokens
 	}
 
-	temperature := 1.
-	if temp, ok := config["temperature"].(float64); ok && temp > 0 {
-		temperature = temp
+	temperature, ok := config["temperature"].(float64)
+	if !ok || temperature <= 0 {
+		temperature = defaultTemperature
 	}
 
 	return &AnthropicClient{
@@ -96,7 +102,7 @@ func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
 		maxTokens:   maxTokens,
 		temperature: temperature,
 		httpClient: &http.Client{
-			Timeout: 2 * time.Minute,
+			Timeout: httpTimeout,
 		},
 	}, nil
 }
