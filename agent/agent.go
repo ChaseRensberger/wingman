@@ -16,7 +16,7 @@ type Agent struct {
 	providerName string
 }
 
-func NewAgent(name string) *Agent {
+func CreateAgent(name string) *Agent {
 	return &Agent{
 		name:   name,
 		config: make(map[string]any),

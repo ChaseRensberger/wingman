@@ -12,7 +12,7 @@ import (
 func main() {
 	godotenv.Load(".env.local")
 
-	agent := agent.NewAgent("wingman").
+	agent := agent.CreateAgent("wingman").
 		WithProvider("anthropic").
 		WithConfig(map[string]any{
 			"max_tokens":  2048,
