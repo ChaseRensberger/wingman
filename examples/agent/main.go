@@ -7,6 +7,7 @@ import (
 	"log"
 	"wingman/agent"
 	"wingman/models"
+	"wingman/utils"
 )
 
 func main() {
@@ -21,11 +22,12 @@ func main() {
 		})
 
 	ctx := context.Background()
+	userMessage := "What is the capital of the United States?"
 
 	messages := []models.WingmanMessage{
 		{
 			Role:    "user",
-			Content: "Hello! What is the capital of France?",
+			Content: userMessage,
 		},
 	}
 
@@ -33,11 +35,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Println("\nRESPONSE 1:")
-	fmt.Println("=========================")
+	utils.UserPrint(userMessage)
 	if len(result.Content) > 0 {
-		fmt.Println(result.Content[0].Text)
+		utils.AgentPrint(result.Content[0].Text)
 	}
-	fmt.Printf("Tokens used - Input: %d, Output: %d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+
+	utils.ToolPrint(fmt.Sprintf("Tokens used - Input: %d, Output: %d", result.Usage.InputTokens, result.Usage.OutputTokens))
 }
