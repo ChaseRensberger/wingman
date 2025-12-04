@@ -54,6 +54,19 @@ func (a *Agent) WithInstructions(instructions string) *Agent {
 	return a
 }
 
+func (a *Agent) WithStructuredOutput(schema map[string]any) *Agent {
+	a.config["output_schema"] = schema
+	if a.provider != nil && a.providerName != "" {
+		inferenceProvider, err := provider.GetProviderFromRegistry(a.providerName, a.config)
+		if err != nil {
+			panic(err)
+		}
+		a.provider = inferenceProvider
+		a.session = session.CreateSession(inferenceProvider)
+	}
+	return a
+}
+
 func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessage) (*models.WingmanMessageResponse, error) {
 	if a.session == nil {
 		return nil, fmt.Errorf("agent not properly initialized - no session")
