@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"wingman/models"
 	"wingman/provider"
 	"wingman/session"
@@ -14,7 +15,6 @@ type Agent struct {
 	provider     provider.InferenceProvider
 	session      *session.Session
 	config       map[string]any
-	providerName string
 	instructions string
 }
 
@@ -27,7 +27,6 @@ func CreateAgent(name string) *Agent {
 }
 
 func (a *Agent) WithProvider(providerName string) *Agent {
-	a.providerName = providerName
 	inferenceProvider, err := provider.GetProviderFromRegistry(providerName, a.config)
 	if err != nil {
 		panic(err)
@@ -39,11 +38,10 @@ func (a *Agent) WithProvider(providerName string) *Agent {
 
 func (a *Agent) WithConfig(cfg map[string]any) *Agent {
 	a.config = cfg
-	// Recreate session with new config if provider is already set
-	if a.provider != nil && a.providerName != "" {
-		inferenceProvider, err := provider.GetProviderFromRegistry(a.providerName, a.config)
+	if a.provider != nil {
+		inferenceProvider, err := provider.GetProviderFromRegistry(a.provider.Name(), a.config)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		a.provider = inferenceProvider
 		a.session = session.CreateSession(inferenceProvider)
