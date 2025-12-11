@@ -6,6 +6,7 @@ import (
 	"wingman/models"
 	"wingman/provider"
 	"wingman/session"
+	"wingman/utils"
 )
 
 type Agent struct {
@@ -18,6 +19,7 @@ type Agent struct {
 }
 
 func CreateAgent(name string) *Agent {
+	utils.Logger.Debug("Creating agent...", "name", name)
 	return &Agent{
 		name:   name,
 		config: make(map[string]any),

@@ -1,28 +1,34 @@
 package utils
 
 import (
-	"github.com/charmbracelet/lipgloss/v2"
+	"fmt"
+	"log/slog"
+	"os"
 )
 
-var userColor = lipgloss.Blue
-var agentColor = lipgloss.Red
-var toolColor = lipgloss.Color("#FC9003")
-
-var borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-var userStyle = lipgloss.NewStyle().Foreground(userColor)
+const (
+	colorReset  = "\033[0m"
+	colorBlue   = "\033[34m"
+	colorRed    = "\033[31m"
+	colorOrange = "\033[33m"
+	colorBold   = "\033[1m"
+)
 
 func UserPrint(text string) {
-	lipgloss.Println(borderStyle.BorderForeground(userColor).Render(userStyle.Bold(true).Render("User: ") + userStyle.Render(text)))
+	fmt.Printf("%s%sUser:%s %s%s\n", colorBold, colorBlue, colorReset, colorBlue, text)
+	fmt.Print(colorReset)
 }
-
-var agentStyle = lipgloss.NewStyle().Foreground(agentColor)
 
 func AgentPrint(text string) {
-	lipgloss.Println(borderStyle.BorderForeground(agentColor).Render(agentStyle.Bold(true).Render("Agent: ") + agentStyle.Render(text)))
+	fmt.Printf("%s%sAgent:%s %s%s\n", colorBold, colorRed, colorReset, colorRed, text)
+	fmt.Print(colorReset)
 }
-
-var toolStyle = lipgloss.NewStyle().Foreground(toolColor)
 
 func ToolPrint(text string) {
-	lipgloss.Println(borderStyle.BorderForeground(toolColor).Render(toolStyle.Render(text)))
+	fmt.Printf("%s%sTool:%s %s%s\n", colorBold, colorOrange, colorReset, colorOrange, text)
+	fmt.Print(colorReset)
 }
+
+var Logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	Level: slog.LevelDebug,
+}))
