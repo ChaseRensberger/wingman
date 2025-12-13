@@ -1,8 +1,6 @@
 package session
 
 import (
-	"context"
-
 	"wingman/models"
 	"wingman/provider"
 )
@@ -19,13 +17,6 @@ func CreateSession(inferenceProvider provider.InferenceProvider) *Session {
 	}
 }
 
-func (s *Session) RunInference(ctx context.Context, messages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
-	result, err := s.inferenceProvider.RunInference(ctx, messages, instructions)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *Session) AddToHistory(messages []models.WingmanMessage, result *models.WingmanMessageResponse) {
 	s.history = append(s.history, messages, result)
-
-	return result, nil
 }

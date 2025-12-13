@@ -58,5 +58,11 @@ func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessa
 	if a.session == nil {
 		return nil, fmt.Errorf("agent not properly initialized - no session")
 	}
-	return a.session.RunInference(ctx, messages, a.instructions)
+
+	result, err := a.provider.RunInference(ctx, messages, a.instructions)
+	if err != nil {
+		return nil, err
+	}
+	a.session.AddToHistory(messages, result)
+	return result, nil
 }
