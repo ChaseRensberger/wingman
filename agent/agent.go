@@ -63,6 +63,6 @@ func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessa
 	if err != nil {
 		return nil, err
 	}
-	a.session.AddToHistory(messages, result)
+	a.session.AddToSession(messages, result)
 	return result, nil
 }

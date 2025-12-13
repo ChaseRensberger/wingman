@@ -17,6 +17,6 @@ func CreateSession(inferenceProvider provider.InferenceProvider) *Session {
 	}
 }
 
-func (s *Session) AddToHistory(messages []models.WingmanMessage, result *models.WingmanMessageResponse) {
+func (s *Session) AddToSession(messages []models.WingmanMessage, result *models.WingmanMessageResponse) {
 	s.history = append(s.history, messages, result)
 }
