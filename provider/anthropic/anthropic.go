@@ -55,20 +55,27 @@ type AnthropicMessageResponse struct {
 	Usage        AnthropicUsage          `json:"usage"`
 }
 
+type OutputFormat struct {
+	Type       string         `json:"type"`
+	JSONSchema map[string]any `json:"json_schema,omitempty"`
+}
+
 type AnthropicMessageRequest struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature float64            `json:"temperature,omitempty"`
-	System      string             `json:"system,omitempty"`
-	Messages    []AnthropicMessage `json:"messages"`
+	Model        string             `json:"model"`
+	MaxTokens    int                `json:"max_tokens"`
+	Temperature  float64            `json:"temperature,omitempty"`
+	System       string             `json:"system,omitempty"`
+	Messages     []AnthropicMessage `json:"messages"`
+	OutputFormat *OutputFormat      `json:"output_format,omitempty"`
 }
 
 type AnthropicClient struct {
-	apiKey      string
-	model       string
-	maxTokens   int
-	temperature float64
-	httpClient  *http.Client
+	apiKey       string
+	model        string
+	maxTokens    int
+	temperature  float64
+	outputFormat *OutputFormat
+	httpClient   *http.Client
 }
 
 func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
@@ -97,11 +104,20 @@ func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
 		temperature = defaultTemperature
 	}
 
+	var outputFormat *OutputFormat
+	if outputSchema, ok := config["output_schema"].(map[string]any); ok {
+		outputFormat = &OutputFormat{
+			Type:       "json_schema",
+			JSONSchema: outputSchema,
+		}
+	}
+
 	return &AnthropicClient{
-		apiKey:      apiKey,
-		model:       model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
+		apiKey:       apiKey,
+		model:        model,
+		maxTokens:    maxTokens,
+		temperature:  temperature,
+		outputFormat: outputFormat,
 		httpClient: &http.Client{
 			Timeout: httpTimeout,
 		},
@@ -119,11 +135,12 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 	}
 
 	req := AnthropicMessageRequest{
-		Model:       ac.model,
-		MaxTokens:   ac.maxTokens,
-		Temperature: ac.temperature,
-		Messages:    anthropicMessages,
-		System:      instructions,
+		Model:        ac.model,
+		MaxTokens:    ac.maxTokens,
+		Temperature:  ac.temperature,
+		Messages:     anthropicMessages,
+		System:       instructions,
+		OutputFormat: ac.outputFormat,
 	}
 
 	jsonData, err := json.Marshal(req)
@@ -139,6 +156,9 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", ac.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	if ac.outputFormat != nil {
+		httpReq.Header.Set("anthropic-beta", "structured-outputs-2025-11-13")
+	}
 
 	resp, err := ac.httpClient.Do(httpReq)
 	if err != nil {
