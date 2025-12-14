@@ -10,7 +10,6 @@ import (
 )
 
 type InferenceProvider interface {
-	Name() string
 	RunInference(ctx context.Context, messages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error)
 }
 

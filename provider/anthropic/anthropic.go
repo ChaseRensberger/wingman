@@ -108,10 +108,6 @@ func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
 	}, nil
 }
 
-func (ac *AnthropicClient) Name() string {
-	return "anthropic"
-}
-
 func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
 	// TODO: this should be standardized across providers
 	anthropicMessages := make([]AnthropicMessage, len(wingmanMessages))
