@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/joho/godotenv"
 	"log"
+
+	"github.com/joho/godotenv"
+
 	"wingman/agent"
 	"wingman/models"
 	"wingman/utils"
@@ -13,13 +15,17 @@ import (
 func main() {
 	godotenv.Load(".env.local")
 
-	agent := agent.CreateAgent("wingman").
-		WithProvider("anthropic").
-		WithInstructions("You are a helpful assistant that speaks like a pirate.").
-		WithConfig(map[string]any{
+	agent, err := agent.CreateAgent("wingman",
+		agent.WithProvider("anthropic"),
+		agent.WithInstructions("You are a helpful assistant that speaks like a pirate."),
+		agent.WithConfig(map[string]any{
 			"max_tokens":  2048,
 			"temperature": 1.0,
-		})
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx := context.Background()
 	userMessage := "What is the capital of the United States?"
