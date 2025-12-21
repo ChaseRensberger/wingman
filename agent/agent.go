@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"wingman/models"
 	"wingman/provider"
@@ -11,10 +12,8 @@ import (
 
 type Agent struct {
 	name         string
-	providerName string
 	provider     provider.InferenceProvider
 	session      *session.Session
-	config       map[string]any
 	instructions string
 }
 
@@ -22,8 +21,7 @@ type AgentOption func(*Agent) error
 
 func CreateAgent(name string, opts ...AgentOption) (*Agent, error) {
 	a := &Agent{
-		name:   name,
-		config: make(map[string]any),
+		name: name,
 	}
 
 	for _, opt := range opts {
@@ -32,38 +30,33 @@ func CreateAgent(name string, opts ...AgentOption) (*Agent, error) {
 		}
 	}
 
-	if err := a.initialize(); err != nil {
-		return nil, err
+	if a.provider == nil {
+		return nil, fmt.Errorf("provider is required")
 	}
+
+	a.session = session.CreateSession(a.provider)
 
 	return a, nil
 }
 
-func (a *Agent) initialize() error {
-	if a.providerName == "" {
-		return fmt.Errorf("provider is required")
-	}
-
-	inferenceProvider, err := provider.GetProviderFromRegistry(a.providerName, a.config)
-	if err != nil {
-		return fmt.Errorf("failed to create provider %s: %w", a.providerName, err)
-	}
-
-	a.provider = inferenceProvider
-	a.session = session.CreateSession(a.provider)
-	return nil
-}
-
-func WithProvider(providerName string) AgentOption {
+func WithProvider(factory any) AgentOption {
 	return func(a *Agent) error {
-		a.providerName = providerName
-		return nil
-	}
-}
+		result := reflect.ValueOf(factory).Call(nil)
+		if len(result) != 2 {
+			return fmt.Errorf("provider factory must return (provider, error)")
+		}
 
-func WithConfig(cfg map[string]any) AgentOption {
-	return func(a *Agent) error {
-		a.config = cfg
+		if !result[1].IsNil() {
+			return result[1].Interface().(error)
+		}
+
+		providerVal := result[0].Interface()
+		inferenceProvider, ok := providerVal.(provider.InferenceProvider)
+		if !ok {
+			return fmt.Errorf("provider does not implement InferenceProvider interface")
+		}
+
+		a.provider = inferenceProvider
 		return nil
 	}
 }

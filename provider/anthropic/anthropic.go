@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"wingman/models"
-	"wingman/provider/registry"
 )
 
 const (
@@ -21,10 +20,11 @@ const (
 	httpTimeout        = 2 * time.Minute
 )
 
-func init() {
-	registry.Register("anthropic", func(config map[string]any) (any, error) {
-		return CreateAnthropicClient(config)
-	})
+type AnthropicConfig struct {
+	APIKey      string
+	Model       string
+	MaxTokens   int
+	Temperature float64
 }
 
 type AnthropicMessage struct {
@@ -71,41 +71,41 @@ type AnthropicClient struct {
 	httpClient  *http.Client
 }
 
-func CreateAnthropicClient(config map[string]any) (*AnthropicClient, error) {
-	apiKey := func() string {
-		if key, ok := config["api_key"].(string); ok && key != "" {
-			return key
+func New(config AnthropicConfig) func() (*AnthropicClient, error) {
+	return func() (*AnthropicClient, error) {
+		apiKey := config.APIKey
+		if apiKey == "" {
+			apiKey = os.Getenv("ANTHROPIC_API_KEY")
 		}
-		return os.Getenv("ANTHROPIC_API_KEY")
-	}()
-	if apiKey == "" {
-		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
-	}
+		if apiKey == "" {
+			return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
+		}
 
-	model, ok := config["model"].(string)
-	if !ok || model == "" {
-		model = defaultModel
-	}
+		model := config.Model
+		if model == "" {
+			model = defaultModel
+		}
 
-	maxTokens, ok := config["max_tokens"].(int)
-	if !ok || maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
-	}
+		maxTokens := config.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = defaultMaxTokens
+		}
 
-	temperature, ok := config["temperature"].(float64)
-	if !ok || temperature <= 0 {
-		temperature = defaultTemperature
-	}
+		temperature := config.Temperature
+		if temperature <= 0 {
+			temperature = defaultTemperature
+		}
 
-	return &AnthropicClient{
-		apiKey:      apiKey,
-		model:       model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
-		httpClient: &http.Client{
-			Timeout: httpTimeout,
-		},
-	}, nil
+		return &AnthropicClient{
+			apiKey:      apiKey,
+			model:       model,
+			maxTokens:   maxTokens,
+			temperature: temperature,
+			httpClient: &http.Client{
+				Timeout: httpTimeout,
+			},
+		}, nil
+	}
 }
 
 func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
