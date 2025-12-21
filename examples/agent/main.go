@@ -21,10 +21,6 @@ func main() {
 		agent.WithConfig(map[string]any{
 			"max_tokens":  2048,
 			"temperature": 1.0,
-			"thinking": map[string]any{
-				"type":          "enabled",
-				"budget_tokens": 10000,
-			},
 		}),
 	)
 	if err != nil {
