@@ -15,6 +15,8 @@ type Agent struct {
 	provider     provider.InferenceProvider
 	session      *session.Session
 	instructions string
+	inbox        *Inbox
+	id           string
 }
 
 type AgentOption func(*Agent) error
