@@ -21,3 +21,8 @@ type WingmanMessageResponse struct {
 	StopReason string
 	Usage      WingmanUsage
 }
+
+type WingmanInferenceConfig struct {
+	Intructions string
+	MaxTokens   int
+}
