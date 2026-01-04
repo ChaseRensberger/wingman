@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"wingman/models"
+	"wingman/provider"
 )
 
 const (
@@ -24,7 +25,7 @@ type AnthropicConfig struct {
 	APIKey      string
 	Model       string
 	MaxTokens   int
-	Temperature float64
+	Temperature *float64
 }
 
 type AnthropicMessage struct {
@@ -71,8 +72,8 @@ type AnthropicClient struct {
 	httpClient  *http.Client
 }
 
-func New(config AnthropicConfig) func() (*AnthropicClient, error) {
-	return func() (*AnthropicClient, error) {
+func New(config AnthropicConfig) provider.ProviderFactory {
+	return func(wingmanConfig models.WingmanConfig) (provider.InferenceProvider, error) {
 		apiKey := config.APIKey
 		if apiKey == "" {
 			apiKey = os.Getenv("ANTHROPIC_API_KEY")
@@ -88,12 +89,17 @@ func New(config AnthropicConfig) func() (*AnthropicClient, error) {
 
 		maxTokens := config.MaxTokens
 		if maxTokens <= 0 {
+			maxTokens = wingmanConfig.MaxTokens
+		}
+		if maxTokens <= 0 {
 			maxTokens = defaultMaxTokens
 		}
 
-		temperature := config.Temperature
-		if temperature <= 0 {
-			temperature = defaultTemperature
+		temperature := defaultTemperature
+		if config.Temperature != nil {
+			temperature = *config.Temperature
+		} else if wingmanConfig.Temperature != nil {
+			temperature = *wingmanConfig.Temperature
 		}
 
 		return &AnthropicClient{
@@ -108,8 +114,7 @@ func New(config AnthropicConfig) func() (*AnthropicClient, error) {
 	}
 }
 
-func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, instructions string) (*models.WingmanMessageResponse, error) {
-	// TODO: this should be standardized across providers
+func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error) {
 	anthropicMessages := make([]AnthropicMessage, len(wingmanMessages))
 	for i, msg := range wingmanMessages {
 		anthropicMessages[i] = AnthropicMessage{
@@ -123,7 +128,7 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		MaxTokens:   ac.maxTokens,
 		Temperature: ac.temperature,
 		Messages:    anthropicMessages,
-		System:      instructions,
+		System:      config.Instructions,
 	}
 
 	jsonData, err := json.Marshal(req)
@@ -160,7 +165,6 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// TODO: this should be standardized across providers
 	wingmanContentBlocks := make([]models.WingmanContentBlock, len(anthropicResp.Content))
 	for i, block := range anthropicResp.Content {
 		wingmanContentBlocks[i] = models.WingmanContentBlock{

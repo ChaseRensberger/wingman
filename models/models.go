@@ -22,7 +22,8 @@ type WingmanMessageResponse struct {
 	Usage      WingmanUsage
 }
 
-type WingmanInferenceConfig struct {
-	Intructions string
-	MaxTokens   int
+type WingmanConfig struct {
+	MaxTokens    int
+	Temperature  *float64
+	Instructions string
 }

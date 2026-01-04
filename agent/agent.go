@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"wingman/models"
 	"wingman/provider"
@@ -11,12 +10,13 @@ import (
 )
 
 type Agent struct {
-	name         string
-	provider     provider.InferenceProvider
-	session      *session.Session
-	instructions string
-	inbox        *Inbox
-	id           string
+	name            string
+	provider        provider.InferenceProvider
+	providerFactory provider.ProviderFactory
+	session         *session.Session
+	config          models.WingmanConfig
+	inbox           *Inbox
+	id              string
 }
 
 type AgentOption func(*Agent) error
@@ -32,40 +32,45 @@ func CreateAgent(name string, opts ...AgentOption) (*Agent, error) {
 		}
 	}
 
-	if a.provider == nil {
+	if a.providerFactory == nil {
 		return nil, fmt.Errorf("provider is required")
 	}
+
+	p, err := a.providerFactory(a.config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+	a.provider = p
 
 	a.session = session.CreateSession(a.provider)
 
 	return a, nil
 }
 
-func WithProvider(factory any) AgentOption {
+func WithProvider(factory provider.ProviderFactory) AgentOption {
 	return func(a *Agent) error {
-		result := reflect.ValueOf(factory).Call(nil)
-		if len(result) != 2 {
-			return fmt.Errorf("provider factory must return (provider, error)")
-		}
-
-		if !result[1].IsNil() {
-			return result[1].Interface().(error)
-		}
-
-		providerVal := result[0].Interface()
-		inferenceProvider, ok := providerVal.(provider.InferenceProvider)
-		if !ok {
-			return fmt.Errorf("provider does not implement InferenceProvider interface")
-		}
-
-		a.provider = inferenceProvider
+		a.providerFactory = factory
 		return nil
 	}
 }
 
 func WithInstructions(instructions string) AgentOption {
 	return func(a *Agent) error {
-		a.instructions = instructions
+		a.config.Instructions = instructions
+		return nil
+	}
+}
+
+func WithMaxTokens(maxTokens int) AgentOption {
+	return func(a *Agent) error {
+		a.config.MaxTokens = maxTokens
+		return nil
+	}
+}
+
+func WithTemperature(temperature float64) AgentOption {
+	return func(a *Agent) error {
+		a.config.Temperature = &temperature
 		return nil
 	}
 }
@@ -75,7 +80,7 @@ func (a *Agent) RunInference(ctx context.Context, messages []models.WingmanMessa
 		return nil, fmt.Errorf("agent not properly initialized - no session")
 	}
 
-	result, err := a.provider.RunInference(ctx, messages, a.instructions)
+	result, err := a.provider.RunInference(ctx, messages, a.config)
 	if err != nil {
 		return nil, err
 	}
