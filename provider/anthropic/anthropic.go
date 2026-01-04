@@ -18,6 +18,8 @@ const (
 	defaultModel       = "claude-haiku-4-5-20251001"
 	defaultMaxTokens   = 4096
 	defaultTemperature = 1.0
+	apiURL             = "https://api.anthropic.com/v1/messages"
+	apiVersion         = "2023-06-01"
 	httpTimeout        = 2 * time.Minute
 )
 
@@ -28,48 +30,46 @@ type AnthropicConfig struct {
 	Temperature *float64
 }
 
-type AnthropicMessage struct {
+type anthropicMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type AnthropicContentBlock struct {
+type anthropicContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
 
-type AnthropicUsage struct {
+type anthropicUsage struct {
 	InputTokens         int `json:"input_tokens"`
 	CacheCreationTokens int `json:"cache_creation_input_tokens"`
 	CacheReadTokens     int `json:"cache_read_input_tokens"`
 	OutputTokens        int `json:"output_tokens"`
 }
 
-type AnthropicMessageResponse struct {
+type anthropicResponse struct {
 	ID           string                  `json:"id"`
 	Type         string                  `json:"type"`
 	Role         string                  `json:"role"`
 	Model        string                  `json:"model"`
-	Content      []AnthropicContentBlock `json:"content"`
+	Content      []anthropicContentBlock `json:"content"`
 	StopReason   string                  `json:"stop_reason"`
 	StopSequence *string                 `json:"stop_sequence"`
-	Usage        AnthropicUsage          `json:"usage"`
+	Usage        anthropicUsage          `json:"usage"`
 }
 
-type AnthropicMessageRequest struct {
+type anthropicRequest struct {
 	Model       string             `json:"model"`
 	MaxTokens   int                `json:"max_tokens"`
 	Temperature float64            `json:"temperature,omitempty"`
 	System      string             `json:"system,omitempty"`
-	Messages    []AnthropicMessage `json:"messages"`
+	Messages    []anthropicMessage `json:"messages"`
 }
 
 type AnthropicClient struct {
-	apiKey      string
-	model       string
-	maxTokens   int
-	temperature float64
-	httpClient  *http.Client
+	apiKey     string
+	httpClient *http.Client
+	defaults   anthropicRequest
 }
 
 func New(config AnthropicConfig) provider.ProviderFactory {
@@ -103,47 +103,43 @@ func New(config AnthropicConfig) provider.ProviderFactory {
 		}
 
 		return &AnthropicClient{
-			apiKey:      apiKey,
-			model:       model,
-			maxTokens:   maxTokens,
-			temperature: temperature,
-			httpClient: &http.Client{
-				Timeout: httpTimeout,
+			apiKey:     apiKey,
+			httpClient: &http.Client{Timeout: httpTimeout},
+			defaults: anthropicRequest{
+				Model:       model,
+				MaxTokens:   maxTokens,
+				Temperature: temperature,
 			},
 		}, nil
 	}
 }
 
 func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error) {
-	anthropicMessages := make([]AnthropicMessage, len(wingmanMessages))
+	messages := make([]anthropicMessage, len(wingmanMessages))
 	for i, msg := range wingmanMessages {
-		anthropicMessages[i] = AnthropicMessage{
+		messages[i] = anthropicMessage{
 			Role:    msg.Role,
 			Content: msg.Content,
 		}
 	}
 
-	req := AnthropicMessageRequest{
-		Model:       ac.model,
-		MaxTokens:   ac.maxTokens,
-		Temperature: ac.temperature,
-		Messages:    anthropicMessages,
-		System:      config.Instructions,
-	}
+	req := ac.defaults
+	req.Messages = messages
+	req.System = config.Instructions
 
 	jsonData, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal json: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", ac.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("anthropic-version", apiVersion)
 
 	resp, err := ac.httpClient.Do(httpReq)
 	if err != nil {
@@ -160,28 +156,26 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var anthropicResp AnthropicMessageResponse
-	if err := json.Unmarshal(body, &anthropicResp); err != nil {
+	var apiResp anthropicResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	wingmanContentBlocks := make([]models.WingmanContentBlock, len(anthropicResp.Content))
-	for i, block := range anthropicResp.Content {
-		wingmanContentBlocks[i] = models.WingmanContentBlock{
+	contentBlocks := make([]models.WingmanContentBlock, len(apiResp.Content))
+	for i, block := range apiResp.Content {
+		contentBlocks[i] = models.WingmanContentBlock{
 			Type: block.Type,
 			Text: block.Text,
 		}
 	}
 
-	wingmanResp := &models.WingmanMessageResponse{
-		ID:         anthropicResp.ID,
-		Content:    wingmanContentBlocks,
-		StopReason: anthropicResp.StopReason,
+	return &models.WingmanMessageResponse{
+		ID:         apiResp.ID,
+		Content:    contentBlocks,
+		StopReason: apiResp.StopReason,
 		Usage: models.WingmanUsage{
-			InputTokens:  anthropicResp.Usage.InputTokens,
-			OutputTokens: anthropicResp.Usage.OutputTokens,
+			InputTokens:  apiResp.Usage.InputTokens,
+			OutputTokens: apiResp.Usage.OutputTokens,
 		},
-	}
-
-	return wingmanResp, nil
+	}, nil
 }
