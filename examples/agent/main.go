@@ -16,7 +16,7 @@ import (
 func main() {
 	godotenv.Load(".env.local")
 
-	agent, err := agent.CreateAgent("wingman",
+	agent, err := agent.CreateAgent("WingmanAgent",
 		agent.WithProvider(anthropic.New(anthropic.Config{})),
 		agent.WithInstructions("You are a helpful assistant that speaks like a pirate."),
 		agent.WithMaxTokens(2048),
@@ -27,7 +27,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	userMessage := "What is the capital of the United States?"
+	userMessage := "What is the weather like in San Diego?"
 
 	messages := []models.WingmanMessage{
 		{
