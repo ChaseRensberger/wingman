@@ -17,7 +17,7 @@ func main() {
 	godotenv.Load(".env.local")
 
 	agent, err := agent.CreateAgent("wingman",
-		agent.WithProvider(anthropic.New(anthropic.AnthropicConfig{})),
+		agent.WithProvider(anthropic.New(anthropic.Config{})),
 		agent.WithInstructions("You are a helpful assistant that speaks like a pirate."),
 		agent.WithMaxTokens(2048),
 		agent.WithTemperature(1.0),

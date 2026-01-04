@@ -23,56 +23,56 @@ const (
 	httpTimeout        = 2 * time.Minute
 )
 
-type AnthropicConfig struct {
+type Config struct {
 	APIKey      string
 	Model       string
 	MaxTokens   int
 	Temperature *float64
 }
 
-type anthropicMessage struct {
+type message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type anthropicContentBlock struct {
+type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
 
-type anthropicUsage struct {
+type usage struct {
 	InputTokens         int `json:"input_tokens"`
 	CacheCreationTokens int `json:"cache_creation_input_tokens"`
 	CacheReadTokens     int `json:"cache_read_input_tokens"`
 	OutputTokens        int `json:"output_tokens"`
 }
 
-type anthropicResponse struct {
-	ID           string                  `json:"id"`
-	Type         string                  `json:"type"`
-	Role         string                  `json:"role"`
-	Model        string                  `json:"model"`
-	Content      []anthropicContentBlock `json:"content"`
-	StopReason   string                  `json:"stop_reason"`
-	StopSequence *string                 `json:"stop_sequence"`
-	Usage        anthropicUsage          `json:"usage"`
+type response struct {
+	ID           string         `json:"id"`
+	Type         string         `json:"type"`
+	Role         string         `json:"role"`
+	Model        string         `json:"model"`
+	Content      []contentBlock `json:"content"`
+	StopReason   string         `json:"stop_reason"`
+	StopSequence *string        `json:"stop_sequence"`
+	Usage        usage          `json:"usage"`
 }
 
-type anthropicRequest struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature float64            `json:"temperature,omitempty"`
-	System      string             `json:"system,omitempty"`
-	Messages    []anthropicMessage `json:"messages"`
+type request struct {
+	Model       string    `json:"model"`
+	MaxTokens   int       `json:"max_tokens"`
+	Temperature float64   `json:"temperature,omitempty"`
+	System      string    `json:"system,omitempty"`
+	Messages    []message `json:"messages"`
 }
 
-type AnthropicClient struct {
+type Client struct {
 	apiKey     string
 	httpClient *http.Client
-	defaults   anthropicRequest
+	defaults   request
 }
 
-func New(config AnthropicConfig) provider.ProviderFactory {
+func New(config Config) provider.ProviderFactory {
 	return func(wingmanConfig models.WingmanConfig) (provider.InferenceProvider, error) {
 		apiKey := config.APIKey
 		if apiKey == "" {
@@ -102,10 +102,10 @@ func New(config AnthropicConfig) provider.ProviderFactory {
 			temperature = *wingmanConfig.Temperature
 		}
 
-		return &AnthropicClient{
+		return &Client{
 			apiKey:     apiKey,
 			httpClient: &http.Client{Timeout: httpTimeout},
-			defaults: anthropicRequest{
+			defaults: request{
 				Model:       model,
 				MaxTokens:   maxTokens,
 				Temperature: temperature,
@@ -114,16 +114,16 @@ func New(config AnthropicConfig) provider.ProviderFactory {
 	}
 }
 
-func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error) {
-	messages := make([]anthropicMessage, len(wingmanMessages))
+func (c *Client) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error) {
+	messages := make([]message, len(wingmanMessages))
 	for i, msg := range wingmanMessages {
-		messages[i] = anthropicMessage{
+		messages[i] = message{
 			Role:    msg.Role,
 			Content: msg.Content,
 		}
 	}
 
-	req := ac.defaults
+	req := c.defaults
 	req.Messages = messages
 	req.System = config.Instructions
 
@@ -138,10 +138,10 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", ac.apiKey)
+	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 
-	resp, err := ac.httpClient.Do(httpReq)
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -156,7 +156,7 @@ func (ac *AnthropicClient) RunInference(ctx context.Context, wingmanMessages []m
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var apiResp anthropicResponse
+	var apiResp response
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
