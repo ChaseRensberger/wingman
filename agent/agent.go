@@ -93,6 +93,27 @@ type ToolCallResult struct {
 	Error    error
 }
 
+type AgentEventType string
+
+const (
+	EventToken      AgentEventType = "token"
+	EventToolCall   AgentEventType = "tool_call"
+	EventToolResult AgentEventType = "tool_result"
+	EventUsage      AgentEventType = "usage"
+	EventDone       AgentEventType = "done"
+	EventError      AgentEventType = "error"
+)
+
+type AgentEvent struct {
+	Type       AgentEventType
+	Content    string
+	ToolCall   *ToolCallResult
+	ToolResult *ToolCallResult
+	Usage      *models.WingmanUsage
+	Result     *RunResult
+	Error      error
+}
+
 func (a *Agent) Run(ctx context.Context, prompt string) (*RunResult, error) {
 	a.session.AddMessage(models.NewUserMessage(prompt))
 
@@ -141,6 +162,165 @@ func (a *Agent) Run(ctx context.Context, prompt string) (*RunResult, error) {
 
 		var resultBlocks []models.WingmanContentBlock
 		for _, result := range toolResults {
+			content := result.Output
+			isError := false
+			if result.Error != nil {
+				content = result.Error.Error()
+				isError = true
+			}
+			resultBlocks = append(resultBlocks, models.WingmanContentBlock{
+				Type:      models.ContentTypeToolResult,
+				ToolUseID: result.ToolName,
+				Content:   content,
+				IsError:   isError,
+			})
+		}
+
+		a.session.AddMessage(models.WingmanMessage{
+			Role:    models.RoleUser,
+			Content: resultBlocks,
+		})
+	}
+}
+
+func (a *Agent) RunStream(ctx context.Context, prompt string) (<-chan AgentEvent, error) {
+	events := make(chan AgentEvent, 100)
+
+	go a.runStreamLoop(ctx, prompt, events)
+
+	return events, nil
+}
+
+func (a *Agent) runStreamLoop(ctx context.Context, prompt string, events chan<- AgentEvent) {
+	defer close(events)
+
+	a.session.AddMessage(models.NewUserMessage(prompt))
+
+	var totalUsage models.WingmanUsage
+	var allToolCalls []ToolCallResult
+	steps := 0
+
+	for {
+		if a.maxSteps > 0 && steps >= a.maxSteps {
+			events <- AgentEvent{
+				Type:  EventError,
+				Error: fmt.Errorf("max steps (%d) exceeded", a.maxSteps),
+			}
+			return
+		}
+		steps++
+
+		req := models.WingmanInferenceRequest{
+			Messages:     a.session.Messages(),
+			Tools:        a.tools.Definitions(),
+			MaxTokens:    a.maxTokens,
+			Temperature:  a.temperature,
+			Instructions: a.instructions,
+		}
+
+		streamCh, err := a.provider.StreamInference(ctx, req)
+		if err != nil {
+			events <- AgentEvent{
+				Type:  EventError,
+				Error: fmt.Errorf("stream inference failed: %w", err),
+			}
+			return
+		}
+
+		var respContent []models.WingmanContentBlock
+		var stopReason string
+		var pendingToolCalls []models.WingmanContentBlock
+
+		for streamEvent := range streamCh {
+			select {
+			case <-ctx.Done():
+				events <- AgentEvent{
+					Type:  EventError,
+					Error: ctx.Err(),
+				}
+				return
+			default:
+			}
+
+			switch streamEvent.Type {
+			case provider.StreamEventToken:
+				events <- AgentEvent{
+					Type:    EventToken,
+					Content: streamEvent.Content,
+				}
+
+			case provider.StreamEventToolCall:
+				if block, ok := streamEvent.Delta.(models.WingmanContentBlock); ok {
+					pendingToolCalls = append(pendingToolCalls, block)
+					events <- AgentEvent{
+						Type: EventToolCall,
+						ToolCall: &ToolCallResult{
+							ToolName: block.ID,
+							Input:    block.Input,
+						},
+					}
+				}
+
+			case provider.StreamEventUsage:
+				if streamEvent.Usage != nil {
+					totalUsage.InputTokens += streamEvent.Usage.InputTokens
+					totalUsage.OutputTokens += streamEvent.Usage.OutputTokens
+				}
+
+			case provider.StreamEventDone:
+				if resp, ok := streamEvent.Delta.(*models.WingmanInferenceResponse); ok {
+					respContent = resp.Content
+					stopReason = resp.StopReason
+				}
+
+			case provider.StreamEventError:
+				events <- AgentEvent{
+					Type:  EventError,
+					Error: streamEvent.Error,
+				}
+				return
+			}
+		}
+
+		a.session.AddMessage(models.WingmanMessage{
+			Role:    models.RoleAssistant,
+			Content: respContent,
+		})
+
+		if stopReason != "tool_use" {
+			text := ""
+			for _, block := range respContent {
+				if block.Type == models.ContentTypeText {
+					text = block.Text
+					break
+				}
+			}
+			events <- AgentEvent{
+				Type:  EventUsage,
+				Usage: &totalUsage,
+			}
+			events <- AgentEvent{
+				Type: EventDone,
+				Result: &RunResult{
+					Response:  text,
+					ToolCalls: allToolCalls,
+					Usage:     totalUsage,
+					Steps:     steps,
+				},
+			}
+			return
+		}
+
+		toolResults := a.executeToolCalls(ctx, pendingToolCalls)
+		allToolCalls = append(allToolCalls, toolResults...)
+
+		var resultBlocks []models.WingmanContentBlock
+		for _, result := range toolResults {
+			events <- AgentEvent{
+				Type:       EventToolResult,
+				ToolResult: &result,
+			}
+
 			content := result.Output
 			isError := false
 			if result.Error != nil {

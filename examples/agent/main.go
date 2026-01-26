@@ -35,6 +35,8 @@ func main() {
 			tool.NewReadTool(workDir),
 			tool.NewWriteTool(workDir),
 			tool.NewEditTool(workDir),
+			tool.NewGlobTool(workDir),
+			tool.NewGrepTool(workDir),
 		),
 	)
 	if err != nil {
@@ -47,6 +49,45 @@ func main() {
 	utils.UserPrint(prompt)
 	fmt.Println()
 
+	streaming := os.Getenv("WINGMAN_STREAM") == "true"
+
+	if streaming {
+		runStreaming(ctx, a, prompt)
+	} else {
+		runNonStreaming(ctx, a, prompt)
+	}
+}
+
+func runStreaming(ctx context.Context, a *agent.Agent, prompt string) {
+	events, err := a.RunStream(ctx, prompt)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Print("Agent: ")
+	for event := range events {
+		switch event.Type {
+		case agent.EventToken:
+			fmt.Print(event.Content)
+		case agent.EventToolCall:
+			fmt.Printf("\n[Tool Call: %s]\n", event.ToolCall.ToolName)
+		case agent.EventToolResult:
+			status := "success"
+			if event.ToolResult.Error != nil {
+				status = "error: " + event.ToolResult.Error.Error()
+			}
+			fmt.Printf("[Tool Result: %s]\n", status)
+		case agent.EventUsage:
+			fmt.Printf("\n[Usage: Input=%d, Output=%d]\n", event.Usage.InputTokens, event.Usage.OutputTokens)
+		case agent.EventDone:
+			fmt.Printf("\n[Done: %d steps]\n", event.Result.Steps)
+		case agent.EventError:
+			log.Fatal(event.Error)
+		}
+	}
+}
+
+func runNonStreaming(ctx context.Context, a *agent.Agent, prompt string) {
 	result, err := a.Run(ctx, prompt)
 	if err != nil {
 		log.Fatal(err)
