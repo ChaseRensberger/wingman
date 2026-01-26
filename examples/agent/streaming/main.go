@@ -1,0 +1,78 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
+
+	"wingman/agent"
+	"wingman/provider/anthropic"
+	"wingman/tool"
+	"wingman/utils"
+)
+
+func main() {
+	godotenv.Load(".env.local")
+
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	provider, err := anthropic.New(anthropic.Config{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	a, err := agent.New("WingmanAgent", provider,
+		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
+		agent.WithMaxTokens(4096),
+		agent.WithTools(
+			tool.NewBashTool(workDir),
+			tool.NewReadTool(workDir),
+			tool.NewWriteTool(workDir),
+			tool.NewEditTool(workDir),
+			tool.NewGlobTool(workDir),
+			tool.NewGrepTool(workDir),
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	prompt := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
+
+	utils.UserPrint(prompt)
+	fmt.Println()
+
+	events, err := a.RunStream(ctx, prompt)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Print("Agent: ")
+	for event := range events {
+		switch event.Type {
+		case agent.EventToken:
+			fmt.Print(event.Content)
+		case agent.EventToolCall:
+			fmt.Printf("\n[Tool Call: %s]\n", event.ToolCall.ToolName)
+		case agent.EventToolResult:
+			status := "success"
+			if event.ToolResult.Error != nil {
+				status = "error: " + event.ToolResult.Error.Error()
+			}
+			fmt.Printf("[Tool Result: %s]\n", status)
+		case agent.EventUsage:
+			fmt.Printf("\n[Usage: Input=%d, Output=%d]\n", event.Usage.InputTokens, event.Usage.OutputTokens)
+		case agent.EventDone:
+			fmt.Printf("\n[Done: %d steps]\n", event.Result.Steps)
+		case agent.EventError:
+			log.Fatal(event.Error)
+		}
+	}
+}
