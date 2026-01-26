@@ -4,46 +4,72 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/joho/godotenv"
 
 	"wingman/agent"
-	"wingman/models"
 	"wingman/provider/anthropic"
+	"wingman/tool"
 	"wingman/utils"
 )
 
 func main() {
 	godotenv.Load(".env.local")
 
-	agent, err := agent.CreateAgent("WingmanAgent",
-		agent.WithProvider(anthropic.New(anthropic.Config{})),
-		agent.WithInstructions("You are a helpful assistant that speaks like a pirate."),
-		agent.WithMaxTokens(2048),
-		agent.WithTemperature(1.0),
+	workDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	provider, err := anthropic.New(anthropic.Config{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	a, err := agent.New("WingmanAgent", provider,
+		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
+		agent.WithMaxTokens(4096),
+		agent.WithTools(
+			tool.NewBashTool(workDir),
+			tool.NewReadTool(workDir),
+			tool.NewWriteTool(workDir),
+			tool.NewEditTool(workDir),
+		),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ctx := context.Background()
-	userMessage := "What is the weather like in San Diego?"
+	prompt := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
 
-	messages := []models.WingmanMessage{
-		{
-			Role:    "user",
-			Content: userMessage,
-		},
-	}
+	utils.UserPrint(prompt)
+	fmt.Println()
 
-	result, err := agent.RunInference(ctx, messages)
+	result, err := a.Run(ctx, prompt)
 	if err != nil {
 		log.Fatal(err)
 	}
-	utils.UserPrint(userMessage)
-	if len(result.Content) > 0 {
-		utils.AgentPrint(result.Content[0].Text)
+
+	for _, tc := range result.ToolCalls {
+		if tc.Error != nil {
+			utils.ToolPrint(fmt.Sprintf("[%s] Error: %v", tc.ToolName, tc.Error))
+		} else {
+			utils.ToolPrint(fmt.Sprintf("[%s] %s", tc.ToolName, truncate(tc.Output, 200)))
+		}
 	}
 
-	utils.ToolPrint(fmt.Sprintf("Tokens used - Input: %d, Output: %d", result.Usage.InputTokens, result.Usage.OutputTokens))
+	fmt.Println()
+	utils.AgentPrint(result.Response)
+	fmt.Println()
+	utils.ToolPrint(fmt.Sprintf("Steps: %d | Tokens - Input: %d, Output: %d",
+		result.Steps, result.Usage.InputTokens, result.Usage.OutputTokens))
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

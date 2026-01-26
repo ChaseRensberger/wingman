@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	defaultModel       = "claude-haiku-4-5-20251001"
-	defaultMaxTokens   = 4096
+	defaultModel       = "claude-sonnet-4-20250514"
+	defaultMaxTokens   = 8192
 	defaultTemperature = 1.0
 	apiURL             = "https://api.anthropic.com/v1/messages"
 	apiVersion         = "2023-06-01"
-	httpTimeout        = 2 * time.Minute
+	httpTimeout        = 5 * time.Minute
 )
 
 type Config struct {
@@ -30,21 +30,93 @@ type Config struct {
 	Temperature *float64
 }
 
-type message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+type Client struct {
+	apiKey      string
+	model       string
+	maxTokens   int
+	temperature float64
+	httpClient  *http.Client
+}
+
+func New(cfg Config) (*Client, error) {
+	apiKey := cfg.APIKey
+	if apiKey == "" {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
+	}
+
+	model := cfg.Model
+	if model == "" {
+		model = defaultModel
+	}
+
+	maxTokens := cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = defaultMaxTokens
+	}
+
+	temperature := defaultTemperature
+	if cfg.Temperature != nil {
+		temperature = *cfg.Temperature
+	}
+
+	return &Client{
+		apiKey:      apiKey,
+		model:       model,
+		maxTokens:   maxTokens,
+		temperature: temperature,
+		httpClient:  &http.Client{Timeout: httpTimeout},
+	}, nil
+}
+
+type anthropicMessage struct {
+	Role    string         `json:"role"`
+	Content []contentBlock `json:"content"`
 }
 
 type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Input     any    `json:"input,omitempty"`
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Content   string `json:"content,omitempty"`
+	IsError   bool   `json:"is_error,omitempty"`
+}
+
+type toolDefinition struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	InputSchema inputSchema `json:"input_schema"`
+}
+
+type inputSchema struct {
+	Type       string              `json:"type"`
+	Properties map[string]property `json:"properties,omitempty"`
+	Required   []string            `json:"required,omitempty"`
+}
+
+type property struct {
+	Type        string   `json:"type"`
+	Description string   `json:"description,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
+}
+
+type request struct {
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	Temperature float64            `json:"temperature,omitempty"`
+	System      string             `json:"system,omitempty"`
+	Messages    []anthropicMessage `json:"messages"`
+	Tools       []toolDefinition   `json:"tools,omitempty"`
 }
 
 type usage struct {
-	InputTokens         int `json:"input_tokens"`
-	CacheCreationTokens int `json:"cache_creation_input_tokens"`
-	CacheReadTokens     int `json:"cache_read_input_tokens"`
-	OutputTokens        int `json:"output_tokens"`
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
 }
 
 type response struct {
@@ -58,78 +130,12 @@ type response struct {
 	Usage        usage          `json:"usage"`
 }
 
-type request struct {
-	Model       string    `json:"model"`
-	MaxTokens   int       `json:"max_tokens"`
-	Temperature float64   `json:"temperature,omitempty"`
-	System      string    `json:"system,omitempty"`
-	Messages    []message `json:"messages"`
-}
+func (c *Client) RunInference(ctx context.Context, req models.WingmanInferenceRequest) (*models.WingmanInferenceResponse, error) {
+	anthropicReq := c.buildRequest(req)
 
-type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	defaults   request
-}
-
-func New(config Config) provider.ProviderFactory {
-	return func(wingmanConfig models.WingmanConfig) (provider.InferenceProvider, error) {
-		apiKey := config.APIKey
-		if apiKey == "" {
-			apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		}
-		if apiKey == "" {
-			return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
-		}
-
-		model := config.Model
-		if model == "" {
-			model = defaultModel
-		}
-
-		maxTokens := config.MaxTokens
-		if maxTokens <= 0 {
-			maxTokens = wingmanConfig.MaxTokens
-		}
-		if maxTokens <= 0 {
-			maxTokens = defaultMaxTokens
-		}
-
-		temperature := defaultTemperature
-		if config.Temperature != nil {
-			temperature = *config.Temperature
-		} else if wingmanConfig.Temperature != nil {
-			temperature = *wingmanConfig.Temperature
-		}
-
-		return &Client{
-			apiKey:     apiKey,
-			httpClient: &http.Client{Timeout: httpTimeout},
-			defaults: request{
-				Model:       model,
-				MaxTokens:   maxTokens,
-				Temperature: temperature,
-			},
-		}, nil
-	}
-}
-
-func (c *Client) RunInference(ctx context.Context, wingmanMessages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error) {
-	messages := make([]message, len(wingmanMessages))
-	for i, msg := range wingmanMessages {
-		messages[i] = message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		}
-	}
-
-	req := c.defaults
-	req.Messages = messages
-	req.System = config.Instructions
-
-	jsonData, err := json.Marshal(req)
+	jsonData, err := json.Marshal(anthropicReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal json: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
@@ -161,21 +167,108 @@ func (c *Client) RunInference(ctx context.Context, wingmanMessages []models.Wing
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	contentBlocks := make([]models.WingmanContentBlock, len(apiResp.Content))
-	for i, block := range apiResp.Content {
-		contentBlocks[i] = models.WingmanContentBlock{
-			Type: block.Type,
-			Text: block.Text,
+	return c.toWingmanResponse(apiResp), nil
+}
+
+func (c *Client) StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (<-chan provider.StreamEvent, error) {
+	return nil, fmt.Errorf("streaming not yet implemented")
+}
+
+func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
+	messages := make([]anthropicMessage, len(req.Messages))
+	for i, msg := range req.Messages {
+		messages[i] = c.toAnthropicMessage(msg)
+	}
+
+	var tools []toolDefinition
+	if len(req.Tools) > 0 {
+		tools = make([]toolDefinition, len(req.Tools))
+		for i, t := range req.Tools {
+			tools[i] = c.toAnthropicTool(t)
 		}
 	}
 
-	return &models.WingmanMessageResponse{
-		ID:         apiResp.ID,
-		Content:    contentBlocks,
-		StopReason: apiResp.StopReason,
-		Usage: models.WingmanUsage{
-			InputTokens:  apiResp.Usage.InputTokens,
-			OutputTokens: apiResp.Usage.OutputTokens,
+	maxTokens := req.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = c.maxTokens
+	}
+
+	temperature := c.temperature
+	if req.Temperature != nil {
+		temperature = *req.Temperature
+	}
+
+	return request{
+		Model:       c.model,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		System:      req.Instructions,
+		Messages:    messages,
+		Tools:       tools,
+	}
+}
+
+func (c *Client) toAnthropicMessage(msg models.WingmanMessage) anthropicMessage {
+	blocks := make([]contentBlock, len(msg.Content))
+	for i, b := range msg.Content {
+		blocks[i] = contentBlock{
+			Type:      string(b.Type),
+			Text:      b.Text,
+			ID:        b.ID,
+			Name:      b.Name,
+			Input:     b.Input,
+			ToolUseID: b.ToolUseID,
+			Content:   b.Content,
+			IsError:   b.IsError,
+		}
+	}
+	return anthropicMessage{
+		Role:    string(msg.Role),
+		Content: blocks,
+	}
+}
+
+func (c *Client) toAnthropicTool(t models.WingmanToolDefinition) toolDefinition {
+	props := make(map[string]property)
+	for name, p := range t.InputSchema.Properties {
+		props[name] = property{
+			Type:        p.Type,
+			Description: p.Description,
+			Enum:        p.Enum,
+		}
+	}
+	return toolDefinition{
+		Name:        t.Name,
+		Description: t.Description,
+		InputSchema: inputSchema{
+			Type:       t.InputSchema.Type,
+			Properties: props,
+			Required:   t.InputSchema.Required,
 		},
-	}, nil
+	}
+}
+
+func (c *Client) toWingmanResponse(resp response) *models.WingmanInferenceResponse {
+	blocks := make([]models.WingmanContentBlock, len(resp.Content))
+	for i, b := range resp.Content {
+		blocks[i] = models.WingmanContentBlock{
+			Type:      models.WingmanContentType(b.Type),
+			Text:      b.Text,
+			ID:        b.ID,
+			Name:      b.Name,
+			Input:     b.Input,
+			ToolUseID: b.ToolUseID,
+			Content:   b.Content,
+			IsError:   b.IsError,
+		}
+	}
+	return &models.WingmanInferenceResponse{
+		ID:         resp.ID,
+		Content:    blocks,
+		StopReason: resp.StopReason,
+		Usage: models.WingmanUsage{
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+		},
+	}
 }

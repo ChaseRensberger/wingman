@@ -6,8 +6,25 @@ import (
 	"wingman/models"
 )
 
-type InferenceProvider interface {
-	RunInference(ctx context.Context, messages []models.WingmanMessage, config models.WingmanConfig) (*models.WingmanMessageResponse, error)
+type Provider interface {
+	RunInference(ctx context.Context, req models.WingmanInferenceRequest) (*models.WingmanInferenceResponse, error)
+	StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (<-chan StreamEvent, error)
 }
 
-type ProviderFactory func(config models.WingmanConfig) (InferenceProvider, error)
+type StreamEventType string
+
+const (
+	StreamEventToken    StreamEventType = "token"
+	StreamEventToolCall StreamEventType = "tool_call"
+	StreamEventUsage    StreamEventType = "usage"
+	StreamEventDone     StreamEventType = "done"
+	StreamEventError    StreamEventType = "error"
+)
+
+type StreamEvent struct {
+	Type    StreamEventType
+	Content string
+	Delta   any
+	Usage   *models.WingmanUsage
+	Error   error
+}
