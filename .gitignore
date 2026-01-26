@@ -1,3 +1,4 @@
 *.local
 wingman
 resources/
+__debug*
