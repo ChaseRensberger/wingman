@@ -4,7 +4,7 @@ type WingmanRole string
 
 const (
 	RoleUser      WingmanRole = "user"
-	RoleAssistant WingmanRole = "assistant"
+	RoleAssistant WingmanRole = "system"
 )
 
 type WingmanContentType string
