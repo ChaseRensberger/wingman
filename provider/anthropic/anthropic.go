@@ -40,13 +40,13 @@ type Client struct {
 	httpClient  *http.Client
 }
 
-func New(cfg Config) (*Client, error) {
+func New(cfg Config) *Client {
 	apiKey := cfg.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
+		return nil
 	}
 
 	model := cfg.Model
@@ -70,7 +70,7 @@ func New(cfg Config) (*Client, error) {
 		maxTokens:   maxTokens,
 		temperature: temperature,
 		httpClient:  &http.Client{Timeout: httpTimeout},
-	}, nil
+	}
 }
 
 type anthropicMessage struct {

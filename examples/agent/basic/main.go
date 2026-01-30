@@ -22,10 +22,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	provider, err := anthropic.New(anthropic.Config{})
-	if err != nil {
-		log.Fatal(err)
-	}
+	provider := anthropic.New(anthropic.Config{})
 
 	a, err := agent.New("WingmanAgent", provider,
 		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
