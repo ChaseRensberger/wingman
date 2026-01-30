@@ -22,9 +22,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	provider := anthropic.New(anthropic.Config{})
+	p := anthropic.New(anthropic.Config{})
+	if p == nil {
+		log.Fatal("ANTHROPIC_API_KEY not set")
+	}
 
-	a, err := agent.New("WingmanAgent", provider,
+	a := agent.New("WingmanAgent",
 		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
 		agent.WithMaxTokens(4096),
 		agent.WithTools(
@@ -36,9 +39,6 @@ func main() {
 			tool.NewGrepTool(workDir),
 		),
 	)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	ctx := context.Background()
 	prompt := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
@@ -46,7 +46,7 @@ func main() {
 	utils.UserPrint(prompt)
 	fmt.Println()
 
-	result, err := a.Run(ctx, prompt)
+	result, err := a.Run(ctx, p, prompt)
 	if err != nil {
 		log.Fatal(err)
 	}
