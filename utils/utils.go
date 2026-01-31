@@ -2,8 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 )
 
 const (
@@ -28,7 +26,3 @@ func ToolPrint(text string) {
 	fmt.Printf("%s%sTool:%s %s%s\n", colorBold, colorOrange, colorReset, colorOrange, text)
 	fmt.Print(colorReset)
 }
-
-var Logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-	Level: slog.LevelDebug,
-}))
