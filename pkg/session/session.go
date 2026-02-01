@@ -10,9 +10,9 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"wingman/models"
-	"wingman/provider"
-	"wingman/tool"
+	"wingman/pkg/models"
+	"wingman/pkg/provider"
+	"wingman/pkg/tool"
 )
 
 type Agent interface {

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"wingman/models"
-	"wingman/provider"
-	"wingman/tool"
+	"wingman/pkg/models"
+	"wingman/pkg/provider"
+	"wingman/pkg/tool"
 )
 
 type Agent struct {

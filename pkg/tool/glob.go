@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"wingman/models"
+	"wingman/pkg/models"
 )
 
 type GlobTool struct {

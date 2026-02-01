@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"wingman/agent"
-	"wingman/provider"
+	"wingman/pkg/agent"
+	"wingman/pkg/provider"
 )
 
 const (

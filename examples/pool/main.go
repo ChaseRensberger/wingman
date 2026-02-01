@@ -6,9 +6,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"wingman/actor"
-	"wingman/agent"
-	"wingman/provider/anthropic"
+	"wingman/pkg/actor"
+	"wingman/pkg/agent"
+	"wingman/pkg/provider/anthropic"
 )
 
 func main() {

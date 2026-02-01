@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"wingman/models"
+	"wingman/pkg/models"
 )
 
 type Tool interface {

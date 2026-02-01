@@ -8,10 +8,10 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"wingman/agent"
-	"wingman/provider/anthropic"
-	"wingman/tool"
-	"wingman/utils"
+	"wingman/internal/utils"
+	"wingman/pkg/agent"
+	"wingman/pkg/provider/anthropic"
+	"wingman/pkg/tool"
 )
 
 func main() {

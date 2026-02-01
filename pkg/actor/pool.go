@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"wingman/agent"
-	"wingman/provider"
+	"wingman/pkg/agent"
+	"wingman/pkg/provider"
 )
 
 type Pool struct {
