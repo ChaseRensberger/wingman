@@ -1,4 +1,4 @@
 *.local
-wingman
+/wingman
 __debug*
 sandbox/
