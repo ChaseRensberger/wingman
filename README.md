@@ -13,7 +13,7 @@ A Go framework for building LLM-powered agents with tool execution and actor-bas
 ## Installation
 
 ```bash
-go get github.com/your-org/wingman
+go get github.com/chaserensberger/wingman
 ```
 
 ## Quick Start
