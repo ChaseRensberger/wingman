@@ -11,13 +11,11 @@ import (
 )
 
 type BashTool struct {
-	workDir string
 	timeout time.Duration
 }
 
-func NewBashTool(workDir string) *BashTool {
+func NewBashTool() *BashTool {
 	return &BashTool{
-		workDir: workDir,
 		timeout: 2 * time.Minute,
 	}
 }
@@ -41,10 +39,6 @@ func (t *BashTool) Definition() models.WingmanToolDefinition {
 					Type:        "string",
 					Description: "The bash command to execute",
 				},
-				"workdir": {
-					Type:        "string",
-					Description: "Working directory for the command (optional, defaults to current directory)",
-				},
 				"timeout": {
 					Type:        "string",
 					Description: "Timeout duration (e.g., '30s', '5m'). Defaults to 2 minutes.",
@@ -55,15 +49,14 @@ func (t *BashTool) Definition() models.WingmanToolDefinition {
 	}
 }
 
-func (t *BashTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	command, ok := params["command"].(string)
 	if !ok || command == "" {
 		return "", fmt.Errorf("command is required")
 	}
 
-	workDir := t.workDir
-	if wd, ok := params["workdir"].(string); ok && wd != "" {
-		workDir = wd
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for bash tool")
 	}
 
 	timeout := t.timeout

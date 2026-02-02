@@ -26,6 +26,7 @@ type Agent interface {
 
 type Session struct {
 	id       string
+	workDir  string
 	agent    Agent
 	provider provider.Provider
 	history  []models.WingmanMessage
@@ -50,6 +51,12 @@ func New(opts ...Option) *Session {
 	return s
 }
 
+func WithWorkDir(dir string) Option {
+	return func(s *Session) {
+		s.workDir = dir
+	}
+}
+
 func WithAgent(a Agent) Option {
 	return func(s *Session) {
 		s.agent = a
@@ -64,6 +71,18 @@ func WithProvider(p provider.Provider) Option {
 
 func (s *Session) ID() string {
 	return s.id
+}
+
+func (s *Session) WorkDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.workDir
+}
+
+func (s *Session) SetWorkDir(dir string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workDir = dir
 }
 
 func (s *Session) SetAgent(a Agent) {
@@ -141,6 +160,7 @@ func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
 	}
 
 	s.history = append(s.history, models.NewUserMessage(prompt))
+	workDir := s.workDir
 	s.mu.Unlock()
 
 	var totalUsage models.WingmanUsage
@@ -198,7 +218,7 @@ func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
 			}, nil
 		}
 
-		toolResults := s.executeToolCalls(ctx, resp.GetToolCalls(), toolRegistry)
+		toolResults := s.executeToolCalls(ctx, resp.GetToolCalls(), toolRegistry, workDir)
 		allToolCalls = append(allToolCalls, toolResults...)
 
 		var resultBlocks []models.WingmanContentBlock
@@ -226,7 +246,7 @@ func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
 	}
 }
 
-func (s *Session) executeToolCalls(ctx context.Context, calls []models.WingmanContentBlock, registry *tool.Registry) []ToolCallResult {
+func (s *Session) executeToolCalls(ctx context.Context, calls []models.WingmanContentBlock, registry *tool.Registry, workDir string) []ToolCallResult {
 	results := make([]ToolCallResult, len(calls))
 
 	for i, call := range calls {
@@ -247,7 +267,7 @@ func (s *Session) executeToolCalls(ctx context.Context, calls []models.WingmanCo
 			continue
 		}
 
-		output, err := t.Execute(ctx, params)
+		output, err := t.Execute(ctx, params, workDir)
 		if err != nil {
 			results[i].Error = err
 			results[i].Output = output

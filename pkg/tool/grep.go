@@ -12,12 +12,10 @@ import (
 	"wingman/pkg/models"
 )
 
-type GrepTool struct {
-	workDir string
-}
+type GrepTool struct{}
 
-func NewGrepTool(workDir string) *GrepTool {
-	return &GrepTool{workDir: workDir}
+func NewGrepTool() *GrepTool {
+	return &GrepTool{}
 }
 
 func (t *GrepTool) Name() string {
@@ -59,10 +57,14 @@ type grepMatch struct {
 	Content string
 }
 
-func (t *GrepTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	pattern, ok := params["pattern"].(string)
 	if !ok || pattern == "" {
 		return "", fmt.Errorf("pattern is required")
+	}
+
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for grep tool")
 	}
 
 	re, err := regexp.Compile(pattern)
@@ -70,12 +72,12 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any) (string, 
 		return "", fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	searchPath := t.workDir
+	searchPath := workDir
 	if path, ok := params["path"].(string); ok && path != "" {
 		if filepath.IsAbs(path) {
 			searchPath = path
 		} else {
-			searchPath = filepath.Join(t.workDir, path)
+			searchPath = filepath.Join(workDir, path)
 		}
 	}
 
@@ -119,7 +121,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any) (string, 
 				return nil
 			}
 
-			relPath, _ := filepath.Rel(t.workDir, path)
+			relPath, _ := filepath.Rel(workDir, path)
 			for i := range fileMatches {
 				fileMatches[i].File = relPath
 			}
@@ -134,7 +136,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any) (string, 
 		if err != nil {
 			return "", fmt.Errorf("failed to search file: %w", err)
 		}
-		relPath, _ := filepath.Rel(t.workDir, searchPath)
+		relPath, _ := filepath.Rel(workDir, searchPath)
 		for i := range fileMatches {
 			fileMatches[i].File = relPath
 		}

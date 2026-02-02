@@ -10,12 +10,10 @@ import (
 	"wingman/pkg/models"
 )
 
-type EditTool struct {
-	workDir string
-}
+type EditTool struct{}
 
-func NewEditTool(workDir string) *EditTool {
-	return &EditTool{workDir: workDir}
+func NewEditTool() *EditTool {
+	return &EditTool{}
 }
 
 func (t *EditTool) Name() string {
@@ -51,7 +49,7 @@ func (t *EditTool) Definition() models.WingmanToolDefinition {
 	}
 }
 
-func (t *EditTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
 		return "", fmt.Errorf("path is required")
@@ -67,8 +65,12 @@ func (t *EditTool) Execute(ctx context.Context, params map[string]any) (string, 
 		return "", fmt.Errorf("new_string is required")
 	}
 
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for edit tool")
+	}
+
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(t.workDir, path)
+		path = filepath.Join(workDir, path)
 	}
 
 	path = filepath.Clean(path)

@@ -10,12 +10,10 @@ import (
 	"wingman/pkg/models"
 )
 
-type GlobTool struct {
-	workDir string
-}
+type GlobTool struct{}
 
-func NewGlobTool(workDir string) *GlobTool {
-	return &GlobTool{workDir: workDir}
+func NewGlobTool() *GlobTool {
+	return &GlobTool{}
 }
 
 func (t *GlobTool) Name() string {
@@ -47,18 +45,22 @@ func (t *GlobTool) Definition() models.WingmanToolDefinition {
 	}
 }
 
-func (t *GlobTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	pattern, ok := params["pattern"].(string)
 	if !ok || pattern == "" {
 		return "", fmt.Errorf("pattern is required")
 	}
 
-	baseDir := t.workDir
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for glob tool")
+	}
+
+	baseDir := workDir
 	if path, ok := params["path"].(string); ok && path != "" {
 		if filepath.IsAbs(path) {
 			baseDir = path
 		} else {
-			baseDir = filepath.Join(t.workDir, path)
+			baseDir = filepath.Join(workDir, path)
 		}
 	}
 

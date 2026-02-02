@@ -12,7 +12,7 @@ type Tool interface {
 	Name() string
 	Description() string
 	Definition() models.WingmanToolDefinition
-	Execute(ctx context.Context, params map[string]any) (string, error)
+	Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
 }
 
 type Registry struct {

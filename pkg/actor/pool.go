@@ -7,6 +7,7 @@ import (
 
 	"wingman/pkg/agent"
 	"wingman/pkg/provider"
+	"wingman/pkg/session"
 )
 
 type Pool struct {
@@ -22,13 +23,14 @@ type Pool struct {
 
 type PoolResult struct {
 	WorkerName string
-	Result     *agent.Result
+	Result     *session.Result
 	Error      error
 	Data       any
 }
 
 type PoolConfig struct {
 	WorkerCount int
+	WorkDir     string
 	Agent       *agent.Agent
 	Provider    provider.Provider
 }
@@ -47,7 +49,12 @@ func NewPool(cfg PoolConfig) *Pool {
 
 	for i := 0; i < cfg.WorkerCount; i++ {
 		name := fmt.Sprintf("worker-%d", i)
-		workerActor := NewAgentActor(cfg.Agent, cfg.Provider, WithTarget(pool.collector))
+		workerActor := NewAgentActor(
+			cfg.Agent,
+			cfg.Provider,
+			WithTarget(pool.collector),
+			WithWorkDir(cfg.WorkDir),
+		)
 		pool.workers[i] = system.Spawn(name, workerActor)
 	}
 

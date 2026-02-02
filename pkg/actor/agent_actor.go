@@ -6,6 +6,7 @@ import (
 
 	"wingman/pkg/agent"
 	"wingman/pkg/provider"
+	"wingman/pkg/session"
 )
 
 const (
@@ -19,7 +20,7 @@ type WorkPayload struct {
 }
 
 type ResultPayload struct {
-	Result *agent.Result
+	Result *session.Result
 	Error  error
 	Data   any
 }
@@ -27,8 +28,9 @@ type ResultPayload struct {
 type AgentActor struct {
 	agent    *agent.Agent
 	provider provider.Provider
+	workDir  string
 	target   *Ref
-	onResult func(result *agent.Result, err error)
+	onResult func(result *session.Result, err error)
 }
 
 type AgentActorOption func(*AgentActor)
@@ -39,7 +41,13 @@ func WithTarget(target *Ref) AgentActorOption {
 	}
 }
 
-func WithResultCallback(fn func(result *agent.Result, err error)) AgentActorOption {
+func WithWorkDir(dir string) AgentActorOption {
+	return func(a *AgentActor) {
+		a.workDir = dir
+	}
+}
+
+func WithResultCallback(fn func(result *session.Result, err error)) AgentActorOption {
 	return func(a *AgentActor) {
 		a.onResult = fn
 	}
@@ -73,7 +81,13 @@ func (a *AgentActor) handleWork(ctx context.Context, msg Message) error {
 		return fmt.Errorf("invalid work payload")
 	}
 
-	result, err := a.agent.Run(ctx, a.provider, payload.Prompt)
+	s := session.New(
+		session.WithAgent(a.agent),
+		session.WithProvider(a.provider),
+		session.WithWorkDir(a.workDir),
+	)
+
+	result, err := s.Run(ctx, payload.Prompt)
 
 	if a.onResult != nil {
 		a.onResult(result, err)

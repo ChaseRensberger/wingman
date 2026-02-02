@@ -32,12 +32,13 @@ func main() {
 		agent.WithInstructions("You are a helpful coding assistant. Keep track of our conversation."),
 		agent.WithMaxTokens(4096),
 		agent.WithTools(
-			tool.NewBashTool(workDir),
-			tool.NewReadTool(workDir),
+			tool.NewBashTool(),
+			tool.NewReadTool(),
 		),
 	)
 
 	s := session.New(
+		session.WithWorkDir(workDir),
 		session.WithAgent(a),
 		session.WithProvider(p),
 	)

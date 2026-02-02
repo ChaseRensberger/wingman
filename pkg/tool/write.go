@@ -9,12 +9,10 @@ import (
 	"wingman/pkg/models"
 )
 
-type WriteTool struct {
-	workDir string
-}
+type WriteTool struct{}
 
-func NewWriteTool(workDir string) *WriteTool {
-	return &WriteTool{workDir: workDir}
+func NewWriteTool() *WriteTool {
+	return &WriteTool{}
 }
 
 func (t *WriteTool) Name() string {
@@ -46,7 +44,7 @@ func (t *WriteTool) Definition() models.WingmanToolDefinition {
 	}
 }
 
-func (t *WriteTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *WriteTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
 		return "", fmt.Errorf("path is required")
@@ -57,8 +55,12 @@ func (t *WriteTool) Execute(ctx context.Context, params map[string]any) (string,
 		return "", fmt.Errorf("content is required")
 	}
 
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for write tool")
+	}
+
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(t.workDir, path)
+		path = filepath.Join(workDir, path)
 	}
 
 	path = filepath.Clean(path)

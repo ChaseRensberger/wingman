@@ -10,12 +10,10 @@ import (
 	"wingman/pkg/models"
 )
 
-type ReadTool struct {
-	workDir string
-}
+type ReadTool struct{}
 
-func NewReadTool(workDir string) *ReadTool {
-	return &ReadTool{workDir: workDir}
+func NewReadTool() *ReadTool {
+	return &ReadTool{}
 }
 
 func (t *ReadTool) Name() string {
@@ -43,19 +41,23 @@ func (t *ReadTool) Definition() models.WingmanToolDefinition {
 	}
 }
 
-func (t *ReadTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+func (t *ReadTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
 		return "", fmt.Errorf("path is required")
 	}
 
+	if workDir == "" {
+		return "", fmt.Errorf("workDir is required for read tool")
+	}
+
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(t.workDir, path)
+		path = filepath.Join(workDir, path)
 	}
 
 	path = filepath.Clean(path)
 
-	if !strings.HasPrefix(path, t.workDir) && !filepath.IsAbs(path) {
+	if !strings.HasPrefix(path, workDir) && !filepath.IsAbs(path) {
 		return "", fmt.Errorf("path escapes working directory")
 	}
 
