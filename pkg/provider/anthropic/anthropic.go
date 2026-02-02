@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultModel       = "claude-sonnet-4-20250514"
+	defaultModel       = "claude-sonnet-4-5-20250514"
 	defaultMaxTokens   = 8192
 	defaultTemperature = 1.0
 	apiURL             = "https://api.anthropic.com/v1/messages"
@@ -104,13 +104,23 @@ type property struct {
 	Enum        []string `json:"enum,omitempty"`
 }
 
+type outputFormat struct {
+	Type   string         `json:"type"`
+	Schema map[string]any `json:"schema,omitempty"`
+}
+
+type outputConfig struct {
+	Format *outputFormat `json:"format,omitempty"`
+}
+
 type request struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature float64            `json:"temperature,omitempty"`
-	System      string             `json:"system,omitempty"`
-	Messages    []anthropicMessage `json:"messages"`
-	Tools       []toolDefinition   `json:"tools,omitempty"`
+	Model        string             `json:"model"`
+	MaxTokens    int                `json:"max_tokens"`
+	Temperature  float64            `json:"temperature,omitempty"`
+	System       string             `json:"system,omitempty"`
+	Messages     []anthropicMessage `json:"messages"`
+	Tools        []toolDefinition   `json:"tools,omitempty"`
+	OutputConfig *outputConfig      `json:"output_config,omitempty"`
 }
 
 type usage struct {
@@ -193,7 +203,7 @@ func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
 		temperature = *req.Temperature
 	}
 
-	return request{
+	r := request{
 		Model:       c.model,
 		MaxTokens:   maxTokens,
 		Temperature: temperature,
@@ -201,6 +211,17 @@ func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
 		Messages:    messages,
 		Tools:       tools,
 	}
+
+	if req.OutputSchema != nil {
+		r.OutputConfig = &outputConfig{
+			Format: &outputFormat{
+				Type:   "json_schema",
+				Schema: req.OutputSchema,
+			},
+		}
+	}
+
+	return r
 }
 
 func (c *Client) toAnthropicMessage(msg models.WingmanMessage) anthropicMessage {

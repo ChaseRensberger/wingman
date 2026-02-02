@@ -22,6 +22,7 @@ type Agent interface {
 	MaxTokens() int
 	Temperature() *float64
 	MaxSteps() int
+	OutputSchema() map[string]any
 }
 
 type Session struct {
@@ -190,6 +191,7 @@ func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
 			MaxTokens:    s.agent.MaxTokens(),
 			Temperature:  s.agent.Temperature(),
 			Instructions: s.agent.Instructions(),
+			OutputSchema: s.agent.OutputSchema(),
 		}
 		p := s.provider
 		s.mu.RUnlock()
