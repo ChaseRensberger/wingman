@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"wingman/pkg/models"
+	"wingman/models"
 )
 
 const (

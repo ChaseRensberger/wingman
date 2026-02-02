@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"wingman/pkg/models"
+	"wingman/models"
 )
 
 const (

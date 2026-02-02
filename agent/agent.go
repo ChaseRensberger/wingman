@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"wingman/pkg/tool"
+	"wingman/tool"
 )
 
 type Agent struct {

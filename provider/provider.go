@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"wingman/pkg/models"
+	"wingman/models"
 )
 
 type Provider interface {

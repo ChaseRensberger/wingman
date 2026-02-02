@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"wingman/pkg/models"
+	"wingman/models"
 )
 
 type ReadTool struct{}

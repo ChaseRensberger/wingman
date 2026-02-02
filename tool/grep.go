@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"wingman/pkg/models"
+	"wingman/models"
 )
 
 type GrepTool struct{}
