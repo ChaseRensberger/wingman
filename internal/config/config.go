@@ -40,7 +40,7 @@ type PermissionRule struct {
 }
 
 var defaultConfig = Config{
-	Model: "anthropic/claude-sonnet-4-20250514",
+	Model: "anthropic/claude-sonnet-4-5",
 	Tools: map[string]bool{
 		"bash":  true,
 		"read":  true,
