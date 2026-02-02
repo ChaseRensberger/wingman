@@ -13,15 +13,6 @@ import (
 	"wingman/models"
 )
 
-const (
-	defaultModel       = "claude-sonnet-4-5"
-	defaultMaxTokens   = 8192
-	defaultTemperature = 1.0
-	apiURL             = "https://api.anthropic.com/v1/messages"
-	apiVersion         = "2023-06-01"
-	httpTimeout        = 5 * time.Minute
-)
-
 type Config struct {
 	APIKey      string
 	Model       string
@@ -37,8 +28,22 @@ type Client struct {
 	httpClient  *http.Client
 }
 
-func New(cfg Config) *Client {
-	apiKey := cfg.APIKey
+const (
+	defaultModel       = "claude-sonnet-4-5"
+	defaultMaxTokens   = 8192
+	defaultTemperature = 1.0
+	apiURL             = "https://api.anthropic.com/v1/messages"
+	apiVersion         = "2023-06-01"
+	httpTimeout        = 5 * time.Minute
+)
+
+func New(cfg ...Config) *Client {
+	var c Config
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+
+	apiKey := c.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
@@ -46,19 +51,19 @@ func New(cfg Config) *Client {
 		return nil
 	}
 
-	model := cfg.Model
+	model := c.Model
 	if model == "" {
 		model = defaultModel
 	}
 
-	maxTokens := cfg.MaxTokens
+	maxTokens := c.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = defaultMaxTokens
 	}
 
 	temperature := defaultTemperature
-	if cfg.Temperature != nil {
-		temperature = *cfg.Temperature
+	if c.Temperature != nil {
+		temperature = *c.Temperature
 	}
 
 	return &Client{
