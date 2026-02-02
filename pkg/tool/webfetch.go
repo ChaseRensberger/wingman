@@ -166,8 +166,12 @@ func buildAcceptHeader(format string) string {
 }
 
 func extractTextFromHTML(html string) string {
-	scriptStyleRe := regexp.MustCompile(`(?is)<(script|style|noscript|iframe|object|embed)[^>]*>.*?</\1>`)
-	html = scriptStyleRe.ReplaceAllString(html, "")
+	html = removeTagWithContent(html, "script")
+	html = removeTagWithContent(html, "style")
+	html = removeTagWithContent(html, "noscript")
+	html = removeTagWithContent(html, "iframe")
+	html = removeTagWithContent(html, "object")
+	html = removeTagWithContent(html, "embed")
 
 	tagRe := regexp.MustCompile(`<[^>]+>`)
 	text := tagRe.ReplaceAllString(html, " ")
@@ -175,37 +179,38 @@ func extractTextFromHTML(html string) string {
 	whitespaceRe := regexp.MustCompile(`\s+`)
 	text = whitespaceRe.ReplaceAllString(text, " ")
 
-	text = strings.TrimSpace(text)
-
-	return text
+	return strings.TrimSpace(text)
 }
 
 func convertHTMLToMarkdown(html string) string {
-	scriptStyleRe := regexp.MustCompile(`(?is)<(script|style|meta|link|noscript)[^>]*>.*?</\1>`)
-	html = scriptStyleRe.ReplaceAllString(html, "")
+	html = removeTagWithContent(html, "script")
+	html = removeTagWithContent(html, "style")
+	html = removeTagWithContent(html, "noscript")
+	html = removeTagWithContent(html, "meta")
+	html = removeTagWithContent(html, "link")
 
 	selfClosingRe := regexp.MustCompile(`(?i)<(script|style|meta|link)[^>]*/>`)
 	html = selfClosingRe.ReplaceAllString(html, "")
 
-	h1Re := regexp.MustCompile(`(?i)<h1[^>]*>(.*?)</h1>`)
+	h1Re := regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
 	html = h1Re.ReplaceAllString(html, "\n# $1\n")
 
-	h2Re := regexp.MustCompile(`(?i)<h2[^>]*>(.*?)</h2>`)
+	h2Re := regexp.MustCompile(`(?is)<h2[^>]*>(.*?)</h2>`)
 	html = h2Re.ReplaceAllString(html, "\n## $1\n")
 
-	h3Re := regexp.MustCompile(`(?i)<h3[^>]*>(.*?)</h3>`)
+	h3Re := regexp.MustCompile(`(?is)<h3[^>]*>(.*?)</h3>`)
 	html = h3Re.ReplaceAllString(html, "\n### $1\n")
 
-	h4Re := regexp.MustCompile(`(?i)<h4[^>]*>(.*?)</h4>`)
+	h4Re := regexp.MustCompile(`(?is)<h4[^>]*>(.*?)</h4>`)
 	html = h4Re.ReplaceAllString(html, "\n#### $1\n")
 
-	h5Re := regexp.MustCompile(`(?i)<h5[^>]*>(.*?)</h5>`)
+	h5Re := regexp.MustCompile(`(?is)<h5[^>]*>(.*?)</h5>`)
 	html = h5Re.ReplaceAllString(html, "\n##### $1\n")
 
-	h6Re := regexp.MustCompile(`(?i)<h6[^>]*>(.*?)</h6>`)
+	h6Re := regexp.MustCompile(`(?is)<h6[^>]*>(.*?)</h6>`)
 	html = h6Re.ReplaceAllString(html, "\n###### $1\n")
 
-	pRe := regexp.MustCompile(`(?i)<p[^>]*>(.*?)</p>`)
+	pRe := regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
 	html = pRe.ReplaceAllString(html, "\n$1\n")
 
 	brRe := regexp.MustCompile(`(?i)<br\s*/?>`)
@@ -214,19 +219,25 @@ func convertHTMLToMarkdown(html string) string {
 	hrRe := regexp.MustCompile(`(?i)<hr\s*/?>`)
 	html = hrRe.ReplaceAllString(html, "\n---\n")
 
-	strongRe := regexp.MustCompile(`(?i)<(strong|b)[^>]*>(.*?)</\1>`)
-	html = strongRe.ReplaceAllString(html, "**$2**")
+	strongRe := regexp.MustCompile(`(?is)<strong[^>]*>(.*?)</strong>`)
+	html = strongRe.ReplaceAllString(html, "**$1**")
 
-	emRe := regexp.MustCompile(`(?i)<(em|i)[^>]*>(.*?)</\1>`)
-	html = emRe.ReplaceAllString(html, "*$2*")
+	bRe := regexp.MustCompile(`(?is)<b[^>]*>(.*?)</b>`)
+	html = bRe.ReplaceAllString(html, "**$1**")
 
-	codeRe := regexp.MustCompile(`(?i)<code[^>]*>(.*?)</code>`)
+	emRe := regexp.MustCompile(`(?is)<em[^>]*>(.*?)</em>`)
+	html = emRe.ReplaceAllString(html, "*$1*")
+
+	iRe := regexp.MustCompile(`(?is)<i[^>]*>(.*?)</i>`)
+	html = iRe.ReplaceAllString(html, "*$1*")
+
+	codeRe := regexp.MustCompile(`(?is)<code[^>]*>(.*?)</code>`)
 	html = codeRe.ReplaceAllString(html, "`$1`")
 
 	preRe := regexp.MustCompile(`(?is)<pre[^>]*>(.*?)</pre>`)
 	html = preRe.ReplaceAllString(html, "\n```\n$1\n```\n")
 
-	linkRe := regexp.MustCompile(`(?i)<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
+	linkRe := regexp.MustCompile(`(?is)<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
 	html = linkRe.ReplaceAllString(html, "[$2]($1)")
 
 	imgRe := regexp.MustCompile(`(?i)<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*/?>`)
@@ -235,7 +246,7 @@ func convertHTMLToMarkdown(html string) string {
 	imgNoAltRe := regexp.MustCompile(`(?i)<img[^>]*src="([^"]*)"[^>]*/?>`)
 	html = imgNoAltRe.ReplaceAllString(html, "![]($1)")
 
-	liRe := regexp.MustCompile(`(?i)<li[^>]*>(.*?)</li>`)
+	liRe := regexp.MustCompile(`(?is)<li[^>]*>(.*?)</li>`)
 	html = liRe.ReplaceAllString(html, "- $1\n")
 
 	ulRe := regexp.MustCompile(`(?i)</?ul[^>]*>`)
@@ -244,7 +255,7 @@ func convertHTMLToMarkdown(html string) string {
 	olRe := regexp.MustCompile(`(?i)</?ol[^>]*>`)
 	html = olRe.ReplaceAllString(html, "\n")
 
-	blockquoteRe := regexp.MustCompile(`(?i)<blockquote[^>]*>(.*?)</blockquote>`)
+	blockquoteRe := regexp.MustCompile(`(?is)<blockquote[^>]*>(.*?)</blockquote>`)
 	html = blockquoteRe.ReplaceAllString(html, "> $1\n")
 
 	tagRe := regexp.MustCompile(`<[^>]+>`)
@@ -261,4 +272,9 @@ func convertHTMLToMarkdown(html string) string {
 	html = multipleNewlinesRe.ReplaceAllString(html, "\n\n")
 
 	return strings.TrimSpace(html)
+}
+
+func removeTagWithContent(html, tag string) string {
+	re := regexp.MustCompile(`(?is)<` + tag + `[^>]*>.*?</` + tag + `>`)
+	return re.ReplaceAllString(html, "")
 }
