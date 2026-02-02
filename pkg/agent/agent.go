@@ -11,6 +11,7 @@ type Agent struct {
 	maxTokens    int
 	temperature  *float64
 	maxSteps     int
+	outputSchema map[string]any
 }
 
 type Option func(*Agent)
@@ -58,6 +59,12 @@ func WithTools(tools ...tool.Tool) Option {
 	}
 }
 
+func WithOutputSchema(schema map[string]any) Option {
+	return func(a *Agent) {
+		a.outputSchema = schema
+	}
+}
+
 func (a *Agent) Name() string {
 	return a.name
 }
@@ -80,4 +87,8 @@ func (a *Agent) Temperature() *float64 {
 
 func (a *Agent) MaxSteps() int {
 	return a.maxSteps
+}
+
+func (a *Agent) OutputSchema() map[string]any {
+	return a.outputSchema
 }
