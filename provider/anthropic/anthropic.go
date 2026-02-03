@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"wingman/models"
+	"wingman/provider"
 )
 
 type Config struct {
@@ -126,6 +127,7 @@ type request struct {
 	Messages     []anthropicMessage `json:"messages"`
 	Tools        []toolDefinition   `json:"tools,omitempty"`
 	OutputConfig *outputConfig      `json:"output_config,omitempty"`
+	Stream       bool               `json:"stream,omitempty"`
 }
 
 type usage struct {
@@ -296,4 +298,36 @@ func (c *Client) toWingmanResponse(resp response) *models.WingmanInferenceRespon
 			OutputTokens: resp.Usage.OutputTokens,
 		},
 	}
+}
+
+func (c *Client) RunInferenceStream(ctx context.Context, req models.WingmanInferenceRequest) (provider.Stream, error) {
+	anthropicReq := c.buildRequest(req)
+	anthropicReq.Stream = true
+
+	jsonData, err := json.Marshal(anthropicReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return newStream(resp), nil
 }
