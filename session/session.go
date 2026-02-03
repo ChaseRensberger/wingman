@@ -15,6 +15,8 @@ import (
 	"wingman/tool"
 )
 
+// Session (consumer) defines what it needs from Agent
+// could be premature optimization have an interface seperate from agent.go definition
 type Agent interface {
 	Name() string
 	Instructions() string
