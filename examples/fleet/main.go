@@ -24,12 +24,12 @@ func main() {
 		agent.WithMaxTokens(100),
 	)
 
-	pool := actor.NewPool(actor.PoolConfig{
+	fleet := actor.NewFleet(actor.FleetConfig{
 		WorkerCount: 3,
 		Agent:       a,
 		Provider:    p,
 	})
-	defer pool.Shutdown()
+	defer fleet.Shutdown()
 
 	problems := []string{
 		"What is 15 * 7?",
@@ -41,11 +41,11 @@ func main() {
 
 	fmt.Printf("Submitting %d problems to %d workers...\n\n", len(problems), 3)
 
-	if err := pool.SubmitAll(problems); err != nil {
+	if err := fleet.SubmitAll(problems); err != nil {
 		log.Fatal(err)
 	}
 
-	results := pool.AwaitAll()
+	results := fleet.AwaitAll()
 
 	fmt.Println("Results:")
 	for i, r := range results {

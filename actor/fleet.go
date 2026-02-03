@@ -10,109 +10,109 @@ import (
 	"wingman/session"
 )
 
-type Pool struct {
+type Fleet struct {
 	system    *System
 	workers   []*Ref
 	collector *Ref
-	results   []PoolResult
+	results   []FleetResult
 	resultsMu sync.Mutex
 	done      chan struct{}
 	expected  int
 	received  int
 }
 
-type PoolResult struct {
+type FleetResult struct {
 	WorkerName string
 	Result     *session.Result
 	Error      error
 	Data       any
 }
 
-type PoolConfig struct {
+type FleetConfig struct {
 	WorkerCount int
 	WorkDir     string
 	Agent       *agent.Agent
 	Provider    provider.Provider
 }
 
-func NewPool(cfg PoolConfig) *Pool {
+func NewFleet(cfg FleetConfig) *Fleet {
 	system := NewSystem()
-	pool := &Pool{
+	fleet := &Fleet{
 		system:  system,
 		workers: make([]*Ref, cfg.WorkerCount),
-		results: []PoolResult{},
+		results: []FleetResult{},
 		done:    make(chan struct{}),
 	}
 
-	collector := &collectorActor{pool: pool}
-	pool.collector = system.Spawn("collector", collector)
+	collector := &collectorActor{fleet: fleet}
+	fleet.collector = system.Spawn("collector", collector)
 
 	for i := 0; i < cfg.WorkerCount; i++ {
 		name := fmt.Sprintf("worker-%d", i)
 		workerActor := NewAgentActor(
 			cfg.Agent,
 			cfg.Provider,
-			WithTarget(pool.collector),
+			WithTarget(fleet.collector),
 			WithWorkDir(cfg.WorkDir),
 		)
-		pool.workers[i] = system.Spawn(name, workerActor)
+		fleet.workers[i] = system.Spawn(name, workerActor)
 	}
 
-	return pool
+	return fleet
 }
 
-func (p *Pool) Submit(prompt string, data any) error {
-	p.resultsMu.Lock()
-	workerIdx := p.expected % len(p.workers)
-	p.expected++
-	p.resultsMu.Unlock()
+func (f *Fleet) Submit(prompt string, data any) error {
+	f.resultsMu.Lock()
+	workerIdx := f.expected % len(f.workers)
+	f.expected++
+	f.resultsMu.Unlock()
 
-	worker := p.workers[workerIdx]
-	msg := NewMessage("pool", MsgTypeWork, WorkPayload{
+	worker := f.workers[workerIdx]
+	msg := NewMessage("fleet", MsgTypeWork, WorkPayload{
 		Prompt: prompt,
 		Data:   data,
 	})
 	return worker.Send(msg)
 }
 
-func (p *Pool) SubmitAll(prompts []string) error {
+func (f *Fleet) SubmitAll(prompts []string) error {
 	for i, prompt := range prompts {
-		if err := p.Submit(prompt, i); err != nil {
+		if err := f.Submit(prompt, i); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *Pool) AwaitAll() []PoolResult {
-	<-p.done
-	p.resultsMu.Lock()
-	defer p.resultsMu.Unlock()
-	return p.results
+func (f *Fleet) AwaitAll() []FleetResult {
+	<-f.done
+	f.resultsMu.Lock()
+	defer f.resultsMu.Unlock()
+	return f.results
 }
 
-func (p *Pool) Shutdown() {
-	p.system.Shutdown()
+func (f *Fleet) Shutdown() {
+	f.system.Shutdown()
 }
 
-func (p *Pool) addResult(result PoolResult) {
-	p.resultsMu.Lock()
-	defer p.resultsMu.Unlock()
+func (f *Fleet) addResult(result FleetResult) {
+	f.resultsMu.Lock()
+	defer f.resultsMu.Unlock()
 
-	p.results = append(p.results, result)
-	p.received++
+	f.results = append(f.results, result)
+	f.received++
 
-	if p.received >= p.expected {
+	if f.received >= f.expected {
 		select {
-		case <-p.done:
+		case <-f.done:
 		default:
-			close(p.done)
+			close(f.done)
 		}
 	}
 }
 
 type collectorActor struct {
-	pool *Pool
+	fleet *Fleet
 }
 
 func (c *collectorActor) Receive(ctx context.Context, msg Message) error {
@@ -125,7 +125,7 @@ func (c *collectorActor) Receive(ctx context.Context, msg Message) error {
 		return fmt.Errorf("invalid result payload")
 	}
 
-	c.pool.addResult(PoolResult{
+	c.fleet.addResult(FleetResult{
 		WorkerName: msg.From,
 		Result:     payload.Result,
 		Error:      payload.Error,
