@@ -40,7 +40,7 @@ function CopyCommand() {
 export default function App() {
 	return (
 		<main className="min-h-screen flex flex-col">
-			<nav className="flex items-center justify-between px-6 py-4 max-w-4xl mx-auto w-full border-b">
+			<nav className="flex items-center justify-between px-6 py-4 w-full border-b">
 				<span className="font-mono text-muted-foreground">
 					wingman
 				</span>
