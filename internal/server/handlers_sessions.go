@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"wingman/agent"
-	"wingman/models"
-	"wingman/provider/anthropic"
-	"wingman/session"
 	"wingman/internal/storage"
+	"wingman/models"
+	"wingman/provider/claude"
+	"wingman/session"
 	"wingman/tool"
 )
 
@@ -147,7 +147,7 @@ func (s *Server) handleRunSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	provider, err := s.getProvider("claude")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -216,7 +216,7 @@ func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	provider, err := s.getProvider("claude")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -288,7 +288,7 @@ func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 }
 
-func (s *Server) getProvider(name string) (*anthropic.Client, error) {
+func (s *Server) getProvider(name string) (*claude.Client, error) {
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
@@ -299,7 +299,7 @@ func (s *Server) getProvider(name string) (*anthropic.Client, error) {
 		return nil, fmt.Errorf("provider %s not configured", name)
 	}
 
-	return anthropic.New(anthropic.Config{
+	return claude.New(claude.Config{
 		APIKey: cred.Key,
 	}), nil
 }

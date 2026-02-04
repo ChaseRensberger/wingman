@@ -75,11 +75,11 @@ func (s *Server) handleSetAuth(w http.ResponseWriter, r *http.Request) {
 
 func isValidProviderName(name string) bool {
 	name = strings.ToLower(name)
-	validProviders := []string{"anthropic", "openai", "google", "bedrock", "azure"}
+	validProviders := []string{"claude", "anthropic", "openai", "google", "bedrock", "azure"}
 	for _, p := range validProviders {
 		if name == p {
 			return true
 		}
 	}
-	return true
+	return false
 }

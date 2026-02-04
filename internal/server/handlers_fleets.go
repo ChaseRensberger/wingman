@@ -176,7 +176,7 @@ func (s *Server) handleStartFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	provider, err := s.getProvider("claude")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

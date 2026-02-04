@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
+import { Button } from "@workspace/ui/components/button";
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
@@ -16,12 +17,13 @@ function CopyCommand() {
 
 	return (
 		<div className="relative group">
-			<div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-3 font-mono text-sm">
+			<div className="flex items-center gap-3 bg-card border border-border rounded-sm px-4 py-3 font-mono text-sm">
 				<span className="text-muted-foreground select-none">$</span>
-				<code className="text-foreground flex-1 overflow-x-auto whitespace-nowrap scrollbar-hide">
-					{INSTALL_COMMAND}
+				<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap scrollbar-hide text-muted-foreground">
+					curl -fsSL https://<span className="font-semibold text-foreground">wingman.actor/install</span> | bash
 				</code>
-				<button
+				<Button
+					variant="ghost"
 					onClick={handleCopy}
 					className="text-muted-foreground hover:text-foreground transition-colors p-1 -m-1 shrink-0"
 					aria-label="Copy install command"
@@ -31,44 +33,46 @@ function CopyCommand() {
 					) : (
 						<Copy className="h-4 w-4" />
 					)}
-				</button>
+				</Button>
 			</div>
 		</div>
 	);
 }
 
+function NavLink(navItem: {
+	name: string,
+	url: string
+}) {
+	return (
+		<a
+			href={navItem.url}
+			className="text-sm text-muted-foreground hover:text-foreground transition-colors hover:underline"
+		>
+			{navItem.name}
+		</a>
+	)
+}
+
 export default function App() {
 	return (
-		<main className="min-h-screen flex flex-col">
+		<main className="min-h-screen flex flex-col md:max-w-3xl mx-auto border">
 			<nav className="flex items-center justify-between px-6 py-4 w-full border-b">
-				<span className="font-mono text-muted-foreground">
+				<span className="font-mono">
 					wingman
 				</span>
 				<div className="flex items-center gap-6">
-					<a
-						href={GITHUB_URL}
-						className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-					>
-						github
-					</a>
-					<a
-						href={DOCS_URL}
-						className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-					>
-						docs
-					</a>
+					<NavLink name="GitHub" url={GITHUB_URL} />
+					<NavLink name="Docs" url={DOCS_URL} />
 				</div>
 			</nav>
-			<div className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
-				<div className="max-w-2xl w-full space-y-8 text-center">
-					<div className="space-y-4">
-						<p className="text-muted-foreground text-lg sm:text-xl leading-relaxed text-balance">
-							highly performant actor-based agent orchestration
-						</p>
-					</div>
-					<CopyCommand />
+			<section className="flex-1 border-b px-12 py-24 space-y-4">
+				<div className="space-y-2">
+					<h2 className="font-medium leading-relaxed text-balance">
+						An open source, highly performant, actor-based agent orchestration framework
+					</h2>
 				</div>
-			</div>
+				<CopyCommand />
+			</section>
 
 			<footer className="px-6 py-4 text-center">
 				<p className="text-xs text-muted-foreground font-mono">

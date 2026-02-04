@@ -9,14 +9,14 @@ import (
 
 	"wingman/agent"
 	"wingman/models"
-	"wingman/provider/anthropic"
+	"wingman/provider/claude"
 	"wingman/session"
 )
 
 func main() {
 	godotenv.Load(".env.local")
 
-	p := anthropic.New()
+	p := claude.New()
 	if p == nil {
 		log.Fatal("ANTHROPIC_API_KEY not set")
 	}
