@@ -63,7 +63,7 @@ export default function App() {
 				<div className="max-w-2xl w-full space-y-8 text-center">
 					<div className="space-y-4">
 						<p className="text-muted-foreground text-lg sm:text-xl leading-relaxed text-balance">
-							highly performant actor-based LLM agent orchestration
+							highly performant actor-based agent orchestration
 						</p>
 					</div>
 					<CopyCommand />
