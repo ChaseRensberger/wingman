@@ -18,7 +18,7 @@ function CopyCommand() {
 
 	return (
 		<div className="relative group">
-			<div className="flex items-center gap-3 bg-card border border-border rounded-sm px-4 py-3 font-mono text-sm">
+			<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm">
 				<span className="text-muted-foreground select-none">$</span>
 				<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap scrollbar-hide text-muted-foreground">
 					curl -fsSL https://<span className="font-semibold text-foreground">wingman.actor/install</span> | bash
@@ -64,14 +64,14 @@ export default function App() {
 					<NavLink name="Docs" url={DOCS_URL} />
 				</div>
 			</nav>
-			<section className="flex-1 border-b p-12 space-y-4">
-				<div className="space-y-8">
-					<h1 className="text-3xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
+			<section className="flex-1 border-b p-12 space-y-8">
+				<h1 className="text-3xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
+				<div className="space-y-4">
 					<h2 className="text-muted-foreground leading-relaxed text-balance">
 						An open source, highly performant, actor-based, agent orchestration framework
 					</h2>
+					<CopyCommand />
 				</div>
-				<CopyCommand />
 			</section>
 
 			<footer className="px-6 py-4 text-center">
