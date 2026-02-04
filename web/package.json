@@ -4,5 +4,8 @@
   "workspaces": [
     "apps/*/**",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "@fontsource/roboto-mono": "^5.2.8"
+  }
 }

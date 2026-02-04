@@ -64,10 +64,11 @@ export default function App() {
 					<NavLink name="Docs" url={DOCS_URL} />
 				</div>
 			</nav>
-			<section className="flex-1 border-b px-12 py-24 space-y-4">
-				<div className="space-y-2">
-					<h2 className="font-medium leading-relaxed text-balance">
-						An open source, highly performant, actor-based agent orchestration framework
+			<section className="flex-1 border-b p-12 space-y-4">
+				<div className="space-y-8">
+					<h1 className="text-3xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
+					<h2 className="text-muted-foreground leading-relaxed text-balance">
+						An open source, highly performant, actor-based, agent orchestration framework
 					</h2>
 				</div>
 				<CopyCommand />
