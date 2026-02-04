@@ -1,5 +1,5 @@
 {
   "name": "wingman-web",
   "private": true,
-  "workspaces": ["apps/*/**"]
+  "workspaces": ["apps/*/**", "packages/*"]
 }
