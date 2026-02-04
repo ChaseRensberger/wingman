@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
+import WingmanIcon from "./assets/WingmanBlue.png";
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
@@ -57,9 +58,7 @@ export default function App() {
 	return (
 		<main className="min-h-screen flex flex-col md:max-w-3xl mx-auto border">
 			<nav className="flex items-center justify-between px-6 py-4 w-full border-b">
-				<span className="font-mono">
-					wingman
-				</span>
+				<img src={WingmanIcon} className="w-8 h-8" />
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={DOCS_URL} />
@@ -79,6 +78,6 @@ export default function App() {
 					Hero
 				</p>
 			</footer>
-		</main>
+		</main >
 	);
 }
