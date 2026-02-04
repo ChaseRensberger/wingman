@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"time"
-
 	"wingman/models"
 )
 
@@ -85,8 +83,4 @@ type AuthCredential struct {
 type Auth struct {
 	Providers map[string]AuthCredential `json:"providers"`
 	UpdatedAt string                    `json:"updated_at"`
-}
-
-func Now() string {
-	return time.Now().UTC().Format(time.RFC3339)
 }

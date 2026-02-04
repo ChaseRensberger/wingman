@@ -32,8 +32,8 @@ func main() {
 						Usage: "Host to bind to",
 					},
 					&cli.StringFlag{
-						Name:  "data-dir",
-						Usage: "Data directory (default: ~/.local/share/wingman)",
+						Name:  "db",
+						Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 					},
 				},
 				Action: runServe,
@@ -55,19 +55,20 @@ func main() {
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {
-	dataDir := cmd.String("data-dir")
-	if dataDir == "" {
+	dbPath := cmd.String("db")
+	if dbPath == "" {
 		var err error
-		dataDir, err = storage.DefaultBasePath()
+		dbPath, err = storage.DefaultDBPath()
 		if err != nil {
-			return fmt.Errorf("failed to get default data directory: %w", err)
+			return fmt.Errorf("failed to get default database path: %w", err)
 		}
 	}
 
-	store, err := storage.NewJSONStore(dataDir)
+	store, err := storage.NewSQLiteStore(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
+	defer store.Close()
 
 	srv := server.New(server.Config{
 		Store: store,
@@ -77,6 +78,6 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	port := cmd.Int("port")
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	log.Printf("Data directory: %s", dataDir)
+	log.Printf("Database: %s", dbPath)
 	return srv.ListenAndServe(addr)
 }

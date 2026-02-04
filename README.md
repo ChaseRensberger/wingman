@@ -32,9 +32,9 @@ go build -o wingman ./cmd/wingman
 ### Server Options
 
 ```
---port, -p     Port to listen on (default: 8080)
---host, -h     Host to bind to (default: 127.0.0.1)
---data-dir, -d Data directory for JSON storage (default: ~/.local/share/wingman)
+--port  Port to listen on (default: 8080)
+--host  Host to bind to (default: 127.0.0.1)
+--db    Database path (default: ~/.local/share/wingman/wingman.db)
 ```
 
 ### API Endpoints
@@ -152,16 +152,13 @@ curl -N http://localhost:8080/sessions/{session_id}/stream \
 
 ### Data Storage
 
-The server stores all data as JSON files:
+The server uses SQLite for persistent storage:
 
 ```
-~/.local/share/wingman/
-├── auth.json
-├── agents/{id}.json
-├── sessions/{id}.json
-├── fleets/{id}.json
-└── formations/{id}.json
+~/.local/share/wingman/wingman.db
 ```
+
+Tables: `agents`, `sessions`, `fleets`, `formations`, `auth`
 
 ## SDK Usage
 
