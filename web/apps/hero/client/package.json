@@ -10,8 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@workspace/ui": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
+    "@workspace/ui": "workspace:*",
+    "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.18"
