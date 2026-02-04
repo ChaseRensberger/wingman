@@ -23,7 +23,7 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.IntFlag{
 						Name:  "port",
-						Value: 8080,
+						Value: 2323,
 						Usage: "Port to listen on",
 					},
 					&cli.StringFlag{
