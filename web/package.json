@@ -6,6 +6,8 @@
     "packages/*"
   ],
   "dependencies": {
-    "@fontsource/roboto-mono": "^5.2.8"
+    "@fontsource/roboto-mono": "^5.2.8",
+    "@tailwindcss/vite": "^4.1.18",
+    "tailwindcss": "^4.1.18"
   }
 }
