@@ -1,13 +1,15 @@
 {
   "name": "wingman-web",
   "private": true,
-  "workspaces": [
-    "apps/*/**",
-    "packages/*"
-  ],
-  "dependencies": {
-    "@fontsource/roboto-mono": "^5.2.8",
-    "@tailwindcss/vite": "^4.1.18",
-    "tailwindcss": "^4.1.18"
+  "workspaces": {
+    "packages": [
+      "apps/*/**",
+      "packages/*"
+    ],
+    "catalog": {
+      "tailwindcss": "^4.1.18",
+      "@types/react": "^19.2.5",
+      "typescript": "~5.9.3"
+    }
   }
 }
