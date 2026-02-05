@@ -5,7 +5,7 @@ import WingmanIcon from "./assets/WingmanBlue.png";
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
-const DOCS_URL = "https://docs.wingman.actor";
+const DOCS_URL = "https://github.com/ChaseRensberger/wingman/tree/main/docs";
 
 function CopyCommand() {
 	const [copied, setCopied] = useState(false);
