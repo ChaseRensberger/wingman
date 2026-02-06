@@ -8,7 +8,10 @@ Wingman is a highly performant agent orchestration framework written in pure Go.
 
 ## Installation
 
+```bash
+curl -fsSL https://wingman.actor/install | bash
+```
 
 ## Documentation
 
-Check out the [docs directory](./docs) for more detailed information about Wingman's primitives and architecture.
+Check out the [docs site](https://docs.wingman.actor) for more detailed information about Wingman's primitives, architecture, and usage patterns. The docs site is also generated from [the docs folder](./docs) if you prefer.
