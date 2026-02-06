@@ -14,11 +14,9 @@ const (
 )
 
 type ProviderMeta struct {
-	Name         string     `json:"name"`
-	DisplayName  string     `json:"display_name"`
-	AuthTypes    []AuthType `json:"auth_types"`
-	Models       []string   `json:"models"`
-	DefaultModel string     `json:"default_model"`
+	Name        string     `json:"name"`
+	DisplayName string     `json:"display_name"`
+	AuthTypes   []AuthType `json:"auth_types"`
 }
 
 type Registry struct {

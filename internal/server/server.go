@@ -54,10 +54,12 @@ func (s *Server) setupRoutes() {
 
 	s.router.Route("/providers", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)
-		r.Get("/{name}", s.handleGetProvider)
 		r.Get("/auth", s.handleGetProvidersAuth)
 		r.Put("/auth", s.handleSetProvidersAuth)
 		r.Delete("/auth/{provider}", s.handleDeleteProviderAuth)
+		r.Get("/{name}", s.handleGetProvider)
+		r.Get("/{name}/models", s.handleListProviderModels)
+		r.Get("/{name}/models/{model}", s.handleGetProviderModel)
 	})
 
 	s.router.Route("/agents", func(r chi.Router) {

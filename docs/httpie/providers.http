@@ -22,3 +22,9 @@ Content-Type: application/json
 
 ### Delete Provider Auth
 DELETE http://localhost:2323/providers/auth/anthropic
+
+### List Provider Models
+GET http://localhost:2323/providers/anthropic/models
+
+### Get Specific Model
+GET http://localhost:2323/providers/anthropic/models/claude-sonnet-4-5

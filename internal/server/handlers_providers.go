@@ -8,6 +8,7 @@ import (
 
 	"wingman/internal/storage"
 	"wingman/provider"
+	"wingman/provider/modelsdev"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
@@ -119,4 +120,39 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	if !provider.IsValid(name) {
+		writeError(w, http.StatusNotFound, "unknown provider: "+name)
+		return
+	}
+
+	models, err := modelsdev.GetModels(name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models)
+}
+
+func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	modelID := chi.URLParam(r, "model")
+
+	if !provider.IsValid(name) {
+		writeError(w, http.StatusNotFound, "unknown provider: "+name)
+		return
+	}
+
+	model, err := modelsdev.GetModel(name, modelID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model)
 }

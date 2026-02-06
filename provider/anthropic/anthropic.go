@@ -18,16 +18,6 @@ var Meta = provider.ProviderMeta{
 	Name:        "anthropic",
 	DisplayName: "Anthropic",
 	AuthTypes:   []provider.AuthType{provider.AuthTypeAPIKey},
-	Models: []string{
-		"claude-sonnet-4-5",
-		"claude-opus-4",
-		"claude-sonnet-4-20250514",
-		"claude-opus-4-20250514",
-		"claude-3-5-sonnet-20241022",
-		"claude-3-5-haiku-20241022",
-		"claude-3-opus-20240229",
-	},
-	DefaultModel: "claude-sonnet-4-5",
 }
 
 func init() {
