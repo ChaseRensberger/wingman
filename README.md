@@ -1,4 +1,4 @@
-<p align="center">
+<p align="center" width="200">
     <img src="./assets/WingmanBlue.png" alt="Wingman Logo" />
 </p>
 
