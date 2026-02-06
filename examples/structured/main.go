@@ -9,7 +9,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"wingman/agent"
-	"wingman/provider/claude"
+	"wingman/provider/anthropic"
 	"wingman/session"
 )
 
@@ -57,7 +57,7 @@ func main() {
 
 	s := session.New(
 		session.WithAgent(a),
-		session.WithProvider(claude.New(claude.Config{})),
+		session.WithProvider(anthropic.New(anthropic.Config{})),
 	)
 
 	ctx := context.Background()

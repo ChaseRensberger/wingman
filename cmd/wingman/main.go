@@ -10,6 +10,8 @@ import (
 
 	"wingman/internal/server"
 	"wingman/internal/storage"
+
+	_ "wingman/provider/anthropic"
 )
 
 func main() {

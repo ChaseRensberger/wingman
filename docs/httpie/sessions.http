@@ -1,0 +1,42 @@
+### Create Session
+POST http://localhost:2323/sessions
+Content-Type: application/json
+
+{
+  "work_dir": "/tmp/workspace"
+}
+
+### List All Sessions
+GET http://localhost:2323/sessions
+
+### Get Session by ID
+GET http://localhost:2323/sessions/{{session_id}}
+
+### Update Session
+PUT http://localhost:2323/sessions/{{session_id}}
+Content-Type: application/json
+
+{
+  "work_dir": "/home/user/projects"
+}
+
+### Delete Session
+DELETE http://localhost:2323/sessions/{{session_id}}
+
+### Send Message to Session
+POST http://localhost:2323/sessions/{{session_id}}/message
+Content-Type: application/json
+
+{
+  "agent_id": "{{agent_id}}",
+  "prompt": "Write a hello world program in Python"
+}
+
+### Send Message with Streaming
+POST http://localhost:2323/sessions/{{session_id}}/message/stream
+Content-Type: application/json
+
+{
+  "agent_id": "{{agent_id}}",
+  "prompt": "Explain how this codebase works"
+}

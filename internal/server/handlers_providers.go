@@ -3,38 +3,54 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"slices"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"wingman/internal/storage"
+	"wingman/provider"
 )
 
-type AuthResponse struct {
-	Providers map[string]ProviderInfo `json:"providers"`
-	UpdatedAt string                  `json:"updated_at,omitempty"`
+func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
+	providers := provider.List()
+	writeJSON(w, http.StatusOK, providers)
 }
 
-type ProviderInfo struct {
+func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	meta, err := provider.Get(name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, meta)
+}
+
+type ProvidersAuthResponse struct {
+	Providers map[string]ProviderAuthInfo `json:"providers"`
+	UpdatedAt string                      `json:"updated_at,omitempty"`
+}
+
+type ProviderAuthInfo struct {
 	Type       string `json:"type"`
 	Configured bool   `json:"configured"`
 }
 
-func (s *Server) handleGetAuth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) {
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	resp := AuthResponse{
-		Providers: make(map[string]ProviderInfo),
+	resp := ProvidersAuthResponse{
+		Providers: make(map[string]ProviderAuthInfo),
 		UpdatedAt: auth.UpdatedAt,
 	}
 
 	for name, cred := range auth.Providers {
-		resp.Providers[name] = ProviderInfo{
+		resp.Providers[name] = ProviderAuthInfo{
 			Type:       cred.Type,
 			Configured: cred.Key != "" || cred.AccessToken != "",
 		}
@@ -43,12 +59,12 @@ func (s *Server) handleGetAuth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-type SetAuthRequest struct {
+type SetProvidersAuthRequest struct {
 	Providers map[string]storage.AuthCredential `json:"providers"`
 }
 
-func (s *Server) handleSetAuth(w http.ResponseWriter, r *http.Request) {
-	var req SetAuthRequest
+func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) {
+	var req SetProvidersAuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -61,8 +77,8 @@ func (s *Server) handleSetAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for name, cred := range req.Providers {
-		if !isValidProviderName(name) {
-			writeError(w, http.StatusBadRequest, "invalid provider name: "+name)
+		if !provider.IsValid(name) {
+			writeError(w, http.StatusBadRequest, "unknown provider: "+name)
 			return
 		}
 		auth.Providers[name] = cred
@@ -76,17 +92,11 @@ func (s *Server) handleSetAuth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func isValidProviderName(name string) bool {
-	name = strings.ToLower(name)
-	validProviders := []string{"claude", "anthropic", "openai", "google", "bedrock", "azure"}
-	return slices.Contains(validProviders, name)
-}
-
-func (s *Server) handleDeleteAuthProvider(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request) {
 	providerName := chi.URLParam(r, "provider")
 
-	if !isValidProviderName(providerName) {
-		writeError(w, http.StatusBadRequest, "invalid provider name: "+providerName)
+	if !provider.IsValid(providerName) {
+		writeError(w, http.StatusBadRequest, "unknown provider: "+providerName)
 		return
 	}
 

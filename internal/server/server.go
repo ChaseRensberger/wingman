@@ -52,10 +52,12 @@ func jsonContentType(next http.Handler) http.Handler {
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
 
-	s.router.Route("/auth", func(r chi.Router) {
-		r.Get("/", s.handleGetAuth)
-		r.Put("/", s.handleSetAuth)
-		r.Delete("/{provider}", s.handleDeleteAuthProvider)
+	s.router.Route("/providers", func(r chi.Router) {
+		r.Get("/", s.handleListProviders)
+		r.Get("/{name}", s.handleGetProvider)
+		r.Get("/auth", s.handleGetProvidersAuth)
+		r.Put("/auth", s.handleSetProvidersAuth)
+		r.Delete("/auth/{provider}", s.handleDeleteProviderAuth)
 	})
 
 	s.router.Route("/agents", func(r chi.Router) {

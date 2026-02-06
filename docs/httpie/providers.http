@@ -1,0 +1,24 @@
+### List All Providers
+GET http://localhost:2323/providers
+
+### Get Provider Details
+GET http://localhost:2323/providers/anthropic
+
+### Get Auth Status
+GET http://localhost:2323/providers/auth
+
+### Set Provider Auth
+PUT http://localhost:2323/providers/auth
+Content-Type: application/json
+
+{
+  "providers": {
+    "anthropic": {
+      "type": "api_key",
+      "key": "sk-ant-api03-YOUR-KEY-HERE"
+    }
+  }
+}
+
+### Delete Provider Auth
+DELETE http://localhost:2323/providers/auth/anthropic

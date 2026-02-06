@@ -6,7 +6,7 @@ import (
 	"log"
 	"wingman/agent"
 	"wingman/internal/utils"
-	"wingman/provider/claude"
+	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
 
@@ -39,7 +39,7 @@ func main() {
 		},
 	}
 
-	p := claude.New()
+	p := anthropic.New()
 
 	a := agent.New("Hackernews Parser",
 		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json them as json"),

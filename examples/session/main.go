@@ -10,7 +10,7 @@ import (
 
 	"wingman/internal/utils"
 	"wingman/agent"
-	"wingman/provider/claude"
+	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
 )
@@ -23,7 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	p := claude.New(claude.Config{})
+	p := anthropic.New(anthropic.Config{})
 	if p == nil {
 		log.Fatal("ANTHROPIC_API_KEY not set")
 	}

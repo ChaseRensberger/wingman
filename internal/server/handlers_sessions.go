@@ -11,7 +11,7 @@ import (
 	"wingman/agent"
 	"wingman/internal/storage"
 	"wingman/models"
-	"wingman/provider/claude"
+	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
 )
@@ -147,7 +147,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("claude")
+	provider, err := s.getProvider("anthropic")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -216,7 +216,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	provider, err := s.getProvider("claude")
+	provider, err := s.getProvider("anthropic")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -288,7 +288,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	flusher.Flush()
 }
 
-func (s *Server) getProvider(name string) (*claude.Client, error) {
+func (s *Server) getProvider(name string) (*anthropic.Client, error) {
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
@@ -299,7 +299,7 @@ func (s *Server) getProvider(name string) (*claude.Client, error) {
 		return nil, fmt.Errorf("provider %s not configured", name)
 	}
 
-	return claude.New(claude.Config{
+	return anthropic.New(anthropic.Config{
 		APIKey: cred.Key,
 	}), nil
 }

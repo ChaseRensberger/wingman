@@ -1,0 +1,69 @@
+### Create Formation
+POST http://localhost:2323/formations
+Content-Type: application/json
+
+{
+  "name": "research-pipeline",
+  "work_dir": "/tmp/research",
+  "roles": [
+    {
+      "name": "researcher",
+      "agent_id": "{{researcher_agent_id}}",
+      "count": 1
+    },
+    {
+      "name": "writer",
+      "agent_id": "{{writer_agent_id}}",
+      "count": 2
+    }
+  ],
+  "edges": [
+    {
+      "from": "researcher",
+      "to": "writer"
+    }
+  ]
+}
+
+### List All Formations
+GET http://localhost:2323/formations
+
+### Get Formation by ID
+GET http://localhost:2323/formations/{{formation_id}}
+
+### Update Formation
+PUT http://localhost:2323/formations/{{formation_id}}
+Content-Type: application/json
+
+{
+  "name": "research-pipeline-v2",
+  "roles": [
+    {
+      "name": "researcher",
+      "agent_id": "{{researcher_agent_id}}",
+      "count": 2
+    },
+    {
+      "name": "writer",
+      "agent_id": "{{writer_agent_id}}",
+      "count": 3
+    }
+  ]
+}
+
+### Delete Formation
+DELETE http://localhost:2323/formations/{{formation_id}}
+
+### Start Formation (Beta - returns 501)
+POST http://localhost:2323/formations/{{formation_id}}/start
+
+### Stop Formation (Beta - returns 501)
+POST http://localhost:2323/formations/{{formation_id}}/stop
+
+### Send Message to Formation (Beta - returns 501)
+POST http://localhost:2323/formations/{{formation_id}}/message
+Content-Type: application/json
+
+{
+  "prompt": "Research and write about AI agents"
+}

@@ -1,0 +1,46 @@
+### Create Fleet
+POST http://localhost:2323/fleets
+Content-Type: application/json
+
+{
+  "name": "doc-processor",
+  "agent_id": "{{agent_id}}",
+  "worker_count": 5,
+  "work_dir": "/data/documents"
+}
+
+### List All Fleets
+GET http://localhost:2323/fleets
+
+### Get Fleet by ID
+GET http://localhost:2323/fleets/{{fleet_id}}
+
+### Update Fleet
+PUT http://localhost:2323/fleets/{{fleet_id}}
+Content-Type: application/json
+
+{
+  "name": "doc-processor-v2",
+  "worker_count": 10
+}
+
+### Delete Fleet
+DELETE http://localhost:2323/fleets/{{fleet_id}}
+
+### Start Fleet
+POST http://localhost:2323/fleets/{{fleet_id}}/start
+
+### Stop Fleet
+POST http://localhost:2323/fleets/{{fleet_id}}/stop
+
+### Submit Prompts to Fleet
+POST http://localhost:2323/fleets/{{fleet_id}}/submit
+Content-Type: application/json
+
+{
+  "prompts": [
+    "Summarize document 1",
+    "Summarize document 2",
+    "Summarize document 3"
+  ]
+}
