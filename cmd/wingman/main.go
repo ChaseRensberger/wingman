@@ -8,10 +8,9 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	_ "wingman/internal/providers"
 	"wingman/internal/server"
 	"wingman/internal/storage"
-
-	_ "wingman/provider/anthropic"
 )
 
 func main() {
