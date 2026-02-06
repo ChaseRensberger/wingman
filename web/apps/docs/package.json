@@ -12,7 +12,7 @@
   "dependencies": {
     "react": "catalog:",
     "react-dom": "catalog:",
-    "@workspace/ui": "workspace:*",
+    "@wingman/core": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "tailwindcss": "catalog:"
   },

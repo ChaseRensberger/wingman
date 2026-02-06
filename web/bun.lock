@@ -10,7 +10,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@tailwindcss/vite": "catalog:",
-        "@workspace/ui": "workspace:*",
+        "@wingman/core": "workspace:*",
         "react": "catalog:",
         "react-dom": "catalog:",
         "tailwindcss": "catalog:",
@@ -35,7 +35,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@tailwindcss/vite": "catalog:",
-        "@workspace/ui": "workspace:*",
+        "@wingman/core": "workspace:*",
         "lucide-react": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
@@ -57,7 +57,7 @@
       },
     },
     "packages/core": {
-      "name": "@workspace/ui",
+      "name": "@wingman/core",
       "version": "0.0.0",
       "dependencies": {
         "@fontsource/roboto-mono": "^5.0.0",
@@ -431,11 +431,11 @@
 
     "@vitejs/plugin-react-swc": ["@vitejs/plugin-react-swc@4.2.3", "", { "dependencies": { "@rolldown/pluginutils": "1.0.0-rc.2", "@swc/core": "^1.15.11" }, "peerDependencies": { "vite": "^4 || ^5 || ^6 || ^7" } }, "sha512-QIluDil2prhY1gdA3GGwxZzTAmLdi8cQ2CcuMW4PB/Wu4e/1pzqrwhYWVd09LInCRlDUidQjd0B70QWbjWtLxA=="],
 
+    "@wingman/core": ["@wingman/core@workspace:packages/core"],
+
     "@wingman/docs": ["@wingman/docs@workspace:apps/docs"],
 
     "@wingman/hero": ["@wingman/hero@workspace:apps/hero"],
-
-    "@workspace/ui": ["@workspace/ui@workspace:packages/core"],
 
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 

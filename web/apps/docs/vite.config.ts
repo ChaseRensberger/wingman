@@ -6,7 +6,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@workspace/ui": path.resolve(__dirname, "../../../packages/core/src"),
+      "@wingman/core": path.resolve(__dirname, "../../../packages/core/src"),
     },
   },
 });

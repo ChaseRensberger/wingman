@@ -19,7 +19,7 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@workspace/ui/*": ["./src/*"]
+      "@wingman/core/*": ["./src/*"]
     }
   },
   "include": ["src"]

@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "catalog:",
-    "@workspace/ui": "workspace:*",
+    "@wingman/core": "workspace:*",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
