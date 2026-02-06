@@ -36,12 +36,12 @@ func main() {
 	)
 
 	ctx := context.Background()
-	prompt := "Fetch https://news.ycombinator.com and tell me what the top 3 stories are about"
+	message := "Fetch https://news.ycombinator.com and tell me what the top 3 stories are about"
 
-	utils.UserPrint(prompt)
+	utils.UserPrint(message)
 	fmt.Println()
 
-	result, err := s.Run(ctx, prompt)
+	result, err := s.Run(ctx, message)
 	if err != nil {
 		log.Fatal(err)
 	}
