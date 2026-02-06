@@ -31,7 +31,7 @@ func main() {
 	)
 
 	s := session.New(
-		session.WithAgent(a),
+		session.WithAgent(&a),
 		session.WithProvider(p),
 	)
 

@@ -10,25 +10,16 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
+	"wingman/agent"
 	"wingman/models"
 	"wingman/provider"
 	"wingman/tool"
 )
 
-type Agent interface {
-	Name() string
-	Instructions() string
-	Tools() []tool.Tool
-	MaxTokens() int
-	Temperature() *float64
-	MaxSteps() int
-	OutputSchema() map[string]any
-}
-
 type Session struct {
 	id       string
 	workDir  string
-	agent    Agent
+	agent    *agent.Agent
 	provider provider.Provider
 	history  []models.WingmanMessage
 	mu       sync.RWMutex
@@ -58,7 +49,7 @@ func WithWorkDir(dir string) Option {
 	}
 }
 
-func WithAgent(a Agent) Option {
+func WithAgent(a *agent.Agent) Option {
 	return func(s *Session) {
 		s.agent = a
 	}
@@ -86,10 +77,10 @@ func (s *Session) SetWorkDir(dir string) {
 	s.workDir = dir
 }
 
-func (s *Session) SetAgent(a Agent) {
+func (s *Session) SetAgent(a agent.Agent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.agent = a
+	s.agent = &a
 }
 
 func (s *Session) SetProvider(p provider.Provider) {
@@ -98,7 +89,7 @@ func (s *Session) SetProvider(p provider.Provider) {
 	s.provider = p
 }
 
-func (s *Session) Agent() Agent {
+func (s *Session) Agent() *agent.Agent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.agent
