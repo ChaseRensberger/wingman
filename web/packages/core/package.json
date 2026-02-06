@@ -10,6 +10,7 @@
     "./src/styles/globals.css": "./src/styles/globals.css"
   },
   "dependencies": {
+    "@fontsource/roboto-mono": "^5.0.0",
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
