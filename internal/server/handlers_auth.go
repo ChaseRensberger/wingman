@@ -3,7 +3,10 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	"wingman/internal/storage"
 )
@@ -76,10 +79,34 @@ func (s *Server) handleSetAuth(w http.ResponseWriter, r *http.Request) {
 func isValidProviderName(name string) bool {
 	name = strings.ToLower(name)
 	validProviders := []string{"claude", "anthropic", "openai", "google", "bedrock", "azure"}
-	for _, p := range validProviders {
-		if name == p {
-			return true
-		}
+	return slices.Contains(validProviders, name)
+}
+
+func (s *Server) handleDeleteAuthProvider(w http.ResponseWriter, r *http.Request) {
+	providerName := chi.URLParam(r, "provider")
+
+	if !isValidProviderName(providerName) {
+		writeError(w, http.StatusBadRequest, "invalid provider name: "+providerName)
+		return
 	}
-	return false
+
+	auth, err := s.store.GetAuth()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if _, exists := auth.Providers[providerName]; !exists {
+		writeError(w, http.StatusNotFound, "provider not configured: "+providerName)
+		return
+	}
+
+	delete(auth.Providers, providerName)
+
+	if err := s.store.SetAuth(auth); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

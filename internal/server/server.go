@@ -55,6 +55,7 @@ func (s *Server) setupRoutes() {
 	s.router.Route("/auth", func(r chi.Router) {
 		r.Get("/", s.handleGetAuth)
 		r.Put("/", s.handleSetAuth)
+		r.Delete("/{provider}", s.handleDeleteAuthProvider)
 	})
 
 	s.router.Route("/agents", func(r chi.Router) {
@@ -71,8 +72,8 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}", s.handleGetSession)
 		r.Put("/{id}", s.handleUpdateSession)
 		r.Delete("/{id}", s.handleDeleteSession)
-		r.Post("/{id}/run", s.handleRunSession)
-		r.Post("/{id}/stream", s.handleStreamSession)
+		r.Post("/{id}/message", s.handleMessageSession)
+		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 	})
 
 	s.router.Route("/fleets", func(r chi.Router) {
@@ -94,7 +95,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/{id}", s.handleDeleteFormation)
 		r.Post("/{id}/start", s.handleStartFormation)
 		r.Post("/{id}/stop", s.handleStopFormation)
-		r.Post("/{id}/run", s.handleRunFormation)
+		r.Post("/{id}/message", s.handleMessageFormation)
 	})
 }
 

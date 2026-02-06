@@ -104,19 +104,19 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-type RunSessionRequest struct {
+type MessageSessionRequest struct {
 	AgentID string `json:"agent_id"`
 	Prompt  string `json:"prompt"`
 }
 
-type RunSessionResponse struct {
+type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
 	ToolCalls []session.ToolCallResult `json:"tool_calls,omitempty"`
 	Usage     models.WingmanUsage      `json:"usage"`
 	Steps     int                      `json:"steps"`
 }
 
-func (s *Server) handleRunSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -125,7 +125,7 @@ func (s *Server) handleRunSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req RunSessionRequest
+	var req MessageSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -177,7 +177,7 @@ func (s *Server) handleRunSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, RunSessionResponse{
+	writeJSON(w, http.StatusOK, MessageSessionResponse{
 		Response:  result.Response,
 		ToolCalls: result.ToolCalls,
 		Usage:     result.Usage,
@@ -185,7 +185,7 @@ func (s *Server) handleRunSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -194,7 +194,7 @@ func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req RunSessionRequest
+	var req MessageSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return

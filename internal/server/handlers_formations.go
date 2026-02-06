@@ -187,7 +187,7 @@ func (s *Server) handleStopFormation(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotImplemented, "formation runtime not yet implemented")
 }
 
-func (s *Server) handleRunFormation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMessageFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	formation, err := s.store.GetFormation(id)
