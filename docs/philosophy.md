@@ -2,6 +2,7 @@
 title: "Philosophy"
 group: "Introduction"
 order: 0
+draft: true
 ---
 
 ## Philosophy
