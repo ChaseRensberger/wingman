@@ -1,11 +1,19 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
-import WingmanIcon from "./assets/WingmanBlue.png";
+import WingmanIcon from "../assets/WingmanBlue.png";
+
+export const Route = createFileRoute('/')({
+	component: RouteComponent,
+})
+
+function RouteComponent() {
+	return <Hero />
+}
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
-const DOCS_URL = "https://github.com/ChaseRensberger/wingman/tree/main/docs";
 
 function CopyCommand() {
 	const [copied, setCopied] = useState(false);
@@ -52,14 +60,14 @@ function NavLink(navItem: {
 	)
 }
 
-export default function App() {
+function Hero() {
 	return (
-		<main className="min-h-screen flex flex-col md:max-w-2xl lg:max-w-4xl mx-auto border">
+		<main className="min-h-screen flex flex-col md:max-w-3xl lg:max-w-4xl mx-auto border">
 			<nav className="sticky top-0 bg-background flex items-center justify-between px-6 py-2 w-full border-b">
 				<img src={WingmanIcon} className="w-12 h-12" />
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
-					<NavLink name="Docs" url={DOCS_URL} />
+					<NavLink name="Docs" url={"/docs"} />
 				</div>
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">

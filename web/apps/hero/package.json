@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-router": "^1.158.4",
     "@wingman/core": "workspace:*",
     "lucide-react": "catalog:",
     "react": "catalog:",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
+    "@tanstack/router-plugin": "^1.158.4",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
