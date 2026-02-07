@@ -8,7 +8,7 @@ import (
 
 type Provider interface {
 	RunInference(ctx context.Context, req models.WingmanInferenceRequest) (*models.WingmanInferenceResponse, error)
-	RunInferenceStream(ctx context.Context, req models.WingmanInferenceRequest) (Stream, error)
+	StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (Stream, error)
 }
 
 type Stream interface {

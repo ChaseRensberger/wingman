@@ -86,7 +86,7 @@ func (ss *SessionStream) run(p provider.Provider) {
 		}
 		ss.session.mu.RUnlock()
 
-		stream, err := p.RunInferenceStream(ss.ctx, req)
+		stream, err := p.StreamInference(ss.ctx, req)
 		if err != nil {
 			ss.err = fmt.Errorf("inference failed: %w", err)
 			return

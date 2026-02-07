@@ -10,7 +10,6 @@ type AuthType string
 const (
 	AuthTypeAPIKey AuthType = "api_key"
 	AuthTypeOAuth  AuthType = "oauth"
-	AuthTypeIAM    AuthType = "iam"
 )
 
 type ProviderMeta struct {
