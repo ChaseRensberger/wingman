@@ -5,9 +5,7 @@ order: 101
 ---
 # SDK
 
-If you feel like the http server is 
-
-The Go SDK provides direct access to Wingman's primitives for maximum control over agent orchestration.
+If you want more fine grained control over messages, storage, or anything else that the built in server tries to handle for you, the Go SDK provides direct access to Wingman's primitives so that you may do with them what you please.
 
 ## Installation
 
@@ -15,7 +13,7 @@ The Go SDK provides direct access to Wingman's primitives for maximum control ov
 go get github.com/chaserensberger/wingman
 ```
 
-## Quick Start (with the Anthropic api)
+## Example
 
 ```go
 package main
@@ -24,32 +22,31 @@ import (
     "context"
     "log"
 
-    "wingman/agent"
     "wingman/provider/anthropic"
+    "wingman/agent"
     "wingman/session"
     "wingman/tool"
 )
 
 func main() {
-    p := anthropic.New(anthropic.Config{})
+    p := anthropic.New(anthropic.Config{
+        model: "claude-sonnet-4-5"
+    })
 
     a := agent.New("MyAgent",
         agent.WithInstructions("You are a helpful assistant."),
         agent.WithMaxTokens(4096),
         agent.WithTools(
             tool.NewBashTool(),
-            tool.NewReadTool(),
-            tool.NewWriteTool(),
         ),
     )
 
     s := session.New(
         session.WithAgent(a),
         session.WithProvider(p),
-        session.WithWorkDir("/path/to/workdir"),
     )
 
-    result, err := s.Run(context.Background(), "Hello, world!")
+    result, err := s.Run(context.Background(), "What operating system am I using?")
     if err != nil {
         log.Fatal(err)
     }
@@ -59,21 +56,6 @@ func main() {
 ```
 
 ## Core Primitives
-
-### Agent
-
-A stateless template that defines how to process work.
-
-```go
-a := agent.New("AgentName",
-    agent.WithInstructions("System prompt for the agent"),
-    agent.WithMaxTokens(4096),
-    agent.WithTemperature(0.7),
-    agent.WithMaxSteps(50),
-    agent.WithTools(tool.NewBashTool(), tool.NewReadTool()),
-    agent.WithOutputSchema(map[string]any{"type": "object", ...}),
-)
-```
 
 ### Session
 
