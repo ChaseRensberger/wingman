@@ -15,7 +15,7 @@ function DocPage() {
 	}
 
 	return (
-		<article className="prose prose-neutral dark:prose-invert">
+		<article className="prose prose-invert max-w-4xl">
 			<ReactMarkdown>{doc.content}</ReactMarkdown>
 		</article>
 	);
