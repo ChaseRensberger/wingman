@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
-import { Button } from "@wingman/core/components/button";
+import { Button } from "@wingman/core/components/primitives/button";
 import WingmanIcon from "./assets/WingmanBlue.png";
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";

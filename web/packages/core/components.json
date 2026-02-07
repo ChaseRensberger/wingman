@@ -15,6 +15,6 @@
     "utils": "src/lib/utils",
     "hooks": "src/hooks",
     "lib": "src/lib",
-    "ui": "src/components"
+    "ui": "src/components/primitives"
   }
 }
