@@ -310,7 +310,7 @@ func (c *Client) toWingmanResponse(resp response) *models.WingmanInferenceRespon
 	}
 }
 
-func (c *Client) RunInferenceStream(ctx context.Context, req models.WingmanInferenceRequest) (provider.Stream, error) {
+func (c *Client) StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (provider.Stream, error) {
 	anthropicReq := c.buildRequest(req)
 	anthropicReq.Stream = true
 
