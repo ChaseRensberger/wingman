@@ -4,6 +4,8 @@
 @source "../components/**/*.tsx";
 @import "@fontsource/roboto-mono";
 
+@plugin "@tailwindcss/typography";
+
 :root {
   font-family: "Roboto Mono", monospace, system-ui;
   color-scheme: dark;
