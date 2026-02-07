@@ -1,7 +1,7 @@
 ---
 title: "Providers"
 group: "Primitives"
-order: 0
+order: 1
 ---
 
 # Providers
