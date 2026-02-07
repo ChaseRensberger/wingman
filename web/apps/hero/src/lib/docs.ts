@@ -1,9 +1,12 @@
 import { docs, type Doc } from "virtual:docs";
+
 export type { Doc };
+
 export interface DocGroup {
   name: string;
   docs: Doc[];
 }
+
 export function getGroupedDocs(): DocGroup[] {
   const groupMap = new Map<string, Doc[]>();
   for (const doc of docs) {
@@ -24,9 +27,11 @@ export function getGroupedDocs(): DocGroup[] {
     return aMin - bMin;
   });
 }
+
 export function getDocBySlug(slug: string): Doc | undefined {
   return docs.find((d) => d.slug === slug);
 }
+
 export function getFirstDoc(): Doc | undefined {
   const groups = getGroupedDocs();
   return groups[0]?.docs[0];
