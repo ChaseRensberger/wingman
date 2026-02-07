@@ -5,9 +5,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    "./components/**/*": "./src/components/*.tsx",
+    "./components/*": "./src/components/*.tsx",
+    "./components/primitives/*": "./src/components/primitives/*.tsx",
     "./lib/*": "./src/lib/*.ts",
-    "./src/styles/globals.css": "./src/styles/globals.css"
+    "./styles/globals.css": "./src/styles/globals.css"
   },
   "dependencies": {
     "@fontsource/roboto-mono": "^5.0.0",
