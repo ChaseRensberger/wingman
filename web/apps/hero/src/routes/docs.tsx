@@ -67,7 +67,7 @@ function MobileDocsOverlay() {
 	if (!openMobile) return null;
 
 	return (
-		<div className="fixed inset-0 top-[4.25rem] z-20 bg-background md:hidden">
+		<div className="fixed inset-0 top-[4rem] z-20 bg-background md:hidden">
 			<DocsNavContent onNavigate={() => setOpenMobile(false)} />
 		</div>
 	);
@@ -90,7 +90,7 @@ function MobileMenuToggle() {
 function DocsLayout() {
 	return (
 		<SidebarProvider>
-			<div className="min-h-screen flex flex-col w-full max-w-full overflow-x-hidden">
+			<div className="min-h-screen flex flex-col w-full max-w-full">
 				{/* Header */}
 				<div className="sticky top-0 bg-background flex items-center justify-between px-6 py-2 w-full border-b z-20">
 					<Link to="/">
