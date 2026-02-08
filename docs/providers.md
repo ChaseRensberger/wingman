@@ -7,7 +7,7 @@ draft: true
 
 # Providers
 
-Providers are simply a company that makes models. Every model provider that wingman supports has a plaintext id for its name (e.g. "anthropic") which can be used to (for example) retrieve what models are supported by that provider. If you are using the Wingman SDK, you have a typed interface for using models:
+Providers are just an interface so that it's easy to translate between a model provider's specific typing and the typing Wingman uses. If you read the *Introduction*, this project was largely inspired by OpenCode's server. Instead of using Vercel's AI SDK, I've opted to define provider translation within Wingman. The con of this pattern (assuming it doesn't change) is that Wingman will likely never have the comprehensive support of the models you'll find on [models.dev](https://models.dev), the pro is that the core dependencies are pretty limited.
 
 ```go
 import (

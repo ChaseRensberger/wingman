@@ -24,9 +24,7 @@ function DocsLayout() {
 				<nav className='p-4 border-r w-64 space-y-4'>
 					{groups.map((group) => (
 						<div key={group.name}>
-							<h3 className="font-semibold text-sm text-muted-foreground mb-2">
-								{group.name}
-							</h3>
+							{group.name != "Uncategorized" && (<h3 className="font-semibold text-sm text-muted-foreground mb-2">{group.name}</h3>)}
 							<ul className="space-y-1">
 								{group.docs.map((doc) => (
 									<li key={doc.slug}>

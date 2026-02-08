@@ -57,26 +57,6 @@ func main() {
 
 ## Core Primitives
 
-### Session
-
-A stateful container that maintains conversation history and executes agent loops.
-
-```go
-s := session.New(
-    session.WithAgent(a),
-    session.WithProvider(p),
-    session.WithWorkDir("/path/to/workdir"),
-)
-
-result, err := s.Run(ctx, "Your prompt here")
-
-s.History()      // Get conversation history
-s.Clear()        // Clear history
-s.ID()           // Get session ID
-```
-
-The `Run` method executes the agent loop: it sends the prompt, handles tool calls, and continues until the model produces a final response or hits `MaxSteps`.
-
 ### Provider
 
 Interface for LLM providers. Currently supports Anthropic.
