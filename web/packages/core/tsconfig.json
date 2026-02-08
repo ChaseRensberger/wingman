@@ -18,6 +18,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
+	"paths": {
+      "@wingman/core/*": ["./src/*"]
+    },
   },
   "include": ["src"]
 }

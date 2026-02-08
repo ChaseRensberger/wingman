@@ -11,10 +11,10 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "src/components",
-    "utils": "src/lib/utils",
-    "hooks": "src/hooks",
-    "lib": "src/lib",
-    "ui": "src/components/primitives"
+    "components": "@wingman/core/components",
+    "utils": "@wingman/core/lib/utils",
+    "hooks": "@wingman/core/hooks",
+    "lib": "@wingman/core/lib",
+    "ui": "@wingman/core/components/primitives"
   }
 }
