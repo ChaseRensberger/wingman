@@ -16,7 +16,7 @@ function DocPage() {
 	}
 
 	return (
-		<article className="prose prose-invert max-w-4xl">
+		<article className="prose prose-invert max-w-4xl w-full overflow-x-auto">
 			<ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.content}</ReactMarkdown>
 		</article>
 	);

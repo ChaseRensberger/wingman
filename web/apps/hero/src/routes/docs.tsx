@@ -90,7 +90,7 @@ function MobileMenuToggle() {
 function DocsLayout() {
 	return (
 		<SidebarProvider>
-			<div className="min-h-screen flex flex-col">
+			<div className="min-h-screen flex flex-col w-full max-w-full overflow-x-hidden">
 				{/* Header */}
 				<div className="sticky top-0 bg-background flex items-center justify-between px-6 py-2 w-full border-b z-20">
 					<Link to="/">
@@ -101,10 +101,10 @@ function DocsLayout() {
 				{/* Mobile Overlay */}
 				<MobileDocsOverlay />
 				{/* Sidebar + Content */}
-				<div className="flex-1 flex">
+				<div className="flex-1 flex min-w-0">
 					<DocsSidebar />
 					{/* Main Content */}
-					<main className="flex-1 p-8">
+					<main className="flex-1 p-8 min-w-0">
 						<Outlet />
 					</main>
 				</div>
