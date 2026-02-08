@@ -8,7 +8,7 @@ import (
 
 	"wingman/internal/storage"
 	"wingman/provider"
-	"wingman/provider/modelsdev"
+	"wingman/provider/models_dev"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +130,7 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	models, err := modelsdev.GetModels(name)
+	models, err := models_dev.GetModels(name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -148,7 +148,7 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	model, err := modelsdev.GetModel(name, modelID)
+	model, err := models_dev.GetModel(name, modelID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
