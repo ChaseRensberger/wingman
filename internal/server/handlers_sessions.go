@@ -11,7 +11,9 @@ import (
 	"wingman/agent"
 	"wingman/internal/storage"
 	"wingman/models"
+	"wingman/provider"
 	"wingman/provider/anthropic"
+	"wingman/provider/ollama"
 	"wingman/session"
 	"wingman/tool"
 )
@@ -288,20 +290,37 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	flusher.Flush()
 }
 
-func (s *Server) getProvider(name string) (*anthropic.Client, error) {
+func (s *Server) getProvider(name string) (provider.Provider, error) {
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	cred, ok := auth.Providers[name]
-	if !ok || cred.Key == "" {
-		return nil, fmt.Errorf("provider %s not configured", name)
-	}
+	cred := auth.Providers[name]
 
-	return anthropic.New(anthropic.Config{
-		APIKey: cred.Key,
-	}), nil
+	switch name {
+	case "anthropic":
+		if cred.Key == "" {
+			return nil, fmt.Errorf("provider %s not configured", name)
+		}
+		return anthropic.New(anthropic.Config{
+			APIKey: cred.Key,
+		}), nil
+
+	case "ollama":
+		model := cred.Key
+		if model == "" {
+			model = "llama3.2"
+		}
+		baseURL := cred.AccessToken
+		return ollama.New(ollama.Config{
+			BaseURL: baseURL,
+			Model:   model,
+		}), nil
+
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", name)
+	}
 }
 
 func (s *Server) buildAgent(stored *storage.Agent) *agent.Agent {
