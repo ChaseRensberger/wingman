@@ -1,6 +1,9 @@
 import { createFileRoute, Outlet, Link, useParams } from "@tanstack/react-router";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { getGroupedDocs } from "@/lib/docs";
+import { Menu, X } from "lucide-react";
+import { Button } from "@wingman/core/components/primitives/button";
+import { useState } from "react";
 
 export const Route = createFileRoute("/docs")({
 	component: DocsLayout,
@@ -10,6 +13,7 @@ function DocsLayout() {
 	const params = useParams({ strict: false });
 	const slug = (params as { slug?: string }).slug;
 	const groups = getGroupedDocs();
+	const [sidebarOpen, setSidebarOpen] = useState(false)
 
 	return (
 		<div className="min-h-screen flex flex-col">
@@ -18,6 +22,13 @@ function DocsLayout() {
 				<Link to="/">
 					<img src={WingmanIcon} className="w-12 h-12" />
 				</Link>
+				<Button
+					variant="ghost"
+					className="md:hidden"
+					onClick={() => setSidebarOpen(!sidebarOpen)}
+				>
+					{sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+				</Button>
 			</div>
 			{/* Sidebar */}
 			<div className='flex-1 flex'>
