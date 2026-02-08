@@ -4,26 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	"wingman/agent"
 	"wingman/internal/utils"
 	"wingman/provider/ollama"
 	"wingman/session"
-	"wingman/tool"
 )
 
 func main() {
-	model := os.Getenv("OLLAMA_MODEL")
-	if model == "" {
-		model = "gemma3:270m"
-	}
-
-	baseURL := os.Getenv("OLLAMA_HOST")
-
 	p := ollama.New(ollama.Config{
-		Model:   model,
-		BaseURL: baseURL,
+		Model: "gemma3:270m",
 	})
 	if p == nil {
 		log.Fatal("Failed to create Ollama provider")
@@ -32,9 +22,6 @@ func main() {
 	a := agent.New("WebResearcher",
 		agent.WithInstructions("You are a helpful research assistant. Use the webfetch tool to retrieve information from websites when needed. Summarize the key points clearly and concisely."),
 		agent.WithMaxTokens(4096),
-		agent.WithTools(
-			tool.NewWebFetchTool(),
-		),
 	)
 
 	s := session.New(
