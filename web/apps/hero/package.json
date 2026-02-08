@@ -17,6 +17,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwindcss": "catalog:"
   },
   "devDependencies": {
