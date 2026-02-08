@@ -1,7 +1,7 @@
 ---
 title: "Server"
 group: "Usage"
-order: 5
+order: 10
 ---
 # Server
 
@@ -32,46 +32,6 @@ curl -X PUT http://localhost:2323/provider/auth \
 ```
 
 ## API Reference
-
-### Providers
-
-```
-GET    /provider                    # List all providers
-GET    /provider/{name}             # Get provider info
-GET    /provider/{name}/models      # List available models
-GET    /provider/{name}/models/{id} # Get model details
-GET    /provider/auth               # Check auth status
-PUT    /provider/auth               # Set provider credentials
-DELETE /provider/auth/{provider}    # Remove provider credentials
-```
-
-### Agents
-
-Agents are stateless templates that define how to process work.
-
-```
-POST   /agents      # Create agent
-GET    /agents      # List agents
-GET    /agents/{id} # Get agent
-PUT    /agents/{id} # Update agent
-DELETE /agents/{id} # Delete agent
-```
-
-#### Create Agent
-
-```bash
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "CodeAssistant",
-    "instructions": "You are a helpful coding assistant.",
-    "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "max_tokens": 4096,
-    "max_steps": 50
-  }'
-```
-
-**Available tools:** `bash`, `read`, `write`, `edit`, `glob`, `grep`, `webfetch`
 
 ### Sessions
 

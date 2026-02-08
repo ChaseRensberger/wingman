@@ -2,7 +2,6 @@
 title: "Sessions"
 group: "Primitives"
 order: 102
-draft: false
 ---
 # Session
 
@@ -19,3 +18,9 @@ result, err := s.Run(ctx, "Your user message to add to the history")
 ```
 
 The `Run` method executes the agent loop: it sends the prompt, handles tool calls, and continues until the model produces a final response or hits `MaxSteps`.
+
+## Usage
+
+### Server
+
+### SDK

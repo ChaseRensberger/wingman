@@ -17,3 +17,17 @@ p := anthropic.New()
 ```
 
 Under the hood this creates an internal anthropic client that gets used to make calls during a `Session.Run()`.
+
+## Server Routes
+
+```
+GET    /provider                    # List all providers
+GET    /provider/{name}             # Get provider info
+GET    /provider/{name}/models      # List available models
+GET    /provider/{name}/models/{id} # Get model details
+GET    /provider/auth               # Check auth status
+PUT    /provider/auth               # Set provider credentials
+DELETE /provider/auth/{provider}    # Remove provider credentials
+```
+
+
