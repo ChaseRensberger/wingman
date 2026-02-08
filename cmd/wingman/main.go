@@ -8,7 +8,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	_ "wingman/internal/providers"
+	_ "wingman/internal/autoregprov"
 	"wingman/internal/server"
 	"wingman/internal/storage"
 )
