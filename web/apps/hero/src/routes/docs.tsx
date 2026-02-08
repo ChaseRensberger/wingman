@@ -55,7 +55,7 @@ function DocsNavContent({ onNavigate }: { onNavigate?: () => void }) {
 
 function DocsSidebar() {
 	return (
-		<Sidebar variant="sidebar" collapsible="none" className="border-r bg-background sticky top-[4rem] h-[calc(100vh-4.25rem)] hidden md:flex">
+		<Sidebar variant="sidebar" collapsible="none" className="border-r bg-background sticky top-[4rem] h-[calc(100vh-4rem)] hidden md:flex">
 			<DocsNavContent />
 		</Sidebar>
 	);
