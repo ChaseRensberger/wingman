@@ -31,52 +31,6 @@ curl -X PUT http://localhost:2323/provider/auth \
   -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 ```
 
-## API Reference
-
-### Sessions
-
-Sessions maintain conversation history across multiple messages.
-
-```
-POST   /sessions              # Create session
-GET    /sessions              # List sessions
-GET    /sessions/{id}         # Get session
-PUT    /sessions/{id}         # Update session
-DELETE /sessions/{id}         # Delete session
-POST   /sessions/{id}/message # Send message (blocking)
-POST   /sessions/{id}/message/stream # Send message (streaming)
-```
-
-#### Create Session
-
-```bash
-curl -X POST http://localhost:2323/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"work_dir": "/path/to/project"}'
-```
-
-#### Send Message
-
-```bash
-curl -X POST http://localhost:2323/sessions/{id}/message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_id": "01ABC...",
-    "prompt": "What files are in this directory?"
-  }'
-```
-
-**Response:**
-
-```json
-{
-  "response": "The directory contains...",
-  "tool_calls": [...],
-  "usage": {"input_tokens": 150, "output_tokens": 50},
-  "steps": 2
-}
-```
-
 #### Streaming
 
 For streaming responses, use the `/message/stream` endpoint. Events are sent as SSE:

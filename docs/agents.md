@@ -8,7 +8,20 @@ draft: false
 
 The word agent gets thrown around a lot these days and it is possible this gets renamed at some point but at least in Wingman, an **Agent** is stateless template that defines *how* to process some unit of work.
 
-## Server Routes
+## SDK
+
+```go
+a := agent.New("AgentName",
+    agent.WithInstructions("System prompt"),
+    agent.WithMaxTokens(4096),
+    agent.WithTemperature(0.7),
+    agent.WithMaxSteps(50),
+    agent.WithTools(tool.NewBashTool(), tool.NewReadTool()),
+    agent.WithOutputSchema(map[string]any{"type": "object", ...}),
+)
+```
+
+## Server
 
 ```
 POST   /agents      # Create agent
@@ -17,10 +30,6 @@ GET    /agents/{id} # Get agent
 PUT    /agents/{id} # Update agent
 DELETE /agents/{id} # Delete agent
 ```
-
-## Usage
-
-### Server
 
 ```bash
 curl -X POST http://localhost:2323/agents \
@@ -34,18 +43,6 @@ curl -X POST http://localhost:2323/agents \
   }'
 ```
 
-### SDK
-
-```go
-a := agent.New("AgentName",
-    agent.WithInstructions("System prompt"),
-    agent.WithMaxTokens(4096),
-    agent.WithTemperature(0.7),
-    agent.WithMaxSteps(50),
-    agent.WithTools(tool.NewBashTool(), tool.NewReadTool()),
-    agent.WithOutputSchema(map[string]any{"type": "object", ...}),
-)
-```
 
 
 
