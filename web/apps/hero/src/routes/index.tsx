@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
 import WingmanIcon from "../assets/WingmanBlue.png";
+import { Link } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/')({
 	component: RouteComponent,
@@ -14,6 +15,8 @@ function RouteComponent() {
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
+// const BUYMEACOFFEE_URL = "https://buymeacoffee.com/4chase";
+const DISCORD_URL = "https://discord.gg/uNMkKN9MrU";
 
 function CopyCommand() {
 	const [copied, setCopied] = useState(false);
@@ -51,12 +54,12 @@ function NavLink(navItem: {
 	url: string
 }) {
 	return (
-		<a
-			href={navItem.url}
+		<Link
+			to={navItem.url}
 			className="text-muted-foreground hover:text-foreground transition-colors hover:underline"
 		>
 			{navItem.name}
-		</a>
+		</Link>
 	)
 }
 
@@ -68,6 +71,8 @@ function Hero() {
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={"/docs"} />
+					<NavLink name="Discord" url={DISCORD_URL} />
+					{/*<NavLink name="Donate" url={BUYMEACOFFEE_URL} />*/}
 				</div>
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">
