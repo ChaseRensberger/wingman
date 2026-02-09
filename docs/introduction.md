@@ -4,6 +4,11 @@ group: "Wingman"
 order: 0
 ---
 
+---
+
+***All Docs and Code are very much WIP as I try to improve overall quality and make things more comprehensive.***
+
+---
 If you're just looking to get up and running with Wingman as fast as possible, take a look at the Usage docs. If you're curious to learn more about what this project is, continue.
 
 Welcome to the Wingman documentation. I don't have a habit of writing very good documentation so learners beware, if you encounter a spelling mistake or something that doesn't make sense, I apologize (also feel free to put up a PR).
