@@ -142,7 +142,7 @@ function App() {
 			const sessionRes = await fetch(`${SERVER_URL}/sessions`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ work_dir: process.cwd() }),
+				body: JSON.stringify({ work_dir: "/tmp/wingman/wingman_test" }),
 			});
 			if (!sessionRes.ok) throw new Error("Failed to create session");
 			const session = await sessionRes.json();
