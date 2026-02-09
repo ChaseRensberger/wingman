@@ -142,7 +142,7 @@ function App() {
 			const sessionRes = await fetch(`${SERVER_URL}/sessions`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ work_dir: "/tmp/wingman/wingman_test" }),
+				body: JSON.stringify({ work_dir: "/home/chase/wingman-test" }),
 			});
 			if (!sessionRes.ok) throw new Error("Failed to create session");
 			const session = await sessionRes.json();
@@ -307,7 +307,7 @@ function App() {
 						} else if (currentEventType === "error" || event.Error) {
 							setError(event.Error || event.Text || "Unknown error");
 						}
-					} catch {}
+					} catch { }
 				}
 			}
 		} catch (e) {
