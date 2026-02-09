@@ -7,7 +7,7 @@ const SERVER_URL = "http://localhost:2323";
 interface ToolCall {
 	id: string;
 	name: string;
-	input: Record<string, unknown>;
+	input: string;
 	result?: string;
 }
 
@@ -17,21 +17,36 @@ interface Message {
 	toolCalls?: ToolCall[];
 }
 
-interface StreamEvent {
-	type: "text" | "tool_use" | "tool_result" | "done" | "error";
-	content?: string;
-	tool_use_id?: string;
-	name?: string;
-	input?: Record<string, unknown>;
-	result?: string;
+interface ContentBlock {
+	Type: string;
+	ID: string;
+	Name: string;
+	Text: string;
+	Input: unknown;
 }
 
-function formatToolInput(input: Record<string, unknown>): string {
-	if (input.command) return String(input.command).slice(0, 60);
-	if (input.filePath) return String(input.filePath);
-	if (input.pattern) return String(input.pattern);
-	if (input.content) return `${String(input.content).slice(0, 40)}...`;
-	return JSON.stringify(input).slice(0, 50);
+interface StreamEvent {
+	Type: string;
+	Text: string;
+	InputJSON: string;
+	Index: number;
+	ContentBlock: ContentBlock | null;
+	StopReason: string;
+	Usage: unknown;
+	Error: string | null;
+}
+
+function formatToolInput(input: string): string {
+	try {
+		const parsed = JSON.parse(input);
+		if (parsed.command) return String(parsed.command).slice(0, 60);
+		if (parsed.filePath) return String(parsed.filePath);
+		if (parsed.pattern) return String(parsed.pattern);
+		if (parsed.content) return `${String(parsed.content).slice(0, 40)}...`;
+		return input.slice(0, 50);
+	} catch {
+		return input.slice(0, 50);
+	}
 }
 
 function ToolCallDisplay({ tool }: { tool: ToolCall }) {
@@ -60,17 +75,31 @@ function ToolCallDisplay({ tool }: { tool: ToolCall }) {
 function MessageBubble({ message }: { message: Message }) {
 	const isUser = message.role === "user";
 
+	if (isUser) {
+		return (
+			<box marginBottom={1} justifyContent="flex-end">
+				<box
+					backgroundColor="#1e3a5f"
+					paddingLeft={2}
+					paddingRight={2}
+					paddingTop={1}
+					paddingBottom={1}
+					borderStyle="rounded"
+					border
+					borderColor="#3b82f6"
+				>
+					<text fg="#e2e8f0">{message.content}</text>
+				</box>
+			</box>
+		);
+	}
+
 	return (
 		<box flexDirection="column" marginBottom={1}>
-			<text fg={isUser ? "#60a5fa" : "#a78bfa"}>
-				{isUser ? "You" : "Assistant"}
-			</text>
-			<box marginLeft={2} marginTop={0}>
-				{message.toolCalls?.map((tool) => (
-					<ToolCallDisplay key={tool.id} tool={tool} />
-				))}
-				{message.content && <text fg="#e2e8f0">{message.content}</text>}
-			</box>
+			{message.toolCalls?.map((tool) => (
+				<ToolCallDisplay key={tool.id} tool={tool} />
+			))}
+			{message.content && <text fg="#e2e8f0">{message.content}</text>}
 		</box>
 	);
 }
@@ -129,10 +158,12 @@ function App() {
 		if (!input.trim() || !sessionId || !agentId || isStreaming) return;
 
 		const userMessage: Message = { role: "user", content: input };
+		const prompt = input;
 		setMessages((prev) => [...prev, userMessage]);
 		setInput("");
 		setIsStreaming(true);
 		setStatus("Thinking...");
+		setError(null);
 
 		const assistantMessage: Message = {
 			role: "assistant",
@@ -141,6 +172,10 @@ function App() {
 		};
 		setMessages((prev) => [...prev, assistantMessage]);
 
+		const currentToolInputs = new Map<number, string>();
+		const currentToolIds = new Map<number, string>();
+		const currentToolNames = new Map<number, string>();
+
 		try {
 			abortRef.current = new AbortController();
 			const res = await fetch(
@@ -148,12 +183,15 @@ function App() {
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ agent_id: agentId, prompt: input }),
+					body: JSON.stringify({ agent_id: agentId, prompt }),
 					signal: abortRef.current.signal,
 				}
 			);
 
-			if (!res.ok) throw new Error("Request failed");
+			if (!res.ok) {
+				const errText = await res.text();
+				throw new Error(errText || `HTTP ${res.status}`);
+			}
 			if (!res.body) throw new Error("No response body");
 
 			const reader = res.body.getReader();
@@ -168,52 +206,106 @@ function App() {
 				const lines = buffer.split("\n");
 				buffer = lines.pop() || "";
 
+				let currentEventType = "";
+
 				for (const line of lines) {
+					if (line.startsWith("event: ")) {
+						currentEventType = line.slice(7).trim();
+						continue;
+					}
+
 					if (!line.startsWith("data: ")) continue;
 					const data = line.slice(6);
-					if (data === "[DONE]") continue;
 
 					try {
 						const event: StreamEvent = JSON.parse(data);
 
-						if (event.type === "text" && event.content) {
-							setMessages((prev) => {
-								const updated = [...prev];
-								const last = updated[updated.length - 1];
-								if (last) last.content += event.content;
-								return updated;
-							});
-						} else if (event.type === "tool_use") {
-							setStatus(`Using ${event.name}...`);
-							setMessages((prev) => {
-								const updated = [...prev];
-								const last = updated[updated.length - 1];
-								if (last && event.tool_use_id) {
-									last.toolCalls = [
-										...(last.toolCalls || []),
-										{
-											id: event.tool_use_id,
-											name: event.name || "unknown",
-											input: event.input || {},
-										},
-									];
+						if (
+							currentEventType === "text_delta" ||
+							event.Type === "text_delta"
+						) {
+							if (event.Text) {
+								setMessages((prev) => {
+									const updated = [...prev];
+									const last = updated[updated.length - 1];
+									if (last) last.content += event.Text;
+									return updated;
+								});
+							}
+						} else if (
+							currentEventType === "content_block_start" ||
+							event.Type === "content_block_start"
+						) {
+							if (event.ContentBlock?.Type === "tool_use") {
+								const toolId = event.ContentBlock.ID || `tool_${event.Index}`;
+								const toolName = event.ContentBlock.Name || "unknown";
+								currentToolIds.set(event.Index, toolId);
+								currentToolNames.set(event.Index, toolName);
+								currentToolInputs.set(event.Index, "");
+
+								setStatus(`Using ${toolName}...`);
+								setMessages((prev) => {
+									const updated = [...prev];
+									const last = updated[updated.length - 1];
+									if (last) {
+										last.toolCalls = [
+											...(last.toolCalls || []),
+											{
+												id: toolId,
+												name: toolName,
+												input: "",
+											},
+										];
+									}
+									return updated;
+								});
+							}
+						} else if (
+							currentEventType === "input_json_delta" ||
+							event.Type === "input_json_delta"
+						) {
+							if (event.InputJSON) {
+								const existing = currentToolInputs.get(event.Index) || "";
+								currentToolInputs.set(event.Index, existing + event.InputJSON);
+
+								const toolId = currentToolIds.get(event.Index);
+								if (toolId) {
+									setMessages((prev) => {
+										const updated = [...prev];
+										const last = updated[updated.length - 1];
+										if (last?.toolCalls) {
+											const tool = last.toolCalls.find((t) => t.id === toolId);
+											if (tool) {
+												tool.input = currentToolInputs.get(event.Index) || "";
+											}
+										}
+										return updated;
+									});
 								}
-								return updated;
-							});
-						} else if (event.type === "tool_result") {
-							setMessages((prev) => {
-								const updated = [...prev];
-								const last = updated[updated.length - 1];
-								if (last?.toolCalls && event.tool_use_id) {
-									const tool = last.toolCalls.find(
-										(t) => t.id === event.tool_use_id
-									);
-									if (tool) tool.result = event.result || "";
-								}
-								return updated;
-							});
-						} else if (event.type === "error") {
-							setError(event.content || "Unknown error");
+							}
+						} else if (
+							currentEventType === "tool_result" ||
+							event.Type === "tool_result"
+						) {
+							const toolId = currentToolIds.get(event.Index);
+							if (toolId && event.Text) {
+								setMessages((prev) => {
+									const updated = [...prev];
+									const last = updated[updated.length - 1];
+									if (last?.toolCalls) {
+										const tool = last.toolCalls.find((t) => t.id === toolId);
+										if (tool) tool.result = event.Text;
+									}
+									return updated;
+								});
+							}
+						} else if (
+							currentEventType === "message_stop" ||
+							event.Type === "message_stop"
+						) {
+							break;
+						} else if (currentEventType === "error" || event.Error) {
+							setError(event.Error || event.Text || "Unknown error");
 						}
 					} catch {}
 				}
@@ -249,13 +341,18 @@ function App() {
 				backgroundColor="#1e293b"
 				paddingLeft={1}
 				paddingRight={1}
+				flexDirection="row"
 				justifyContent="space-between"
 			>
-				<text>
-					<span fg="#60a5fa">Wingman</span>
-					<span fg="#64748b"> | {status}</span>
-				</text>
-				<text fg="#64748b">ESC to {isStreaming ? "cancel" : "exit"}</text>
+				<box>
+					<text>
+						<span fg="#60a5fa">Wingman</span>
+						<span fg="#64748b"> | {status}</span>
+					</text>
+				</box>
+				<box>
+					<text fg="#64748b">ESC to {isStreaming ? "cancel" : "exit"}</text>
+				</box>
 			</box>
 
 			{error && (
