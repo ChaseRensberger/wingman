@@ -5,7 +5,9 @@ order: 10
 ---
 # Server
 
-The HTTP server is the primary way to use Wingman. It's batteries-included with
+The HTTP server is the primary way to use Wingman. Unliked [the SDK](https://wingman.actor/sdk) it comes batteries included with object persistence (via sqlite3) and a config file at `~/.config/wingman/`.
+
+## Installation
 
 ## Starting the Server
 
@@ -13,7 +15,7 @@ The HTTP server is the primary way to use Wingman. It's batteries-included with
 wingman serve
 ```
 
-### Flags
+## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -53,12 +55,10 @@ curl -X PUT http://localhost:2323/provider/auth \
 # 2. Create an agent
 curl -X POST http://localhost:2323/agents \
   -d '{"name": "Assistant", "instructions": "Be helpful", "tools": ["bash"]}'
-# Returns: {"id": "01ABC...", ...}
 
 # 3. Create a session
 curl -X POST http://localhost:2323/sessions \
   -d '{"work_dir": "/tmp"}'
-# Returns: {"id": "01XYZ...", ...}
 
 # 4. Send messages
 curl -X POST http://localhost:2323/sessions/01XYZ.../message \
