@@ -16,7 +16,7 @@ function RouteComponent() {
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 // const BUYMEACOFFEE_URL = "https://buymeacoffee.com/4chase";
-const DISCORD_URL = "https://discord.gg/uNMkKN9MrU";
+// const DISCORD_URL = "https://discord.gg/uNMkKN9MrU";
 
 function CopyCommand() {
 	const [copied, setCopied] = useState(false);
