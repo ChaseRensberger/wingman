@@ -71,7 +71,7 @@ function Hero() {
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={"/docs"} />
-					<NavLink name="Discord" url={DISCORD_URL} />
+					{/*<NavLink name="Discord" url={DISCORD_URL} />*/}
 					{/*<NavLink name="Donate" url={BUYMEACOFFEE_URL} />*/}
 				</div>
 			</nav>
