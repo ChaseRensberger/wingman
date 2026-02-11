@@ -140,7 +140,7 @@ var (
 	ErrNoAgent    = fmt.Errorf("agent is required")
 )
 
-func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
+func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 	s.mu.Lock()
 	if s.provider == nil {
 		s.mu.Unlock()
@@ -151,7 +151,7 @@ func (s *Session) Run(ctx context.Context, prompt string) (*Result, error) {
 		return nil, ErrNoAgent
 	}
 
-	s.history = append(s.history, models.NewUserMessage(prompt))
+	s.history = append(s.history, models.NewUserMessage(message))
 	workDir := s.workDir
 	s.mu.Unlock()
 

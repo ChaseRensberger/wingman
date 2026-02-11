@@ -15,8 +15,8 @@ const (
 )
 
 type WorkPayload struct {
-	Prompt string
-	Data   any
+	Message string
+	Data    any
 }
 
 type ResultPayload struct {
@@ -87,7 +87,7 @@ func (a *AgentActor) handleWork(ctx context.Context, msg Message) error {
 		session.WithWorkDir(a.workDir),
 	)
 
-	result, err := s.Run(ctx, payload.Prompt)
+	result, err := s.Run(ctx, payload.Message)
 
 	if a.onResult != nil {
 		a.onResult(result, err)

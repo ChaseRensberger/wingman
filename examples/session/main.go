@@ -8,8 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"wingman/internal/utils"
 	"wingman/agent"
+	"wingman/internal/utils"
 	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
@@ -47,17 +47,17 @@ func main() {
 
 	fmt.Printf("Session ID: %s\n\n", s.ID())
 
-	prompts := []string{
+	messages := []string{
 		"What is 2 + 2?",
 		"What did I just ask you?",
 		"Now multiply that result by 10",
 	}
 
-	for _, prompt := range prompts {
-		utils.UserPrint(prompt)
+	for _, message := range messages {
+		utils.UserPrint(message)
 		fmt.Println()
 
-		result, err := s.Run(ctx, prompt)
+		result, err := s.Run(ctx, message)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -238,7 +238,7 @@ func (s *Server) handleStopFleet(w http.ResponseWriter, r *http.Request) {
 }
 
 type SubmitFleetRequest struct {
-	Prompts []string `json:"prompts"`
+	Messages []string `json:"messages"`
 }
 
 type SubmitFleetResponse struct {
@@ -263,17 +263,17 @@ func (s *Server) handleSubmitFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Prompts) == 0 {
-		writeError(w, http.StatusBadRequest, "prompts is required")
+	if len(req.Messages) == 0 {
+		writeError(w, http.StatusBadRequest, "messages is required")
 		return
 	}
 
-	if err := runtime.fleet.SubmitAll(req.Prompts); err != nil {
+	if err := runtime.fleet.SubmitAll(req.Messages); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, SubmitFleetResponse{
-		Submitted: len(req.Prompts),
+		Submitted: len(req.Messages),
 	})
 }

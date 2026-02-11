@@ -61,7 +61,7 @@ func NewFleet(cfg FleetConfig) *Fleet {
 	return fleet
 }
 
-func (f *Fleet) Submit(prompt string, data any) error {
+func (f *Fleet) Submit(message string, data any) error {
 	f.resultsMu.Lock()
 	workerIdx := f.expected % len(f.workers)
 	f.expected++
@@ -69,15 +69,15 @@ func (f *Fleet) Submit(prompt string, data any) error {
 
 	worker := f.workers[workerIdx]
 	msg := NewMessage("fleet", MsgTypeWork, WorkPayload{
-		Prompt: prompt,
-		Data:   data,
+		Message: message,
+		Data:    data,
 	})
 	return worker.Send(msg)
 }
 
-func (f *Fleet) SubmitAll(prompts []string) error {
-	for i, prompt := range prompts {
-		if err := f.Submit(prompt, i); err != nil {
+func (f *Fleet) SubmitAll(messages []string) error {
+	for i, message := range messages {
+		if err := f.Submit(message, i); err != nil {
 			return err
 		}
 	}

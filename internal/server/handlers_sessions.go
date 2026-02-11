@@ -108,7 +108,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 type MessageSessionRequest struct {
 	AgentID string `json:"agent_id"`
-	Prompt  string `json:"prompt"`
+	Message string `json:"message"`
 }
 
 type MessageSessionResponse struct {
@@ -133,8 +133,8 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Prompt == "" {
-		writeError(w, http.StatusBadRequest, "prompt is required")
+	if req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
@@ -167,7 +167,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		runSession.AddMessage(msg)
 	}
 
-	result, err := runSession.Run(r.Context(), req.Prompt)
+	result, err := runSession.Run(r.Context(), req.Message)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -202,8 +202,8 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if req.Prompt == "" {
-		writeError(w, http.StatusBadRequest, "prompt is required")
+	if req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
@@ -249,7 +249,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	stream, err := runSession.RunStream(ctx, req.Prompt)
+	stream, err := runSession.RunStream(ctx, req.Message)
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 		flusher.Flush()

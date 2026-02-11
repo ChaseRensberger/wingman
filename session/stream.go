@@ -23,7 +23,7 @@ type SessionStream struct {
 	done           bool
 }
 
-func (s *Session) RunStream(ctx context.Context, prompt string) (*SessionStream, error) {
+func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream, error) {
 	s.mu.Lock()
 	if s.provider == nil {
 		s.mu.Unlock()
@@ -34,7 +34,7 @@ func (s *Session) RunStream(ctx context.Context, prompt string) (*SessionStream,
 		return nil, ErrNoAgent
 	}
 
-	s.history = append(s.history, models.NewUserMessage(prompt))
+	s.history = append(s.history, models.NewUserMessage(message))
 	workDir := s.workDir
 	p := s.provider
 	s.mu.Unlock()

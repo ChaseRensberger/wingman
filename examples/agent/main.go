@@ -48,12 +48,12 @@ func main() {
 	)
 
 	ctx := context.Background()
-	prompt := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
+	message := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
 
-	utils.UserPrint(prompt)
+	utils.UserPrint(message)
 	fmt.Println()
 
-	result, err := s.Run(ctx, prompt)
+	result, err := s.Run(ctx, message)
 	if err != nil {
 		log.Fatal(err)
 	}
