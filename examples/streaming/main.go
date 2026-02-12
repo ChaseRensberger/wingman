@@ -23,12 +23,11 @@ func main() {
 
 	a := agent.New("Storyteller",
 		agent.WithInstructions("You are a creative storyteller. Write engaging, vivid stories."),
-		agent.WithMaxTokens(500),
+		agent.WithProvider(p),
 	)
 
 	s := session.New(
 		session.WithAgent(a),
-		session.WithProvider(p),
 	)
 
 	fmt.Println("Streaming story...")

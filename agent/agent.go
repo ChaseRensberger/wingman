@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"wingman/provider"
 	"wingman/tool"
 )
 
@@ -8,18 +9,15 @@ type Agent struct {
 	name         string
 	instructions string
 	tools        []tool.Tool
-	maxTokens    int
-	temperature  *float64
-	maxSteps     int
 	outputSchema map[string]any
+	provider     provider.Provider
 }
 
 type Option func(*Agent)
 
 func New(name string, opts ...Option) *Agent {
 	a := &Agent{
-		name:     name,
-		maxSteps: 50,
+		name: name,
 	}
 
 	for _, opt := range opts {
@@ -35,24 +33,6 @@ func WithInstructions(instructions string) Option {
 	}
 }
 
-func WithMaxTokens(maxTokens int) Option {
-	return func(a *Agent) {
-		a.maxTokens = maxTokens
-	}
-}
-
-func WithTemperature(temperature float64) Option {
-	return func(a *Agent) {
-		a.temperature = &temperature
-	}
-}
-
-func WithMaxSteps(maxSteps int) Option {
-	return func(a *Agent) {
-		a.maxSteps = maxSteps
-	}
-}
-
 func WithTools(tools ...tool.Tool) Option {
 	return func(a *Agent) {
 		a.tools = append(a.tools, tools...)
@@ -62,6 +42,12 @@ func WithTools(tools ...tool.Tool) Option {
 func WithOutputSchema(schema map[string]any) Option {
 	return func(a *Agent) {
 		a.outputSchema = schema
+	}
+}
+
+func WithProvider(p provider.Provider) Option {
+	return func(a *Agent) {
+		a.provider = p
 	}
 }
 
@@ -77,18 +63,10 @@ func (a *Agent) Tools() []tool.Tool {
 	return a.tools
 }
 
-func (a *Agent) MaxTokens() int {
-	return a.maxTokens
-}
-
-func (a *Agent) Temperature() *float64 {
-	return a.temperature
-}
-
-func (a *Agent) MaxSteps() int {
-	return a.maxSteps
-}
-
 func (a *Agent) OutputSchema() map[string]any {
 	return a.outputSchema
+}
+
+func (a *Agent) Provider() provider.Provider {
+	return a.provider
 }

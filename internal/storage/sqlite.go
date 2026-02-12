@@ -21,9 +21,7 @@ CREATE TABLE IF NOT EXISTS agents (
 	name TEXT NOT NULL,
 	instructions TEXT,
 	tools TEXT,
-	max_tokens INTEGER,
-	temperature REAL,
-	max_steps INTEGER,
+	provider TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
@@ -124,10 +122,20 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 		return err
 	}
 
+	var providerJSON *string
+	if agent.Provider != nil {
+		b, err := json.Marshal(agent.Provider)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		providerJSON = &s
+	}
+
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools, max_tokens, temperature, max_steps, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.MaxTokens, agent.Temperature, agent.MaxSteps, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools, provider, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), providerJSON, agent.CreatedAt, agent.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -138,12 +146,12 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	var agent Agent
 	var toolsJSON string
-	var temperature sql.NullFloat64
+	var providerJSON sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, name, instructions, tools, max_tokens, temperature, max_steps, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, created_at, updated_at
 		FROM agents WHERE id = ?
-	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.MaxTokens, &temperature, &agent.MaxSteps, &agent.CreatedAt, &agent.UpdatedAt)
+	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &agent.CreatedAt, &agent.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("agent not found: %s", id)
@@ -158,8 +166,12 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 		}
 	}
 
-	if temperature.Valid {
-		agent.Temperature = &temperature.Float64
+	if providerJSON.Valid && providerJSON.String != "" {
+		var pc ProviderConfig
+		if err := json.Unmarshal([]byte(providerJSON.String), &pc); err != nil {
+			return nil, err
+		}
+		agent.Provider = &pc
 	}
 
 	return &agent, nil
@@ -167,7 +179,7 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools, max_tokens, temperature, max_steps, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -179,9 +191,9 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	for rows.Next() {
 		var agent Agent
 		var toolsJSON string
-		var temperature sql.NullFloat64
+		var providerJSON sql.NullString
 
-		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.MaxTokens, &temperature, &agent.MaxSteps, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -191,8 +203,12 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 			}
 		}
 
-		if temperature.Valid {
-			agent.Temperature = &temperature.Float64
+		if providerJSON.Valid && providerJSON.String != "" {
+			var pc ProviderConfig
+			if err := json.Unmarshal([]byte(providerJSON.String), &pc); err != nil {
+				return nil, err
+			}
+			agent.Provider = &pc
 		}
 
 		agents = append(agents, &agent)
@@ -209,10 +225,20 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 		return err
 	}
 
+	var providerJSON *string
+	if agent.Provider != nil {
+		b, err := json.Marshal(agent.Provider)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		providerJSON = &s
+	}
+
 	result, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools = ?, max_tokens = ?, temperature = ?, max_steps = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), agent.MaxTokens, agent.Temperature, agent.MaxSteps, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), providerJSON, agent.UpdatedAt, agent.ID)
 
 	if err != nil {
 		return err

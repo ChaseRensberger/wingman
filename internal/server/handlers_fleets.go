@@ -176,18 +176,15 @@ func (s *Server) handleStartFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	agentInstance, err := s.buildAgent(storedAgent)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	agentInstance := s.buildAgent(storedAgent)
 
 	fleet := actor.NewFleet(actor.FleetConfig{
 		WorkerCount: storedFleet.WorkerCount,
 		Agent:       agentInstance,
-		Provider:    provider,
 		WorkDir:     storedFleet.WorkDir,
 	})
 

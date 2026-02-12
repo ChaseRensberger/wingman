@@ -24,7 +24,7 @@ func main() {
 
 	a := agent.New("WebResearcher",
 		agent.WithInstructions("You are a helpful research assistant. Use the webfetch tool to retrieve information from websites when needed. Summarize the key points clearly and concisely."),
-		agent.WithMaxTokens(4096),
+		agent.WithProvider(p),
 		agent.WithTools(
 			tool.NewWebFetchTool(),
 		),
@@ -32,7 +32,6 @@ func main() {
 
 	s := session.New(
 		session.WithAgent(a),
-		session.WithProvider(p),
 	)
 
 	ctx := context.Background()

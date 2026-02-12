@@ -149,17 +149,14 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	agentInstance, err := s.buildAgent(storedAgent)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	agentInstance := s.buildAgent(storedAgent)
-
 	runSession := session.New(
 		session.WithAgent(agentInstance),
-		session.WithProvider(provider),
 		session.WithWorkDir(sess.WorkDir),
 	)
 
@@ -218,17 +215,14 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	provider, err := s.getProvider("anthropic")
+	agentInstance, err := s.buildAgent(storedAgent)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	agentInstance := s.buildAgent(storedAgent)
-
 	runSession := session.New(
 		session.WithAgent(agentInstance),
-		session.WithProvider(provider),
 		session.WithWorkDir(sess.WorkDir),
 	)
 
@@ -290,52 +284,9 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	flusher.Flush()
 }
 
-func (s *Server) getProvider(name string) (provider.Provider, error) {
-	auth, err := s.store.GetAuth()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get auth: %w", err)
-	}
-
-	cred := auth.Providers[name]
-
-	switch name {
-	case "anthropic":
-		if cred.Key == "" {
-			return nil, fmt.Errorf("provider %s not configured", name)
-		}
-		return anthropic.New(anthropic.Config{
-			APIKey: cred.Key,
-		}), nil
-
-	case "ollama":
-		model := cred.Key
-		if model == "" {
-			model = "llama3.2"
-		}
-		baseURL := cred.AccessToken
-		return ollama.New(ollama.Config{
-			BaseURL: baseURL,
-			Model:   model,
-		}), nil
-
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", name)
-	}
-}
-
-func (s *Server) buildAgent(stored *storage.Agent) *agent.Agent {
+func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	opts := []agent.Option{
 		agent.WithInstructions(stored.Instructions),
-	}
-
-	if stored.MaxTokens > 0 {
-		opts = append(opts, agent.WithMaxTokens(stored.MaxTokens))
-	}
-	if stored.Temperature != nil {
-		opts = append(opts, agent.WithTemperature(*stored.Temperature))
-	}
-	if stored.MaxSteps > 0 {
-		opts = append(opts, agent.WithMaxSteps(stored.MaxSteps))
 	}
 
 	tools := s.resolveTools(stored.Tools)
@@ -343,7 +294,58 @@ func (s *Server) buildAgent(stored *storage.Agent) *agent.Agent {
 		opts = append(opts, agent.WithTools(tools...))
 	}
 
-	return agent.New(stored.Name, opts...)
+	if stored.Provider != nil {
+		p, err := s.buildProvider(stored.Provider)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, agent.WithProvider(p))
+	}
+
+	return agent.New(stored.Name, opts...), nil
+}
+
+func (s *Server) buildProvider(cfg *storage.ProviderConfig) (provider.Provider, error) {
+	auth, err := s.store.GetAuth()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth: %w", err)
+	}
+
+	switch cfg.ID {
+	case "anthropic":
+		cred := auth.Providers["anthropic"]
+		if cred.Key == "" {
+			return nil, fmt.Errorf("anthropic not configured: missing API key")
+		}
+		acfg := anthropic.Config{
+			APIKey: cred.Key,
+			Model:  cfg.Model,
+		}
+		if cfg.MaxTokens > 0 {
+			acfg.MaxTokens = cfg.MaxTokens
+		}
+		if cfg.Temperature != nil {
+			acfg.Temperature = cfg.Temperature
+		}
+		return anthropic.New(acfg), nil
+
+	case "ollama":
+		cred := auth.Providers["ollama"]
+		ocfg := ollama.Config{
+			BaseURL: cred.AccessToken,
+			Model:   cfg.Model,
+		}
+		if cfg.MaxTokens > 0 {
+			ocfg.MaxTokens = cfg.MaxTokens
+		}
+		if cfg.Temperature != nil {
+			ocfg.Temperature = cfg.Temperature
+		}
+		return ollama.New(ocfg), nil
+
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", cfg.ID)
+	}
 }
 
 func (s *Server) resolveTools(toolNames []string) []tool.Tool {

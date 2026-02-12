@@ -43,13 +43,14 @@ func main() {
 
 	a := agent.New("Hackernews Parser",
 		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json them as json"),
+		agent.WithProvider(p),
 		agent.WithOutputSchema(schema),
 		agent.WithTools(
 			tool.NewWebFetchTool(),
 		),
 	)
 
-	s := session.New(session.WithAgent(a), session.WithProvider(p))
+	s := session.New(session.WithAgent(a))
 	result, err := s.Run(context.Background(), "Fetch the top 5 posts on hackernews for me")
 	if err != nil {
 		log.Fatal(err)

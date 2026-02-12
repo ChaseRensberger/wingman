@@ -191,23 +191,13 @@ func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
 		}
 	}
 
-	maxTokens := req.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = c.maxTokens
-	}
-
-	temperature := c.temperature
-	if req.Temperature != nil {
-		temperature = *req.Temperature
-	}
-
 	r := request{
 		Model:    c.model,
 		Messages: messages,
 		Tools:    tools,
 		Options: modelOptions{
-			Temperature: temperature,
-			NumPredict:  maxTokens,
+			Temperature: c.temperature,
+			NumPredict:  c.maxTokens,
 		},
 	}
 

@@ -12,17 +12,15 @@ import (
 
 	"wingman/agent"
 	"wingman/models"
-	"wingman/provider"
 	"wingman/tool"
 )
 
 type Session struct {
-	id       string
-	workDir  string
-	agent    *agent.Agent
-	provider provider.Provider
-	history  []models.WingmanMessage
-	mu       sync.RWMutex
+	id      string
+	workDir string
+	agent   *agent.Agent
+	history []models.WingmanMessage
+	mu      sync.RWMutex
 }
 
 type Option func(*Session)
@@ -55,12 +53,6 @@ func WithAgent(a *agent.Agent) Option {
 	}
 }
 
-func WithProvider(p provider.Provider) Option {
-	return func(s *Session) {
-		s.provider = p
-	}
-}
-
 func (s *Session) ID() string {
 	return s.id
 }
@@ -83,22 +75,10 @@ func (s *Session) SetAgent(a agent.Agent) {
 	s.agent = &a
 }
 
-func (s *Session) SetProvider(p provider.Provider) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.provider = p
-}
-
 func (s *Session) Agent() *agent.Agent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.agent
-}
-
-func (s *Session) Provider() provider.Provider {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.provider
 }
 
 func (s *Session) History() []models.WingmanMessage {
@@ -136,23 +116,24 @@ type ToolCallResult struct {
 }
 
 var (
-	ErrNoProvider = fmt.Errorf("provider is required")
+	ErrNoProvider = fmt.Errorf("agent has no provider configured")
 	ErrNoAgent    = fmt.Errorf("agent is required")
 )
 
 func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 	s.mu.Lock()
-	if s.provider == nil {
-		s.mu.Unlock()
-		return nil, ErrNoProvider
-	}
 	if s.agent == nil {
 		s.mu.Unlock()
 		return nil, ErrNoAgent
 	}
+	if s.agent.Provider() == nil {
+		s.mu.Unlock()
+		return nil, ErrNoProvider
+	}
 
 	s.history = append(s.history, models.NewUserMessage(message))
 	workDir := s.workDir
+	p := s.agent.Provider()
 	s.mu.Unlock()
 
 	var totalUsage models.WingmanUsage
@@ -164,14 +145,9 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		toolRegistry.Register(t)
 	}
 
-	maxSteps := s.agent.MaxSteps()
-	if maxSteps <= 0 {
-		maxSteps = 50
-	}
-
 	for {
-		if steps >= maxSteps {
-			return nil, fmt.Errorf("max steps (%d) exceeded", maxSteps)
+		if steps >= 50 {
+			return nil, fmt.Errorf("max steps (%d) exceeded", 50)
 		}
 		steps++
 
@@ -179,12 +155,9 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		req := models.WingmanInferenceRequest{
 			Messages:     s.history,
 			Tools:        toolRegistry.Definitions(),
-			MaxTokens:    s.agent.MaxTokens(),
-			Temperature:  s.agent.Temperature(),
 			Instructions: s.agent.Instructions(),
 			OutputSchema: s.agent.OutputSchema(),
 		}
-		p := s.provider
 		s.mu.RUnlock()
 
 		resp, err := p.RunInference(ctx, req)

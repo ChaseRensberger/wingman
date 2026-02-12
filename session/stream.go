@@ -25,18 +25,18 @@ type SessionStream struct {
 
 func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream, error) {
 	s.mu.Lock()
-	if s.provider == nil {
-		s.mu.Unlock()
-		return nil, ErrNoProvider
-	}
 	if s.agent == nil {
 		s.mu.Unlock()
 		return nil, ErrNoAgent
 	}
+	if s.agent.Provider() == nil {
+		s.mu.Unlock()
+		return nil, ErrNoProvider
+	}
 
 	s.history = append(s.history, models.NewUserMessage(message))
 	workDir := s.workDir
-	p := s.provider
+	p := s.agent.Provider()
 	s.mu.Unlock()
 
 	toolRegistry := tool.NewRegistry()
@@ -63,14 +63,9 @@ func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream
 func (ss *SessionStream) run(p provider.Provider) {
 	defer close(ss.events)
 
-	maxSteps := ss.session.agent.MaxSteps()
-	if maxSteps <= 0 {
-		maxSteps = 50
-	}
-
 	for {
-		if ss.result.Steps >= maxSteps {
-			ss.err = fmt.Errorf("max steps (%d) exceeded", maxSteps)
+		if ss.result.Steps >= 50 {
+			ss.err = fmt.Errorf("max steps (%d) exceeded", 50)
 			return
 		}
 		ss.result.Steps++
@@ -79,8 +74,6 @@ func (ss *SessionStream) run(p provider.Provider) {
 		req := models.WingmanInferenceRequest{
 			Messages:     ss.session.history,
 			Tools:        ss.toolRegistry.Definitions(),
-			MaxTokens:    ss.session.agent.MaxTokens(),
-			Temperature:  ss.session.agent.Temperature(),
 			Instructions: ss.session.agent.Instructions(),
 			OutputSchema: ss.session.agent.OutputSchema(),
 		}

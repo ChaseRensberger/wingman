@@ -4,16 +4,21 @@ import (
 	"wingman/models"
 )
 
+type ProviderConfig struct {
+	ID          string   `json:"id"`
+	Model       string   `json:"model,omitempty"`
+	MaxTokens   int      `json:"max_tokens,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+}
+
 type Agent struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Instructions string   `json:"instructions,omitempty"`
-	Tools        []string `json:"tools,omitempty"`
-	MaxTokens    int      `json:"max_tokens,omitempty"`
-	Temperature  *float64 `json:"temperature,omitempty"`
-	MaxSteps     int      `json:"max_steps,omitempty"`
-	CreatedAt    string   `json:"created_at"`
-	UpdatedAt    string   `json:"updated_at"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Instructions string          `json:"instructions,omitempty"`
+	Tools        []string        `json:"tools,omitempty"`
+	Provider     *ProviderConfig `json:"provider,omitempty"`
+	CreatedAt    string          `json:"created_at"`
+	UpdatedAt    string          `json:"updated_at"`
 }
 
 type Session struct {

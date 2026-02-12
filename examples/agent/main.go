@@ -30,7 +30,7 @@ func main() {
 
 	a := agent.New("WingmanAgent",
 		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
-		agent.WithMaxTokens(4096),
+		agent.WithProvider(p),
 		agent.WithTools(
 			tool.NewBashTool(),
 			tool.NewReadTool(),
@@ -44,7 +44,6 @@ func main() {
 	s := session.New(
 		session.WithWorkDir(workDir),
 		session.WithAgent(a),
-		session.WithProvider(p),
 	)
 
 	ctx := context.Background()

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"wingman/agent"
-	"wingman/provider"
 	"wingman/session"
 )
 
@@ -32,7 +31,6 @@ type FleetConfig struct {
 	WorkerCount int
 	WorkDir     string
 	Agent       *agent.Agent
-	Provider    provider.Provider
 }
 
 func NewFleet(cfg FleetConfig) *Fleet {
@@ -51,7 +49,6 @@ func NewFleet(cfg FleetConfig) *Fleet {
 		name := fmt.Sprintf("worker-%d", i)
 		workerActor := NewAgentActor(
 			cfg.Agent,
-			cfg.Provider,
 			WithTarget(fleet.collector),
 			WithWorkDir(cfg.WorkDir),
 		)

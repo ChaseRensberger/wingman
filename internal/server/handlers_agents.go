@@ -10,12 +10,10 @@ import (
 )
 
 type CreateAgentRequest struct {
-	Name         string   `json:"name"`
-	Instructions string   `json:"instructions,omitempty"`
-	Tools        []string `json:"tools,omitempty"`
-	MaxTokens    int      `json:"max_tokens,omitempty"`
-	Temperature  *float64 `json:"temperature,omitempty"`
-	MaxSteps     int      `json:"max_steps,omitempty"`
+	Name         string                  `json:"name"`
+	Instructions string                  `json:"instructions,omitempty"`
+	Tools        []string                `json:"tools,omitempty"`
+	Provider     *storage.ProviderConfig `json:"provider,omitempty"`
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
@@ -34,9 +32,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
-		MaxTokens:    req.MaxTokens,
-		Temperature:  req.Temperature,
-		MaxSteps:     req.MaxSteps,
+		Provider:     req.Provider,
 	}
 
 	if err := s.store.CreateAgent(agent); err != nil {
@@ -70,12 +66,10 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateAgentRequest struct {
-	Name         *string  `json:"name,omitempty"`
-	Instructions *string  `json:"instructions,omitempty"`
-	Tools        []string `json:"tools,omitempty"`
-	MaxTokens    *int     `json:"max_tokens,omitempty"`
-	Temperature  *float64 `json:"temperature,omitempty"`
-	MaxSteps     *int     `json:"max_steps,omitempty"`
+	Name         *string                 `json:"name,omitempty"`
+	Instructions *string                 `json:"instructions,omitempty"`
+	Tools        []string                `json:"tools,omitempty"`
+	Provider     *storage.ProviderConfig `json:"provider,omitempty"`
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -102,14 +96,8 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Tools != nil {
 		agent.Tools = req.Tools
 	}
-	if req.MaxTokens != nil {
-		agent.MaxTokens = *req.MaxTokens
-	}
-	if req.Temperature != nil {
-		agent.Temperature = req.Temperature
-	}
-	if req.MaxSteps != nil {
-		agent.MaxSteps = *req.MaxSteps
+	if req.Provider != nil {
+		agent.Provider = req.Provider
 	}
 
 	if err := s.store.UpdateAgent(agent); err != nil {

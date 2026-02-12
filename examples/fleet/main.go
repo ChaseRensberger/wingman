@@ -21,13 +21,12 @@ func main() {
 
 	a := agent.New("Calculator",
 		agent.WithInstructions("You are a calculator. When given a math problem, solve it and respond with ONLY the numeric answer, nothing else."),
-		agent.WithMaxTokens(100),
+		agent.WithProvider(p),
 	)
 
 	fleet := actor.NewFleet(actor.FleetConfig{
 		WorkerCount: 3,
 		Agent:       a,
-		Provider:    p,
 	})
 	defer fleet.Shutdown()
 

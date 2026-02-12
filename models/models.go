@@ -89,8 +89,6 @@ type WingmanUsage struct {
 type WingmanInferenceRequest struct {
 	Messages     []WingmanMessage
 	Tools        []WingmanToolDefinition
-	MaxTokens    int
-	Temperature  *float64
 	Instructions string
 	OutputSchema map[string]any
 }

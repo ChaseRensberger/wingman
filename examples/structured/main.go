@@ -52,12 +52,12 @@ func main() {
 
 	a := agent.New("Extractor",
 		agent.WithInstructions("Extract person information from the given text. Return only valid JSON."),
+		agent.WithProvider(anthropic.New(anthropic.Config{})),
 		agent.WithOutputSchema(schema),
 	)
 
 	s := session.New(
 		session.WithAgent(a),
-		session.WithProvider(anthropic.New(anthropic.Config{})),
 	)
 
 	ctx := context.Background()

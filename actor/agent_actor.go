@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"wingman/agent"
-	"wingman/provider"
 	"wingman/session"
 )
 
@@ -27,7 +26,6 @@ type ResultPayload struct {
 
 type AgentActor struct {
 	agent    *agent.Agent
-	provider provider.Provider
 	workDir  string
 	target   *Ref
 	onResult func(result *session.Result, err error)
@@ -53,10 +51,9 @@ func WithResultCallback(fn func(result *session.Result, err error)) AgentActorOp
 	}
 }
 
-func NewAgentActor(a *agent.Agent, p provider.Provider, opts ...AgentActorOption) *AgentActor {
+func NewAgentActor(a *agent.Agent, opts ...AgentActorOption) *AgentActor {
 	actor := &AgentActor{
-		agent:    a,
-		provider: p,
+		agent: a,
 	}
 
 	for _, opt := range opts {
@@ -83,7 +80,6 @@ func (a *AgentActor) handleWork(ctx context.Context, msg Message) error {
 
 	s := session.New(
 		session.WithAgent(a.agent),
-		session.WithProvider(a.provider),
 		session.WithWorkDir(a.workDir),
 	)
 
