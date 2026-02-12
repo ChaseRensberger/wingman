@@ -2,3 +2,5 @@
 /wingman
 __debug*
 sandbox/
+
+node_modules/
