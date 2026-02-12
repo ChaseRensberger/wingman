@@ -330,10 +330,8 @@ func (s *Server) buildProvider(cfg *storage.ProviderConfig) (provider.Provider, 
 		return anthropic.New(acfg), nil
 
 	case "ollama":
-		cred := auth.Providers["ollama"]
 		ocfg := ollama.Config{
-			BaseURL: cred.AccessToken,
-			Model:   cfg.Model,
+			Model: cfg.Model,
 		}
 		if cfg.MaxTokens > 0 {
 			ocfg.MaxTokens = cfg.MaxTokens

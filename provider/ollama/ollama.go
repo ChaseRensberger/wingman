@@ -111,7 +111,7 @@ type request struct {
 	Messages []chatMessage    `json:"messages"`
 	Tools    []toolDefinition `json:"tools,omitempty"`
 	Format   any              `json:"format,omitempty"`
-	Options  modelOptions     `json:"options,omitempty"`
+	Options  modelOptions     `json:"options"`
 	Stream   bool             `json:"stream"`
 }
 

@@ -88,7 +88,7 @@ curl -X POST http://localhost:2323/sessions/01XYZ.../message \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/provider` | List all available providers |
+| `GET` | `/provider` | List all available providers from registry |
 | `GET` | `/provider/auth` | Get authentication status for configured providers |
 | `PUT` | `/provider/auth` | Set provider authentication credentials |
 | `DELETE` | `/provider/auth/{provider}` | Remove authentication for a provider |

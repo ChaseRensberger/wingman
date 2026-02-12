@@ -78,11 +78,8 @@ type Formation struct {
 }
 
 type AuthCredential struct {
-	Type         string `json:"type"`
-	Key          string `json:"key,omitempty"`
-	AccessToken  string `json:"access_token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	ExpiresAt    string `json:"expires_at,omitempty"`
+	Type string `json:"type"`
+	Key  string `json:"key,omitempty"`
 }
 
 type Auth struct {

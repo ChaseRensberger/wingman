@@ -53,7 +53,7 @@ func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 	for name, cred := range auth.Providers {
 		resp.Providers[name] = ProviderAuthInfo{
 			Type:       cred.Type,
-			Configured: cred.Key != "" || cred.AccessToken != "",
+			Configured: cred.Key != "",
 		}
 	}
 
