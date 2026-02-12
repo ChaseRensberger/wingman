@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"wingman/internal/models_dev"
 	"wingman/internal/storage"
 	"wingman/provider"
-	"wingman/provider/models_dev"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {

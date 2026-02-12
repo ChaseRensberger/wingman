@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"wingman/agent"
-	"wingman/internal/utils"
 	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
@@ -58,15 +57,15 @@ func main() {
 
 	for _, tc := range result.ToolCalls {
 		if tc.Error != nil {
-			utils.ToolPrint(fmt.Sprintf("[%s] Error: %v", tc.ToolName, tc.Error))
+			fmt.Printf("Tool: [%s] Error: %v\n", tc.ToolName, tc.Error)
 		} else {
-			utils.ToolPrint(fmt.Sprintf("[%s] Fetched %d bytes", tc.ToolName, len(tc.Output)))
+			fmt.Printf("Tool: [%s] Fetched %d bytes\n", tc.ToolName, len(tc.Output))
 		}
 	}
 
 	fmt.Println()
-	utils.AgentPrint(result.Response)
+	fmt.Printf("Agent: %s\n", result.Response)
 	fmt.Println()
-	utils.ToolPrint(fmt.Sprintf("Steps: %d | Tokens - Input: %d, Output: %d",
-		result.Steps, result.Usage.InputTokens, result.Usage.OutputTokens))
+	fmt.Printf("Steps: %d | Tokens - Input: %d, Output: %d\n",
+		result.Steps, result.Usage.InputTokens, result.Usage.OutputTokens)
 }

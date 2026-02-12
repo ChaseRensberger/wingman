@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 
 	"wingman/agent"
-	"wingman/internal/utils"
 	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
@@ -49,8 +48,7 @@ func main() {
 	ctx := context.Background()
 	message := "Write a Python script called fibonacci.py that calculates fibonacci numbers up to n (passed as command line argument), then run it with n=10"
 
-	utils.UserPrint(message)
-	fmt.Println()
+	fmt.Printf("User: %s\n\n", message)
 
 	result, err := s.Run(ctx, message)
 	if err != nil {
@@ -59,17 +57,17 @@ func main() {
 
 	for _, tc := range result.ToolCalls {
 		if tc.Error != nil {
-			utils.ToolPrint(fmt.Sprintf("[%s] Error: %v", tc.ToolName, tc.Error))
+			fmt.Printf("Tool: [%s] Error: %v\n", tc.ToolName, tc.Error)
 		} else {
-			utils.ToolPrint(fmt.Sprintf("[%s] %s", tc.ToolName, truncate(tc.Output, 200)))
+			fmt.Printf("Tool: [%s] %s\n", tc.ToolName, truncate(tc.Output, 200))
 		}
 	}
 
 	fmt.Println()
-	utils.AgentPrint(result.Response)
+	fmt.Printf("Agent: %s\n", result.Response)
 	fmt.Println()
-	utils.ToolPrint(fmt.Sprintf("Steps: %d | Tokens - Input: %d, Output: %d",
-		result.Steps, result.Usage.InputTokens, result.Usage.OutputTokens))
+	fmt.Printf("Steps: %d | Tokens - Input: %d, Output: %d\n",
+		result.Steps, result.Usage.InputTokens, result.Usage.OutputTokens)
 }
 
 func truncate(s string, maxLen int) string {

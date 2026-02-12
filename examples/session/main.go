@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 
 	"wingman/agent"
-	"wingman/internal/utils"
 	"wingman/provider/anthropic"
 	"wingman/session"
 	"wingman/tool"
@@ -53,18 +52,16 @@ func main() {
 	}
 
 	for _, message := range messages {
-		utils.UserPrint(message)
-		fmt.Println()
+		fmt.Printf("User: %s\n\n", message)
 
 		result, err := s.Run(ctx, message)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		utils.AgentPrint(result.Response)
+		fmt.Printf("Agent: %s\n", result.Response)
 		fmt.Println()
-		utils.ToolPrint(fmt.Sprintf("Tokens - Input: %d, Output: %d",
-			result.Usage.InputTokens, result.Usage.OutputTokens))
+		fmt.Printf("Tokens - Input: %d, Output: %d\n", result.Usage.InputTokens, result.Usage.OutputTokens)
 		fmt.Println()
 	}
 
