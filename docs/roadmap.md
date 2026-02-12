@@ -13,3 +13,4 @@ A list of things that I am working on/thinking about. If you have a request of s
 - Fleets
 - Formations
 - Improved logging
+- Make model config unique CRUD resource for reusing configurations
