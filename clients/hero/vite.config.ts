@@ -1,6 +1,6 @@
 import path from "path";
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import fs from "fs";
@@ -8,7 +8,7 @@ import fs from "fs";
 function docsPlugin() {
   const virtualModuleId = "virtual:docs";
   const resolvedVirtualModuleId = "\0" + virtualModuleId;
-  const docsDir = path.resolve(__dirname, "../../../docs");
+  const docsDir = path.resolve(__dirname, "../../docs");
   return {
     name: "vite-plugin-docs",
     resolveId(id: string) {
@@ -73,7 +73,11 @@ export default defineConfig({
       target: "react",
       autoCodeSplitting: true,
     }),
-    react(),
+    react({
+      babel: {
+        plugins: [["babel-plugin-react-compiler"]],
+      },
+    }),
     tailwindcss(),
   ],
   resolve: {

@@ -27,7 +27,8 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react-swc": "catalog:",
+    "babel-plugin-react-compiler": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "eslint": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-react-refresh": "catalog:",
@@ -35,8 +36,5 @@
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:"
-  },
-  "overrides": {
-    "vite": "npm:rolldown-vite@7.2.5"
   }
 }
