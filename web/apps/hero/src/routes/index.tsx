@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
-import WingmanIcon from "../assets/WingmanBlue.png";
+import WingmanIcon from "@wingman/core/assets/WingmanBlue.png";
 import { Link } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/')({

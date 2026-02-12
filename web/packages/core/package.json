@@ -9,7 +9,8 @@
     "./components/primitives/*": "./src/components/primitives/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./lib/*": "./src/lib/*.ts",
-    "./styles/globals.css": "./src/styles/globals.css"
+    "./styles/globals.css": "./src/styles/globals.css",
+    "./assets/*": "./src/assets/*"
   },
   "dependencies": {
     "@fontsource/roboto-mono": "^5.0.0",
