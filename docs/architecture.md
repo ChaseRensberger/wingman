@@ -4,6 +4,7 @@ group: "Wingman"
 order: 1
 draft: true
 ---
+# Architecture
 
 Wingman's design decisions are likely imperfect and will continue to evolve with the project but below serves as my best effort towards a semi-comprehensive description of why I decided to do what and my vision for how everything works together.
 
