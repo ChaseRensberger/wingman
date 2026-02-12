@@ -10,3 +10,6 @@ A list of things that I am working on/thinking about. If you have a request of s
 
 - Easily translate between a WingmanInferenceConfig and a ProviderInferenceConfig
 - Better error support for rate limits, exceeding context, etc...
+- Fleets
+- Formations
+- Improved logging
