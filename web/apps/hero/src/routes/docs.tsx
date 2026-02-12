@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, Link, useParams } from "@tanstack/react-router";
-import WingmanIcon from "../assets/WingmanBlue.png";
+import WingmanIcon from "@wingman/core/assets/WingmanBlue.png";
 import { getGroupedDocs } from "@/lib/docs";
 import { Menu, X } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
