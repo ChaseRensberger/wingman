@@ -11,11 +11,14 @@ The word agent gets thrown around a lot these days and it is possible this gets 
 ## SDK
 
 ```go
+p := anthropic.New(anthropic.Config{
+    Model:     "claude-sonnet-4-5",
+    MaxTokens: 4096,
+})
+
 a := agent.New("AgentName",
     agent.WithInstructions("System prompt"),
-    agent.WithMaxTokens(4096),
-    agent.WithTemperature(0.7),
-    agent.WithMaxSteps(50),
+    agent.WithProvider(p),
     agent.WithTools(tool.NewBashTool(), tool.NewReadTool()),
     agent.WithOutputSchema(map[string]any{"type": "object", ...}),
 )
@@ -38,11 +41,10 @@ curl -X POST http://localhost:2323/agents \
     "name": "CodeAssistant",
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "max_tokens": 4096,
-    "max_steps": 50
+    "provider": {
+      "id": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096
+    }
   }'
 ```
-
-
-
-

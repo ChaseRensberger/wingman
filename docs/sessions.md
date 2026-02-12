@@ -5,22 +5,20 @@ order: 102
 ---
 # Session
 
-At least for the moment, nothing gets done in Wingman without a session. A session is what you use to combine an agent and a provider. Fundamentally, it is a stateful container that maintaines conversation history and executes agent loops.
+A session is a stateful container that maintains conversation history and executes agent loops. The agent (and its provider) define what model to use and how to run inference — the session just manages state and execution.
 
 ## SDK
 
 ```go
 s := session.New(
     session.WithAgent(a),
-    session.WithProvider(p),
     session.WithWorkDir("/path/to/workdir"),
 )
 
-result, err := s.Run(ctx, "Your user message to add to the history")
+result, err := s.Run(ctx, "Your message")
 ```
 
-The `Run` method executes the agent loop: it sends the prompt, handles tool calls, and continues until the model produces a final response or hits `MaxSteps`.
-
+The `Run` method executes the agent loop: it sends the message, handles tool calls, and continues until the model produces a final response or hits the step limit.
 
 ## Server
 
@@ -34,3 +32,17 @@ POST   /sessions/{id}/message # Send message (blocking)
 POST   /sessions/{id}/message/stream # Send message (streaming)
 ```
 
+```bash
+# Create a session
+curl -X POST http://localhost:2323/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"work_dir": "/path/to/project"}'
+
+# Send a message
+curl -X POST http://localhost:2323/sessions/{id}/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "01ABC...",
+    "message": "What files are in this directory?"
+  }'
+```

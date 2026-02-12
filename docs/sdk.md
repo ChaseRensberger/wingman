@@ -30,12 +30,12 @@ import (
 
 func main() {
     p := anthropic.New(anthropic.Config{
-        model: "claude-sonnet-4-5"
+        Model: "claude-sonnet-4-5",
     })
 
     a := agent.New("MyAgent",
         agent.WithInstructions("You are a helpful assistant."),
-        agent.WithMaxTokens(4096),
+        agent.WithProvider(p),
         agent.WithTools(
             tool.NewBashTool(),
         ),
@@ -43,7 +43,6 @@ func main() {
 
     s := session.New(
         session.WithAgent(a),
-        session.WithProvider(p),
     )
 
     result, err := s.Run(context.Background(), "What operating system am I using?")
@@ -59,13 +58,19 @@ func main() {
 
 ### Provider
 
-Interface for LLM providers. Currently supports Anthropic.
+Interface for LLM providers. The provider owns all inference configuration (model, max tokens, temperature, etc.) and is attached to an agent.
 
 ```go
 p := anthropic.New(anthropic.Config{
-    APIKey: "sk-...",  // Optional, defaults to ANTHROPIC_API_KEY env var
-    Model:  "claude-sonnet-4-20250514",
+    APIKey:    "sk-...",  // Optional, defaults to ANTHROPIC_API_KEY env var
+    Model:     "claude-sonnet-4-5",
+    MaxTokens: 4096,
 })
+
+a := agent.New("MyAgent",
+    agent.WithProvider(p),
+    agent.WithInstructions("..."),
+)
 ```
 
 ### Tools
@@ -84,20 +89,19 @@ tool.NewWebFetchTool() // Fetch URLs
 
 ## Fleet (Concurrent Execution)
 
-Run multiple prompts concurrently across worker actors:
+Run multiple messages concurrently across worker actors:
 
 ```go
 fleet := actor.NewFleet(actor.FleetConfig{
     WorkerCount: 3,
     Agent:       a,
-    Provider:    p,
     WorkDir:     "/path/to/workdir",
 })
 defer fleet.Shutdown()
 
 fleet.SubmitAll([]string{
     "Task 1",
-    "Task 2", 
+    "Task 2",
     "Task 3",
 })
 
@@ -116,7 +120,7 @@ for _, r := range results {
 For streaming responses:
 
 ```go
-stream, err := s.RunStream(ctx, "Your prompt")
+stream, err := s.RunStream(ctx, "Your message")
 if err != nil {
     log.Fatal(err)
 }

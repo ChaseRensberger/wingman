@@ -10,40 +10,79 @@ Providers are just an interface so that it's easy to translate between a model p
 
 ## SDK
 
-```go
-import (
-    "wingman/provider/anthropic"
-)
+In the SDK, a provider is a typed instance that knows how to connect to a specific API and how to configure inference. Each provider package exports its own `Config` struct with provider-specific fields.
 
-p := anthropic.New()
+```go
+import "wingman/provider/anthropic"
+
+p := anthropic.New(anthropic.Config{
+    Model:     "claude-sonnet-4-5",
+    MaxTokens: 4096,
+})
 ```
 
-Under the hood this creates an internal anthropic client that gets used to make calls during a `Session.Run()`.
+```go
+import "wingman/provider/ollama"
+
+p := ollama.New(ollama.Config{
+    Model:   "llama3.2",
+    BaseURL: "http://localhost:11434",
+})
+```
+
+The provider is then attached to an agent:
+
+```go
+a := agent.New("MyAgent",
+    agent.WithProvider(p),
+    agent.WithInstructions("..."),
+)
+```
 
 ## Server
+
+On the server side, the provider configuration lives on the agent as a JSON object. Auth credentials are managed separately.
+
+### Provider Discovery
 
 ```
 GET    /provider                    # List all providers
 GET    /provider/{name}             # Get provider info
 GET    /provider/{name}/models      # List available models
 GET    /provider/{name}/models/{id} # Get model details
+```
+
+### Auth Management
+
+```
 GET    /provider/auth               # Check auth status
 PUT    /provider/auth               # Set provider credentials
 DELETE /provider/auth/{provider}    # Remove provider credentials
 ```
 
 ```bash
-curl -X POST http://localhost:2323/sessions \
+curl -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
-  -d '{"work_dir": "/path/to/project"}'
+  -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 ```
 
+### Provider Config on Agents
+
+When creating an agent via the API, the `provider` field specifies which provider to use and how to configure inference:
+
 ```bash
-curl -X POST http://localhost:2323/sessions/{id}/message \
+curl -X POST http://localhost:2323/agents \
   -H "Content-Type: application/json" \
   -d '{
-    "agent_id": "01ABC...",
-    "prompt": "What files are in this directory?"
+    "name": "Assistant",
+    "instructions": "Be helpful",
+    "provider": {
+      "id": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "temperature": 0.7
+    }
   }'
 ```
 
+The server looks up the API key from the auth store and constructs the provider instance at inference time.

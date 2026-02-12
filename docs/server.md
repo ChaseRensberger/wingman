@@ -40,7 +40,7 @@ For streaming responses, use the `/message/stream` endpoint. Events are sent as 
 ```bash
 curl -X POST http://localhost:2323/sessions/{id}/message/stream \
   -H "Content-Type: application/json" \
-  -d '{"agent_id": "01ABC...", "prompt": "Hello"}'
+  -d '{"agent_id": "01ABC...", "message": "Hello"}'
 ```
 
 Events: `text`, `tool_use`, `tool_result`, `done`, `error`
@@ -54,7 +54,16 @@ curl -X PUT http://localhost:2323/provider/auth \
 
 # 2. Create an agent
 curl -X POST http://localhost:2323/agents \
-  -d '{"name": "Assistant", "instructions": "Be helpful", "tools": ["bash"]}'
+  -d '{
+    "name": "Assistant",
+    "instructions": "Be helpful",
+    "tools": ["bash"],
+    "provider": {
+      "id": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096
+    }
+  }'
 
 # 3. Create a session
 curl -X POST http://localhost:2323/sessions \
@@ -62,7 +71,7 @@ curl -X POST http://localhost:2323/sessions \
 
 # 4. Send messages
 curl -X POST http://localhost:2323/sessions/01XYZ.../message \
-  -d '{"agent_id": "01ABC...", "prompt": "What OS am I on?"}'
+  -d '{"agent_id": "01ABC...", "message": "What OS am I on?"}'
 ```
 
 ---
