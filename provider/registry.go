@@ -58,8 +58,8 @@ func (r *Registry) List() []ProviderMeta {
 func (r *Registry) IsValid(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	_, ok := r.providers[name]
-	return ok
+	_, providerExists := r.providers[name]
+	return providerExists
 }
 
 var defaultRegistry = NewRegistry()

@@ -90,7 +90,7 @@ curl -X POST http://localhost:2323/sessions/01XYZ.../message \
 |--------|------|-------------|
 | `GET` | `/provider` | List all available providers from registry |
 | `GET` | `/provider/auth` | Get authentication status for configured providers |
-| `PUT` | `/provider/auth` | Set provider authentication credentials |
+| `PUT` | `/provider/auth` | Set provider authentication credential(s) |
 | `DELETE` | `/provider/auth/{provider}` | Remove authentication for a provider |
 | `GET` | `/provider/{name}` | Get provider details |
 | `GET` | `/provider/{name}/models` | List all models for a provider |
