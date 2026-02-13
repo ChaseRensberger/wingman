@@ -8,7 +8,7 @@ import fs from "fs";
 function docsPlugin() {
   const virtualModuleId = "virtual:docs";
   const resolvedVirtualModuleId = "\0" + virtualModuleId;
-  const docsDir = path.resolve(__dirname, "../../docs");
+  const docsDir = path.resolve(__dirname, "../../resources/docs");
   return {
     name: "vite-plugin-docs",
     resolveId(id: string) {

@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="./assets/WingmanBlue.png" alt="Wingman Logo" width="200"/>
+    <img src="./resources/assets/WingmanBlue.png" alt="Wingman Logo" width="200"/>
 </p>
 
 # Wingman
