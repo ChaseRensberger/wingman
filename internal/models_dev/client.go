@@ -57,7 +57,7 @@ func (c *Client) GetProvider(name string) (*ProviderData, error) {
 func (c *Client) GetModels(providerName string) (map[string]Model, error) {
 	provider, err := c.GetProvider(providerName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no models found for provider: %s", providerName)
 	}
 
 	return provider.Models, nil

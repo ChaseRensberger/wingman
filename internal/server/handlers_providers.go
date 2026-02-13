@@ -132,7 +132,7 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 
 	models, err := models_dev.GetModels(name)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
