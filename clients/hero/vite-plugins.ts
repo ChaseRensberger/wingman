@@ -14,7 +14,10 @@ interface MarkdownPluginOptions {
   sort?: (a: FrontmatterEntry, b: FrontmatterEntry) => number;
 }
 
-function parseFrontmatterField(frontmatter: string, field: string): string | undefined {
+function parseFrontmatterField(
+  frontmatter: string,
+  field: string,
+): string | undefined {
   const match = frontmatter.match(
     new RegExp(`${field}:\\s*["']?(.+?)["']?\\s*$`, "m"),
   );
@@ -61,7 +64,8 @@ export function markdownPlugin(options: MarkdownPluginOptions) {
               for (const field of options.fields) {
                 const value = parseFrontmatterField(frontmatter, field);
                 if (value !== undefined) {
-                  entry[field] = field === "order" ? parseInt(value, 10) : value;
+                  entry[field] =
+                    field === "order" ? parseInt(value, 10) : value;
                 }
               }
             }
@@ -95,7 +99,7 @@ export function docsPlugin() {
   return markdownPlugin({
     name: "vite-plugin-docs",
     virtualModuleId: "virtual:docs",
-    contentDir: path.resolve(__dirname, "../../docs"),
+    contentDir: path.resolve(__dirname, "../../resources/docs"),
     fields: ["title", "group", "order"],
     defaults: { title: "", group: "Uncategorized", order: 999 },
     exportName: "docs",
@@ -106,7 +110,7 @@ export function blogPlugin() {
   return markdownPlugin({
     name: "vite-plugin-blog",
     virtualModuleId: "virtual:blog",
-    contentDir: path.resolve(__dirname, "../../blog"),
+    contentDir: path.resolve(__dirname, "../../resources/blog"),
     fields: ["title", "date", "description"],
     exportName: "posts",
     sort: (a, b) => (b.date > a.date ? 1 : -1),
