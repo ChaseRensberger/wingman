@@ -64,10 +64,6 @@ func (ss *SessionStream) run(p provider.Provider) {
 	defer close(ss.events)
 
 	for {
-		if ss.result.Steps >= 50 {
-			ss.err = fmt.Errorf("max steps (%d) exceeded", 50)
-			return
-		}
 		ss.result.Steps++
 
 		ss.session.mu.RLock()

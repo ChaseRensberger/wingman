@@ -146,9 +146,6 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 	}
 
 	for {
-		if steps >= 50 {
-			return nil, fmt.Errorf("max steps (%d) exceeded", 50)
-		}
 		steps++
 
 		s.mu.RLock()
