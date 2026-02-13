@@ -9,10 +9,6 @@ export const Route = createFileRoute("/blog/")({
 function BlogIndex() {
 	const posts = getAllPosts();
 
-	if (posts.length === 0) {
-		return <p className="text-muted-foreground">No posts yet.</p>;
-	}
-
 	return (
 
 		<main className="min-h-screen flex flex-col md:max-w-3xl lg:max-w-4xl mx-auto border">
