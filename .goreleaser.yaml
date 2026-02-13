@@ -3,10 +3,9 @@ version: 2
 project_name: wingman
 
 builds:
-  - id: wingman
-    main: ./cmd/wingman
+  - main: ./cmd/wingman
     binary: wingman
-  - env:
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -22,9 +21,6 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  - id: wingman-archive
-    builds:
-      - wingman
   - format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
@@ -54,4 +50,3 @@ release:
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
-
