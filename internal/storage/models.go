@@ -17,6 +17,7 @@ type Agent struct {
 	Instructions string          `json:"instructions,omitempty"`
 	Tools        []string        `json:"tools,omitempty"`
 	Provider     *ProviderConfig `json:"provider,omitempty"`
+	OutputSchema map[string]any  `json:"output_schema,omitempty"`
 	CreatedAt    string          `json:"created_at"`
 	UpdatedAt    string          `json:"updated_at"`
 }

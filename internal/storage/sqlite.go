@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS agents (
 	instructions TEXT,
 	tools TEXT,
 	provider TEXT,
+	output_schema TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
@@ -132,10 +133,20 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 		providerJSON = &s
 	}
 
+	var outputSchemaJSON *string
+	if agent.OutputSchema != nil {
+		b, err := json.Marshal(agent.OutputSchema)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		outputSchemaJSON = &s
+	}
+
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools, provider, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), providerJSON, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools, provider, output_schema, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), providerJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -147,11 +158,12 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	var agent Agent
 	var toolsJSON string
 	var providerJSON sql.NullString
+	var outputSchemaJSON sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, name, instructions, tools, provider, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, output_schema, created_at, updated_at
 		FROM agents WHERE id = ?
-	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &agent.CreatedAt, &agent.UpdatedAt)
+	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("agent not found: %s", id)
@@ -174,12 +186,18 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 		agent.Provider = &pc
 	}
 
+	if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
+		if err := json.Unmarshal([]byte(outputSchemaJSON.String), &agent.OutputSchema); err != nil {
+			return nil, err
+		}
+	}
+
 	return &agent, nil
 }
 
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools, provider, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, output_schema, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -192,8 +210,9 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 		var agent Agent
 		var toolsJSON string
 		var providerJSON sql.NullString
+		var outputSchemaJSON sql.NullString
 
-		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -209,6 +228,12 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 				return nil, err
 			}
 			agent.Provider = &pc
+		}
+
+		if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
+			if err := json.Unmarshal([]byte(outputSchemaJSON.String), &agent.OutputSchema); err != nil {
+				return nil, err
+			}
 		}
 
 		agents = append(agents, &agent)
@@ -235,10 +260,20 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 		providerJSON = &s
 	}
 
+	var outputSchemaJSON *string
+	if agent.OutputSchema != nil {
+		b, err := json.Marshal(agent.OutputSchema)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		outputSchemaJSON = &s
+	}
+
 	result, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, output_schema = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), providerJSON, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), providerJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
 
 	if err != nil {
 		return err

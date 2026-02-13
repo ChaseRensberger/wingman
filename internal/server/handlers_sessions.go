@@ -293,6 +293,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	opts := []agent.Option{
+		agent.WithID(stored.ID),
 		agent.WithInstructions(stored.Instructions),
 	}
 
@@ -307,6 +308,10 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 			return nil, err
 		}
 		opts = append(opts, agent.WithProvider(p))
+	}
+
+	if stored.OutputSchema != nil {
+		opts = append(opts, agent.WithOutputSchema(stored.OutputSchema))
 	}
 
 	return agent.New(stored.Name, opts...), nil

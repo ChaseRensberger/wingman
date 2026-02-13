@@ -6,6 +6,7 @@ import (
 )
 
 type Agent struct {
+	id           string
 	name         string
 	instructions string
 	tools        []tool.Tool
@@ -25,6 +26,12 @@ func New(name string, opts ...Option) *Agent {
 	}
 
 	return a
+}
+
+func WithID(id string) Option {
+	return func(a *Agent) {
+		a.id = id
+	}
 }
 
 func WithInstructions(instructions string) Option {
@@ -49,6 +56,10 @@ func WithProvider(p provider.Provider) Option {
 	return func(a *Agent) {
 		a.provider = p
 	}
+}
+
+func (a *Agent) ID() string {
+	return a.id
 }
 
 func (a *Agent) Name() string {

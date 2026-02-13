@@ -14,6 +14,7 @@ type CreateAgentRequest struct {
 	Instructions string                  `json:"instructions,omitempty"`
 	Tools        []string                `json:"tools,omitempty"`
 	Provider     *storage.ProviderConfig `json:"provider,omitempty"`
+	OutputSchema map[string]any          `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +34,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
 		Provider:     req.Provider,
+		OutputSchema: req.OutputSchema,
 	}
 
 	if err := s.store.CreateAgent(agent); err != nil {
@@ -73,6 +75,7 @@ type UpdateAgentRequest struct {
 	Instructions *string                 `json:"instructions,omitempty"`
 	Tools        []string                `json:"tools,omitempty"`
 	Provider     *storage.ProviderConfig `json:"provider,omitempty"`
+	OutputSchema map[string]any          `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +104,9 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Provider != nil {
 		agent.Provider = req.Provider
+	}
+	if req.OutputSchema != nil {
+		agent.OutputSchema = req.OutputSchema
 	}
 
 	if err := s.store.UpdateAgent(agent); err != nil {
