@@ -49,6 +49,9 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if agents == nil {
+		agents = []*storage.Agent{}
+	}
 
 	writeJSON(w, http.StatusOK, agents)
 }

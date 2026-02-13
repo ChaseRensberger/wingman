@@ -63,8 +63,8 @@ func (s *Server) setupRoutes() {
 	})
 
 	s.router.Route("/agents", func(r chi.Router) {
-		r.Post("/", s.handleCreateAgent)
 		r.Get("/", s.handleListAgents)
+		r.Post("/", s.handleCreateAgent)
 		r.Get("/{id}", s.handleGetAgent)
 		r.Put("/{id}", s.handleUpdateAgent)
 		r.Delete("/{id}", s.handleDeleteAgent)
