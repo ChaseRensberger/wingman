@@ -14,7 +14,6 @@ declare module "virtual:blog" {
     slug: string;
     title: string;
     date: string;
-    description: string;
     content: string;
   }
   export const posts: Post[];

@@ -15,8 +15,6 @@ function RouteComponent() {
 
 const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
-// const BUYMEACOFFEE_URL = "https://buymeacoffee.com/4chase";
-// const DISCORD_URL = "https://discord.gg/uNMkKN9MrU";
 
 function CopyCommand() {
 	const [copied, setCopied] = useState(false);
@@ -56,7 +54,7 @@ function NavLink(navItem: {
 	return (
 		<Link
 			to={navItem.url}
-			className="text-muted-foreground hover:text-foreground transition-colors hover:underline"
+			className="text-muted-foreground hover:text-foreground transition-colors hover:underline hover:underline-offset-4"
 		>
 			{navItem.name}
 		</Link>
@@ -71,8 +69,7 @@ function Hero() {
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={"/docs"} />
-					{/*<NavLink name="Discord" url={DISCORD_URL} />*/}
-					{/*<NavLink name="Donate" url={BUYMEACOFFEE_URL} />*/}
+					<NavLink name="Blog" url={"/blog"} />
 				</div>
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">

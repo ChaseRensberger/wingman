@@ -111,7 +111,7 @@ export function blogPlugin() {
     name: "vite-plugin-blog",
     virtualModuleId: "virtual:blog",
     contentDir: path.resolve(__dirname, "../../resources/blog"),
-    fields: ["title", "date", "description"],
+    fields: ["title", "date"],
     exportName: "posts",
     sort: (a, b) => (b.date > a.date ? 1 : -1),
   });
