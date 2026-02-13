@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type EditTool struct{}

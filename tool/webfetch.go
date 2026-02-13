@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 const (

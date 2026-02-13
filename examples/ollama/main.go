@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
-	"wingman/agent"
-	"wingman/provider/ollama"
-	"wingman/session"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/provider/ollama"
+	"github.com/chaserensberger/wingman/session"
 )
 
 func main() {

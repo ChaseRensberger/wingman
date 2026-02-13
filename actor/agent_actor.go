@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"wingman/agent"
-	"wingman/session"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/session"
 )
 
 const (

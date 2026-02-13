@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"wingman/models"
-	"wingman/provider"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/provider"
 )
 
 var Meta = provider.ProviderMeta{

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "wingman/internal/autoregprov"
-	"wingman/internal/storage"
+	_ "github.com/chaserensberger/wingman/internal/autoregprov"
+	"github.com/chaserensberger/wingman/internal/storage"
 )
 
 func setupTestServer(t *testing.T) (*httptest.Server, storage.Store) {

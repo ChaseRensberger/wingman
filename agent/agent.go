@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"wingman/provider"
-	"wingman/tool"
+	"github.com/chaserensberger/wingman/provider"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 type Agent struct {

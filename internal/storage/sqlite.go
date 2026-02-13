@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	_ "modernc.org/sqlite"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 const schema = `

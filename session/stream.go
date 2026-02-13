@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"wingman/models"
-	"wingman/provider"
-	"wingman/tool"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/provider"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 type SessionStream struct {

@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"time"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type BashTool struct {

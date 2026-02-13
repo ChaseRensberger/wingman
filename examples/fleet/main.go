@@ -6,9 +6,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"wingman/actor"
-	"wingman/agent"
-	"wingman/provider/anthropic"
+	"github.com/chaserensberger/wingman/actor"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/provider/anthropic"
 )
 
 func main() {

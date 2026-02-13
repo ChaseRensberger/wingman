@@ -1,6 +1,6 @@
 package autoregprov
 
 import (
-	_ "wingman/provider/anthropic"
-	_ "wingman/provider/ollama"
+	_ "github.com/chaserensberger/wingman/provider/anthropic"
+	_ "github.com/chaserensberger/wingman/provider/ollama"
 )

@@ -1,4 +1,4 @@
-module wingman
+module github.com/chaserensberger/wingman
 
 go 1.25.3
 

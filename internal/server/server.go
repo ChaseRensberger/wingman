@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"wingman/internal/storage"
+	"github.com/chaserensberger/wingman/internal/storage"
 )
 
 type Server struct {

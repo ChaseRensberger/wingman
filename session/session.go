@@ -10,9 +10,9 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"wingman/agent"
-	"wingman/models"
-	"wingman/tool"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 type Session struct {

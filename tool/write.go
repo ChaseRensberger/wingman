@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type WriteTool struct{}

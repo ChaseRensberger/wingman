@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type Stream struct {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"wingman/agent"
-	"wingman/provider/anthropic"
-	"wingman/session"
-	"wingman/tool"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/provider/anthropic"
+	"github.com/chaserensberger/wingman/session"
+	"github.com/chaserensberger/wingman/tool"
 
 	"github.com/joho/godotenv"
 )

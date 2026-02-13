@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"wingman/models"
-	"wingman/provider"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/provider"
 )
 
 // ============================================

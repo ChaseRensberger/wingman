@@ -8,14 +8,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"wingman/agent"
-	"wingman/internal/storage"
-	"wingman/models"
-	"wingman/provider"
-	"wingman/provider/anthropic"
-	"wingman/provider/ollama"
-	"wingman/session"
-	"wingman/tool"
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/internal/storage"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/provider"
+	"github.com/chaserensberger/wingman/provider/anthropic"
+	"github.com/chaserensberger/wingman/provider/ollama"
+	"github.com/chaserensberger/wingman/session"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 type CreateSessionRequest struct {

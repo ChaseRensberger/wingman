@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type Provider interface {

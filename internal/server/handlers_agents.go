@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"wingman/internal/storage"
+	"github.com/chaserensberger/wingman/internal/storage"
 )
 
 type CreateAgentRequest struct {

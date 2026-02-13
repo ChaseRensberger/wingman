@@ -8,9 +8,15 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	_ "wingman/internal/autoregprov"
-	"wingman/internal/server"
-	"wingman/internal/storage"
+	_ "github.com/chaserensberger/wingman/internal/autoregprov"
+	"github.com/chaserensberger/wingman/internal/server"
+	"github.com/chaserensberger/wingman/internal/storage"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
@@ -43,7 +49,7 @@ func main() {
 				Name:  "version",
 				Usage: "Print version information",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					fmt.Println("wingman v0.1.0")
+					fmt.Printf("wingman %s (commit: %s, built: %s)\n", version, commit, date)
 					return nil
 				},
 			},

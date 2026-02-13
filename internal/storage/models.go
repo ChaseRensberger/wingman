@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"wingman/models"
+	"github.com/chaserensberger/wingman/models"
 )
 
 type ProviderConfig struct {

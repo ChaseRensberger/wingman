@@ -4,3 +4,5 @@ __debug*
 sandbox/
 
 node_modules/
+
+dist/
