@@ -49,6 +49,9 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if sessions == nil {
+		sessions = []*storage.Session{}
+	}
 	writeJSON(w, http.StatusOK, sessions)
 }
 
@@ -113,7 +116,7 @@ type MessageSessionRequest struct {
 
 type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
-	ToolCalls []session.ToolCallResult `json:"tool_calls,omitempty"`
+	ToolCalls []session.ToolCallResult `json:"tool_calls"`
 	Usage     models.WingmanUsage      `json:"usage"`
 	Steps     int                      `json:"steps"`
 }
@@ -176,9 +179,13 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toolCalls := result.ToolCalls
+	if toolCalls == nil {
+		toolCalls = []session.ToolCallResult{}
+	}
 	writeJSON(w, http.StatusOK, MessageSessionResponse{
 		Response:  result.Response,
-		ToolCalls: result.ToolCalls,
+		ToolCalls: toolCalls,
 		Usage:     result.Usage,
 		Steps:     result.Steps,
 	})

@@ -62,6 +62,9 @@ func (s *Server) handleListFormations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if formations == nil {
+		formations = []*storage.Formation{}
+	}
 	writeJSON(w, http.StatusOK, formations)
 }
 

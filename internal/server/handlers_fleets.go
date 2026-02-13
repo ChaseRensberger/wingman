@@ -75,6 +75,9 @@ func (s *Server) handleListFleets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if fleets == nil {
+		fleets = []*storage.Fleet{}
+	}
 	writeJSON(w, http.StatusOK, fleets)
 }
 
