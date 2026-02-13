@@ -22,7 +22,7 @@ builds:
       - -X main.date={{.Date}}
 
 archives:
-  - id: wingman
+  - id: wingman-archive
     builds:
       - wingman
   - format: tar.gz
