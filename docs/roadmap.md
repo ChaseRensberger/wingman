@@ -17,6 +17,7 @@ A list of things that I am working on/thinking about. If you have a request of s
 - Improved logging
 - Make model config unique CRUD resource for reusing configurations
 - clean up build provider in session handler
+- need this to work offline so either maintain private model dir or snapshot models.dev
 
 
 ## Providers to add

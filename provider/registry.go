@@ -13,9 +13,9 @@ const (
 )
 
 type ProviderMeta struct {
-	Name        string     `json:"name"`
-	DisplayName string     `json:"display_name"`
-	AuthTypes   []AuthType `json:"auth_types"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	AuthTypes []AuthType `json:"auth_types"`
 }
 
 type Registry struct {
@@ -32,7 +32,7 @@ func NewRegistry() *Registry {
 func (r *Registry) Register(meta ProviderMeta) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.providers[meta.Name] = meta
+	r.providers[meta.ID] = meta
 }
 
 func (r *Registry) Get(name string) (ProviderMeta, error) {

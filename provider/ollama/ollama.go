@@ -14,9 +14,9 @@ import (
 )
 
 var Meta = provider.ProviderMeta{
-	Name:        "ollama",
-	DisplayName: "Ollama",
-	AuthTypes:   []provider.AuthType{},
+	ID:        "ollama",
+	Name:      "Ollama",
+	AuthTypes: []provider.AuthType{},
 }
 
 func init() {

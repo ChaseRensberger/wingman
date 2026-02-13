@@ -21,9 +21,9 @@ import (
 // ============================================
 
 var Meta = provider.ProviderMeta{
-	Name:        "anthropic",
-	DisplayName: "Anthropic",
-	AuthTypes:   []provider.AuthType{provider.AuthTypeAPIKey},
+	ID:        "anthropic",
+	Name:      "Anthropic",
+	AuthTypes: []provider.AuthType{provider.AuthTypeAPIKey},
 }
 
 func init() {

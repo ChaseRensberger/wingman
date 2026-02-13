@@ -546,8 +546,8 @@ func TestProviders(t *testing.T) {
 
 		names := make(map[string]bool)
 		for _, p := range providers {
-			if name, ok := p["name"].(string); ok {
-				names[name] = true
+			if id, ok := p["id"].(string); ok {
+				names[id] = true
 			}
 		}
 		if !names["anthropic"] {
@@ -571,8 +571,8 @@ func TestProviders(t *testing.T) {
 		var meta map[string]any
 		decodeJSON(t, resp, &meta)
 
-		if meta["name"] != "anthropic" {
-			t.Errorf("expected name 'anthropic', got %v", meta["name"])
+		if meta["id"] != "anthropic" {
+			t.Errorf("expected id 'anthropic', got %v", meta["id"])
 		}
 	})
 
