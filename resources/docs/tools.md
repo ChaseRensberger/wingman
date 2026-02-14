@@ -6,7 +6,9 @@ order: 103
 
 # Tools
 
-Tools are capabilities that agents can invoke during execution. Not all models support tools.
+Tools are capabilities that [agents](/docs/agents) can invoke during execution. Not all models support tool use.
+
+## Built-in Tools
 
 | Tool | Description |
 |------|-------------|
@@ -18,28 +20,7 @@ Tools are capabilities that agents can invoke during execution. Not all models s
 | `grep` | Search file contents with regex |
 | `webfetch` | Fetch URL contents |
 
-## Usage
-
-### HTTP Server
-
-Specify tools by name when creating an agent:
-
-```bash
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "CodeAssistant",
-    "instructions": "You are a helpful coding assistant.",
-    "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "provider": {
-      "id": "anthropic",
-      "model": "claude-sonnet-4-5",
-      "max_tokens": 4096
-    }
-  }'
-```
-
-### Go SDK
+## SDK Usage
 
 ```go
 agent.New("MyAgent",
@@ -55,6 +36,18 @@ agent.New("MyAgent",
 )
 ```
 
+## Server Usage
+
+Specify tools by name when creating an [agent](/docs/agents):
+
+```json
+{
+  "tools": ["bash", "read", "write", "edit", "glob", "grep"]
+}
+```
+
+See [Agents — Server Usage](/docs/agents) for the full agent creation payload.
+
 ## Custom Tools
 
 Implement the `Tool` interface:
@@ -66,4 +59,11 @@ type Tool interface {
     Definition() models.WingmanToolDefinition
     Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
 }
+```
+
+Register custom tools with a `tool.Registry`:
+
+```go
+registry := tool.NewRegistry()
+registry.Register(myCustomTool)
 ```

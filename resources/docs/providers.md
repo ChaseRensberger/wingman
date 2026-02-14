@@ -6,11 +6,22 @@ order: 100
 
 # Providers
 
-Providers are just an interface so that it's easy to translate between a model provider's specific typing and the typing Wingman uses. If you read the *Introduction*, this project was largely inspired by OpenCode's server. Instead of using Vercel's AI SDK, I've opted to define provider translation within Wingman. The con of this pattern (assuming it doesn't change) is that Wingman will likely never have the comprehensive support of the models you'll find on [models.dev](https://models.dev), the pro is that Wingman's core dependencies are pretty limited.
+A provider is an interface that translates between a model provider's API and Wingman's internal types. Instead of relying on a third-party SDK, Wingman defines provider translation internally. The tradeoff is that Wingman won't have the breadth of [models.dev](https://models.dev), but its core dependencies stay minimal.
 
-## SDK
+Currently supported: **Anthropic**, **Ollama**
 
-In the SDK, a provider is a typed instance that knows how to connect to a specific API and how to configure inference. Each provider package exports its own `Config` struct with provider-specific fields.
+## Provider Interface
+
+```go
+type Provider interface {
+    RunInference(ctx context.Context, req WingmanInferenceRequest) (*WingmanInferenceResponse, error)
+    StreamInference(ctx context.Context, req WingmanInferenceRequest) (Stream, error)
+}
+```
+
+Each provider package exports its own `Config` struct with provider-specific fields, giving you full type safety when using the SDK. See [Architecture](/docs/architecture) for more on the design rationale.
+
+## SDK Usage
 
 ```go
 import "wingman/provider/anthropic"
@@ -30,20 +41,13 @@ p := ollama.New(ollama.Config{
 })
 ```
 
-The provider is then attached to an agent:
+The provider is then passed to an [agent](/docs/agents) via `agent.WithProvider(p)`.
 
-```go
-a := agent.New("MyAgent",
-    agent.WithProvider(p),
-    agent.WithInstructions("..."),
-)
-```
+## Server Usage
 
-## Server
+On the server, provider configuration lives on the agent as a JSON object and credentials are managed separately.
 
-On the server side, the provider configuration lives on the agent as a JSON object. Auth credentials are managed separately.
-
-### Provider Discovery
+### Discovery
 
 ```
 GET    /provider                    # List all providers
@@ -68,21 +72,4 @@ curl -X PUT http://localhost:2323/provider/auth \
 
 ### Provider Config on Agents
 
-When creating an agent via the API, the `provider` field specifies which provider to use and how to configure inference:
-
-```bash
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Assistant",
-    "instructions": "Be helpful",
-    "provider": {
-      "id": "anthropic",
-      "model": "claude-sonnet-4-5",
-      "max_tokens": 4096,
-      "temperature": 0.7
-    }
-  }'
-```
-
-The server looks up the API key from the auth store and constructs the provider instance at inference time.
+When creating an agent via the API, the `provider` field specifies which provider to use and how to configure inference. See [Agents — Server Usage](/docs/agents) for the full agent creation payload.
