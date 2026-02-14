@@ -4,18 +4,14 @@ group: "Primitives"
 order: 101
 draft: false
 ---
+
 # Agents
 
-The word agent gets thrown around a lot these days and it is possible this gets renamed at some point but at least in Wingman, an **Agent** is stateless template that defines *how* to process some unit of work.
+An **Agent** is a stateless template that defines *how* to process a unit of work. It holds a name, instructions, [tools](/docs/tools), an optional output schema, and a [provider](/docs/providers).
 
-## SDK
+## SDK Usage
 
 ```go
-p := anthropic.New(anthropic.Config{
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
-})
-
 a := agent.New("AgentName",
     agent.WithInstructions("System prompt"),
     agent.WithProvider(p),
@@ -24,7 +20,19 @@ a := agent.New("AgentName",
 )
 ```
 
-## Server
+All options are optional except the name. For provider setup, see [Providers — SDK Usage](/docs/providers).
+
+### Available Options
+
+| Option | Description |
+|--------|-------------|
+| `WithID(id)` | Set a specific ID (auto-generated if omitted) |
+| `WithInstructions(s)` | System prompt for the agent |
+| `WithProvider(p)` | The [provider](/docs/providers) to use for inference |
+| `WithTools(t...)` | [Tools](/docs/tools) the agent can invoke |
+| `WithOutputSchema(s)` | JSON schema for structured output |
+
+## Server Usage
 
 ```
 POST   /agents      # Create agent
@@ -48,3 +56,5 @@ curl -X POST http://localhost:2323/agents \
     }
   }'
 ```
+
+The `provider.id` field determines which provider to use. The server looks up credentials from the auth store (see [Providers — Auth Management](/docs/providers)) and constructs the provider at inference time.

@@ -14,4 +14,4 @@ curl -fsSL https://wingman.actor/install | bash
 
 ## Documentation
 
-Check out the [docs site](https://wingman.actor/docs) for more detailed information about Wingman's primitives, architecture, and usage patterns. The docs site is also generated from [the docs folder](./docs) if that's more your style.
+Check out the [docs site](https://wingman.actor/docs) for more detailed information about Wingman's primitives, architecture, and usage patterns. The docs site is also generated from [the docs folder](.resources/docs) if that's more your style.

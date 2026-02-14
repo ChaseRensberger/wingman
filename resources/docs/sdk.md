@@ -3,9 +3,10 @@ title: "SDK"
 group: "Usage"
 order: 11
 ---
+
 # SDK
 
-If you want more fine grained control over messages, storage, or anything else that the built in server tries to handle for you, the Go SDK provides direct access to Wingman's primitives so that you may do with them what you please.
+The Go SDK provides direct access to Wingman's primitives for fine-grained control over messages, storage, and execution — without the persistence and HTTP layers that the [server](/docs/server) provides.
 
 ## Installation
 
@@ -13,7 +14,7 @@ If you want more fine grained control over messages, storage, or anything else t
 go get github.com/chaserensberger/wingman
 ```
 
-## Example
+## Quick Start
 
 ```go
 package main
@@ -36,14 +37,10 @@ func main() {
     a := agent.New("MyAgent",
         agent.WithInstructions("You are a helpful assistant."),
         agent.WithProvider(p),
-        agent.WithTools(
-            tool.NewBashTool(),
-        ),
+        agent.WithTools(tool.NewBashTool()),
     )
 
-    s := session.New(
-        session.WithAgent(a),
-    )
+    s := session.New(session.WithAgent(a))
 
     result, err := s.Run(context.Background(), "What operating system am I using?")
     if err != nil {
@@ -54,42 +51,18 @@ func main() {
 }
 ```
 
-## Core Primitives
+## Primitives
 
-### Provider
+The SDK is built around three core primitives. Each has its own reference page:
 
-Interface for LLM providers. The provider owns all inference configuration (model, max tokens, temperature, etc.) and is attached to an agent.
-
-```go
-p := anthropic.New(anthropic.Config{
-    APIKey:    "sk-...",  // Optional, defaults to ANTHROPIC_API_KEY env var
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
-})
-
-a := agent.New("MyAgent",
-    agent.WithProvider(p),
-    agent.WithInstructions("..."),
-)
-```
-
-### Tools
-
-Built-in tools for common operations:
-
-```go
-tool.NewBashTool()     // Execute shell commands
-tool.NewReadTool()     // Read file contents
-tool.NewWriteTool()    // Write files
-tool.NewEditTool()     // Edit files with find/replace
-tool.NewGlobTool()     // Find files by pattern
-tool.NewGrepTool()     // Search file contents
-tool.NewWebFetchTool() // Fetch URLs
-```
+- **[Providers](/docs/providers)** — Interface for LLM providers. Owns inference configuration (model, max tokens, temperature) and is attached to an agent.
+- **[Agents](/docs/agents)** — Stateless templates that define how to handle a unit of work (name, instructions, tools, provider).
+- **[Sessions](/docs/sessions)** — Stateful containers that maintain conversation history and execute the agent loop (`Run` / `RunStream`).
+- **[Tools](/docs/tools)** — Built-in and custom capabilities that agents can invoke during execution.
 
 ## Fleet (Concurrent Execution)
 
-Run multiple messages concurrently across worker actors:
+Run multiple messages concurrently across worker actors using the actor model:
 
 ```go
 fleet := actor.NewFleet(actor.FleetConfig{
@@ -115,33 +88,6 @@ for _, r := range results {
 }
 ```
 
-## Streaming
+For individual submissions with attached metadata, use `fleet.Submit(message, data)`.
 
-For streaming responses:
-
-```go
-stream, err := s.RunStream(ctx, "Your message")
-if err != nil {
-    log.Fatal(err)
-}
-
-for stream.Next() {
-    event := stream.Event()
-    // Handle streaming events
-}
-
-if err := stream.Err(); err != nil {
-    log.Fatal(err)
-}
-```
-
-## Result Structure
-
-```go
-type Result struct {
-    Response  string           // Final text response
-    ToolCalls []ToolCallResult // All tool calls made
-    Usage     WingmanUsage     // Token usage (InputTokens, OutputTokens)
-    Steps     int              // Number of inference steps
-}
-```
+See [Architecture](/docs/architecture) for more on the actor model design.

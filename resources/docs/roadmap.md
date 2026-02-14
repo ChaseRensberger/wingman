@@ -4,23 +4,21 @@ group: "Wingman"
 order: 2
 draft: false
 ---
+
 # Roadmap
 
-A list of things that I am working on/thinking about. If you have a request of something you'd like to be added, put up a PR adding it to this file.
+Things in progress and on the radar. If you have a feature request, put up a PR adding it to this file.
 
 ## Backlog
 
-- Easily translate between a WingmanInferenceConfig and a ProviderInferenceConfig
-- Better error support for rate limits, exceeding context, etc...
-- Fleets
-- Formations
+- Better error handling for rate limits, context overflow, etc.
+- Fleets (concurrent multi-agent orchestration)
+- Formations (structured agent pipelines)
 - Improved logging
-- Make model config unique CRUD resource for reusing configurations
-- clean up build provider in session handler
-- need this to work offline so either maintain private model dir or snapshot models.dev
+- Reusable model config as a CRUD resource
+- Offline support (private model directory or models.dev snapshot)
 
-
-## Providers to add
+## Providers to Add
 
 - OpenAI
 - Gemini

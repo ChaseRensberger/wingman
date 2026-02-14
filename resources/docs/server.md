@@ -3,11 +3,16 @@ title: "Server"
 group: "Usage"
 order: 10
 ---
+
 # Server
 
-The HTTP server is the primary way to use Wingman. Unlike [the SDK](https://wingman.actor/sdk) it comes batteries included with object persistence (via sqlite3) and a config file at `~/.config/wingman/`.
+The HTTP server is the primary way to use Wingman. Unlike [the SDK](/docs/sdk), it comes batteries-included with SQLite persistence and a config file at `~/.config/wingman/`.
 
 ## Installation
+
+```bash
+curl -fsSL https://wingman.actor/install.sh | sh
+```
 
 ## Starting the Server
 
@@ -15,7 +20,7 @@ The HTTP server is the primary way to use Wingman. Unlike [the SDK](https://wing
 wingman serve
 ```
 
-## Flags
+### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -23,37 +28,17 @@ wingman serve
 | `--host` | 127.0.0.1 | Host to bind to |
 | `--db` | ~/.local/share/wingman/wingman.db | Database path |
 
-## Authentication
-
-Before making inference requests, configure your provider API keys:
+## Quick Start
 
 ```bash
+# 1. Configure provider auth
 curl -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
-  -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
-```
-
-## Streaming
-
-For streaming responses, use the `/message/stream` endpoint. Events are sent as SSE:
-
-```bash
-curl -X POST http://localhost:2323/sessions/{id}/message/stream \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id": "01ABC...", "message": "Hello"}'
-```
-
-Events: `text`, `tool_use`, `tool_result`, `done`, `error`
-
-## Example Workflow
-
-```bash
-# 1. Configure auth
-curl -X PUT http://localhost:2323/provider/auth \
   -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 
 # 2. Create an agent
 curl -X POST http://localhost:2323/agents \
+  -H "Content-Type: application/json" \
   -d '{
     "name": "Assistant",
     "instructions": "Be helpful",
@@ -67,16 +52,28 @@ curl -X POST http://localhost:2323/agents \
 
 # 3. Create a session
 curl -X POST http://localhost:2323/sessions \
+  -H "Content-Type: application/json" \
   -d '{"work_dir": "/tmp"}'
 
-# 4. Send messages
-curl -X POST http://localhost:2323/sessions/01XYZ.../message \
-  -d '{"agent_id": "01ABC...", "message": "What OS am I on?"}'
+# 4. Send a message (use the IDs returned from steps 2 and 3)
+curl -X POST http://localhost:2323/sessions/{session_id}/message \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "{agent_id}", "message": "What OS am I on?"}'
 ```
 
----
+## Streaming
 
-## Routes
+Use the `/message/stream` endpoint for Server-Sent Events:
+
+```bash
+curl -X POST http://localhost:2323/sessions/{id}/message/stream \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "01ABC...", "message": "Hello"}'
+```
+
+Event types: `text`, `tool_use`, `tool_result`, `done`, `error`
+
+## Route Reference
 
 ### Health
 
@@ -84,40 +81,42 @@ curl -X POST http://localhost:2323/sessions/01XYZ.../message \
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
 
-### Provider
+### Providers
+
+See [Providers](/docs/providers) for details on discovery and auth management.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/provider` | List all available providers from wingman registry |
-| `GET` | `/provider/auth` | Get authentication status for configured providers |
-| `PUT` | `/provider/auth` | Set provider authentication credential(s) |
-| `DELETE` | `/provider/auth/{provider}` | Remove authentication for a provider |
+| `GET` | `/provider` | List available providers |
+| `GET` | `/provider/auth` | Get auth status |
+| `PUT` | `/provider/auth` | Set provider credentials |
+| `DELETE` | `/provider/auth/{provider}` | Remove provider credentials |
 | `GET` | `/provider/{name}` | Get provider details |
-| `GET` | `/provider/{name}/models` | List all models for a provider |
-| `GET` | `/provider/{name}/models/{model}` | Get details for a specific model |
+| `GET` | `/provider/{name}/models` | List models for a provider |
+| `GET` | `/provider/{name}/models/{model}` | Get model details |
 
 ### Agents
 
+See [Agents](/docs/agents) for payload details and options.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/agents` | Create a new agent |
-| `GET` | `/agents` | List all agents |
-| `GET` | `/agents/{id}` | Get an agent by ID |
-| `PUT` | `/agents/{id}` | Update an agent |
-| `DELETE` | `/agents/{id}` | Delete an agent |
+| `POST` | `/agents` | Create agent |
+| `GET` | `/agents` | List agents |
+| `GET` | `/agents/{id}` | Get agent |
+| `PUT` | `/agents/{id}` | Update agent |
+| `DELETE` | `/agents/{id}` | Delete agent |
 
 ### Sessions
 
+See [Sessions](/docs/sessions) for payload details and message handling.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/sessions` | Create a new session |
-| `GET` | `/sessions` | List all sessions |
-| `GET` | `/sessions/{id}` | Get a session by ID |
-| `PUT` | `/sessions/{id}` | Update a session |
-| `DELETE` | `/sessions/{id}` | Delete a session |
-| `POST` | `/sessions/{id}/message` | Send a message and get a response |
-| `POST` | `/sessions/{id}/message/stream` | Send a message and stream the response (SSE) |
-
-### Fleets
-
-### Formations
+| `POST` | `/sessions` | Create session |
+| `GET` | `/sessions` | List sessions |
+| `GET` | `/sessions/{id}` | Get session |
+| `PUT` | `/sessions/{id}` | Update session |
+| `DELETE` | `/sessions/{id}` | Delete session |
+| `POST` | `/sessions/{id}/message` | Send message (blocking) |
+| `POST` | `/sessions/{id}/message/stream` | Send message (SSE) |
