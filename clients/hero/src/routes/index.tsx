@@ -55,7 +55,7 @@ function InstallSection() {
 			<div className="space-y-2">
 				<p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">SDK</p>
 				<CopyCommand command={SDK_COMMAND}>
-					go get github.com/<span className="font-semibold text-foreground">chaserensberger/wingman</span>
+					{SDK_COMMAND}
 				</CopyCommand>
 			</div>
 			<div className="space-y-2 opacity-50">
@@ -66,11 +66,11 @@ function InstallSection() {
 				<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm pointer-events-none select-none">
 					<span className="text-muted-foreground">$</span>
 					<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
-						curl -fsSL https://wingman.actor/install | bash
+						{SERVER_COMMAND}
 					</code>
 				</div>
 			</div>
-		</div>
+		</div >
 	);
 }
 
@@ -99,17 +99,17 @@ function Hero() {
 					<NavLink name="Blog" url={"/blog"} />
 				</div>
 			</nav>
-		<section className="flex-1 border-b p-12 space-y-8">
-			<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
-				This project is under active development and is not yet stable. APIs may change without notice.
-			</div>
-			<h1 className="text-4xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
-			<div className="space-y-4">
-				<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
-					An open source, highly performant, actor-based, agent orchestration framework
-				</h2>
-				<InstallSection />
-			</div>
+			<section className="flex-1 border-b p-12 space-y-8">
+				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
+					This project is under active development and is not yet stable. APIs may change without notice.
+				</div>
+				<h1 className="text-4xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
+				<div className="space-y-4">
+					<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
+						An open source, highly performant, actor-based, agent orchestration framework
+					</h2>
+					<InstallSection />
+				</div>
 			</section>
 			<footer className="px-6 py-2 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
