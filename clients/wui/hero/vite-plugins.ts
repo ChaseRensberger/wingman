@@ -99,7 +99,7 @@ export function docsPlugin() {
   return markdownPlugin({
     name: "vite-plugin-docs",
     virtualModuleId: "virtual:docs",
-    contentDir: path.resolve(__dirname, "../../resources/docs"),
+    contentDir: path.resolve(__dirname, "../../../resources/docs"),
     fields: ["title", "group", "order"],
     defaults: { title: "", group: "Uncategorized", order: 999 },
     exportName: "docs",
@@ -110,7 +110,7 @@ export function blogPlugin() {
   return markdownPlugin({
     name: "vite-plugin-blog",
     virtualModuleId: "virtual:blog",
-    contentDir: path.resolve(__dirname, "../../resources/blog"),
+    contentDir: path.resolve(__dirname, "../../../resources/blog"),
     fields: ["title", "date"],
     exportName: "posts",
     sort: (a, b) => (b.date > a.date ? 1 : -1),
