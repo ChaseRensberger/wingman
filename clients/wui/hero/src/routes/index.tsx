@@ -53,15 +53,15 @@ function InstallSection() {
 	return (
 		<div className="space-y-6">
 			<div className="space-y-2">
-				<p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">SDK</p>
+				<p className="text-xs text-muted-foreground uppercase tracking-wider">SDK</p>
 				<CopyCommand command={SDK_COMMAND}>
 					{SDK_COMMAND}
 				</CopyCommand>
 			</div>
 			<div className="space-y-2 opacity-50">
 				<div className="flex items-center gap-2">
-					<p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Server</p>
-					<Badge variant="secondary" className="text-[10px] font-mono uppercase tracking-wider">Coming Soon</Badge>
+					<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
+					<Badge variant="secondary" className="uppercase tracking-wider">Coming Soon</Badge>
 				</div>
 				<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm pointer-events-none select-none">
 					<span className="text-muted-foreground">$</span>
