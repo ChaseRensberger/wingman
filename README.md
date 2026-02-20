@@ -11,6 +11,17 @@ Wingman is a highly performant agent orchestration framework written in Go. This
 
 ## Installation
 
+### SDK
+
+```bash
+go get github.com/chaserensberger/wingman
+```
+
+### Server
+
+> [!NOTE]
+> The server binary is coming soon. For now, use the SDK directly in your Go projects.
+
 ```bash
 curl -fsSL https://wingman.actor/install | bash
 ```

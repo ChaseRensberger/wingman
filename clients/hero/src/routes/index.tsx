@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
+import { Badge } from "@wingman/core/components/primitives/badge";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { Link } from '@tanstack/react-router';
 
@@ -13,14 +14,15 @@ function RouteComponent() {
 	return <Hero />
 }
 
-const INSTALL_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
+const SDK_COMMAND = "go get github.com/chaserensberger/wingman";
+const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 
-function CopyCommand() {
+function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
 	const [copied, setCopied] = useState(false);
 
 	const handleCopy = async () => {
-		await navigator.clipboard.writeText(INSTALL_COMMAND);
+		await navigator.clipboard.writeText(command);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 	};
@@ -29,7 +31,7 @@ function CopyCommand() {
 		<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm">
 			<span className="text-muted-foreground select-none">$</span>
 			<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap scrollbar-hide text-muted-foreground">
-				curl -fsSL https://<span className="font-semibold text-foreground">wingman.actor/install</span> | bash
+				{children}
 			</code>
 			<Button
 				variant="ghost"
@@ -43,6 +45,31 @@ function CopyCommand() {
 					<Copy className="h-4 w-4" />
 				)}
 			</Button>
+		</div>
+	);
+}
+
+function InstallSection() {
+	return (
+		<div className="space-y-6">
+			<div className="space-y-2">
+				<p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">SDK</p>
+				<CopyCommand command={SDK_COMMAND}>
+					go get github.com/<span className="font-semibold text-foreground">chaserensberger/wingman</span>
+				</CopyCommand>
+			</div>
+			<div className="space-y-2 opacity-50">
+				<div className="flex items-center gap-2">
+					<p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Server</p>
+					<Badge variant="secondary" className="text-[10px] font-mono uppercase tracking-wider">Coming Soon</Badge>
+				</div>
+				<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm pointer-events-none select-none">
+					<span className="text-muted-foreground">$</span>
+					<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
+						curl -fsSL https://wingman.actor/install | bash
+					</code>
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -77,12 +104,12 @@ function Hero() {
 				This project is under active development and is not yet stable. APIs may change without notice.
 			</div>
 			<h1 className="text-4xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
-				<div className="space-y-4">
-					<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
-						An open source, highly performant, actor-based, agent orchestration framework
-					</h2>
-					<CopyCommand />
-				</div>
+			<div className="space-y-4">
+				<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
+					An open source, highly performant, actor-based, agent orchestration framework
+				</h2>
+				<InstallSection />
+			</div>
 			</section>
 			<footer className="px-6 py-2 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
