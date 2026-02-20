@@ -4,6 +4,9 @@
 
 # Wingman
 
+> [!WARNING]
+> This project is under active development and is not yet stable. APIs may change without notice.
+
 Wingman is a highly performant agent orchestration framework written in Go. This project is heavily inspired by [OpenCode](https://opencode.ai)'s server approach to running agents but the goal is to achieve improved performance while also serving as an outlet for me to express my opinionated decisions about how agents should be run/composed together.
 
 ## Installation
