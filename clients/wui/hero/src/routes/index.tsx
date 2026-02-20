@@ -113,7 +113,7 @@ function Hero() {
 			</section>
 			<footer className="px-6 py-2 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
-					Hero
+					Wingman
 				</p>
 			</footer>
 		</main >
