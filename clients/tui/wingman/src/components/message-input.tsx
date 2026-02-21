@@ -29,7 +29,7 @@ export function MessageInput(props: {
 				focused
 				keyBindings={[
 					{ name: "return", action: "submit" as const },
-					{ name: "return", meta: true, action: "newline" as const },
+					{ name: "return", shift: true, action: "newline" as const },
 				]}
 				onSubmit={() => {
 					const ta = textareaRef.current;
