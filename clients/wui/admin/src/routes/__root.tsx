@@ -10,12 +10,10 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
-	SidebarInset,
-	SidebarTrigger,
 } from "@wingman/core/components/primitives/sidebar";
-import { Separator } from "@wingman/core/components/primitives/separator";
 import { Bot } from "lucide-react";
 import WingmanIcon from "@wingman/core/assets/WingmanBlue.png";
+import { Separator } from "@wingman/core/components/primitives/separator";
 
 const NAV_ITEMS = [
 	{ label: "Agents", to: "/agents" as const, icon: Bot },
@@ -26,21 +24,21 @@ function AppSidebar() {
 	const currentPath = matches[matches.length - 1]?.pathname ?? "";
 
 	return (
-		<Sidebar>
-			<SidebarHeader className="p-4">
-				<Link to="/" className="flex items-center gap-2">
-					<img src={WingmanIcon} className="w-8 h-8" alt="Wingman" />
-					<span className="font-semibold text-sm tracking-widest text-primary">WINGMAN</span>
-				</Link>
+		<Sidebar variant="sidebar" collapsible="none" className="border-r bg-background sticky top-0">
+			<SidebarHeader>
+				<div className="flex items-center gap-2">
+					<img src={WingmanIcon} className="w-12 h-12" />
+					<span className="text-xl font-semibold text-primary">Admin</span>
+				</div>
 			</SidebarHeader>
 			<Separator />
-			<SidebarContent>
-				<SidebarGroup>
+			<SidebarContent className="p-4">
+				<SidebarGroup className="p-0">
 					<SidebarGroupContent>
-						<SidebarMenu>
+						<SidebarMenu className="gap-1">
 							{NAV_ITEMS.map((item) => (
 								<SidebarMenuItem key={item.to}>
-									<SidebarMenuButton asChild isActive={currentPath.startsWith(item.to)} tooltip={item.label}>
+									<SidebarMenuButton asChild isActive={currentPath.startsWith(item.to)} className="h-auto p-2">
 										<Link to={item.to}>
 											<item.icon className="size-4" />
 											<span>{item.label}</span>
@@ -60,18 +58,12 @@ function RootLayout() {
 	return (
 		<ThemeProvider defaultTheme="system" storageKey="wingman-admin-theme">
 			<SidebarProvider>
-				<AppSidebar />
-				<SidebarInset>
-					<header className="flex h-12 items-center gap-2 border-b px-4 md:hidden">
-						<SidebarTrigger />
-						<Separator orientation="vertical" className="h-4" />
-						<img src={WingmanIcon} className="w-6 h-6" alt="Wingman" />
-						<span className="font-semibold text-xs tracking-widest text-primary">WINGMAN</span>
-					</header>
-					<main className="flex-1 p-4 md:p-6">
+				<div className="flex-1 flex">
+					<AppSidebar />
+					<main className="flex-1">
 						<Outlet />
 					</main>
-				</SidebarInset>
+				</div>
 			</SidebarProvider>
 		</ThemeProvider>
 	);
