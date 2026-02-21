@@ -9,6 +9,7 @@
     "./components/primitives/*": "./src/components/primitives/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./lib/*": "./src/lib/*.ts",
+    "./assets/*": "./src/assets/*",
     "./styles/globals.css": "./src/styles/globals.css"
   },
   "dependencies": {
