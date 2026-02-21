@@ -55,7 +55,7 @@ function DocsNavContent({ onNavigate }: { onNavigate?: () => void }) {
 
 function DocsSidebar() {
 	return (
-		<Sidebar variant="sidebar" collapsible="none" className="border-r bg-background sticky top-[4rem] h-[calc(100vh-4rem)] hidden md:flex">
+		<Sidebar variant="sidebar" collapsible="none" className="border-r bg-background sticky top-16 h-[calc(100vh-4rem)] hidden md:flex">
 			<DocsNavContent />
 		</Sidebar>
 	);
@@ -67,7 +67,7 @@ function MobileDocsOverlay() {
 	if (!openMobile) return null;
 
 	return (
-		<div className="fixed inset-0 top-[4rem] z-20 bg-background md:hidden">
+		<div className="fixed inset-0 top-16 z-20 bg-background md:hidden">
 			<DocsNavContent onNavigate={() => setOpenMobile(false)} />
 		</div>
 	);
