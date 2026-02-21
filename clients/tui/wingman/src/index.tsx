@@ -6,18 +6,22 @@ import { MessageInput } from "./components/message-input";
 function App() {
 	return (
 		<box flexGrow={1} backgroundColor={theme.background}>
-			<box flexGrow={1} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} gap={1}>
+			<box flexGrow={1} justifyContent="center" alignItems="center">
 				<text fg={theme.text}>
 					<strong>Wingman</strong>
 				</text>
-				<MessageInput
-					placeholder='Ask anything... "Fix a TODO in the codebase"'
-				/>
 			</box>
-			<box paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2} flexDirection="row" flexShrink={0}>
-				<text fg={theme.textMuted}>{process.cwd()}</text>
-				<box flexGrow={1} />
-				<text fg={theme.textMuted}>v0.1.0</text>
+			<box>
+				<box paddingX={2} flexDirection="column" gap={2}>
+					<MessageInput
+						placeholder='Ask for anything...'
+					/>
+					<box flexDirection="row" justifyContent="space-between">
+						<text fg={theme.textMuted}>{process.cwd()}</text>
+						<box flexGrow={1} />
+						<text fg={theme.textMuted}>v0.1.0</text>
+					</box>
+				</box>
 			</box>
 		</box>
 	);

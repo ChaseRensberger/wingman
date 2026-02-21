@@ -10,14 +10,14 @@ export function MessageInput(props: {
 
 	return (
 		<box
-			border={["left"] as const}
+			border={["left", "right"]}
 			borderColor={theme.primary}
-			paddingX={2}
-			paddingTop={1}
 			backgroundColor={theme.backgroundElement}
 			flexGrow={1}
 			flexShrink={0}
-			maxHeight={5}
+			minHeight={3}
+			paddingY={1}
+			paddingX={1}
 			width="100%"
 		>
 			<textarea
