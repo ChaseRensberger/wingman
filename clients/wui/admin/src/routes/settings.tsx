@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { getBaseUrl, setBaseUrl, api } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Input } from "@wingman/core/components/primitives/input";
@@ -13,33 +14,41 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
-  const [url, setUrl] = useState(getBaseUrl());
+  const initialBaseUrl = getBaseUrl();
+  const [url, setUrl] = useState(initialBaseUrl);
+  const [savedBaseUrl, setSavedBaseUrl] = useState(initialBaseUrl);
   const [saved, setSaved] = useState(false);
-  const [status, setStatus] = useState<"unknown" | "connected" | "error">("unknown");
-  const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
-    checkHealth();
-  }, []);
+  const healthQuery = useQuery({
+    queryKey: ["health", savedBaseUrl],
+    queryFn: () => api.health(),
+    retry: false,
+  });
 
-  const checkHealth = async () => {
-    setChecking(true);
-    try {
-      await api.health();
-      setStatus("connected");
-    } catch {
-      setStatus("error");
-    } finally {
-      setChecking(false);
+  const handleSave = () => {
+    const next = url.trim();
+    if (!next) return;
+
+    setBaseUrl(next);
+    setSavedBaseUrl(next);
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+
+    if (next === savedBaseUrl) {
+      healthQuery.refetch();
     }
   };
 
-  const handleSave = () => {
-    setBaseUrl(url.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    checkHealth();
-  };
+  const statusText = healthQuery.isFetching
+    ? "Checking..."
+    : healthQuery.isSuccess
+      ? "Connected"
+      : healthQuery.isError
+        ? "Unreachable"
+        : "Unknown";
+
+  const statusVariant = healthQuery.isSuccess ? "default" : healthQuery.isError ? "destructive" : "secondary";
 
   return (
     <div className="space-y-4">
@@ -49,13 +58,9 @@ function SettingsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Server Connection</CardTitle>
-            <Badge variant={status === "connected" ? "default" : status === "error" ? "destructive" : "secondary"}>
-              {checking ? "Checking..." : status === "connected" ? "Connected" : status === "error" ? "Unreachable" : "Unknown"}
-            </Badge>
+            <Badge variant={statusVariant}>{statusText}</Badge>
           </div>
-          <CardDescription className="text-xs">
-            Configure the base URL for the Wingman HTTP server.
-          </CardDescription>
+          <CardDescription className="text-xs">Configure the base URL for the Wingman HTTP server.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -73,9 +78,14 @@ function SettingsPage() {
               </Button>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={checkHealth} disabled={checking}>
-            {checking ? "Checking..." : "Test Connection"}
+
+          <Button variant="outline" size="sm" onClick={() => healthQuery.refetch()} disabled={healthQuery.isFetching}>
+            {healthQuery.isFetching ? "Checking..." : "Test Connection"}
           </Button>
+
+          {healthQuery.error instanceof Error && (
+            <p className="text-xs text-destructive">{healthQuery.error.message}</p>
+          )}
         </CardContent>
       </Card>
     </div>

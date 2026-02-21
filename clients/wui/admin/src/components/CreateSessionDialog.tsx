@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type CreateSessionRequest } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Input } from "@wingman/core/components/primitives/input";
@@ -16,22 +17,24 @@ type CreateSessionDialogProps = {
 };
 
 export function CreateSessionDialog({ onCreated }: CreateSessionDialogProps) {
+  const queryClient = useQueryClient();
   const [workDir, setWorkDir] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const createSessionMutation = useMutation({
+    mutationFn: (req: CreateSessionRequest) => api.createSession(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      onCreated();
+    },
+  });
 
   const handleSubmit = async () => {
-    setSubmitting(true);
-    setError(null);
     try {
       const req: CreateSessionRequest = {};
       if (workDir.trim()) req.work_dir = workDir.trim();
-      await api.createSession(req);
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create session");
-    } finally {
-      setSubmitting(false);
+      createSessionMutation.mutate(req);
+    } catch {
+      // Input validation covers empty values.
     }
   };
 
@@ -42,9 +45,9 @@ export function CreateSessionDialog({ onCreated }: CreateSessionDialogProps) {
         <DialogDescription>Start a new session with an optional working directory.</DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
-        {error && (
+        {createSessionMutation.error instanceof Error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-sm text-destructive">
-            {error}
+            {createSessionMutation.error.message}
           </div>
         )}
         <div className="space-y-2">
@@ -58,8 +61,8 @@ export function CreateSessionDialog({ onCreated }: CreateSessionDialogProps) {
         </div>
       </div>
       <DialogFooter>
-        <Button onClick={handleSubmit} disabled={submitting}>
-          {submitting ? "Creating..." : "Create"}
+        <Button onClick={handleSubmit} disabled={createSessionMutation.isPending}>
+          {createSessionMutation.isPending ? "Creating..." : "Create"}
         </Button>
       </DialogFooter>
     </DialogContent>

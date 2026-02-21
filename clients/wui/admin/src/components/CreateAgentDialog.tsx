@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type CreateAgentRequest, type ProviderConfig } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Input } from "@wingman/core/components/primitives/input";
@@ -20,6 +21,8 @@ type CreateAgentDialogProps = {
 };
 
 export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
+  const queryClient = useQueryClient();
+
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [tools, setTools] = useState<string[]>([]);
@@ -27,13 +30,17 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
   const [model, setModel] = useState("");
   const [maxTokens, setMaxTokens] = useState("");
   const [temperature, setTemperature] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const createAgentMutation = useMutation({
+    mutationFn: (req: CreateAgentRequest) => api.createAgent(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      onCreated();
+    },
+  });
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
-    setSubmitting(true);
-    setError(null);
     try {
       const req: CreateAgentRequest = { name: name.trim() };
       if (instructions.trim()) req.instructions = instructions.trim();
@@ -45,12 +52,9 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
         if (temperature) provider.temperature = parseFloat(temperature);
         req.provider = provider;
       }
-      await api.createAgent(req);
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create agent");
-    } finally {
-      setSubmitting(false);
+      createAgentMutation.mutate(req);
+    } catch {
+      // Validation/parse errors are handled by disabled state.
     }
   };
 
@@ -65,9 +69,9 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
         <DialogDescription>Configure a new agent with tools and provider settings.</DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
-        {error && (
+        {createAgentMutation.error instanceof Error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-sm text-destructive">
-            {error}
+            {createAgentMutation.error.message}
           </div>
         )}
         <div className="space-y-2">
@@ -121,8 +125,8 @@ export function CreateAgentDialog({ onCreated }: CreateAgentDialogProps) {
         </div>
       </div>
       <DialogFooter>
-        <Button onClick={handleSubmit} disabled={!name.trim() || submitting}>
-          {submitting ? "Creating..." : "Create"}
+        <Button onClick={handleSubmit} disabled={!name.trim() || createAgentMutation.isPending}>
+          {createAgentMutation.isPending ? "Creating..." : "Create"}
         </Button>
       </DialogFooter>
     </DialogContent>

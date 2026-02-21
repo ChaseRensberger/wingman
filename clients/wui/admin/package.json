@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.158.4",
     "@vercel/analytics": "^1.6.1",
     "@wingman/core": "workspace:*",

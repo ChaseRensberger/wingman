@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Agent } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Badge } from "@wingman/core/components/primitives/badge";
@@ -13,38 +14,36 @@ export const Route = createFileRoute("/agents")({
 });
 
 function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 
-  const fetchAgents = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api.listAgents();
-      setAgents(data ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch agents");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchAgents();
-  }, [fetchAgents]);
+  const agentsQuery = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api.listAgents(),
+  });
 
-  const handleDelete = async (id: string) => {
-    try {
-      await api.deleteAgent(id);
-      if (selectedAgent?.id === id) setSelectedAgent(null);
-      fetchAgents();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete agent");
-    }
+  const deleteAgentMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAgent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
+
+  const handleDelete = (id: string) => {
+    deleteAgentMutation.mutate(id, {
+      onSuccess: () => {
+        if (selectedAgent?.id === id) setSelectedAgent(null);
+      },
+    });
   };
+
+  const agents = agentsQuery.data ?? [];
+  const errorMessage =
+    (agentsQuery.error instanceof Error && agentsQuery.error.message) ||
+    (deleteAgentMutation.error instanceof Error && deleteAgentMutation.error.message) ||
+    null;
 
   return (
     <div className="space-y-4">
@@ -60,19 +59,18 @@ function AgentsPage() {
           <CreateAgentDialog
             onCreated={() => {
               setCreateOpen(false);
-              fetchAgents();
             }}
           />
         </Dialog>
       </div>
 
-      {error && (
+      {errorMessage && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+          {errorMessage}
         </div>
       )}
 
-      {loading ? (
+      {agentsQuery.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading...</div>
       ) : agents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -99,6 +97,7 @@ function AgentsPage() {
                         e.stopPropagation();
                         handleDelete(agent.id);
                       }}
+                      disabled={deleteAgentMutation.isPending}
                     >
                       <Trash2 className="size-3.5 text-muted-foreground" />
                     </Button>

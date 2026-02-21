@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Session } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@wingman/core/components/primitives/card";
@@ -12,38 +13,36 @@ export const Route = createFileRoute("/sessions")({
 });
 
 function SessionsPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await api.listSessions();
-      setSessions(data ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch sessions");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+  const sessionsQuery = useQuery({
+    queryKey: ["sessions"],
+    queryFn: () => api.listSessions(),
+  });
 
-  const handleDelete = async (id: string) => {
-    try {
-      await api.deleteSession(id);
-      if (selectedSession?.id === id) setSelectedSession(null);
-      fetchSessions();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete session");
-    }
+  const deleteSessionMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+
+  const handleDelete = (id: string) => {
+    deleteSessionMutation.mutate(id, {
+      onSuccess: () => {
+        if (selectedSession?.id === id) setSelectedSession(null);
+      },
+    });
   };
+
+  const sessions = sessionsQuery.data ?? [];
+  const errorMessage =
+    (sessionsQuery.error instanceof Error && sessionsQuery.error.message) ||
+    (deleteSessionMutation.error instanceof Error && deleteSessionMutation.error.message) ||
+    null;
 
   return (
     <div className="space-y-4">
@@ -59,19 +58,18 @@ function SessionsPage() {
           <CreateSessionDialog
             onCreated={() => {
               setCreateOpen(false);
-              fetchSessions();
             }}
           />
         </Dialog>
       </div>
 
-      {error && (
+      {errorMessage && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+          {errorMessage}
         </div>
       )}
 
-      {loading ? (
+      {sessionsQuery.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading...</div>
       ) : sessions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -100,6 +98,7 @@ function SessionsPage() {
                         e.stopPropagation();
                         handleDelete(session.id);
                       }}
+                      disabled={deleteSessionMutation.isPending}
                     >
                       <Trash2 className="size-3.5 text-muted-foreground" />
                     </Button>

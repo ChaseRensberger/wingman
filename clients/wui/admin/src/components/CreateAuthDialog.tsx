@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type AuthCredential } from "@/lib/api";
 import { Button } from "@wingman/core/components/primitives/button";
 import { Input } from "@wingman/core/components/primitives/input";
@@ -29,12 +30,25 @@ type CreateAuthDialogProps = {
 };
 
 export function CreateAuthDialog({ onCreated }: CreateAuthDialogProps) {
+  const queryClient = useQueryClient();
   const [provider, setProvider] = useState("");
   const [authType, setAuthType] = useState("api_key");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const saveAuthMutation = useMutation({
+    mutationFn: ({
+      providerId,
+      credential,
+    }: {
+      providerId: string;
+      credential: AuthCredential;
+    }) => api.setProvidersAuth({ providers: { [providerId]: credential } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["providers-auth"] });
+      onCreated();
+    },
+  });
 
   const selectedProvider = PROVIDERS.find((p) => p.id === provider);
 
@@ -46,8 +60,6 @@ export function CreateAuthDialog({ onCreated }: CreateAuthDialogProps) {
 
   const handleSubmit = async () => {
     if (!provider) return;
-    setSubmitting(true);
-    setError(null);
     try {
       const credential: AuthCredential = { type: authType };
       if (authType === "api_key") {
@@ -55,12 +67,9 @@ export function CreateAuthDialog({ onCreated }: CreateAuthDialogProps) {
       } else if (authType === "base_url") {
         credential.access_token = baseUrl.trim();
       }
-      await api.setProvidersAuth({ providers: { [provider]: credential } });
-      onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save auth");
-    } finally {
-      setSubmitting(false);
+      saveAuthMutation.mutate({ providerId: provider, credential });
+    } catch {
+      // Provider selection guards prevent invalid requests.
     }
   };
 
@@ -71,9 +80,9 @@ export function CreateAuthDialog({ onCreated }: CreateAuthDialogProps) {
         <DialogDescription>Configure credentials for a provider.</DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
-        {error && (
+        {saveAuthMutation.error instanceof Error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-sm text-destructive">
-            {error}
+            {saveAuthMutation.error.message}
           </div>
         )}
         <div className="space-y-2">
@@ -116,8 +125,8 @@ export function CreateAuthDialog({ onCreated }: CreateAuthDialogProps) {
         )}
       </div>
       <DialogFooter>
-        <Button onClick={handleSubmit} disabled={!provider || submitting}>
-          {submitting ? "Saving..." : "Save"}
+        <Button onClick={handleSubmit} disabled={!provider || saveAuthMutation.isPending}>
+          {saveAuthMutation.isPending ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>
     </DialogContent>
