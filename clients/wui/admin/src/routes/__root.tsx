@@ -11,12 +11,15 @@ import {
 	SidebarMenuItem,
 	SidebarProvider,
 } from "@wingman/core/components/primitives/sidebar";
-import { Bot } from "lucide-react";
+import { Bot, KeyRound, MessageSquare, Settings } from "lucide-react";
 import WingmanIcon from "@wingman/core/assets/WingmanBlue.png";
 import { Separator } from "@wingman/core/components/primitives/separator";
 
 const NAV_ITEMS = [
 	{ label: "Agents", to: "/agents" as const, icon: Bot },
+	{ label: "Sessions", to: "/sessions" as const, icon: MessageSquare },
+	{ label: "Auth", to: "/auth" as const, icon: KeyRound },
+	{ label: "Settings", to: "/settings" as const, icon: Settings },
 ];
 
 function AppSidebar() {
