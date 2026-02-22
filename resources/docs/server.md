@@ -58,8 +58,8 @@ curl -X POST http://localhost:2323/agents \
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash"],
-    "provider": {
-      "id": "anthropic",
+    "provider_id": "anthropic",
+    "provider_options": {
       "model": "claude-sonnet-4-5",
       "max_tokens": 4096
     }

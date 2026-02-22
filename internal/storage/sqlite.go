@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS agents (
 	name TEXT NOT NULL,
 	instructions TEXT,
 	tools TEXT,
-	provider TEXT,
+	provider_id TEXT,
+	provider_options TEXT,
 	output_schema TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
@@ -123,14 +124,14 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 		return err
 	}
 
-	var providerJSON *string
-	if agent.Provider != nil {
-		b, err := json.Marshal(agent.Provider)
+	var providerOptionsJSON *string
+	if agent.ProviderOptions != nil {
+		b, err := json.Marshal(agent.ProviderOptions)
 		if err != nil {
 			return err
 		}
 		s := string(b)
-		providerJSON = &s
+		providerOptionsJSON = &s
 	}
 
 	var outputSchemaJSON *string
@@ -144,9 +145,9 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools, provider, output_schema, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), providerJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools, provider_id, provider_options, output_schema, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.ProviderID, providerOptionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -157,13 +158,13 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	var agent Agent
 	var toolsJSON string
-	var providerJSON sql.NullString
+	var providerOptionsJSON sql.NullString
 	var outputSchemaJSON sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, name, instructions, tools, provider, output_schema, created_at, updated_at
+		SELECT id, name, instructions, tools, provider_id, provider_options, output_schema, created_at, updated_at
 		FROM agents WHERE id = ?
-	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
+	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.ProviderID, &providerOptionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("agent not found: %s", id)
@@ -178,12 +179,10 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 		}
 	}
 
-	if providerJSON.Valid && providerJSON.String != "" {
-		var pc ProviderConfig
-		if err := json.Unmarshal([]byte(providerJSON.String), &pc); err != nil {
+	if providerOptionsJSON.Valid && providerOptionsJSON.String != "" {
+		if err := json.Unmarshal([]byte(providerOptionsJSON.String), &agent.ProviderOptions); err != nil {
 			return nil, err
 		}
-		agent.Provider = &pc
 	}
 
 	if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
@@ -197,7 +196,7 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools, provider, output_schema, created_at, updated_at
+		SELECT id, name, instructions, tools, provider_id, provider_options, output_schema, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -209,10 +208,10 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	for rows.Next() {
 		var agent Agent
 		var toolsJSON string
-		var providerJSON sql.NullString
+		var providerOptionsJSON sql.NullString
 		var outputSchemaJSON sql.NullString
 
-		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &providerJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.ProviderID, &providerOptionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -222,12 +221,10 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 			}
 		}
 
-		if providerJSON.Valid && providerJSON.String != "" {
-			var pc ProviderConfig
-			if err := json.Unmarshal([]byte(providerJSON.String), &pc); err != nil {
+		if providerOptionsJSON.Valid && providerOptionsJSON.String != "" {
+			if err := json.Unmarshal([]byte(providerOptionsJSON.String), &agent.ProviderOptions); err != nil {
 				return nil, err
 			}
-			agent.Provider = &pc
 		}
 
 		if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
@@ -250,14 +247,14 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 		return err
 	}
 
-	var providerJSON *string
-	if agent.Provider != nil {
-		b, err := json.Marshal(agent.Provider)
+	var providerOptionsJSON *string
+	if agent.ProviderOptions != nil {
+		b, err := json.Marshal(agent.ProviderOptions)
 		if err != nil {
 			return err
 		}
 		s := string(b)
-		providerJSON = &s
+		providerOptionsJSON = &s
 	}
 
 	var outputSchemaJSON *string
@@ -271,9 +268,9 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 	}
 
 	result, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, output_schema = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider_id = ?, provider_options = ?, output_schema = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), providerJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), agent.ProviderID, providerOptionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
 
 	if err != nil {
 		return err
