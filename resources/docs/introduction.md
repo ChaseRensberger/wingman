@@ -15,9 +15,9 @@ Welcome to the Wingman documentation. I don't have a habit of writing very good 
 
 ## Some Backstory
 
-I got the idea for Wingman back in May 2025, while playing with [OpenCode](https://opencode.ai). I quite liked OpenCode's approach to agents, specifically the client/server relationship between the TUI frontend and the agentic backend. If you come from the web application world like I do, this idea is nothing to write home about. Still, I couldn't help but feel like the idea of composing agents via the universal language agnostic information transport layer (aka http) was interesting enough to persue.
+I got the idea for Wingman back in May 2025, while playing with [OpenCode](https://opencode.ai). I quite liked OpenCode's approach to agents, specifically the client/server relationship between the TUI frontend and the agentic backend. If you come from the web application world like I do, this idea is nothing to write home about. Still, I couldn't help but feel like the idea of composing agents via the universal language agnostic information transport layer (aka http) was interesting enough to pursue.
 
-"So how is this different then OpenCode's server then?" you might say. The short answer is that there's less cool features. The slightly longer answer is that this Wingman is opinionated in it's relationships between providers, agents, and sessions (wingman also introduces two new primitves called "fleets" and "formations") while also being that written in Go to take advantage of some of the language's built in concurrency features (as opposed to OpenCode's typescript backend) for doing things like running agents in parallel as efficiently as possible.
+"So how is this different from OpenCode's server then?" you might say. The short answer is that there's less cool features. The slightly longer answer is that this Wingman is opinionated in its relationships between providers, agents, and sessions (wingman also introduces two new primitives called "fleets" and "formations") while also being written in Go to take advantage of some of the language's built in concurrency features (as opposed to OpenCode's typescript backend) for doing things like running agents in parallel as efficiently as possible.
 
 Also I've found OpenCode's server backend to be very well suited for their specific use case (powering a great agentic coding application) but not as flexible if you're trying to make it fit your specific use case.
 
@@ -35,10 +35,10 @@ Wingman can be used in two ways:
 
 ## Why use Wingman?
 
-If you're building a feature for a project and you want to invole language models in some capacity and 1+ of the following are true:
+If you're building a feature for a project and you want to involve language models in some capacity and 1+ of the following are true:
 
 1. Don't want to worry about maintaining relationships with different model providers
-2. Don't want to deal with a vebose SDK (of something like LangChain)
+2. Don't want to deal with a verbose SDK (of something like LangChain)
 3. Want to run agents in parallel (and with speed)
 
 ## Next Steps
