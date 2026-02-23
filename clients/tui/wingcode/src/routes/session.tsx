@@ -14,11 +14,26 @@ export function SessionView() {
 					</box>
 				) : (
 					session.messages.map((message, index) => (
-						<box key={index} paddingBottom={1}>
-							<text fg={message.role === "user" ? theme.primary : theme.text}>
-								<strong>{message.role === "user" ? "You" : "Wingman"}</strong>
-							</text>
-							<text fg={theme.text}>{message.content || " "}</text>
+						<box key={index} paddingBottom={1} flexDirection="column">
+							{message.role === "tool" ? (
+								<>
+									<text fg={theme.textMuted}>
+										<strong>Tool</strong>
+										{message.toolName ? `: ${message.toolName}` : ""}
+										{message.status === "running" ? " (running)" : ""}
+										{message.status === "error" ? " (error)" : ""}
+									</text>
+									{message.input ? <text fg={theme.textMuted}>{`input: ${message.input}`}</text> : null}
+									{message.output ? <text fg={theme.text}>{`output: ${message.output}`}</text> : null}
+								</>
+							) : (
+								<>
+									<text fg={message.role === "user" ? theme.primary : theme.text}>
+										<strong>{message.role === "user" ? "You" : "WingCode"}</strong>
+									</text>
+									<text fg={theme.text}>{message.content || " "}</text>
+								</>
+							)}
 						</box>
 					))
 				)}

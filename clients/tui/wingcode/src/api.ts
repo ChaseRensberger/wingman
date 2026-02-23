@@ -1,4 +1,5 @@
 import { getWingmanUrl } from "./config";
+import type { StoredMessage } from "./types";
 
 async function request(path: string, options?: RequestInit): Promise<any> {
 	const base = getWingmanUrl();
@@ -34,6 +35,10 @@ export const api = {
 
 	listAgents(): Promise<Array<{ id: string; name: string }>> {
 		return request("/agents");
+	},
+
+	getSession(sessionID: string): Promise<{ id: string; work_dir: string; history: StoredMessage[] }> {
+		return request(`/sessions/${sessionID}`);
 	},
 
 	createSession(workDir: string): Promise<{ id: string }> {
