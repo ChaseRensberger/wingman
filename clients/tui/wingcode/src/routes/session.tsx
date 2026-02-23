@@ -16,7 +16,7 @@ export function SessionView() {
 					session.messages.map((message, index) => (
 						<box key={index} paddingBottom={1}>
 							<text fg={message.role === "user" ? theme.primary : theme.text}>
-								<strong>{message.role === "user" ? "You" : "Assistant"}</strong>
+								<strong>{message.role === "user" ? "You" : "Wingman"}</strong>
 							</text>
 							<text fg={theme.text}>{message.content || " "}</text>
 						</box>
@@ -24,22 +24,22 @@ export function SessionView() {
 				)}
 			</scrollbox>
 
-		{session.error ? (
-			<box>
-				<text fg={theme.error}>{session.error}</text>
-			</box>
-		) : null}
+			{session.error ? (
+				<box>
+					<text fg={theme.error}>{session.error}</text>
+				</box>
+			) : null}
 
-		<MessageInput
-			placeholder="Ask anything..."
-			onSubmit={(text) => {
-				session.sendMessage(text);
-			}}
-		/>
-		<box flexDirection="row" justifyContent="space-between">
-			<text fg={theme.textMuted}>{process.cwd()}</text>
-			<text fg={theme.textMuted}>{session.status}</text>
+			<MessageInput
+				placeholder="Ask anything..."
+				onSubmit={(text) => {
+					session.sendMessage(text);
+				}}
+			/>
+			<box flexDirection="row" justifyContent="space-between">
+				<text fg={theme.textMuted}>{process.cwd()}</text>
+				<text fg={theme.textMuted}>{session.status}</text>
+			</box>
 		</box>
-	</box>
 	);
 }

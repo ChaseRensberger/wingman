@@ -53,7 +53,7 @@ async function main() {
 
 	const session = await api.createSession(process.cwd());
 
-	const renderer = await createCliRenderer({ exitOnCtrlC: false });
+	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	createRoot(renderer).render(
 		<SessionProvider agentID={agent.id} sessionID={session.id}>
 			<App />
