@@ -14,7 +14,7 @@ This document is the single authoritative reference for Wingman's design, archit
 Wingman is a **self-hostable, airgap-friendly agent orchestration engine** written in Go. It can be used two ways:
 
 1. **Go SDK** — import the packages directly. Run agents in-process. You own the persistence layer (or skip it entirely).
-2. **HTTP server** — run `wingman serve`. Agents, sessions, and fleets are persisted in SQLite. Any HTTP client (curl, TypeScript, Python, another Go service) can talk to it.
+2. **HTTP server** — run `wingman serve`. Agents, sessions, and fleets are persisted in SQLite. Any HTTP client can talk to it.
 
 The two modes are designed to be interchangeable. The same core types describe an agent, a session, and a message regardless of whether they live in memory or in a database.
 
