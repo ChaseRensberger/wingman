@@ -5,13 +5,13 @@ order: 0
 ---
 # Wingman
 
-Wingman is an agent orchestration framework written in Go. It provides primitives for building, running, and scaling LLM agents that can use tools, maintain conversation history, and execute work concurrently.
+Wingman is a highly performant agent orchestration framework written in Go. It provides opinionated primitives for building, running, and scaling LLM agents.
 
 ## Two ways to use it
 
-**HTTP Server** — A REST API backed by SQLite. Create agents and sessions, configure provider credentials, and send messages over HTTP. No Go required. Good for integrating agents into an existing application or service regardless of language.
+**HTTP Server** — A batteries included REST API designed to make it easy to interface with SOTA agent orchestration without leaving your language of choice.
 
-**Go SDK** — Import the primitives directly for full control over storage, providers, context, and execution flow. Good for embedding agents into a Go application or building something the server doesn't support out of the box.
+**Go SDK** — For more granular control, you can use the Wingman Go SDK for full control over storage, providers, context, and execution flow. Good for embedding agents into a Go application or building something the server doesn't support out of the box.
 
 ## Core primitives
 
@@ -19,17 +19,10 @@ Wingman is an agent orchestration framework written in Go. It provides primitive
 - **Agent** — A stateless template: instructions, tools, output schema, and a provider. Defines how to handle a unit of work.
 - **Session** — A stateful container that holds conversation history and runs the agent loop. Send a message; it handles tool calls and multi-step inference until a final response is produced.
 - **Fleet** — A pool of agent workers that process tasks concurrently.
-- **Formation** — A directed graph of agents that pass work between roles.
+- **Formation** — A directed graph of agents that pass work between roles (inspired by the actor framework).
 
-## When to use Wingman
+## For more info
 
-- You want a simple, dependency-light way to wire up LLM agents in Go
-- You need concurrent agent execution (fleets)
-- You want a language-agnostic HTTP interface to an agentic backend
-- You don't want to maintain provider-specific SDK integrations yourself
-
-## Getting started
-
-- **HTTP Server** → [Server](https://wingman.actor/docs/server)
-- **Go SDK** → [SDK](https://wingman.actor/docs/sdk)
-- **How it works** → [Architecture](https://wingman.actor/docs/architecture)
+- [Architecture](https://wingman.actor/docs/architecture)
+- [Server](https://wingman.actor/docs/server)
+- [SDK](https://wingman.actor/docs/sdk)
