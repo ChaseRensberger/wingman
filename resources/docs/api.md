@@ -1,7 +1,7 @@
 ---
 title: "API"
+group: "Reference"
 order: 0
-draft: true
 ---
 # API
 
@@ -81,7 +81,7 @@ curl -sS -X PUT http://localhost:2323/provider/auth \
 
 **Example Response:**
 ```json
-{"status":"ok"}
+{"status": "ok"}
 ```
 
 ### DELETE /provider/auth/{provider}
@@ -93,7 +93,7 @@ curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic | jq .
 
 **Example Response:**
 ```json
-{"status":"deleted"}
+{"status": "deleted"}
 ```
 
 ### GET /provider/{name}
@@ -275,7 +275,7 @@ curl -sS -X DELETE http://localhost:2323/agents/01ABC... | jq .
 
 **Example Response:**
 ```json
-{"status":"deleted"}
+{"status": "deleted"}
 ```
 
 ## Sessions
@@ -367,7 +367,7 @@ curl -sS -X DELETE http://localhost:2323/sessions/01XYZ... | jq .
 
 **Example Response:**
 ```json
-{"status":"deleted"}
+{"status": "deleted"}
 ```
 
 ### POST /sessions/{id}/message

@@ -68,48 +68,6 @@ curl -X PUT http://localhost:2323/provider/auth \
 
 ### Provider Config on Agents
 
-When creating an agent via the API, use `model` in `"provider/model"` format (e.g. `"anthropic/claude-sonnet-4-5"`) to specify the provider and model together. Use `options` to configure inference — it is a free-form map of any keys supported by the provider.
+Agents reference a provider via the `model` field in `"provider/model"` format (e.g. `"anthropic/claude-sonnet-4-5"`). The server splits on the first `/` to get the provider ID and model ID, looks up the API key from the auth store, and constructs the provider instance at inference time.
 
-**Common options (all providers):**
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `max_tokens` | number | Maximum tokens to generate |
-| `temperature` | number | Sampling temperature |
-
-**Provider-specific options:**
-
-| Key | Provider | Description |
-|-----|----------|-------------|
-| `base_url` | ollama | Custom Ollama server URL (default: `http://localhost:11434`) |
-| `api_key` | anthropic | Override the API key set in auth (optional) |
-
-```bash
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Assistant",
-    "instructions": "Be helpful",
-    "model": "anthropic/claude-sonnet-4-5",
-    "options": {
-      "max_tokens": 4096,
-      "temperature": 0.7
-    }
-  }'
-```
-
-```bash
-# Ollama with a custom server URL
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "LocalAgent",
-    "instructions": "Be helpful",
-    "model": "ollama/llama3.2",
-    "options": {
-      "base_url": "http://my-ollama-host:11434"
-    }
-  }'
-```
-
-The server splits `model` on the first `/` to get the provider ID and model ID, looks up the API key from the auth store, and constructs the provider instance at inference time.
+See [Agents](./agents) for request and response examples.

@@ -75,16 +75,15 @@ a := agent.New("MyAgent",
 
 ### Tools
 
-Built-in tools for common operations:
+See [Tools](./tools) for the full list of built-in tools and the `Tool` interface for custom tools.
 
 ```go
-tool.NewBashTool()     // Execute shell commands
-tool.NewReadTool()     // Read file contents
-tool.NewWriteTool()    // Write files
-tool.NewEditTool()     // Edit files with find/replace
-tool.NewGlobTool()     // Find files by pattern
-tool.NewGrepTool()     // Search file contents
-tool.NewWebFetchTool() // Fetch URLs
+agent.New("MyAgent",
+    agent.WithTools(
+        tool.NewBashTool(),
+        tool.NewReadTool(),
+    ),
+)
 ```
 
 ## Fleet (Concurrent Execution)

@@ -5,9 +5,11 @@ order: 10
 ---
 # Server
 
-The HTTP server is the primary way to use Wingman. Unlike [the SDK](https://wingman.actor/sdk) it comes batteries included with object persistence (via sqlite3) and a config file at `~/.config/wingman/`.
+The HTTP server is the primary way to use Wingman. Unlike [the SDK](./sdk), it comes batteries-included with object persistence (via SQLite) and a config file at `~/.config/wingman/`.
 
 ## Installation
+
+See the project README for installation instructions.
 
 ## Starting the Server
 
@@ -116,7 +118,3 @@ curl -X POST http://localhost:2323/sessions/01XYZ.../message \
 | `DELETE` | `/sessions/{id}` | Delete a session |
 | `POST` | `/sessions/{id}/message` | Send a message and get a response |
 | `POST` | `/sessions/{id}/message/stream` | Send a message and stream the response (SSE) |
-
-### Fleets
-
-### Formations

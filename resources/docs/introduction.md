@@ -3,51 +3,33 @@ title: "Introduction"
 group: "Wingman"
 order: 0
 ---
+# Wingman
 
----
+Wingman is an agent orchestration framework written in Go. It provides primitives for building, running, and scaling LLM agents that can use tools, maintain conversation history, and execute work concurrently.
 
-***All Docs and Code are very much WIP as I try to improve overall quality and make things more comprehensive.***
+## Two ways to use it
 
----
-If you're just looking to get up and running with Wingman as fast as possible, take a look at the Usage docs. If you're curious to learn more about what this project is, continue.
+**HTTP Server** — A REST API backed by SQLite. Create agents and sessions, configure provider credentials, and send messages over HTTP. No Go required. Good for integrating agents into an existing application or service regardless of language.
 
-Welcome to the Wingman documentation. I don't have a habit of writing very good documentation so learners beware, if you encounter a spelling mistake or something that doesn't make sense, I apologize (also feel free to put up a PR).
+**Go SDK** — Import the primitives directly for full control over storage, providers, context, and execution flow. Good for embedding agents into a Go application or building something the server doesn't support out of the box.
 
-## Some Backstory
+## Core primitives
 
-I got the idea for Wingman back in May 2025, while playing with [OpenCode](https://opencode.ai). I quite liked OpenCode's approach to agents, specifically the client/server relationship between the TUI frontend and the agentic backend. If you come from the web application world like I do, this idea is nothing to write home about. Still, I couldn't help but feel like the idea of composing agents via the universal language agnostic information transport layer (aka http) was interesting enough to pursue.
+- **Provider** — A configured client for a specific model API (Anthropic, Ollama, etc.). Owns the model ID, API key, and inference parameters.
+- **Agent** — A stateless template: instructions, tools, output schema, and a provider. Defines how to handle a unit of work.
+- **Session** — A stateful container that holds conversation history and runs the agent loop. Send a message; it handles tool calls and multi-step inference until a final response is produced.
+- **Fleet** — A pool of agent workers that process tasks concurrently.
+- **Formation** — A directed graph of agents that pass work between roles.
 
-"So how is this different from OpenCode's server then?" you might say. The short answer is that there's less cool features. The slightly longer answer is that this Wingman is opinionated in its relationships between providers, agents, and sessions (wingman also introduces two new primitives called "fleets" and "formations") while also being written in Go to take advantage of some of the language's built in concurrency features (as opposed to OpenCode's typescript backend) for doing things like running agents in parallel as efficiently as possible.
+## When to use Wingman
 
-Also I've found OpenCode's server backend to be very well suited for their specific use case (powering a great agentic coding application) but not as flexible if you're trying to make it fit your specific use case.
+- You want a simple, dependency-light way to wire up LLM agents in Go
+- You need concurrent agent execution (fleets)
+- You want a language-agnostic HTTP interface to an agentic backend
+- You don't want to maintain provider-specific SDK integrations yourself
 
-## What is Wingman?/Wingman's Philosophy
+## Getting started
 
-Wingman is an agent orchestration framework written in pure Go. It provides primitives for building, running, and scaling agents that can use tools, maintain conversation state, and execute work concurrently.
-
-At its core, Wingman treats agents as actors (inspired by [the actor model](https://en.wikipedia.org/wiki/Actor_model)), independent units with their own message queues that process work from an inbox, execute tools, and produce responses. This model enables natural concurrency, horizontal scaling, and a clear separation of concerns. The goal of Wingman is to build rock-solid primitives that you can compose
-
-Wingman can be used in two ways:
-
-1. **HTTP Server** - A batteries-included REST API that stores data in SQLite while allowing you to interact with agents, sessions, and providers over HTTP.
-
-2. **Go SDK** - Import the primitives and helper functions directly for maximum control over storage, providers, context, and agent execution flow.
-
-## Why use Wingman?
-
-If you're building a feature for a project and you want to involve language models in some capacity and 1+ of the following are true:
-
-1. Don't want to worry about maintaining relationships with different model providers
-2. Don't want to deal with a verbose SDK (of something like LangChain)
-3. Want to run agents in parallel (and with speed)
-
-## Next Steps
-
-If you're curious to learn more about how Wingman works, click on [one of the Primitive sections](https://wingman.actor/docs/providers) or check out [the source](https://github.com/chaserensberger/wingman).
-
-If you want to get started using Wingman, head on over to [one of the Usage sections](https://wingman.actor/docs/server).
-
-
-
-
-
+- **HTTP Server** → [Server](https://wingman.actor/docs/server)
+- **Go SDK** → [SDK](https://wingman.actor/docs/sdk)
+- **How it works** → [Architecture](https://wingman.actor/docs/architecture)
