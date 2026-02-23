@@ -43,10 +43,11 @@ export function SessionProvider(props: {
 				text,
 				abortRef.current.signal,
 			)) {
-				const type = event || (data as StreamEvent).Type || "";
+				const payload = data as StreamEvent;
+				const type = event || payload.type || "";
 
 				if (type === "text_delta") {
-					const textDelta = (data as StreamEvent).Text || data.Text;
+					const textDelta = payload.text;
 					if (textDelta) {
 						setMessages((prev) => {
 							const updated = [...prev];
@@ -58,12 +59,13 @@ export function SessionProvider(props: {
 						});
 					}
 				} else if (type === "done") {
-					const done = data as DoneEvent;
+					const done = payload as DoneEvent;
 					if (done.usage) {
 						setStatus("Ready");
 					}
-				} else if (type === "error" || (data as StreamEvent).Error) {
-					setError((data as StreamEvent).Error || data.Text || "Request failed");
+				} else if (type === "error" || payload.error) {
+					const raw = typeof data === "string" ? data : "";
+					setError(payload.error || raw || "Request failed");
 				}
 			}
 		} catch (e) {

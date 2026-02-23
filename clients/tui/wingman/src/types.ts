@@ -4,20 +4,20 @@ export interface Message {
 }
 
 export interface StreamEvent {
-	Type?: string;
-	Text?: string;
-	InputJSON?: string;
-	Index?: number;
-	ContentBlock?: {
-		Type?: string;
-		ID?: string;
-		Name?: string;
+	type?: string;
+	text?: string;
+	input_json?: string;
+	index?: number;
+	content_block?: {
+		type?: string;
+		id?: string;
+		name?: string;
 	};
-	StopReason?: string;
-	Error?: string;
+	stop_reason?: string;
+	error?: string;
 }
 
 export interface DoneEvent {
-	usage?: { InputTokens: number; OutputTokens: number };
+	usage?: { input_tokens: number; output_tokens: number };
 	steps?: number;
 }

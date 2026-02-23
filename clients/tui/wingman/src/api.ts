@@ -22,7 +22,9 @@ export const api = {
 		name: string;
 		instructions: string;
 		tools: string[];
-		provider?: { id: string; model: string; max_tokens: number; temperature: number | null };
+		provider?: string;
+		model?: string;
+		options?: Record<string, unknown>;
 	}): Promise<{ id: string; name?: string }> {
 		return request("/agents", {
 			method: "POST",
@@ -38,13 +40,6 @@ export const api = {
 		return request("/sessions", {
 			method: "POST",
 			body: JSON.stringify({ work_dir: workDir }),
-		});
-	},
-
-	setProviderAuth(provider: string, key: string): Promise<any> {
-		return request("/provider/auth", {
-			method: "PUT",
-			body: JSON.stringify({ provider, key }),
 		});
 	},
 
@@ -93,7 +88,7 @@ export const api = {
 				try {
 					yield { event: currentEvent, data: JSON.parse(data) };
 				} catch {
-					// ignore JSON parse errors
+					yield { event: currentEvent, data };
 				}
 			}
 		}
