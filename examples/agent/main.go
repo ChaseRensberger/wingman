@@ -22,9 +22,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	p := anthropic.New(anthropic.Config{})
-	if p == nil {
-		log.Fatal("ANTHROPIC_API_KEY not set")
+	p, err := anthropic.New(anthropic.Config{})
+	if err != nil {
+		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
 	a := agent.New("WingmanAgent",

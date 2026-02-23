@@ -11,13 +11,13 @@ import (
 )
 
 func main() {
-	p := ollama.New(ollama.Config{
+	p, err := ollama.New(ollama.Config{
 		Options: map[string]any{
 			"model": "gemma3:270m",
 		},
 	})
-	if p == nil {
-		log.Fatal("Failed to create Ollama provider")
+	if err != nil {
+		log.Fatalf("failed to create Ollama provider: %v", err)
 	}
 
 	a := agent.New("WebResearcher",

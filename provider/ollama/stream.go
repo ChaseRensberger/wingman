@@ -8,19 +8,19 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 type Stream struct {
 	resp         *http.Response
 	scanner      *bufio.Scanner
-	currentEvent models.StreamEvent
+	currentEvent core.StreamEvent
 	err          error
 	closed       bool
 
-	accumulatedResponse *models.WingmanInferenceResponse
+	accumulatedResponse *core.InferenceResponse
 	contentText         strings.Builder
-	toolCalls           []models.WingmanContentBlock
+	toolCalls           []core.ContentBlock
 	started             bool
 	toolCallIndex       int
 }
@@ -32,8 +32,8 @@ func newStream(resp *http.Response) *Stream {
 	return &Stream{
 		resp:    resp,
 		scanner: scanner,
-		accumulatedResponse: &models.WingmanInferenceResponse{
-			Content: []models.WingmanContentBlock{},
+		accumulatedResponse: &core.InferenceResponse{
+			Content: []core.ContentBlock{},
 		},
 	}
 }
@@ -63,7 +63,7 @@ func (s *Stream) Next() bool {
 
 		var chunk streamChunk
 		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
-			s.err = fmt.Errorf("failed to parse stream chunk: %w", err)
+			s.err = fmt.Errorf("ollama: failed to parse stream chunk: %w", err)
 			return false
 		}
 
@@ -85,31 +85,30 @@ func (s *Stream) Next() bool {
 	return false
 }
 
-func (s *Stream) parseChunk(chunk streamChunk) *models.StreamEvent {
+func (s *Stream) parseChunk(chunk streamChunk) *core.StreamEvent {
 	if !s.started {
 		s.started = true
 		s.accumulatedResponse.ID = chunk.CreatedAt
-		return &models.StreamEvent{Type: models.EventMessageStart}
+		return &core.StreamEvent{Type: core.EventMessageStart}
 	}
 
 	if len(chunk.Message.ToolCalls) > 0 {
 		for _, tc := range chunk.Message.ToolCalls {
-			toolBlock := models.WingmanContentBlock{
-				Type:  models.ContentTypeToolUse,
+			toolBlock := core.ContentBlock{
+				Type:  core.ContentTypeToolUse,
 				ID:    fmt.Sprintf("tool_%d", s.toolCallIndex),
 				Name:  tc.Function.Name,
 				Input: tc.Function.Arguments,
 			}
 			s.toolCalls = append(s.toolCalls, toolBlock)
 
-			event := &models.StreamEvent{
-				Type:  models.EventContentBlockStart,
+			event := &core.StreamEvent{
+				Type:  core.EventContentBlockStart,
 				Index: s.toolCallIndex,
-				ContentBlock: &models.StreamContentBlock{
-					Type:  "tool_use",
-					ID:    toolBlock.ID,
-					Name:  toolBlock.Name,
-					Input: tc.Function.Arguments,
+				ContentBlock: &core.StreamContentBlock{
+					Type: "tool_use",
+					ID:   toolBlock.ID,
+					Name: toolBlock.Name,
 				},
 			}
 			s.toolCallIndex++
@@ -119,18 +118,18 @@ func (s *Stream) parseChunk(chunk streamChunk) *models.StreamEvent {
 
 	if chunk.Message.Content != "" {
 		s.contentText.WriteString(chunk.Message.Content)
-		return &models.StreamEvent{
-			Type:  models.EventTextDelta,
+		return &core.StreamEvent{
+			Type:  core.EventTextDelta,
 			Text:  chunk.Message.Content,
 			Index: 0,
 		}
 	}
 
 	if chunk.Done {
-		var content []models.WingmanContentBlock
+		var content []core.ContentBlock
 		if s.contentText.Len() > 0 {
-			content = append(content, models.WingmanContentBlock{
-				Type: models.ContentTypeText,
+			content = append(content, core.ContentBlock{
+				Type: core.ContentTypeText,
 				Text: s.contentText.String(),
 			})
 		}
@@ -143,15 +142,15 @@ func (s *Stream) parseChunk(chunk streamChunk) *models.StreamEvent {
 
 		s.accumulatedResponse.Content = content
 		s.accumulatedResponse.StopReason = stopReason
-		s.accumulatedResponse.Usage = models.WingmanUsage{
+		s.accumulatedResponse.Usage = core.Usage{
 			InputTokens:  chunk.PromptEvalCount,
 			OutputTokens: chunk.EvalCount,
 		}
 
-		return &models.StreamEvent{
-			Type:       models.EventMessageDelta,
+		return &core.StreamEvent{
+			Type:       core.EventMessageDelta,
 			StopReason: stopReason,
-			Usage: &models.WingmanUsage{
+			Usage: &core.Usage{
 				InputTokens:  chunk.PromptEvalCount,
 				OutputTokens: chunk.EvalCount,
 			},
@@ -161,7 +160,7 @@ func (s *Stream) parseChunk(chunk streamChunk) *models.StreamEvent {
 	return nil
 }
 
-func (s *Stream) Event() models.StreamEvent {
+func (s *Stream) Event() core.StreamEvent {
 	return s.currentEvent
 }
 
@@ -180,7 +179,7 @@ func (s *Stream) Close() error {
 	return nil
 }
 
-func (s *Stream) Response() *models.WingmanInferenceResponse {
+func (s *Stream) Response() *core.InferenceResponse {
 	return s.accumulatedResponse
 }
 

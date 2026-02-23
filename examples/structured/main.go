@@ -50,9 +50,14 @@ func main() {
 		"additionalProperties": false,
 	}
 
+	p, err := anthropic.New(anthropic.Config{})
+	if err != nil {
+		log.Fatalf("failed to create Anthropic provider: %v", err)
+	}
+
 	a := agent.New("Extractor",
 		agent.WithInstructions("Extract person information from the given text. Return only valid JSON."),
-		agent.WithProvider(anthropic.New(anthropic.Config{})),
+		agent.WithProvider(p),
 		agent.WithOutputSchema(schema),
 	)
 

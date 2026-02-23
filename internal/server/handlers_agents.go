@@ -9,11 +9,13 @@ import (
 	"github.com/chaserensberger/wingman/internal/storage"
 )
 
+// CreateAgentRequest is the request body for POST /agents.
 type CreateAgentRequest struct {
 	Name         string         `json:"name"`
 	Instructions string         `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
-	Model        string         `json:"model,omitempty"`
+	Provider     string         `json:"provider,omitempty"` // e.g. "anthropic"
+	Model        string         `json:"model,omitempty"`    // e.g. "claude-opus-4-6"
 	Options      map[string]any `json:"options,omitempty"`
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
 }
@@ -30,21 +32,22 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent := &storage.Agent{
+	a := &storage.Agent{
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
+		Provider:     req.Provider,
 		Model:        req.Model,
 		Options:      req.Options,
 		OutputSchema: req.OutputSchema,
 	}
 
-	if err := s.store.CreateAgent(agent); err != nil {
+	if err := s.store.CreateAgent(a); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, agent)
+	writeJSON(w, http.StatusCreated, a)
 }
 
 func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
@@ -56,26 +59,28 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	if agents == nil {
 		agents = []*storage.Agent{}
 	}
-
 	writeJSON(w, http.StatusOK, agents)
 }
 
 func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	agent, err := s.store.GetAgent(id)
+	a, err := s.store.GetAgent(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agent)
+	writeJSON(w, http.StatusOK, a)
 }
 
+// UpdateAgentRequest is the request body for PUT /agents/{id}. All fields are
+// optional pointers so that a partial update only changes provided fields.
 type UpdateAgentRequest struct {
 	Name         *string        `json:"name,omitempty"`
 	Instructions *string        `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
+	Provider     *string        `json:"provider,omitempty"`
 	Model        *string        `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
@@ -84,7 +89,7 @@ type UpdateAgentRequest struct {
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	agent, err := s.store.GetAgent(id)
+	a, err := s.store.GetAgent(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -97,30 +102,33 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Name != nil {
-		agent.Name = *req.Name
+		a.Name = *req.Name
 	}
 	if req.Instructions != nil {
-		agent.Instructions = *req.Instructions
+		a.Instructions = *req.Instructions
 	}
 	if req.Tools != nil {
-		agent.Tools = req.Tools
+		a.Tools = req.Tools
+	}
+	if req.Provider != nil {
+		a.Provider = *req.Provider
 	}
 	if req.Model != nil {
-		agent.Model = *req.Model
+		a.Model = *req.Model
 	}
 	if req.Options != nil {
-		agent.Options = req.Options
+		a.Options = req.Options
 	}
 	if req.OutputSchema != nil {
-		agent.OutputSchema = req.OutputSchema
+		a.OutputSchema = req.OutputSchema
 	}
 
-	if err := s.store.UpdateAgent(agent); err != nil {
+	if err := s.store.UpdateAgent(a); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, agent)
+	writeJSON(w, http.StatusOK, a)
 }
 
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {

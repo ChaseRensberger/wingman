@@ -9,25 +9,49 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 	"github.com/chaserensberger/wingman/provider"
 )
 
+// ============================================================
+//  Registry registration
+// ============================================================
+
+// Meta is the provider metadata registered in the default provider registry.
 var Meta = provider.ProviderMeta{
 	ID:        "ollama",
 	Name:      "Ollama",
 	AuthTypes: []provider.AuthType{},
+	Factory: func(opts map[string]any) (core.Provider, error) {
+		return New(Config{Options: opts})
+	},
 }
 
 func init() {
 	provider.Register(Meta)
 }
 
+// ============================================================
+//  Config and constructor
+// ============================================================
+
+// Config configures the Ollama provider.
+//
+// BaseURL is optional; defaults to http://localhost:11434. It can also be set
+// via Options["base_url"].
+//
+// Options recognises the following keys:
+//
+//   - "model"      string      — model name (REQUIRED; returns error if absent)
+//   - "base_url"   string      — alternative to the BaseURL field
+//   - "max_tokens" int/float64 — maps to Ollama's num_predict
+//   - "temperature" float64    — sampling temperature
 type Config struct {
 	BaseURL string         // optional; defaults to http://localhost:11434
-	Options map[string]any // model (required), max_tokens, temperature, etc.
+	Options map[string]any // model (required), max_tokens, temperature, base_url
 }
 
+// Client implements core.Provider for the Ollama chat API.
 type Client struct {
 	baseURL     string
 	model       string
@@ -41,10 +65,11 @@ const (
 	httpTimeout    = 10 * time.Minute
 )
 
-func New(cfg Config) *Client {
+// New creates an Ollama Client. Returns an error if no model is specified.
+func New(cfg Config) (*Client, error) {
 	model, _ := cfg.Options["model"].(string)
 	if model == "" {
-		return nil
+		return nil, fmt.Errorf("ollama: Options[\"model\"] is required")
 	}
 
 	baseURL := cfg.BaseURL
@@ -80,8 +105,12 @@ func New(cfg Config) *Client {
 		maxTokens:   maxTokens,
 		temperature: temperature,
 		httpClient:  &http.Client{Timeout: httpTimeout},
-	}
+	}, nil
 }
+
+// ============================================================
+//  Internal wire types
+// ============================================================
 
 type chatMessage struct {
 	Role       string     `json:"role"`
@@ -138,54 +167,77 @@ type response struct {
 	EvalDuration       int64       `json:"eval_duration"`
 }
 
-func (c *Client) RunInference(ctx context.Context, req models.WingmanInferenceRequest) (*models.WingmanInferenceResponse, error) {
-	ollamaReq := c.buildRequest(req)
-	ollamaReq.Stream = false
+// ============================================================
+//  Type conversions
+// ============================================================
 
-	jsonData, err := json.Marshal(ollamaReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+func (c *Client) toOllamaMessages(msg core.Message) []chatMessage {
+	var result []chatMessage
+
+	for _, block := range msg.Content {
+		switch block.Type {
+		case core.ContentTypeText:
+			result = append(result, chatMessage{
+				Role:    string(msg.Role),
+				Content: block.Text,
+			})
+
+		case core.ContentTypeToolUse:
+			args, _ := block.Input.(map[string]any)
+			result = append(result, chatMessage{
+				Role: "assistant",
+				ToolCalls: []toolCall{{
+					Function: toolCallFunction{
+						Name:      block.Name,
+						Arguments: args,
+					},
+				}},
+			})
+
+		case core.ContentTypeToolResult:
+			result = append(result, chatMessage{
+				Role:       "tool",
+				Content:    block.Content,
+				ToolCallID: block.ToolUseID,
+			})
+		}
 	}
 
-	url := c.baseURL + "/api/chat"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var apiResp response
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return c.toWingmanResponse(apiResp), nil
+	return result
 }
 
-func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
+func (c *Client) toOllamaTool(t core.ToolDefinition) toolDefinition {
+	props := make(map[string]any)
+	for name, p := range t.InputSchema.Properties {
+		prop := map[string]any{"type": p.Type}
+		if p.Description != "" {
+			prop["description"] = p.Description
+		}
+		if len(p.Enum) > 0 {
+			prop["enum"] = p.Enum
+		}
+		props[name] = prop
+	}
+
+	return toolDefinition{
+		Type: "function",
+		Function: toolFunction{
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters: map[string]any{
+				"type":       t.InputSchema.Type,
+				"properties": props,
+				"required":   t.InputSchema.Required,
+			},
+		},
+	}
+}
+
+func (c *Client) buildRequest(req core.InferenceRequest) request {
 	var messages []chatMessage
 
 	if req.Instructions != "" {
-		messages = append(messages, chatMessage{
-			Role:    "system",
-			Content: req.Instructions,
-		})
+		messages = append(messages, chatMessage{Role: "system", Content: req.Instructions})
 	}
 
 	for _, msg := range req.Messages {
@@ -217,85 +269,19 @@ func (c *Client) buildRequest(req models.WingmanInferenceRequest) request {
 	return r
 }
 
-func (c *Client) toOllamaMessages(msg models.WingmanMessage) []chatMessage {
-	var result []chatMessage
-
-	for _, block := range msg.Content {
-		switch block.Type {
-		case models.ContentTypeText:
-			result = append(result, chatMessage{
-				Role:    string(msg.Role),
-				Content: block.Text,
-			})
-
-		case models.ContentTypeToolUse:
-			args, _ := block.Input.(map[string]any)
-			result = append(result, chatMessage{
-				Role: "assistant",
-				ToolCalls: []toolCall{
-					{
-						Function: toolCallFunction{
-							Name:      block.Name,
-							Arguments: args,
-						},
-					},
-				},
-			})
-
-		case models.ContentTypeToolResult:
-			result = append(result, chatMessage{
-				Role:       "tool",
-				Content:    block.Content,
-				ToolCallID: block.ToolUseID,
-			})
-		}
-	}
-
-	return result
-}
-
-func (c *Client) toOllamaTool(t models.WingmanToolDefinition) toolDefinition {
-	props := make(map[string]any)
-	for name, p := range t.InputSchema.Properties {
-		prop := map[string]any{
-			"type": p.Type,
-		}
-		if p.Description != "" {
-			prop["description"] = p.Description
-		}
-		if len(p.Enum) > 0 {
-			prop["enum"] = p.Enum
-		}
-		props[name] = prop
-	}
-
-	return toolDefinition{
-		Type: "function",
-		Function: toolFunction{
-			Name:        t.Name,
-			Description: t.Description,
-			Parameters: map[string]any{
-				"type":       t.InputSchema.Type,
-				"properties": props,
-				"required":   t.InputSchema.Required,
-			},
-		},
-	}
-}
-
-func (c *Client) toWingmanResponse(resp response) *models.WingmanInferenceResponse {
-	var content []models.WingmanContentBlock
+func (c *Client) toInferenceResponse(resp response) *core.InferenceResponse {
+	var content []core.ContentBlock
 
 	if resp.Message.Content != "" {
-		content = append(content, models.WingmanContentBlock{
-			Type: models.ContentTypeText,
+		content = append(content, core.ContentBlock{
+			Type: core.ContentTypeText,
 			Text: resp.Message.Content,
 		})
 	}
 
 	for i, tc := range resp.Message.ToolCalls {
-		content = append(content, models.WingmanContentBlock{
-			Type:  models.ContentTypeToolUse,
+		content = append(content, core.ContentBlock{
+			Type:  core.ContentTypeToolUse,
 			ID:    fmt.Sprintf("tool_%d", i),
 			Name:  tc.Function.Name,
 			Input: tc.Function.Arguments,
@@ -307,43 +293,87 @@ func (c *Client) toWingmanResponse(resp response) *models.WingmanInferenceRespon
 		stopReason = "tool_use"
 	}
 
-	return &models.WingmanInferenceResponse{
+	return &core.InferenceResponse{
 		ID:         resp.CreatedAt,
 		Content:    content,
 		StopReason: stopReason,
-		Usage: models.WingmanUsage{
+		Usage: core.Usage{
 			InputTokens:  resp.PromptEvalCount,
 			OutputTokens: resp.EvalCount,
 		},
 	}
 }
 
-func (c *Client) StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (provider.Stream, error) {
+// ============================================================
+//  Provider interface implementation
+// ============================================================
+
+// RunInference performs a blocking inference call.
+func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error) {
 	ollamaReq := c.buildRequest(req)
-	ollamaReq.Stream = true
+	ollamaReq.Stream = false
 
 	jsonData, err := json.Marshal(ollamaReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("ollama: failed to marshal request: %w", err)
 	}
 
 	url := c.baseURL + "/api/chat"
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("ollama: failed to create request: %w", err)
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, fmt.Errorf("ollama: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ollama: failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama: API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var apiResp response
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("ollama: failed to parse response: %w", err)
+	}
+
+	return c.toInferenceResponse(apiResp), nil
+}
+
+// StreamInference begins a streaming inference call.
+func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error) {
+	ollamaReq := c.buildRequest(req)
+	ollamaReq.Stream = true
+
+	jsonData, err := json.Marshal(ollamaReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama: failed to marshal request: %w", err)
+	}
+
+	url := c.baseURL + "/api/chat"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("ollama: failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama: request failed: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("ollama: API error %d: %s", resp.StatusCode, string(body))
 	}
 
 	return newStream(resp), nil

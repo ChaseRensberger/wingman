@@ -1,3 +1,5 @@
+// Package session runs the agentic inference loop: send a message, call tools,
+// feed results back, repeat until the model stops requesting tool calls.
 package session
 
 import (
@@ -11,27 +13,34 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 	"github.com/chaserensberger/wingman/tool"
 )
 
+// Session holds the in-memory state of an ongoing conversation: the agent
+// driving it, the working directory for tool execution, and the message
+// history. Sessions are ephemeral — callers that want persistence must save
+// History() and replay it into a new Session (which is exactly what the HTTP
+// server does).
 type Session struct {
 	id      string
 	workDir string
 	agent   *agent.Agent
-	history []models.WingmanMessage
+	history []core.Message
 	mu      sync.RWMutex
 }
 
+// Option is a functional option for New.
 type Option func(*Session)
 
+// New creates a Session and generates a ULID id.
 func New(opts ...Option) *Session {
 	entropy := ulid.Monotonic(rand.Reader, 0)
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), entropy)
 
 	s := &Session{
 		id:      id.String(),
-		history: []models.WingmanMessage{},
+		history: []core.Message{},
 	}
 
 	for _, opt := range opts {
@@ -41,21 +50,21 @@ func New(opts ...Option) *Session {
 	return s
 }
 
+// WithWorkDir sets the working directory used for tool execution.
 func WithWorkDir(dir string) Option {
-	return func(s *Session) {
-		s.workDir = dir
-	}
+	return func(s *Session) { s.workDir = dir }
 }
 
+// WithAgent sets the agent that drives inference.
 func WithAgent(a *agent.Agent) Option {
-	return func(s *Session) {
-		s.agent = a
-	}
+	return func(s *Session) { s.agent = a }
 }
 
-func (s *Session) ID() string {
-	return s.id
-}
+// ============================================================
+//  Getters / setters
+// ============================================================
+
+func (s *Session) ID() string { return s.id }
 
 func (s *Session) WorkDir() string {
 	s.mu.RLock()
@@ -81,45 +90,66 @@ func (s *Session) Agent() *agent.Agent {
 	return s.agent
 }
 
-func (s *Session) History() []models.WingmanMessage {
+// History returns a copy of the conversation history.
+func (s *Session) History() []core.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	result := make([]models.WingmanMessage, len(s.history))
+	result := make([]core.Message, len(s.history))
 	copy(result, s.history)
 	return result
 }
 
-func (s *Session) AddMessage(msg models.WingmanMessage) {
+// AddMessage appends a message to the history. Used when replaying a stored
+// conversation before calling Run.
+func (s *Session) AddMessage(msg core.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = append(s.history, msg)
 }
 
+// Clear empties the conversation history.
 func (s *Session) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.history = []models.WingmanMessage{}
+	s.history = []core.Message{}
 }
 
+// ============================================================
+//  Result types
+// ============================================================
+
+// Result is returned by Run when the agentic loop completes.
 type Result struct {
-	Response  string
-	ToolCalls []ToolCallResult
-	Usage     models.WingmanUsage
-	Steps     int
+	Response  string           // final text response from the model
+	ToolCalls []ToolCallResult // all tool calls made across all steps
+	Usage     core.Usage       // token usage summed across all steps
+	Steps     int              // number of inference calls made
 }
 
+// ToolCallResult records the outcome of one tool invocation.
 type ToolCallResult struct {
-	ToolName string
+	ToolName string // the tool's Name() — the human-readable tool name
 	Input    any
 	Output   string
 	Error    error
 }
+
+// ============================================================
+//  Sentinel errors
+// ============================================================
 
 var (
 	ErrNoProvider = fmt.Errorf("agent has no provider configured")
 	ErrNoAgent    = fmt.Errorf("agent is required")
 )
 
+// ============================================================
+//  Run — blocking agentic loop
+// ============================================================
+
+// Run sends message to the model and runs the agentic loop until the model
+// produces a final response (no more tool calls). The conversation history is
+// updated in place.
 func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 	s.mu.Lock()
 	if s.agent == nil {
@@ -131,12 +161,12 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		return nil, ErrNoProvider
 	}
 
-	s.history = append(s.history, models.NewUserMessage(message))
+	s.history = append(s.history, core.NewUserMessage(message))
 	workDir := s.workDir
 	p := s.agent.Provider()
 	s.mu.Unlock()
 
-	var totalUsage models.WingmanUsage
+	var totalUsage core.Usage
 	var allToolCalls []ToolCallResult
 	steps := 0
 
@@ -149,7 +179,7 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		steps++
 
 		s.mu.RLock()
-		req := models.WingmanInferenceRequest{
+		req := core.InferenceRequest{
 			Messages:     s.history,
 			Tools:        toolRegistry.Definitions(),
 			Instructions: s.agent.Instructions(),
@@ -166,8 +196,8 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		totalUsage.OutputTokens += resp.Usage.OutputTokens
 
 		s.mu.Lock()
-		s.history = append(s.history, models.WingmanMessage{
-			Role:    models.RoleAssistant,
+		s.history = append(s.history, core.Message{
+			Role:    core.RoleAssistant,
 			Content: resp.Content,
 		})
 		s.mu.Unlock()
@@ -184,7 +214,7 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 		toolResults := s.executeToolCalls(ctx, resp.GetToolCalls(), toolRegistry, workDir)
 		allToolCalls = append(allToolCalls, toolResults...)
 
-		var resultBlocks []models.WingmanContentBlock
+		var resultBlocks []core.ContentBlock
 		for _, result := range toolResults {
 			content := result.Output
 			isError := false
@@ -192,27 +222,39 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 				content = result.Error.Error()
 				isError = true
 			}
-			resultBlocks = append(resultBlocks, models.WingmanContentBlock{
-				Type:      models.ContentTypeToolResult,
-				ToolUseID: result.ToolName,
+			resultBlocks = append(resultBlocks, core.ContentBlock{
+				Type:      core.ContentTypeToolResult,
+				ToolUseID: result.ToolName, // ToolName == call.ID, used for tool_use/tool_result pairing
 				Content:   content,
 				IsError:   isError,
 			})
 		}
 
 		s.mu.Lock()
-		s.history = append(s.history, models.WingmanMessage{
-			Role:    models.RoleUser,
+		s.history = append(s.history, core.Message{
+			Role:    core.RoleUser,
 			Content: resultBlocks,
 		})
 		s.mu.Unlock()
 	}
 }
 
-func (s *Session) executeToolCalls(ctx context.Context, calls []models.WingmanContentBlock, registry *tool.Registry, workDir string) []ToolCallResult {
+// ============================================================
+//  Tool execution
+// ============================================================
+
+// executeToolCalls runs each tool call sequentially and returns results.
+//
+// ToolCallResult.ToolName is the call ID (e.g. "toulu_abc123") — this is what
+// gets stored in the tool_result ContentBlock's ToolUseID field so the model
+// can pair it with the original tool_use block. The human-readable tool name
+// is available via call.Name but is not separately stored on ToolCallResult
+// to avoid confusion.
+func (s *Session) executeToolCalls(ctx context.Context, calls []core.ContentBlock, registry *tool.Registry, workDir string) []ToolCallResult {
 	results := make([]ToolCallResult, len(calls))
 
 	for i, call := range calls {
+		// ToolName stores the call ID for tool_result ToolUseID pairing.
 		results[i] = ToolCallResult{
 			ToolName: call.ID,
 			Input:    call.Input,
@@ -231,11 +273,9 @@ func (s *Session) executeToolCalls(ctx context.Context, calls []models.WingmanCo
 		}
 
 		output, err := t.Execute(ctx, params, workDir)
+		results[i].Output = output
 		if err != nil {
 			results[i].Error = err
-			results[i].Output = output
-		} else {
-			results[i].Output = output
 		}
 	}
 
@@ -246,20 +286,16 @@ func toParamsMap(input any) (map[string]any, error) {
 	if input == nil {
 		return map[string]any{}, nil
 	}
-
 	if m, ok := input.(map[string]any); ok {
 		return m, nil
 	}
-
 	data, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
 	}
-
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
-
 	return m, nil
 }

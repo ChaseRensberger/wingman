@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	_ "modernc.org/sqlite"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 const schema = `
@@ -21,12 +21,18 @@ CREATE TABLE IF NOT EXISTS agents (
 	name TEXT NOT NULL,
 	instructions TEXT,
 	tools TEXT,
+	provider TEXT,
 	model TEXT,
 	options TEXT,
 	output_schema TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
+
+-- Migration: add provider column if it doesn't exist (for existing databases).
+-- SQLite doesn't support IF NOT EXISTS on ALTER TABLE so we ignore the error.
+
+CREATE TABLE IF NOT EXISTS agents_migration_done (id INTEGER PRIMARY KEY);
 
 CREATE TABLE IF NOT EXISTS sessions (
 	id TEXT PRIMARY KEY,
@@ -87,6 +93,11 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	// Runtime migration: add provider column to agents table if it was created
+	// before this column existed. SQLite ignores "duplicate column" errors so
+	// we just attempt it and discard the error.
+	_, _ = db.Exec(`ALTER TABLE agents ADD COLUMN provider TEXT`)
+
 	return &SQLiteStore{db: db}, nil
 }
 
@@ -130,8 +141,8 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 		if err != nil {
 			return err
 		}
-		s := string(b)
-		optionsJSON = &s
+		str := string(b)
+		optionsJSON = &str
 	}
 
 	var outputSchemaJSON *string
@@ -140,14 +151,14 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 		if err != nil {
 			return err
 		}
-		s := string(b)
-		outputSchemaJSON = &s
+		str := string(b)
+		outputSchemaJSON = &str
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools, model, options, output_schema, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.Model, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -162,9 +173,9 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	var outputSchemaJSON sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, name, instructions, tools, model, options, output_schema, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at
 		FROM agents WHERE id = ?
-	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
+	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Provider, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("agent not found: %s", id)
@@ -196,7 +207,7 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools, model, options, output_schema, created_at, updated_at
+		SELECT id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -211,7 +222,7 @@ func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 		var optionsJSON sql.NullString
 		var outputSchemaJSON sql.NullString
 
-		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Provider, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -268,9 +279,9 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 	}
 
 	result, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools = ?, model = ?, options = ?, output_schema = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, model = ?, options = ?, output_schema = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), agent.Model, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
 
 	if err != nil {
 		return err
@@ -311,7 +322,7 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	session.UpdatedAt = now
 
 	if session.History == nil {
-		session.History = []models.WingmanMessage{}
+		session.History = []core.Message{}
 	}
 
 	history, err := json.Marshal(session.History)

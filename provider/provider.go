@@ -1,20 +1,13 @@
+// Package provider defines the Provider and Stream interfaces and re-exports
+// them from core. It also contains the provider registry with factory support.
 package provider
 
-import (
-	"context"
+import "github.com/chaserensberger/wingman/core"
 
-	"github.com/chaserensberger/wingman/models"
-)
+// Provider is the interface every LLM backend must implement.
+// Re-exported from core for convenience.
+type Provider = core.Provider
 
-type Provider interface {
-	RunInference(ctx context.Context, req models.WingmanInferenceRequest) (*models.WingmanInferenceResponse, error)
-	StreamInference(ctx context.Context, req models.WingmanInferenceRequest) (Stream, error)
-}
-
-type Stream interface {
-	Next() bool
-	Event() models.StreamEvent
-	Err() error
-	Close() error
-	Response() *models.WingmanInferenceResponse
-}
+// Stream is the interface returned by Provider.StreamInference.
+// Re-exported from core for convenience.
+type Stream = core.Stream

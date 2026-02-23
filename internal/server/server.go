@@ -88,17 +88,16 @@ func (s *Server) setupRoutes() {
 		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 	})
 
-	// s.router.Route("/fleets", func(r chi.Router) {
-	// 	r.Post("/", s.handleCreateFleet)
-	// 	r.Get("/", s.handleListFleets)
-	// 	r.Get("/{id}", s.handleGetFleet)
-	// 	r.Put("/{id}", s.handleUpdateFleet)
-	// 	r.Delete("/{id}", s.handleDeleteFleet)
-	// 	r.Post("/{id}/start", s.handleStartFleet)
-	// 	r.Post("/{id}/stop", s.handleStopFleet)
-	// 	r.Post("/{id}/submit", s.handleSubmitFleet)
-	// })
-	//
+	s.router.Route("/fleets", func(r chi.Router) {
+		r.Post("/", s.handleCreateFleet)
+		r.Get("/", s.handleListFleets)
+		r.Get("/{id}", s.handleGetFleet)
+		r.Put("/{id}", s.handleUpdateFleet)
+		r.Delete("/{id}", s.handleDeleteFleet)
+		r.Post("/{id}/run", s.handleRunFleet)
+		r.Post("/{id}/run/stream", s.handleRunFleetStream)
+	})
+
 	// s.router.Route("/formations", func(r chi.Router) {
 	// 	r.Post("/", s.handleCreateFormation)
 	// 	r.Get("/", s.handleListFormations)

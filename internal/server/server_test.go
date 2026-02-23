@@ -77,7 +77,8 @@ func TestAgentsCRUD(t *testing.T) {
 			"name":         "test-agent",
 			"instructions": "You are a test agent.",
 			"tools":        []string{"bash", "read"},
-			"model":        "anthropic/claude-sonnet-4-20250514",
+			"provider":     "anthropic",
+			"model":        "claude-sonnet-4-20250514",
 			"options": map[string]any{
 				"max_tokens":  4096,
 				"temperature": temp,
@@ -105,8 +106,11 @@ func TestAgentsCRUD(t *testing.T) {
 		if len(agent.Tools) != 2 {
 			t.Errorf("expected 2 tools, got %d", len(agent.Tools))
 		}
-		if agent.Model != "anthropic/claude-sonnet-4-20250514" {
-			t.Errorf("expected model 'anthropic/claude-sonnet-4-20250514', got %q", agent.Model)
+		if agent.Provider != "anthropic" {
+			t.Errorf("expected provider 'anthropic', got %q", agent.Provider)
+		}
+		if agent.Model != "claude-sonnet-4-20250514" {
+			t.Errorf("expected model 'claude-sonnet-4-20250514', got %q", agent.Model)
 		}
 		if agent.Options["max_tokens"] != float64(4096) {
 			t.Errorf("expected max_tokens 4096, got %v", agent.Options["max_tokens"])
@@ -287,6 +291,9 @@ func TestAgentWithoutProvider(t *testing.T) {
 
 	if agent.Model != "" {
 		t.Errorf("expected empty model, got %q", agent.Model)
+	}
+	if agent.Provider != "" {
+		t.Errorf("expected empty provider, got %q", agent.Provider)
 	}
 }
 
@@ -731,8 +738,9 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 
 	temp := 0.5
 	body := mustJSON(t, map[string]any{
-		"name":  "provider-test",
-		"model": "anthropic/claude-sonnet-4-20250514",
+		"name":     "provider-test",
+		"provider": "anthropic",
+		"model":    "claude-sonnet-4-20250514",
 		"options": map[string]any{
 			"max_tokens":  8192,
 			"temperature": temp,
@@ -753,8 +761,11 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 	var fetched storage.Agent
 	decodeJSON(t, resp, &fetched)
 
-	if fetched.Model != "anthropic/claude-sonnet-4-20250514" {
-		t.Errorf("expected model 'anthropic/claude-sonnet-4-20250514', got %q", fetched.Model)
+	if fetched.Provider != "anthropic" {
+		t.Errorf("expected provider 'anthropic', got %q", fetched.Provider)
+	}
+	if fetched.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("expected model 'claude-sonnet-4-20250514', got %q", fetched.Model)
 	}
 	if fetched.Options["max_tokens"] != float64(8192) {
 		t.Errorf("expected max_tokens 8192, got %v", fetched.Options["max_tokens"])

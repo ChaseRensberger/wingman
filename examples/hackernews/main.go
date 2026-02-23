@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+
+	"github.com/joho/godotenv"
+
 	"github.com/chaserensberger/wingman/agent"
 	"github.com/chaserensberger/wingman/provider/anthropic"
 	"github.com/chaserensberger/wingman/session"
 	"github.com/chaserensberger/wingman/tool"
-
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -38,10 +39,13 @@ func main() {
 		},
 	}
 
-	p := anthropic.New()
+	p, err := anthropic.New()
+	if err != nil {
+		log.Fatalf("failed to create Anthropic provider: %v", err)
+	}
 
 	a := agent.New("Hackernews Parser",
-		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json them as json"),
+		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json"),
 		agent.WithProvider(p),
 		agent.WithOutputSchema(schema),
 		agent.WithTools(

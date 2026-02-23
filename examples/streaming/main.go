@@ -8,7 +8,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 	"github.com/chaserensberger/wingman/provider/anthropic"
 	"github.com/chaserensberger/wingman/session"
 )
@@ -16,9 +16,9 @@ import (
 func main() {
 	godotenv.Load(".env.local")
 
-	p := anthropic.New()
-	if p == nil {
-		log.Fatal("ANTHROPIC_API_KEY not set")
+	p, err := anthropic.New()
+	if err != nil {
+		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
 	a := agent.New("Storyteller",
@@ -41,9 +41,9 @@ func main() {
 	for stream.Next() {
 		event := stream.Event()
 		switch event.Type {
-		case models.EventTextDelta:
+		case core.EventTextDelta:
 			fmt.Print(event.Text)
-		case models.EventMessageStop:
+		case core.EventMessageStop:
 			fmt.Println()
 		}
 	}
