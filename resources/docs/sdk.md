@@ -30,7 +30,9 @@ import (
 
 func main() {
     p := anthropic.New(anthropic.Config{
-        Model: "claude-sonnet-4-5",
+        Options: map[string]any{
+            "model": "claude-sonnet-4-5",
+        },
     })
 
     a := agent.New("MyAgent",
@@ -58,19 +60,30 @@ func main() {
 
 ### Provider
 
-Interface for LLM providers. The provider owns all inference configuration (model, max tokens, temperature, etc.) and is attached to an agent.
+Each provider has a `Config` with a provider-specific field for auth/connection and a generic `Options map[string]any` for inference parameters — using the same key names as the HTTP API.
 
 ```go
 p := anthropic.New(anthropic.Config{
-    APIKey:    "sk-...",  // Optional, defaults to ANTHROPIC_API_KEY env var
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
+    APIKey: "sk-...",  // optional; defaults to ANTHROPIC_API_KEY env var
+    Options: map[string]any{
+        "model":      "claude-sonnet-4-5",
+        "max_tokens": 4096,
+    },
 })
 
 a := agent.New("MyAgent",
     agent.WithProvider(p),
     agent.WithInstructions("..."),
 )
+```
+
+```go
+p := ollama.New(ollama.Config{
+    Options: map[string]any{
+        "model":    "llama3.2",
+        "base_url": "http://localhost:11434",
+    },
+})
 ```
 
 ### Tools

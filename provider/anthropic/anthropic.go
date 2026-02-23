@@ -31,27 +31,23 @@ func init() {
 }
 
 type Config struct {
-	APIKey      string
-	Model       string
-	MaxTokens   int
-	Temperature *float64
+	APIKey  string         // optional; falls back to ANTHROPIC_API_KEY env var
+	Options map[string]any // model, max_tokens, temperature, api_key override, etc.
 }
 
 type Client struct {
 	apiKey      string
 	model       string
 	maxTokens   int
-	temperature float64
+	temperature *float64
 	httpClient  *http.Client
 }
 
 const (
-	defaultModel       = "claude-sonnet-4-5"
-	defaultMaxTokens   = 8192
-	defaultTemperature = 1.0
-	apiURL             = "https://api.anthropic.com/v1/messages"
-	apiVersion         = "2023-06-01"
-	httpTimeout        = 5 * time.Minute
+	defaultModel = "claude-sonnet-4-5"
+	apiURL       = "https://api.anthropic.com/v1/messages"
+	apiVersion   = "2023-06-01"
+	httpTimeout  = 5 * time.Minute
 )
 
 func New(cfg ...Config) *Client {
@@ -62,25 +58,37 @@ func New(cfg ...Config) *Client {
 
 	apiKey := c.APIKey
 	if apiKey == "" {
+		if k, ok := c.Options["api_key"].(string); ok && k != "" {
+			apiKey = k
+		}
+	}
+	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 	if apiKey == "" {
 		return nil
 	}
 
-	model := c.Model
-	if model == "" {
-		model = defaultModel
+	model := defaultModel
+	if m, ok := c.Options["model"].(string); ok && m != "" {
+		model = m
 	}
 
-	maxTokens := c.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
+	var maxTokens int
+	if v, ok := c.Options["max_tokens"]; ok {
+		switch n := v.(type) {
+		case int:
+			maxTokens = n
+		case float64:
+			maxTokens = int(n)
+		}
 	}
 
-	temperature := defaultTemperature
-	if c.Temperature != nil {
-		temperature = *c.Temperature
+	var temperature *float64
+	if v, ok := c.Options["temperature"]; ok {
+		if f, ok := v.(float64); ok {
+			temperature = &f
+		}
 	}
 
 	return &Client{
@@ -141,8 +149,8 @@ type outputConfig struct {
 
 type request struct {
 	Model        string             `json:"model"`
-	MaxTokens    int                `json:"max_tokens"`
-	Temperature  float64            `json:"temperature,omitempty"`
+	MaxTokens    int                `json:"max_tokens,omitempty"`
+	Temperature  *float64           `json:"temperature,omitempty"`
 	System       string             `json:"system,omitempty"`
 	Messages     []anthropicMessage `json:"messages"`
 	Tools        []toolDefinition   `json:"tools,omitempty"`

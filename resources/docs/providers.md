@@ -10,14 +10,16 @@ Providers are just an interface so that it's easy to translate between a model p
 
 ## SDK
 
-In the SDK, a provider is a typed instance that knows how to connect to a specific API and how to configure inference. Each provider package exports its own `Config` struct with provider-specific fields.
+In the SDK, a provider is a typed instance that knows how to connect to a specific API and how to configure inference. Each provider package exports a `Config` struct with a provider-specific field for auth/connection and a generic `Options map[string]any` for inference parameters.
 
 ```go
 import "wingman/provider/anthropic"
 
 p := anthropic.New(anthropic.Config{
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
+    Options: map[string]any{
+        "model":      "claude-sonnet-4-5",
+        "max_tokens": 4096,
+    },
 })
 ```
 
@@ -25,8 +27,10 @@ p := anthropic.New(anthropic.Config{
 import "wingman/provider/ollama"
 
 p := ollama.New(ollama.Config{
-    Model:   "llama3.2",
-    BaseURL: "http://localhost:11434",
+    Options: map[string]any{
+        "model":    "llama3.2",
+        "base_url": "http://localhost:11434",
+    },
 })
 ```
 

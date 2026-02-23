@@ -12,7 +12,9 @@ import (
 
 func main() {
 	p := ollama.New(ollama.Config{
-		Model: "gemma3:270m",
+		Options: map[string]any{
+			"model": "gemma3:270m",
+		},
 	})
 	if p == nil {
 		log.Fatal("Failed to create Ollama provider")

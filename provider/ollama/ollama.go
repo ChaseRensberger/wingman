@@ -24,50 +24,59 @@ func init() {
 }
 
 type Config struct {
-	BaseURL     string
-	Model       string
-	MaxTokens   int
-	Temperature *float64
+	BaseURL string         // optional; defaults to http://localhost:11434
+	Options map[string]any // model (required), max_tokens, temperature, etc.
 }
 
 type Client struct {
 	baseURL     string
 	model       string
 	maxTokens   int
-	temperature float64
+	temperature *float64
 	httpClient  *http.Client
 }
 
 const (
-	defaultBaseURL     = "http://localhost:11434"
-	defaultMaxTokens   = 8192
-	defaultTemperature = 0.7
-	httpTimeout        = 10 * time.Minute
+	defaultBaseURL = "http://localhost:11434"
+	httpTimeout    = 10 * time.Minute
 )
 
 func New(cfg Config) *Client {
-	if cfg.Model == "" {
+	model, _ := cfg.Options["model"].(string)
+	if model == "" {
 		return nil
 	}
 
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
+		if u, ok := cfg.Options["base_url"].(string); ok && u != "" {
+			baseURL = u
+		}
+	}
+	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
 
-	maxTokens := cfg.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
+	var maxTokens int
+	if v, ok := cfg.Options["max_tokens"]; ok {
+		switch n := v.(type) {
+		case int:
+			maxTokens = n
+		case float64:
+			maxTokens = int(n)
+		}
 	}
 
-	temperature := defaultTemperature
-	if cfg.Temperature != nil {
-		temperature = *cfg.Temperature
+	var temperature *float64
+	if v, ok := cfg.Options["temperature"]; ok {
+		if f, ok := v.(float64); ok {
+			temperature = &f
+		}
 	}
 
 	return &Client{
 		baseURL:     baseURL,
-		model:       cfg.Model,
+		model:       model,
 		maxTokens:   maxTokens,
 		temperature: temperature,
 		httpClient:  &http.Client{Timeout: httpTimeout},
@@ -102,8 +111,8 @@ type toolFunction struct {
 }
 
 type modelOptions struct {
-	Temperature float64 `json:"temperature,omitempty"`
-	NumPredict  int     `json:"num_predict,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	NumPredict  int      `json:"num_predict,omitempty"`
 }
 
 type request struct {

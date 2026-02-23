@@ -318,7 +318,6 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 }
 
 func (s *Server) buildProvider(model string, opts map[string]any) (provider.Provider, error) {
-	// Split "provider/model" into provider ID and model ID
 	slashIdx := -1
 	for i, c := range model {
 		if c == '/' {
@@ -332,65 +331,30 @@ func (s *Server) buildProvider(model string, opts map[string]any) (provider.Prov
 	providerID := model[:slashIdx]
 	modelID := model[slashIdx+1:]
 
+	// Merge model ID into options so providers can read it from Options["model"]
+	merged := make(map[string]any, len(opts)+1)
+	for k, v := range opts {
+		merged[k] = v
+	}
+	merged["model"] = modelID
+
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	getString := func(key string) string {
-		if v, ok := opts[key]; ok {
-			if str, ok := v.(string); ok {
-				return str
-			}
-		}
-		return ""
-	}
-	getInt := func(key string) int {
-		if v, ok := opts[key]; ok {
-			switch n := v.(type) {
-			case int:
-				return n
-			case float64:
-				return int(n)
-			}
-		}
-		return 0
-	}
-	getFloat64Ptr := func(key string) *float64 {
-		if v, ok := opts[key]; ok {
-			if f, ok := v.(float64); ok {
-				return &f
-			}
-		}
-		return nil
-	}
-
 	switch providerID {
 	case "anthropic":
-		cred := auth.Providers["anthropic"]
-		apiKey := cred.Key
-		if k := getString("api_key"); k != "" {
-			apiKey = k
-		}
-		if apiKey == "" {
-			return nil, fmt.Errorf("anthropic not configured: missing API key")
-		}
-		acfg := anthropic.Config{
-			APIKey:      apiKey,
-			Model:       modelID,
-			MaxTokens:   getInt("max_tokens"),
-			Temperature: getFloat64Ptr("temperature"),
-		}
-		return anthropic.New(acfg), nil
+		apiKey := auth.Providers["anthropic"].Key
+		return anthropic.New(anthropic.Config{
+			APIKey:  apiKey,
+			Options: merged,
+		}), nil
 
 	case "ollama":
-		ocfg := ollama.Config{
-			Model:       modelID,
-			BaseURL:     getString("base_url"),
-			MaxTokens:   getInt("max_tokens"),
-			Temperature: getFloat64Ptr("temperature"),
-		}
-		return ollama.New(ocfg), nil
+		return ollama.New(ollama.Config{
+			Options: merged,
+		}), nil
 
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", providerID)
