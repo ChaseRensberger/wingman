@@ -5,15 +5,15 @@ import (
 )
 
 type Agent struct {
-	ID              string         `json:"id"`
-	Name            string         `json:"name"`
-	Instructions    string         `json:"instructions,omitempty"`
-	Tools           []string       `json:"tools,omitempty"`
-	ProviderID      string         `json:"provider_id,omitempty"`
-	ProviderOptions map[string]any `json:"provider_options,omitempty"`
-	OutputSchema    map[string]any `json:"output_schema,omitempty"`
-	CreatedAt       string         `json:"created_at"`
-	UpdatedAt       string         `json:"updated_at"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Instructions string         `json:"instructions,omitempty"`
+	Tools        []string       `json:"tools,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	Options      map[string]any `json:"options,omitempty"`
+	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 type Session struct {

@@ -77,9 +77,8 @@ func TestAgentsCRUD(t *testing.T) {
 			"name":         "test-agent",
 			"instructions": "You are a test agent.",
 			"tools":        []string{"bash", "read"},
-			"provider_id":  "anthropic",
-			"provider_options": map[string]any{
-				"model":       "claude-sonnet-4-20250514",
+			"model":        "anthropic/claude-sonnet-4-20250514",
+			"options": map[string]any{
 				"max_tokens":  4096,
 				"temperature": temp,
 			},
@@ -106,14 +105,11 @@ func TestAgentsCRUD(t *testing.T) {
 		if len(agent.Tools) != 2 {
 			t.Errorf("expected 2 tools, got %d", len(agent.Tools))
 		}
-		if agent.ProviderID != "anthropic" {
-			t.Errorf("expected provider_id 'anthropic', got %q", agent.ProviderID)
+		if agent.Model != "anthropic/claude-sonnet-4-20250514" {
+			t.Errorf("expected model 'anthropic/claude-sonnet-4-20250514', got %q", agent.Model)
 		}
-		if agent.ProviderOptions["model"] != "claude-sonnet-4-20250514" {
-			t.Errorf("expected model 'claude-sonnet-4-20250514', got %v", agent.ProviderOptions["model"])
-		}
-		if agent.ProviderOptions["max_tokens"] != float64(4096) {
-			t.Errorf("expected max_tokens 4096, got %v", agent.ProviderOptions["max_tokens"])
+		if agent.Options["max_tokens"] != float64(4096) {
+			t.Errorf("expected max_tokens 4096, got %v", agent.Options["max_tokens"])
 		}
 		if agent.ID == "" {
 			t.Fatal("expected agent ID to be set")
@@ -289,8 +285,8 @@ func TestAgentWithoutProvider(t *testing.T) {
 	var agent storage.Agent
 	decodeJSON(t, resp, &agent)
 
-	if agent.ProviderID != "" {
-		t.Errorf("expected empty provider_id, got %q", agent.ProviderID)
+	if agent.Model != "" {
+		t.Errorf("expected empty model, got %q", agent.Model)
 	}
 }
 
@@ -735,10 +731,9 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 
 	temp := 0.5
 	body := mustJSON(t, map[string]any{
-		"name":        "provider-test",
-		"provider_id": "anthropic",
-		"provider_options": map[string]any{
-			"model":       "claude-sonnet-4-20250514",
+		"name":  "provider-test",
+		"model": "anthropic/claude-sonnet-4-20250514",
+		"options": map[string]any{
 			"max_tokens":  8192,
 			"temperature": temp,
 		},
@@ -758,16 +753,13 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 	var fetched storage.Agent
 	decodeJSON(t, resp, &fetched)
 
-	if fetched.ProviderID != "anthropic" {
-		t.Errorf("expected provider_id 'anthropic', got %q", fetched.ProviderID)
+	if fetched.Model != "anthropic/claude-sonnet-4-20250514" {
+		t.Errorf("expected model 'anthropic/claude-sonnet-4-20250514', got %q", fetched.Model)
 	}
-	if fetched.ProviderOptions["model"] != "claude-sonnet-4-20250514" {
-		t.Errorf("expected model 'claude-sonnet-4-20250514', got %v", fetched.ProviderOptions["model"])
+	if fetched.Options["max_tokens"] != float64(8192) {
+		t.Errorf("expected max_tokens 8192, got %v", fetched.Options["max_tokens"])
 	}
-	if fetched.ProviderOptions["max_tokens"] != float64(8192) {
-		t.Errorf("expected max_tokens 8192, got %v", fetched.ProviderOptions["max_tokens"])
-	}
-	if fetched.ProviderOptions["temperature"] != 0.5 {
-		t.Errorf("expected temperature 0.5, got %v", fetched.ProviderOptions["temperature"])
+	if fetched.Options["temperature"] != 0.5 {
+		t.Errorf("expected temperature 0.5, got %v", fetched.Options["temperature"])
 	}
 }

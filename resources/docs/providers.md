@@ -68,13 +68,12 @@ curl -X PUT http://localhost:2323/provider/auth \
 
 ### Provider Config on Agents
 
-When creating an agent via the API, use `provider_id` to specify which provider to use and `provider_options` to configure inference. `provider_options` is a free-form map — use any keys supported by the provider.
+When creating an agent via the API, use `model` in `"provider/model"` format (e.g. `"anthropic/claude-sonnet-4-5"`) to specify the provider and model together. Use `options` to configure inference — it is a free-form map of any keys supported by the provider.
 
 **Common options (all providers):**
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `model` | string | Model ID to use |
 | `max_tokens` | number | Maximum tokens to generate |
 | `temperature` | number | Sampling temperature |
 
@@ -91,9 +90,8 @@ curl -X POST http://localhost:2323/agents \
   -d '{
     "name": "Assistant",
     "instructions": "Be helpful",
-    "provider_id": "anthropic",
-    "provider_options": {
-      "model": "claude-sonnet-4-5",
+    "model": "anthropic/claude-sonnet-4-5",
+    "options": {
       "max_tokens": 4096,
       "temperature": 0.7
     }
@@ -107,12 +105,11 @@ curl -X POST http://localhost:2323/agents \
   -d '{
     "name": "LocalAgent",
     "instructions": "Be helpful",
-    "provider_id": "ollama",
-    "provider_options": {
-      "model": "llama3.2",
+    "model": "ollama/llama3.2",
+    "options": {
       "base_url": "http://my-ollama-host:11434"
     }
   }'
 ```
 
-The server looks up the API key from the auth store and constructs the provider instance at inference time.
+The server splits `model` on the first `/` to get the provider ID and model ID, looks up the API key from the auth store, and constructs the provider instance at inference time.

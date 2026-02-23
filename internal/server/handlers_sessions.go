@@ -302,8 +302,8 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 		opts = append(opts, agent.WithTools(tools...))
 	}
 
-	if stored.ProviderID != "" {
-		p, err := s.buildProvider(stored.ProviderID, stored.ProviderOptions)
+	if stored.Model != "" {
+		p, err := s.buildProvider(stored.Model, stored.Options)
 		if err != nil {
 			return nil, err
 		}
@@ -317,7 +317,21 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	return agent.New(stored.Name, opts...), nil
 }
 
-func (s *Server) buildProvider(providerID string, opts map[string]any) (provider.Provider, error) {
+func (s *Server) buildProvider(model string, opts map[string]any) (provider.Provider, error) {
+	// Split "provider/model" into provider ID and model ID
+	slashIdx := -1
+	for i, c := range model {
+		if c == '/' {
+			slashIdx = i
+			break
+		}
+	}
+	if slashIdx < 0 {
+		return nil, fmt.Errorf("invalid model format %q: expected \"provider/model\"", model)
+	}
+	providerID := model[:slashIdx]
+	modelID := model[slashIdx+1:]
+
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
@@ -363,7 +377,7 @@ func (s *Server) buildProvider(providerID string, opts map[string]any) (provider
 		}
 		acfg := anthropic.Config{
 			APIKey:      apiKey,
-			Model:       getString("model"),
+			Model:       modelID,
 			MaxTokens:   getInt("max_tokens"),
 			Temperature: getFloat64Ptr("temperature"),
 		}
@@ -371,7 +385,7 @@ func (s *Server) buildProvider(providerID string, opts map[string]any) (provider
 
 	case "ollama":
 		ocfg := ollama.Config{
-			Model:       getString("model"),
+			Model:       modelID,
 			BaseURL:     getString("base_url"),
 			MaxTokens:   getInt("max_tokens"),
 			Temperature: getFloat64Ptr("temperature"),
