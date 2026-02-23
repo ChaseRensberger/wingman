@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 type EditTool struct{}
@@ -24,13 +24,13 @@ func (t *EditTool) Description() string {
 	return "Edit an existing file by replacing a specific string with new content. The old_string must match exactly (including whitespace and indentation)."
 }
 
-func (t *EditTool) Definition() models.WingmanToolDefinition {
-	return models.WingmanToolDefinition{
+func (t *EditTool) Definition() core.ToolDefinition {
+	return core.ToolDefinition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: models.WingmanToolInputSchema{
+		InputSchema: core.ToolInputSchema{
 			Type: "object",
-			Properties: map[string]models.WingmanToolProperty{
+			Properties: map[string]core.ToolProperty{
 				"path": {
 					Type:        "string",
 					Description: "The path to the file to edit",

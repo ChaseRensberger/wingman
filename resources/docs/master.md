@@ -38,7 +38,6 @@ provider/              Provider registry, interfaces, ProviderMeta
 provider/anthropic/    Anthropic Messages API provider
 provider/ollama/       Ollama chat API provider
 tool/                  Tool interface, Registry, and all 7 built-in tools
-models/                Backward-compat re-exports of core types (legacy; prefer core/)
 internal/server/       HTTP server, route handlers
 internal/storage/      SQLite store + storage types
 examples/              Runnable examples for every major feature
@@ -759,11 +758,11 @@ for _, r := range results {
 
 ## Design Decisions Log
 
-### Why `core` instead of expanding `models`?
+### Why `core` instead of expanding the old `models` package?
 
 The `models` package existed before `core` and contained message types. But it had no interfaces, so `provider` and `tool` couldn't import from it without the provider packages importing `tool` (circular). Creating `core` as a zero-dependency package with both types and interfaces solves this cleanly.
 
-`models` is kept as a thin re-export layer for backward compatibility. New code should import `core` directly.
+The `models` package was a thin re-export layer during migration and has since been removed. New code imports `core` directly.
 
 ### Why `anthropic.New` returns `(Provider, error)` instead of `Provider?`
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 type ReadTool struct{}
@@ -24,13 +24,13 @@ func (t *ReadTool) Description() string {
 	return "Read the contents of a file. Returns the file content as text."
 }
 
-func (t *ReadTool) Definition() models.WingmanToolDefinition {
-	return models.WingmanToolDefinition{
+func (t *ReadTool) Definition() core.ToolDefinition {
+	return core.ToolDefinition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: models.WingmanToolInputSchema{
+		InputSchema: core.ToolInputSchema{
 			Type: "object",
-			Properties: map[string]models.WingmanToolProperty{
+			Properties: map[string]core.ToolProperty{
 				"path": {
 					Type:        "string",
 					Description: "The path to the file to read (relative to working directory or absolute)",

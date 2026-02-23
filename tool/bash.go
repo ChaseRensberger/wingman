@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 type BashTool struct {
@@ -28,13 +28,13 @@ func (t *BashTool) Description() string {
 	return "Execute a bash command and return its output. Use this for running scripts, installing packages, or any shell operations."
 }
 
-func (t *BashTool) Definition() models.WingmanToolDefinition {
-	return models.WingmanToolDefinition{
+func (t *BashTool) Definition() core.ToolDefinition {
+	return core.ToolDefinition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: models.WingmanToolInputSchema{
+		InputSchema: core.ToolInputSchema{
 			Type: "object",
-			Properties: map[string]models.WingmanToolProperty{
+			Properties: map[string]core.ToolProperty{
 				"command": {
 					Type:        "string",
 					Description: "The bash command to execute",

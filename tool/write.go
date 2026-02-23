@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/core"
 )
 
 type WriteTool struct{}
@@ -23,13 +23,13 @@ func (t *WriteTool) Description() string {
 	return "Write content to a file. Creates the file if it doesn't exist, or overwrites if it does. Creates parent directories as needed."
 }
 
-func (t *WriteTool) Definition() models.WingmanToolDefinition {
-	return models.WingmanToolDefinition{
+func (t *WriteTool) Definition() core.ToolDefinition {
+	return core.ToolDefinition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: models.WingmanToolInputSchema{
+		InputSchema: core.ToolInputSchema{
 			Type: "object",
-			Properties: map[string]models.WingmanToolProperty{
+			Properties: map[string]core.ToolProperty{
 				"path": {
 					Type:        "string",
 					Description: "The path to the file to write (relative to working directory or absolute)",
