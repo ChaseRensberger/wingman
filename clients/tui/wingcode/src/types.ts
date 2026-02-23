@@ -7,11 +7,8 @@ export interface TextMessage {
 
 export interface ToolMessage {
 	role: "tool";
-	toolID?: string;
 	toolName?: string;
-	input?: string;
-	output?: string;
-	status: "running" | "done" | "error";
+	status: "done";
 }
 
 export interface StreamEvent {
