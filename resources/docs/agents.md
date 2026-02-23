@@ -41,9 +41,8 @@ curl -X POST http://localhost:2323/agents \
     "name": "CodeAssistant",
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "provider": {
-      "id": "anthropic",
-      "model": "claude-sonnet-4-5",
+    "model": "anthropic/claude-sonnet-4-5",
+    "options": {
       "max_tokens": 4096
     }
   }'

@@ -167,9 +167,8 @@ curl -sS -X GET http://localhost:2323/agents | jq .
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "provider": {
-      "id": "anthropic",
-      "model": "claude-sonnet-4-5",
+    "model": "anthropic/claude-sonnet-4-5",
+    "options": {
       "max_tokens": 4096,
       "temperature": 0.7
     },
@@ -189,9 +188,8 @@ curl -sS -X POST http://localhost:2323/agents \
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "provider": {
-      "id": "anthropic",
-      "model": "claude-sonnet-4-5",
+    "model": "anthropic/claude-sonnet-4-5",
+    "options": {
       "max_tokens": 4096,
       "temperature": 0.7
     }
@@ -205,9 +203,8 @@ curl -sS -X POST http://localhost:2323/agents \
   "name": "Assistant",
   "instructions": "Be helpful",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-  "provider": {
-    "id": "anthropic",
-    "model": "claude-sonnet-4-5",
+  "model": "anthropic/claude-sonnet-4-5",
+  "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },
@@ -230,9 +227,8 @@ curl -sS -X GET http://localhost:2323/agents/01ABC... | jq .
   "name": "Assistant",
   "instructions": "Be helpful",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-  "provider": {
-    "id": "anthropic",
-    "model": "claude-sonnet-4-5",
+  "model": "anthropic/claude-sonnet-4-5",
+  "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },
@@ -260,9 +256,8 @@ curl -sS -X PUT http://localhost:2323/agents/01ABC... \
   "name": "Assistant",
   "instructions": "You are a fast, practical coding assistant.",
   "tools": ["bash", "read", "edit", "glob", "grep"],
-  "provider": {
-    "id": "anthropic",
-    "model": "claude-sonnet-4-5",
+  "model": "anthropic/claude-sonnet-4-5",
+  "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },

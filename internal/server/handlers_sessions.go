@@ -302,8 +302,8 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 		opts = append(opts, agent.WithTools(tools...))
 	}
 
-	if stored.Provider != nil {
-		p, err := s.buildProvider(stored.Provider)
+	if stored.Model != "" {
+		p, err := s.buildProvider(stored.Model, stored.Options)
 		if err != nil {
 			return nil, err
 		}
@@ -317,44 +317,83 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	return agent.New(stored.Name, opts...), nil
 }
 
-func (s *Server) buildProvider(cfg *storage.ProviderConfig) (provider.Provider, error) {
+func (s *Server) buildProvider(model string, opts map[string]any) (provider.Provider, error) {
+	// Split "provider/model" into provider ID and model ID
+	slashIdx := -1
+	for i, c := range model {
+		if c == '/' {
+			slashIdx = i
+			break
+		}
+	}
+	if slashIdx < 0 {
+		return nil, fmt.Errorf("invalid model format %q: expected \"provider/model\"", model)
+	}
+	providerID := model[:slashIdx]
+	modelID := model[slashIdx+1:]
+
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get auth: %w", err)
 	}
 
-	switch cfg.ID {
+	getString := func(key string) string {
+		if v, ok := opts[key]; ok {
+			if str, ok := v.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+	getInt := func(key string) int {
+		if v, ok := opts[key]; ok {
+			switch n := v.(type) {
+			case int:
+				return n
+			case float64:
+				return int(n)
+			}
+		}
+		return 0
+	}
+	getFloat64Ptr := func(key string) *float64 {
+		if v, ok := opts[key]; ok {
+			if f, ok := v.(float64); ok {
+				return &f
+			}
+		}
+		return nil
+	}
+
+	switch providerID {
 	case "anthropic":
 		cred := auth.Providers["anthropic"]
-		if cred.Key == "" {
+		apiKey := cred.Key
+		if k := getString("api_key"); k != "" {
+			apiKey = k
+		}
+		if apiKey == "" {
 			return nil, fmt.Errorf("anthropic not configured: missing API key")
 		}
 		acfg := anthropic.Config{
-			APIKey: cred.Key,
-			Model:  cfg.Model,
-		}
-		if cfg.MaxTokens > 0 {
-			acfg.MaxTokens = cfg.MaxTokens
-		}
-		if cfg.Temperature != nil {
-			acfg.Temperature = cfg.Temperature
+			APIKey:      apiKey,
+			Model:       modelID,
+			MaxTokens:   getInt("max_tokens"),
+			Temperature: getFloat64Ptr("temperature"),
 		}
 		return anthropic.New(acfg), nil
 
 	case "ollama":
 		ocfg := ollama.Config{
-			Model: cfg.Model,
-		}
-		if cfg.MaxTokens > 0 {
-			ocfg.MaxTokens = cfg.MaxTokens
-		}
-		if cfg.Temperature != nil {
-			ocfg.Temperature = cfg.Temperature
+			Model:       modelID,
+			BaseURL:     getString("base_url"),
+			MaxTokens:   getInt("max_tokens"),
+			Temperature: getFloat64Ptr("temperature"),
 		}
 		return ollama.New(ocfg), nil
 
 	default:
-		return nil, fmt.Errorf("unknown provider: %s", cfg.ID)
+		return nil, fmt.Errorf("unknown provider: %s", providerID)
 	}
 }
 

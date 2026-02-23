@@ -33,21 +33,21 @@ s := session.New(session.WithAgent(a))
 result, _ := s.Run(ctx, "Summarize this article...")
 ```
 
-In the HTTP API, the provider config is a JSON object on the agent:
+In the HTTP API, provider configuration lives on the agent as two fields: `provider_id` (which provider) and `provider_options` (a free-form map of settings):
 
 ```json
 {
   "name": "Summarizer",
   "instructions": "Summarize text concisely.",
-  "provider": {
-    "id": "anthropic",
+  "provider_id": "anthropic",
+  "provider_options": {
     "model": "claude-sonnet-4-5",
     "max_tokens": 4096
   }
 }
 ```
 
-The server reads the `provider.id`, looks up API credentials from the auth store, and constructs the typed provider instance at inference time.
+The server reads `provider_id`, looks up API credentials from the auth store, and constructs the typed provider instance at inference time.
 
 ## Provider Interface
 
