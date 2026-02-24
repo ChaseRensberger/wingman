@@ -24,7 +24,7 @@ export function buildDeepResearchDefinition(
             max_retries: 6,
           },
           instructions:
-            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe first write must be a compact skeleton only: title, table of contents, and section stubs with short placeholders.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
+            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe write must create a compact skeleton only (title, table of contents, and section stubs).\nEach section stub MUST be wrapped in unique marker comments exactly like:\n<!-- SECTION:{section_id}:START -->\n## {section_title}\n_TODO: {section_id}_\n<!-- SECTION:{section_id}:END -->\nAlso emit each section.marker value equal to `SECTION:{section_id}`.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
           tools: ["perplexity_search", "write", "edit"],
           output_schema: {
             type: "object",
@@ -45,11 +45,12 @@ export function buildDeepResearchDefinition(
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["id", "title", "guidance"],
+                  required: ["id", "title", "guidance", "marker"],
                   properties: {
                     id: { type: "string" },
                     title: { type: "string" },
                     guidance: { type: "string" },
+                    marker: { type: "string" },
                   },
                 },
               },
@@ -68,6 +69,7 @@ export function buildDeepResearchDefinition(
             section_id: "item.id",
             section_title: "item.title",
             section_guidance: "item.guidance",
+            section_marker: "item.marker",
           },
           agent: {
             name: "IterativeResearcher",
@@ -78,8 +80,8 @@ export function buildDeepResearchDefinition(
               max_retries: 6,
             },
             instructions:
-              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nFill only your assigned section.\nReturn structured JSON when finished.",
-            tools: ["perplexity_search", "edit"],
+              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nEdit only your section marker block.\nYour marker namespace is provided as section_marker (example: SECTION:section_1).\nUse exactly one edit call with:\n- old_string = full current block between <!-- {section_marker}:START --> and <!-- {section_marker}:END -->\n- new_string = same markers and heading, but replace TODO body with final content\nDo not edit outside your marker block.\nReturn structured JSON when finished.",
+            tools: ["perplexity_search", "read", "edit"],
             output_schema: {
               type: "object",
               additionalProperties: false,
@@ -109,7 +111,7 @@ export function buildDeepResearchDefinition(
           },
           instructions:
             "Do a final proofreading and quality pass over ./report.md.\nImprove spelling, structure, and readability without changing intent.\nReturn structured JSON status.",
-          tools: ["edit"],
+          tools: ["read", "edit"],
           output_schema: {
             type: "object",
             additionalProperties: false,

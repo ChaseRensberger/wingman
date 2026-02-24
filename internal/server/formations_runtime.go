@@ -358,6 +358,7 @@ func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDe
 	if err != nil {
 		return nil, err
 	}
+	agentInstance = withSerializedEditTool(agentInstance)
 
 	wd := def.Defaults.WorkDir
 	runSession := session.New(session.WithAgent(agentInstance), session.WithWorkDir(wd))
@@ -435,6 +436,7 @@ func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDe
 	if err != nil {
 		return nil, err
 	}
+	agentInstance = withSerializedEditTool(agentInstance)
 
 	messages := make([]string, 0, len(items))
 	for _, item := range items {
@@ -496,6 +498,30 @@ type formationToolCall struct {
 	Error  string
 }
 
+var formationEditMu sync.Mutex
+
+type serializedEditTool struct {
+	inner core.Tool
+}
+
+func (t *serializedEditTool) Name() string {
+	return t.inner.Name()
+}
+
+func (t *serializedEditTool) Description() string {
+	return t.inner.Description()
+}
+
+func (t *serializedEditTool) Definition() core.ToolDefinition {
+	return t.inner.Definition()
+}
+
+func (t *serializedEditTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
+	formationEditMu.Lock()
+	defer formationEditMu.Unlock()
+	return t.inner.Execute(ctx, params, workDir)
+}
+
 func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, message, nodeID, worker string, emit func(formationEvent)) (*streamedRunResult, error) {
 	stream, err := runSession.RunStream(ctx, message)
 	if err != nil {
@@ -506,11 +532,18 @@ func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, 
 	callTools := map[string]string{}
 	writeStarted := false
 	writeCompleted := false
+	perplexityCalls := 0
 	for stream.Next() {
 		event := stream.Event()
 		if event.Type == core.EventContentBlockStart && event.ContentBlock != nil && event.ContentBlock.Type == "tool_use" {
 			pending[event.Index] = *event.ContentBlock
 			callTools[event.ContentBlock.ID] = event.ContentBlock.Name
+			if event.ContentBlock.Name == "perplexity_search" {
+				perplexityCalls++
+				if perplexityCalls > 3 {
+					return nil, fmt.Errorf("agent exceeded max perplexity_search calls (3)")
+				}
+			}
 			if event.ContentBlock.Name == "write" {
 				writeStarted = true
 			}
@@ -570,6 +603,8 @@ func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, 
 				if toolName == "write" {
 					writeExecuted = true
 				}
+			} else if toolName == "edit" {
+				return nil, fmt.Errorf("edit tool failed (path=%s): %w", path, call.Error)
 			}
 			emit(formationEvent{
 				Type:   "tool_call",
@@ -687,6 +722,28 @@ func resolveWorkDir(workDir string) string {
 		return "."
 	}
 	return trimmed
+}
+
+func withSerializedEditTool(a *agent.Agent) *agent.Agent {
+	wrappedTools := make([]core.Tool, 0, len(a.Tools()))
+	for _, t := range a.Tools() {
+		if t.Name() == "edit" {
+			wrappedTools = append(wrappedTools, &serializedEditTool{inner: t})
+			continue
+		}
+		wrappedTools = append(wrappedTools, t)
+	}
+
+	return agent.New(
+		a.Name(),
+		agent.WithID(a.ID()),
+		agent.WithInstructions(a.Instructions()),
+		agent.WithProvider(a.Provider()),
+		agent.WithProviderID(a.ProviderID()),
+		agent.WithModel(a.Model()),
+		agent.WithOutputSchema(a.OutputSchema()),
+		agent.WithTools(wrappedTools...),
+	)
 }
 
 func parseStructuredObject(raw string) (map[string]any, error) {

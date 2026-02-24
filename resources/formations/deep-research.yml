@@ -24,7 +24,13 @@ nodes:
         Use at most 2 webfetch calls total in this planning phase.
         Build an outline with no more than 8 sections (excluding Conclusion).
         Before your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.
-        The first write must be a compact skeleton only: title, table of contents, and section stubs with short placeholders.
+        The write must create a compact skeleton only (title, table of contents, and section stubs).
+        Each section stub MUST be wrapped in unique marker comments exactly like:
+        <!-- SECTION:{section_id}:START -->
+        ## {section_title}
+        _TODO: {section_id}_
+        <!-- SECTION:{section_id}:END -->
+        Also emit each section.marker value equal to `SECTION:{section_id}`.
         Do not write full section prose in planner.
         Do not return final JSON until the write call succeeds.
         Emit structured JSON with sections, report_path, and write_confirmed for downstream fanout.
@@ -46,13 +52,15 @@ nodes:
             items:
               type: object
               additionalProperties: false
-              required: [id, title, guidance]
+              required: [id, title, guidance, marker]
               properties:
                 id:
                   type: string
                 title:
                   type: string
                 guidance:
+                  type: string
+                marker:
                   type: string
 
   - id: iterative_research
@@ -65,6 +73,7 @@ nodes:
         section_id: item.id
         section_title: item.title
         section_guidance: item.guidance
+        section_marker: item.marker
       agent:
         name: IterativeResearcher
         provider: anthropic
@@ -78,9 +87,14 @@ nodes:
           You may call perplexity_search at most 3 times for this section.
           Use at most 1 webfetch call for this section unless strictly needed.
           Summarize findings; do not include large quoted source text.
-          Fill only your assigned section.
+          Edit only your section marker block.
+          Your marker namespace is provided as section_marker (example: SECTION:section_1).
+          Use exactly one edit call with:
+          - old_string = full current block between <!-- {section_marker}:START --> and <!-- {section_marker}:END -->
+          - new_string = same markers and heading, but replace TODO body with final content
+          Do not edit outside your marker block.
           Return structured JSON when finished.
-        tools: [perplexity_search, webfetch, edit]
+        tools: [perplexity_search, webfetch, read, edit]
         output_schema:
           type: object
           additionalProperties: false
@@ -106,7 +120,7 @@ nodes:
         Do a final proofreading and quality pass over ./report.md.
         Improve spelling, structure, and readability without changing intent.
         Return structured JSON status.
-      tools: [edit]
+      tools: [read, edit]
       output_schema:
         type: object
         additionalProperties: false
