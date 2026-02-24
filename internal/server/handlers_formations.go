@@ -19,10 +19,9 @@ type runFormationRequest struct {
 }
 
 type runFormationResponse struct {
-	Status    string                    `json:"status"`
-	Outputs   map[string]map[string]any `json:"outputs"`
-	Stats     formationRunStats         `json:"stats"`
-	Artifacts []map[string]any          `json:"artifacts"`
+	Status  string                    `json:"status"`
+	Outputs map[string]map[string]any `json:"outputs"`
+	Stats   formationRunStats         `json:"stats"`
 }
 
 func (s *Server) handleCreateFormation(w http.ResponseWriter, r *http.Request) {
@@ -178,10 +177,9 @@ func (s *Server) handleRunFormation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, runFormationResponse{
-		Status:    "ok",
-		Outputs:   result.Outputs,
-		Stats:     result.Stats,
-		Artifacts: []map[string]any{},
+		Status:  "ok",
+		Outputs: result.Outputs,
+		Stats:   result.Stats,
 	})
 }
 
