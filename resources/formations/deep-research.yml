@@ -12,10 +12,14 @@ nodes:
     agent:
       name: Planner
       provider: anthropic
-      model: claude-sonnet-4-5
+      model: claude-haiku-4-5
+      options:
+        max_tokens: 1200
       instructions: |
         You are the overseer of a deep research report.
         Use perplexity_search and webfetch for initial research.
+        Keep tool outputs concise and summarized; never paste large raw source text.
+        Use at most 2 webfetch calls total in this planning phase.
         Build an outline with no more than 8 sections (excluding Conclusion).
         Create ./report.md with a table of contents and section stubs.
         Emit structured JSON with a sections array for downstream fanout.
@@ -53,10 +57,14 @@ nodes:
       agent:
         name: IterativeResearcher
         provider: anthropic
-        model: claude-sonnet-4-5
+        model: claude-haiku-4-5
+        options:
+          max_tokens: 900
         instructions: |
           You are assigned one section of ./report.md.
           Do targeted research with perplexity_search and webfetch.
+          Use at most 1 webfetch call for this section unless strictly needed.
+          Summarize findings; do not include large quoted source text.
           Fill only your assigned section.
           Return structured JSON when finished.
         tools: [perplexity_search, webfetch, edit]
@@ -77,7 +85,9 @@ nodes:
     agent:
       name: Proofreader
       provider: anthropic
-      model: claude-sonnet-4-5
+      model: claude-haiku-4-5
+      options:
+        max_tokens: 700
       instructions: |
         Do a final proofreading and quality pass over ./report.md.
         Improve spelling, structure, and readability without changing intent.

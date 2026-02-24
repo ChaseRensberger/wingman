@@ -1,6 +1,8 @@
-import type { FormationDefinition } from "@/lib/wingman"
+import type { FormationDefinition } from "@/lib/wingman";
 
-export function buildDeepResearchDefinition(workerCount: number): FormationDefinition {
+export function buildDeepResearchDefinition(
+  workerCount: number,
+): FormationDefinition {
   return {
     name: "deep-research",
     version: 1,
@@ -16,10 +18,13 @@ export function buildDeepResearchDefinition(workerCount: number): FormationDefin
         agent: {
           name: "Planner",
           provider: "anthropic",
-          model: "claude-sonnet-4-5",
+          model: "claude-haiku-4-5",
+          options: {
+            max_tokens: 1200,
+          },
           instructions:
-            "You are the overseer of a deep research report.\nUse perplexity_search and webfetch for initial research.\nBuild an outline with no more than 8 sections (excluding Conclusion).\nCreate ./report.md with a table of contents and section stubs.\nEmit structured JSON with a sections array for downstream fanout.",
-          tools: ["perplexity_search", "webfetch", "write", "edit"],
+            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nCreate ./report.md with a table of contents and section stubs.\nEmit structured JSON with a sections array for downstream fanout.",
+          tools: ["perplexity_search", "write", "edit"],
           output_schema: {
             type: "object",
             additionalProperties: false,
@@ -58,10 +63,13 @@ export function buildDeepResearchDefinition(workerCount: number): FormationDefin
           agent: {
             name: "IterativeResearcher",
             provider: "anthropic",
-            model: "claude-sonnet-4-5",
+            model: "claude-haiku-4-5",
+            options: {
+              max_tokens: 900,
+            },
             instructions:
-              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search and webfetch.\nFill only your assigned section.\nReturn structured JSON when finished.",
-            tools: ["perplexity_search", "webfetch", "edit"],
+              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nConcisely summarize findings; do not include large quoted source text.\nFill only your assigned section.\nReturn structured JSON when finished.",
+            tools: ["perplexity_search", "edit"],
             output_schema: {
               type: "object",
               additionalProperties: false,
@@ -84,7 +92,10 @@ export function buildDeepResearchDefinition(workerCount: number): FormationDefin
         agent: {
           name: "Proofreader",
           provider: "anthropic",
-          model: "claude-sonnet-4-5",
+          model: "claude-haiku-4-5",
+          options: {
+            max_tokens: 700,
+          },
           instructions:
             "Do a final proofreading and quality pass over ./report.md.\nImprove spelling, structure, and readability without changing intent.\nReturn structured JSON status.",
           tools: ["edit"],
@@ -119,5 +130,5 @@ export function buildDeepResearchDefinition(workerCount: number): FormationDefin
         },
       },
     ],
-  }
+  };
 }
