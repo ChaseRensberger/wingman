@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP="wingman"
+OWNER="chaserensberger"
+REPO="wingman"
+
+requested_version="${VERSION:-}"
+binary_path=""
+install_dir="${WINGMAN_INSTALL_DIR:-$HOME/.wingman/bin}"
+no_modify_path=false
+
+usage() {
+  cat <<'EOF'
+Wingman Installer
+
+Usage: install [options]
+
+Options:
+  -h, --help              Show help
+  -v, --version <version> Install a specific version
+  -b, --binary <path>     Install from a local binary
+      --install-dir <dir> Set install directory (default: ~/.wingman/bin)
+      --no-modify-path    Do not modify shell config files
+
+Examples:
+  curl -fsSL https://wingman.actor/install | bash
+  curl -fsSL https://wingman.actor/install | bash -s -- --version 0.1.0
+  ./install --binary ./wingman
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --version requires a value" >&2
+        exit 1
+      fi
+      requested_version="$2"
+      shift 2
+      ;;
+    -b|--binary)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --binary requires a path" >&2
+        exit 1
+      fi
+      binary_path="$2"
+      shift 2
+      ;;
+    --install-dir)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --install-dir requires a value" >&2
+        exit 1
+      fi
+      install_dir="$2"
+      shift 2
+      ;;
+    --no-modify-path)
+      no_modify_path=true
+      shift
+      ;;
+    *)
+      echo "Warning: Unknown option '$1'" >&2
+      shift
+      ;;
+  esac
+done
+
+mkdir -p "$install_dir"
+
+detect_os() {
+  case "$(uname -s)" in
+    Linux*) echo "linux" ;;
+    Darwin*) echo "darwin" ;;
+    MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+    *)
+      echo "Unsupported operating system" >&2
+      exit 1
+      ;;
+  esac
+}
+
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "amd64" ;;
+    arm64|aarch64) echo "arm64" ;;
+    *)
+      echo "Unsupported architecture" >&2
+      exit 1
+      ;;
+  esac
+}
+
+resolve_version() {
+  if [[ -n "$requested_version" ]]; then
+    echo "${requested_version#v}"
+    return
+  fi
+
+  local tag
+  tag=$(curl -fsSL "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n '1p')
+  if [[ -z "$tag" ]]; then
+    echo "Failed to resolve latest release version" >&2
+    exit 1
+  fi
+  echo "${tag#v}"
+}
+
+install_from_archive() {
+  local os arch version ext filename url tmp_dir archive bin_name
+  os=$(detect_os)
+  arch=$(detect_arch)
+  version=$(resolve_version)
+
+  ext="tar.gz"
+  if [[ "$os" == "windows" ]]; then
+    ext="zip"
+  fi
+
+  filename="${APP}_${version}_${os}_${arch}.${ext}"
+  url="https://github.com/${OWNER}/${REPO}/releases/download/v${version}/${filename}"
+
+  echo "Installing ${APP} v${version} (${os}/${arch})"
+
+  tmp_dir=$(mktemp -d)
+  archive="${tmp_dir}/${filename}"
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  if ! curl -fL "$url" -o "$archive"; then
+    echo "Failed to download release artifact: $url" >&2
+    exit 1
+  fi
+
+  if [[ "$os" == "windows" ]]; then
+    if ! command -v unzip >/dev/null 2>&1; then
+      echo "Error: unzip is required to install on Windows" >&2
+      exit 1
+    fi
+    unzip -q "$archive" -d "$tmp_dir"
+    bin_name="${APP}.exe"
+  else
+    if ! command -v tar >/dev/null 2>&1; then
+      echo "Error: tar is required to install" >&2
+      exit 1
+    fi
+    tar -xzf "$archive" -C "$tmp_dir"
+    bin_name="$APP"
+  fi
+
+  if [[ ! -f "${tmp_dir}/${bin_name}" ]]; then
+    echo "Downloaded archive does not contain ${bin_name}" >&2
+    exit 1
+  fi
+
+  cp "${tmp_dir}/${bin_name}" "${install_dir}/${bin_name}"
+  chmod +x "${install_dir}/${bin_name}"
+}
+
+install_from_binary() {
+  local src_name dst_name
+  if [[ ! -f "$binary_path" ]]; then
+    echo "Binary not found: $binary_path" >&2
+    exit 1
+  fi
+
+  src_name=$(basename "$binary_path")
+  dst_name="$APP"
+  if [[ "$src_name" == *.exe ]]; then
+    dst_name="${APP}.exe"
+  fi
+
+  cp "$binary_path" "${install_dir}/${dst_name}"
+  chmod +x "${install_dir}/${dst_name}"
+}
+
+add_path() {
+  if [[ ":$PATH:" == *":${install_dir}:"* ]]; then
+    return
+  fi
+
+  local line file
+  line="export PATH=${install_dir}:\$PATH"
+
+  for file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+    if [[ -f "$file" ]]; then
+      if ! grep -Fxq "$line" "$file"; then
+        printf "\n# wingman\n%s\n" "$line" >> "$file"
+        echo "Added ${install_dir} to PATH in ${file}"
+      fi
+      return
+    fi
+  done
+
+  echo "Add this to your shell config to use ${APP}:"
+  echo "  ${line}"
+}
+
+if [[ -n "$binary_path" ]]; then
+  install_from_binary
+else
+  install_from_archive
+fi
+
+if [[ "$no_modify_path" == false ]]; then
+  add_path
+fi
+
+echo
+echo "Installed ${APP} to ${install_dir}"
+echo "Run '${APP} version' to verify"
+echo

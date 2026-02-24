@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
-import { Badge } from "@wingman/core/components/primitives/badge";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { Link } from '@tanstack/react-router';
 
@@ -58,17 +57,11 @@ function InstallSection() {
 					{SDK_COMMAND}
 				</CopyCommand>
 			</div>
-			<div className="space-y-2 opacity-50">
-				<div className="flex items-center gap-2">
-					<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
-					<Badge variant="secondary" className="uppercase tracking-wider">Coming Soon</Badge>
-				</div>
-				<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm pointer-events-none select-none">
-					<span className="text-muted-foreground">$</span>
-					<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
-						{SERVER_COMMAND}
-					</code>
-				</div>
+			<div className="space-y-2">
+				<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
+				<CopyCommand command={SERVER_COMMAND}>
+					{SERVER_COMMAND}
+				</CopyCommand>
 			</div>
 		</div >
 	);
