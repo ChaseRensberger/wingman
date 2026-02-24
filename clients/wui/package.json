@@ -5,6 +5,7 @@
     "packages": [
       "admin",
       "hero",
+      "wingresearch",
       "shared/*"
     ],
     "catalog": {
