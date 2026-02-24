@@ -9,10 +9,11 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/fleet"
+	"github.com/chaserensberger/wingman/core"
 	"github.com/chaserensberger/wingman/internal/storage"
 	"github.com/chaserensberger/wingman/session"
 	"gopkg.in/yaml.v3"
@@ -79,6 +80,9 @@ type formationEvent struct {
 	From   string         `json:"from,omitempty"`
 	To     string         `json:"to,omitempty"`
 	Count  int            `json:"count,omitempty"`
+	Worker string         `json:"worker,omitempty"`
+	Tool   string         `json:"tool,omitempty"`
+	CallID string         `json:"call_id,omitempty"`
 	Output map[string]any `json:"output,omitempty"`
 	Error  string         `json:"error,omitempty"`
 	Status string         `json:"status,omitempty"`
@@ -295,7 +299,7 @@ func (s *Server) runFormation(ctx context.Context, def *formationDefinition, inp
 
 		emit(formationEvent{Type: "node_start", NodeID: nodeID})
 
-		out, err := s.executeFormationNode(ctx, def, node, input, nodeOutputs)
+		out, err := s.executeFormationNode(ctx, def, node, input, nodeOutputs, emit)
 		if err != nil {
 			emit(formationEvent{Type: "node_error", NodeID: nodeID, Error: err.Error()})
 			return nil, fmt.Errorf("node %s failed: %w", nodeID, err)
@@ -333,12 +337,12 @@ func (s *Server) runFormation(ctx context.Context, def *formationDefinition, inp
 	return &formationRunResult{Outputs: nodeOutputs, Stats: stats}, nil
 }
 
-func (s *Server) executeFormationNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any) (map[string]any, error) {
+func (s *Server) executeFormationNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any, emit func(formationEvent)) (map[string]any, error) {
 	switch node.Kind {
 	case "agent":
-		return s.executeFormationAgentNode(ctx, def, node, input)
+		return s.executeFormationAgentNode(ctx, def, node, input, emit)
 	case "fleet":
-		return s.executeFormationFleetNode(ctx, def, node, input, nodeOutputs)
+		return s.executeFormationFleetNode(ctx, def, node, input, nodeOutputs, emit)
 	case "join":
 		return map[string]any{"status": "joined"}, nil
 	default:
@@ -346,7 +350,7 @@ func (s *Server) executeFormationNode(ctx context.Context, def *formationDefinit
 	}
 }
 
-func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any) (map[string]any, error) {
+func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, emit func(formationEvent)) (map[string]any, error) {
 	agentInstance, err := s.buildFormationAgent(node.Agent, node.ID)
 	if err != nil {
 		return nil, err
@@ -364,7 +368,7 @@ func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDe
 		message = rawMessage
 	}
 
-	result, err := runSession.Run(ctx, message)
+	result, err := runSessionWithToolEvents(ctx, runSession, message, node.ID, "", emit)
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +380,7 @@ func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDe
 	return parsed, nil
 }
 
-func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any) (map[string]any, error) {
+func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any, emit func(formationEvent)) (map[string]any, error) {
 	items, err := resolveFanoutItems(node.Fleet.FanoutFrom, input, nodeOutputs)
 	if err != nil {
 		return nil, err
@@ -387,7 +391,7 @@ func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDe
 		return nil, err
 	}
 
-	tasks := make([]fleet.Task, 0, len(items))
+	messages := make([]string, 0, len(items))
 	for _, item := range items {
 		payload := map[string]any{}
 		for key, expr := range node.Fleet.TaskMapping {
@@ -401,34 +405,12 @@ func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDe
 		if rawMessage, ok := payload["message"].(string); ok && rawMessage != "" {
 			message = rawMessage
 		}
-		tasks = append(tasks, fleet.Task{Message: message, Data: payload})
+		messages = append(messages, message)
 	}
 
-	f := fleet.New(fleet.Config{
-		Agent:      agentInstance,
-		Tasks:      tasks,
-		WorkDir:    def.Defaults.WorkDir,
-		MaxWorkers: node.Fleet.WorkerCount,
-	})
-
-	results, err := f.Run(ctx)
+	parsed, err := s.runFormationFleetWorkers(ctx, node.ID, agentInstance, def.Defaults.WorkDir, messages, node.Fleet.WorkerCount, emit)
 	if err != nil {
 		return nil, err
-	}
-
-	parsed := make([]map[string]any, 0, len(results))
-	for _, res := range results {
-		if res.Error != nil {
-			return nil, res.Error
-		}
-		if res.Result == nil {
-			continue
-		}
-		obj := map[string]any{}
-		if err := json.Unmarshal([]byte(strings.TrimSpace(res.Result.Response)), &obj); err != nil {
-			return nil, fmt.Errorf("fleet node %q must return structured json output: %w", node.ID, err)
-		}
-		parsed = append(parsed, obj)
 	}
 
 	return map[string]any{
@@ -436,6 +418,132 @@ func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDe
 		"results":          parsed,
 		"all_workers_done": true,
 	}, nil
+}
+
+func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, message, nodeID, worker string, emit func(formationEvent)) (*session.Result, error) {
+	stream, err := runSession.RunStream(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+
+	pending := map[int]core.StreamContentBlock{}
+	for stream.Next() {
+		event := stream.Event()
+		if event.Type == core.EventContentBlockStart && event.ContentBlock != nil && event.ContentBlock.Type == "tool_use" {
+			pending[event.Index] = *event.ContentBlock
+			emit(formationEvent{
+				Type:   "tool_call",
+				NodeID: nodeID,
+				Worker: worker,
+				Tool:   event.ContentBlock.Name,
+				CallID: event.ContentBlock.ID,
+				Status: "started",
+			})
+		}
+
+		if event.Type == core.EventContentBlockStop {
+			if block, ok := pending[event.Index]; ok {
+				emit(formationEvent{
+					Type:   "tool_call",
+					NodeID: nodeID,
+					Worker: worker,
+					Tool:   block.Name,
+					CallID: block.ID,
+					Status: "done",
+				})
+				delete(pending, event.Index)
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return nil, err
+	}
+
+	return stream.Result(), nil
+}
+
+func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, agentInstance *agent.Agent, workDir string, messages []string, maxWorkers int, emit func(formationEvent)) ([]map[string]any, error) {
+	if len(messages) == 0 {
+		return []map[string]any{}, nil
+	}
+
+	limit := maxWorkers
+	if limit <= 0 || limit > len(messages) {
+		limit = len(messages)
+	}
+
+	type result struct {
+		index int
+		data  map[string]any
+		err   error
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan int)
+	out := make(chan result, len(messages))
+
+	var wg sync.WaitGroup
+	for workerIdx := 0; workerIdx < limit; workerIdx++ {
+		wg.Add(1)
+		go func(workerNum int) {
+			defer wg.Done()
+			workerName := fmt.Sprintf("worker-%d", workerNum)
+			for idx := range jobs {
+				runSession := session.New(session.WithAgent(agentInstance), session.WithWorkDir(workDir))
+				res, err := runSessionWithToolEvents(ctx, runSession, messages[idx], nodeID, workerName, emit)
+				if err != nil {
+					out <- result{index: idx, err: err}
+					cancel()
+					return
+				}
+
+				parsed := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimSpace(res.Response)), &parsed); err != nil {
+					out <- result{index: idx, err: fmt.Errorf("fleet node %q must return structured json output: %w", nodeID, err)}
+					cancel()
+					return
+				}
+
+				out <- result{index: idx, data: parsed}
+			}
+		}(workerIdx)
+	}
+
+	go func() {
+		defer close(jobs)
+		for i := range messages {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- i:
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	results := make([]map[string]any, len(messages))
+	for item := range out {
+		if item.err != nil {
+			return nil, item.err
+		}
+		results[item.index] = item.data
+	}
+
+	final := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			final = append(final, r)
+		}
+	}
+
+	return final, nil
 }
 
 func (s *Server) buildFormationAgent(cfg *formationAgentConfig, fallbackName string) (*agent.Agent, error) {

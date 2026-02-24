@@ -22,11 +22,14 @@ export type FormationRecord = {
 }
 
 export type FormationRunEvent = {
-  type: "run_start" | "node_start" | "node_output" | "edge_emit" | "node_end" | "node_error" | "run_end"
+  type: "run_start" | "node_start" | "node_output" | "edge_emit" | "node_end" | "node_error" | "run_end" | "tool_call"
   node_id?: string
   from?: string
   to?: string
   count?: number
+  worker?: string
+  tool?: string
+  call_id?: string
   output?: Record<string, unknown>
   error?: string
   status?: string

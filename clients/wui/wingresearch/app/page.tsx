@@ -85,6 +85,13 @@ function normalizeBaseUrl(url: string): string {
   return parsed.toString().replace(/\/$/, "")
 }
 
+function summarizeOutput(output: Record<string, unknown> | undefined): string {
+  if (!output) return "no output"
+  const keys = Object.keys(output)
+  if (keys.length === 0) return "empty output"
+  return `keys: ${keys.join(", ")}`
+}
+
 function buildReportPreview(topic: string, outputs: Record<string, Record<string, unknown>>, isRunning: boolean): string {
   const planner = outputs.planner
   const iterative = outputs.iterative_research
@@ -219,7 +226,19 @@ export default function WingResearchPage() {
           }))
           appendLog({
             agent: nodeToAgentName[nodeID] || nodeID,
-            message: "Node emitted structured output",
+            message: `Node emitted structured output (${summarizeOutput(event.output)})`,
+            timestamp,
+            type: "tool",
+          })
+          break
+        }
+        case "tool_call": {
+          const nodeID = event.node_id || "unknown"
+          const worker = event.worker ? ` [${event.worker}]` : ""
+          const status = event.status ? ` (${event.status})` : ""
+          appendLog({
+            agent: nodeToAgentName[nodeID] || nodeID,
+            message: `Tool${worker}: ${event.tool || "unknown"}${event.call_id ? ` [${event.call_id}]` : ""}${status}`,
             timestamp,
             type: "tool",
           })
