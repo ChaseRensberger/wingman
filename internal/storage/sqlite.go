@@ -51,10 +51,8 @@ CREATE TABLE IF NOT EXISTS fleets (
 CREATE TABLE IF NOT EXISTS formations (
 	id TEXT PRIMARY KEY,
 	name TEXT NOT NULL,
-	work_dir TEXT,
-	roles TEXT NOT NULL,
-	edges TEXT,
-	status TEXT NOT NULL,
+	version INTEGER NOT NULL DEFAULT 1,
+	definition TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
@@ -89,6 +87,8 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	_, _ = db.Exec(`ALTER TABLE agents ADD COLUMN provider TEXT`)
+	_, _ = db.Exec(`ALTER TABLE formations ADD COLUMN version INTEGER NOT NULL DEFAULT 1`)
+	_, _ = db.Exec(`ALTER TABLE formations ADD COLUMN definition TEXT NOT NULL DEFAULT '{}'`)
 
 	return &SQLiteStore{db: db}, nil
 }
@@ -539,22 +539,22 @@ func (s *SQLiteStore) CreateFormation(formation *Formation) error {
 	now := Now()
 	formation.CreatedAt = now
 	formation.UpdatedAt = now
-	formation.Status = FormationStatusStopped
-
-	roles, err := json.Marshal(formation.Roles)
-	if err != nil {
-		return err
+	if formation.Version == 0 {
+		formation.Version = 1
+	}
+	if formation.Definition == nil {
+		formation.Definition = map[string]any{}
 	}
 
-	edges, err := json.Marshal(formation.Edges)
+	definition, err := json.Marshal(formation.Definition)
 	if err != nil {
 		return err
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO formations (id, name, work_dir, roles, edges, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, formation.ID, formation.Name, formation.WorkDir, string(roles), string(edges), formation.Status, formation.CreatedAt, formation.UpdatedAt)
+		INSERT INTO formations (id, name, version, definition, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, formation.ID, formation.Name, formation.Version, string(definition), formation.CreatedAt, formation.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create formation: %w", err)
@@ -564,12 +564,12 @@ func (s *SQLiteStore) CreateFormation(formation *Formation) error {
 
 func (s *SQLiteStore) GetFormation(id string) (*Formation, error) {
 	var formation Formation
-	var rolesJSON, edgesJSON string
+	var definitionJSON string
 
 	err := s.db.QueryRow(`
-		SELECT id, name, work_dir, roles, edges, status, created_at, updated_at
+		SELECT id, name, version, definition, created_at, updated_at
 		FROM formations WHERE id = ?
-	`, id).Scan(&formation.ID, &formation.Name, &formation.WorkDir, &rolesJSON, &edgesJSON, &formation.Status, &formation.CreatedAt, &formation.UpdatedAt)
+	`, id).Scan(&formation.ID, &formation.Name, &formation.Version, &definitionJSON, &formation.CreatedAt, &formation.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("formation not found: %s", id)
@@ -578,14 +578,8 @@ func (s *SQLiteStore) GetFormation(id string) (*Formation, error) {
 		return nil, err
 	}
 
-	if rolesJSON != "" {
-		if err := json.Unmarshal([]byte(rolesJSON), &formation.Roles); err != nil {
-			return nil, err
-		}
-	}
-
-	if edgesJSON != "" {
-		if err := json.Unmarshal([]byte(edgesJSON), &formation.Edges); err != nil {
+	if definitionJSON != "" {
+		if err := json.Unmarshal([]byte(definitionJSON), &formation.Definition); err != nil {
 			return nil, err
 		}
 	}
@@ -595,7 +589,7 @@ func (s *SQLiteStore) GetFormation(id string) (*Formation, error) {
 
 func (s *SQLiteStore) ListFormations() ([]*Formation, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, work_dir, roles, edges, status, created_at, updated_at
+		SELECT id, name, version, definition, created_at, updated_at
 		FROM formations ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -606,20 +600,14 @@ func (s *SQLiteStore) ListFormations() ([]*Formation, error) {
 	var formations []*Formation
 	for rows.Next() {
 		var formation Formation
-		var rolesJSON, edgesJSON string
+		var definitionJSON string
 
-		if err := rows.Scan(&formation.ID, &formation.Name, &formation.WorkDir, &rolesJSON, &edgesJSON, &formation.Status, &formation.CreatedAt, &formation.UpdatedAt); err != nil {
+		if err := rows.Scan(&formation.ID, &formation.Name, &formation.Version, &definitionJSON, &formation.CreatedAt, &formation.UpdatedAt); err != nil {
 			return nil, err
 		}
 
-		if rolesJSON != "" {
-			if err := json.Unmarshal([]byte(rolesJSON), &formation.Roles); err != nil {
-				return nil, err
-			}
-		}
-
-		if edgesJSON != "" {
-			if err := json.Unmarshal([]byte(edgesJSON), &formation.Edges); err != nil {
+		if definitionJSON != "" {
+			if err := json.Unmarshal([]byte(definitionJSON), &formation.Definition); err != nil {
 				return nil, err
 			}
 		}
@@ -632,21 +620,22 @@ func (s *SQLiteStore) ListFormations() ([]*Formation, error) {
 
 func (s *SQLiteStore) UpdateFormation(formation *Formation) error {
 	formation.UpdatedAt = Now()
-
-	roles, err := json.Marshal(formation.Roles)
-	if err != nil {
-		return err
+	if formation.Version == 0 {
+		formation.Version = 1
+	}
+	if formation.Definition == nil {
+		formation.Definition = map[string]any{}
 	}
 
-	edges, err := json.Marshal(formation.Edges)
+	definition, err := json.Marshal(formation.Definition)
 	if err != nil {
 		return err
 	}
 
 	result, err := s.db.Exec(`
-		UPDATE formations SET name = ?, work_dir = ?, roles = ?, edges = ?, status = ?, updated_at = ?
+		UPDATE formations SET name = ?, version = ?, definition = ?, updated_at = ?
 		WHERE id = ?
-	`, formation.Name, formation.WorkDir, string(roles), string(edges), formation.Status, formation.UpdatedAt, formation.ID)
+	`, formation.Name, formation.Version, string(definition), formation.UpdatedAt, formation.ID)
 
 	if err != nil {
 		return err

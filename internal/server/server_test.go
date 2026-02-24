@@ -774,3 +774,72 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 		t.Errorf("expected temperature 0.5, got %v", fetched.Options["temperature"])
 	}
 }
+
+func TestFormationsCRUDAndRun(t *testing.T) {
+	ts, _ := setupTestServer(t)
+
+	body := mustJSON(t, map[string]any{
+		"name":    "test-formation",
+		"version": 1,
+		"nodes": []map[string]any{
+			{"id": "root", "kind": "join"},
+		},
+	})
+
+	resp, err := http.Post(ts.URL+"/formations", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	var created storage.Formation
+	decodeJSON(t, resp, &created)
+
+	if created.ID == "" {
+		t.Fatal("expected formation ID")
+	}
+	if created.Name != "test-formation" {
+		t.Fatalf("expected name test-formation, got %q", created.Name)
+	}
+
+	resp, err = http.Get(ts.URL + "/formations")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var list []*storage.Formation
+	decodeJSON(t, resp, &list)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 formation, got %d", len(list))
+	}
+
+	resp, err = http.Get(ts.URL + "/formations/" + created.ID + "/export?format=yaml")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/x-yaml" {
+		t.Fatalf("expected application/x-yaml content type, got %q", ct)
+	}
+	resp.Body.Close()
+
+	runBody := mustJSON(t, map[string]any{"inputs": map[string]any{"topic": "hello"}})
+	resp, err = http.Post(ts.URL+"/formations/"+created.ID+"/run", "application/json", bytes.NewReader(runBody))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var runResp map[string]any
+	decodeJSON(t, resp, &runResp)
+	if runResp["status"] != "ok" {
+		t.Fatalf("expected status ok, got %v", runResp["status"])
+	}
+}

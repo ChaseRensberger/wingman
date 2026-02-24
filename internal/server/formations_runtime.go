@@ -1,0 +1,564 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/chaserensberger/wingman/agent"
+	"github.com/chaserensberger/wingman/fleet"
+	"github.com/chaserensberger/wingman/internal/storage"
+	"github.com/chaserensberger/wingman/session"
+	"gopkg.in/yaml.v3"
+)
+
+type formationDefinition struct {
+	Name        string           `json:"name" yaml:"name"`
+	Version     int              `json:"version" yaml:"version"`
+	Description string           `json:"description,omitempty" yaml:"description,omitempty"`
+	Defaults    formationDefault `json:"defaults,omitempty" yaml:"defaults,omitempty"`
+	Nodes       []formationNode  `json:"nodes" yaml:"nodes"`
+	Edges       []formationEdge  `json:"edges,omitempty" yaml:"edges,omitempty"`
+}
+
+type formationDefault struct {
+	WorkDir string `json:"work_dir,omitempty" yaml:"work_dir,omitempty"`
+}
+
+type formationNode struct {
+	ID    string                `json:"id" yaml:"id"`
+	Kind  string                `json:"kind" yaml:"kind"`
+	Role  string                `json:"role,omitempty" yaml:"role,omitempty"`
+	Agent *formationAgentConfig `json:"agent,omitempty" yaml:"agent,omitempty"`
+	Fleet *formationFleetConfig `json:"fleet,omitempty" yaml:"fleet,omitempty"`
+}
+
+type formationAgentConfig struct {
+	Name         string         `json:"name,omitempty" yaml:"name,omitempty"`
+	Provider     string         `json:"provider" yaml:"provider"`
+	Model        string         `json:"model" yaml:"model"`
+	Options      map[string]any `json:"options,omitempty" yaml:"options,omitempty"`
+	Instructions string         `json:"instructions,omitempty" yaml:"instructions,omitempty"`
+	Tools        []string       `json:"tools,omitempty" yaml:"tools,omitempty"`
+	OutputSchema map[string]any `json:"output_schema,omitempty" yaml:"output_schema,omitempty"`
+}
+
+type formationFleetConfig struct {
+	WorkerCount int                   `json:"worker_count,omitempty" yaml:"worker_count,omitempty"`
+	FanoutFrom  string                `json:"fanout_from" yaml:"fanout_from"`
+	TaskMapping map[string]string     `json:"task_mapping,omitempty" yaml:"task_mapping,omitempty"`
+	Agent       *formationAgentConfig `json:"agent" yaml:"agent"`
+}
+
+type formationEdge struct {
+	From string            `json:"from" yaml:"from"`
+	To   string            `json:"to" yaml:"to"`
+	When string            `json:"when,omitempty" yaml:"when,omitempty"`
+	Map  map[string]string `json:"map,omitempty" yaml:"map,omitempty"`
+}
+
+type formationRunStats struct {
+	NodesExecuted int   `json:"nodes_executed"`
+	DurationMS    int64 `json:"duration_ms"`
+}
+
+type formationRunResult struct {
+	Outputs map[string]map[string]any
+	Stats   formationRunStats
+}
+
+type formationEvent struct {
+	Type   string         `json:"type"`
+	NodeID string         `json:"node_id,omitempty"`
+	From   string         `json:"from,omitempty"`
+	To     string         `json:"to,omitempty"`
+	Count  int            `json:"count,omitempty"`
+	Output map[string]any `json:"output,omitempty"`
+	Error  string         `json:"error,omitempty"`
+	Status string         `json:"status,omitempty"`
+	TS     string         `json:"ts"`
+}
+
+func decodeFormationDefinition(r *http.Request) (map[string]any, error) {
+	defer r.Body.Close()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request body: %w", err)
+	}
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return nil, errors.New("request body is required")
+	}
+
+	raw := map[string]any{}
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.Contains(ct, "yaml") || strings.Contains(ct, "yml") {
+		if err := yaml.Unmarshal(body, &raw); err != nil {
+			return nil, fmt.Errorf("invalid yaml body: %w", err)
+		}
+	} else {
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, fmt.Errorf("invalid json body: %w", err)
+		}
+	}
+
+	return normalizeDefinition(raw)
+}
+
+func normalizeDefinition(raw map[string]any) (map[string]any, error) {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize definition: %w", err)
+	}
+
+	normalized := map[string]any{}
+	if err := json.Unmarshal(b, &normalized); err != nil {
+		return nil, fmt.Errorf("failed to normalize definition: %w", err)
+	}
+
+	return normalized, nil
+}
+
+func compileAndValidateDefinition(raw map[string]any) (*formationDefinition, error) {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid definition: %w", err)
+	}
+
+	var def formationDefinition
+	if err := json.Unmarshal(b, &def); err != nil {
+		return nil, fmt.Errorf("invalid definition: %w", err)
+	}
+	if err := validateFormationDefinition(&def); err != nil {
+		return nil, err
+	}
+	return &def, nil
+}
+
+func validateFormationDefinition(def *formationDefinition) error {
+	if strings.TrimSpace(def.Name) == "" {
+		return errors.New("name is required")
+	}
+	if def.Version == 0 {
+		def.Version = 1
+	}
+	if len(def.Nodes) == 0 {
+		return errors.New("nodes is required")
+	}
+
+	nodeSet := make(map[string]formationNode, len(def.Nodes))
+	for _, node := range def.Nodes {
+		if node.ID == "" {
+			return errors.New("node id is required")
+		}
+		if _, exists := nodeSet[node.ID]; exists {
+			return fmt.Errorf("duplicate node id: %s", node.ID)
+		}
+		nodeSet[node.ID] = node
+
+		switch node.Kind {
+		case "agent":
+			if node.Agent == nil {
+				return fmt.Errorf("node %q kind agent requires agent config", node.ID)
+			}
+			if node.Agent.Provider == "" || node.Agent.Model == "" {
+				return fmt.Errorf("node %q requires agent provider and model", node.ID)
+			}
+			if node.Agent.OutputSchema == nil {
+				return fmt.Errorf("node %q requires agent output_schema", node.ID)
+			}
+		case "fleet":
+			if node.Fleet == nil {
+				return fmt.Errorf("node %q kind fleet requires fleet config", node.ID)
+			}
+			if node.Fleet.Agent == nil {
+				return fmt.Errorf("node %q fleet requires agent config", node.ID)
+			}
+			if node.Fleet.FanoutFrom == "" {
+				return fmt.Errorf("node %q fleet requires fanout_from", node.ID)
+			}
+			if node.Fleet.Agent.Provider == "" || node.Fleet.Agent.Model == "" {
+				return fmt.Errorf("node %q fleet agent requires provider and model", node.ID)
+			}
+			if node.Fleet.Agent.OutputSchema == nil {
+				return fmt.Errorf("node %q fleet agent requires output_schema", node.ID)
+			}
+		case "join":
+		default:
+			return fmt.Errorf("node %q has unsupported kind %q", node.ID, node.Kind)
+		}
+	}
+
+	for _, edge := range def.Edges {
+		if edge.From == "" || edge.To == "" {
+			return errors.New("edge from and to are required")
+		}
+		if _, ok := nodeSet[edge.From]; !ok {
+			return fmt.Errorf("edge references unknown from node %q", edge.From)
+		}
+		if _, ok := nodeSet[edge.To]; !ok {
+			return fmt.Errorf("edge references unknown to node %q", edge.To)
+		}
+	}
+
+	if err := validateAcyclic(def); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateAcyclic(def *formationDefinition) error {
+	indegree := make(map[string]int, len(def.Nodes))
+	adj := make(map[string][]string, len(def.Nodes))
+	for _, n := range def.Nodes {
+		indegree[n.ID] = 0
+	}
+	for _, e := range def.Edges {
+		adj[e.From] = append(adj[e.From], e.To)
+		indegree[e.To]++
+	}
+
+	queue := make([]string, 0, len(def.Nodes))
+	for _, n := range def.Nodes {
+		if indegree[n.ID] == 0 {
+			queue = append(queue, n.ID)
+		}
+	}
+
+	visited := 0
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, to := range adj[id] {
+			indegree[to]--
+			if indegree[to] == 0 {
+				queue = append(queue, to)
+			}
+		}
+	}
+
+	if visited != len(def.Nodes) {
+		return errors.New("graph must be acyclic")
+	}
+	return nil
+}
+
+func (s *Server) runFormation(ctx context.Context, def *formationDefinition, inputs map[string]any, sink func(formationEvent)) (*formationRunResult, error) {
+	start := time.Now()
+	emit := func(e formationEvent) {
+		e.TS = time.Now().UTC().Format(time.RFC3339)
+		if sink != nil {
+			sink(e)
+		}
+	}
+
+	emit(formationEvent{Type: "run_start"})
+
+	nodes := make(map[string]formationNode, len(def.Nodes))
+	edgesFrom := make(map[string][]formationEdge, len(def.Nodes))
+	remainingPred := make(map[string]int, len(def.Nodes))
+	nodeInputs := make(map[string]map[string]any, len(def.Nodes))
+	nodeOutputs := make(map[string]map[string]any, len(def.Nodes))
+
+	for _, n := range def.Nodes {
+		nodes[n.ID] = n
+		remainingPred[n.ID] = 0
+	}
+	for _, e := range def.Edges {
+		edgesFrom[e.From] = append(edgesFrom[e.From], e)
+		remainingPred[e.To]++
+	}
+
+	queue := make([]string, 0, len(def.Nodes))
+	for _, n := range def.Nodes {
+		if remainingPred[n.ID] == 0 {
+			queue = append(queue, n.ID)
+			nodeInputs[n.ID] = cloneMap(inputs)
+		}
+	}
+	sort.Strings(queue)
+
+	executed := 0
+	for len(queue) > 0 {
+		nodeID := queue[0]
+		queue = queue[1:]
+		node := nodes[nodeID]
+		input := nodeInputs[nodeID]
+
+		emit(formationEvent{Type: "node_start", NodeID: nodeID})
+
+		out, err := s.executeFormationNode(ctx, def, node, input, nodeOutputs)
+		if err != nil {
+			emit(formationEvent{Type: "node_error", NodeID: nodeID, Error: err.Error()})
+			return nil, fmt.Errorf("node %s failed: %w", nodeID, err)
+		}
+
+		nodeOutputs[nodeID] = out
+		executed++
+		emit(formationEvent{Type: "node_output", NodeID: nodeID, Output: out})
+		emit(formationEvent{Type: "node_end", NodeID: nodeID, Status: "ok"})
+
+		for _, edge := range edgesFrom[nodeID] {
+			mapped, ok := mapEdgePayload(edge, input, out, nodeOutputs)
+			remainingPred[edge.To]--
+			if ok {
+				if nodeInputs[edge.To] == nil {
+					nodeInputs[edge.To] = map[string]any{}
+				}
+				for k, v := range mapped {
+					nodeInputs[edge.To][k] = v
+				}
+				emit(formationEvent{Type: "edge_emit", From: edge.From, To: edge.To, Count: 1})
+			}
+
+			if remainingPred[edge.To] == 0 {
+				if _, hasInput := nodeInputs[edge.To]; hasInput {
+					queue = append(queue, edge.To)
+				}
+			}
+		}
+	}
+
+	stats := formationRunStats{NodesExecuted: executed, DurationMS: time.Since(start).Milliseconds()}
+	emit(formationEvent{Type: "run_end", Status: "ok"})
+
+	return &formationRunResult{Outputs: nodeOutputs, Stats: stats}, nil
+}
+
+func (s *Server) executeFormationNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any) (map[string]any, error) {
+	switch node.Kind {
+	case "agent":
+		return s.executeFormationAgentNode(ctx, def, node, input)
+	case "fleet":
+		return s.executeFormationFleetNode(ctx, def, node, input, nodeOutputs)
+	case "join":
+		return map[string]any{"status": "joined"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported node kind: %s", node.Kind)
+	}
+}
+
+func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any) (map[string]any, error) {
+	agentInstance, err := s.buildFormationAgent(node.Agent, node.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	wd := def.Defaults.WorkDir
+	runSession := session.New(session.WithAgent(agentInstance), session.WithWorkDir(wd))
+
+	message := "{}"
+	if len(input) > 0 {
+		b, _ := json.Marshal(input)
+		message = string(b)
+	}
+	if rawMessage, ok := input["message"].(string); ok && rawMessage != "" {
+		message = rawMessage
+	}
+
+	result, err := runSession.Run(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed := map[string]any{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(result.Response)), &parsed); err != nil {
+		return nil, fmt.Errorf("node %q must return structured json output: %w", node.ID, err)
+	}
+	return parsed, nil
+}
+
+func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDefinition, node formationNode, input map[string]any, nodeOutputs map[string]map[string]any) (map[string]any, error) {
+	items, err := resolveFanoutItems(node.Fleet.FanoutFrom, input, nodeOutputs)
+	if err != nil {
+		return nil, err
+	}
+
+	agentInstance, err := s.buildFormationAgent(node.Fleet.Agent, node.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks := make([]fleet.Task, 0, len(items))
+	for _, item := range items {
+		payload := map[string]any{}
+		for key, expr := range node.Fleet.TaskMapping {
+			payload[key] = evalItemExpr(expr, item)
+		}
+		if len(payload) == 0 {
+			payload["item"] = item
+		}
+		b, _ := json.Marshal(payload)
+		message := string(b)
+		if rawMessage, ok := payload["message"].(string); ok && rawMessage != "" {
+			message = rawMessage
+		}
+		tasks = append(tasks, fleet.Task{Message: message, Data: payload})
+	}
+
+	f := fleet.New(fleet.Config{
+		Agent:      agentInstance,
+		Tasks:      tasks,
+		WorkDir:    def.Defaults.WorkDir,
+		MaxWorkers: node.Fleet.WorkerCount,
+	})
+
+	results, err := f.Run(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed := make([]map[string]any, 0, len(results))
+	for _, res := range results {
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		if res.Result == nil {
+			continue
+		}
+		obj := map[string]any{}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(res.Result.Response)), &obj); err != nil {
+			return nil, fmt.Errorf("fleet node %q must return structured json output: %w", node.ID, err)
+		}
+		parsed = append(parsed, obj)
+	}
+
+	return map[string]any{
+		"completed":        len(parsed),
+		"results":          parsed,
+		"all_workers_done": true,
+	}, nil
+}
+
+func (s *Server) buildFormationAgent(cfg *formationAgentConfig, fallbackName string) (*agent.Agent, error) {
+	name := cfg.Name
+	if name == "" {
+		name = fallbackName
+	}
+
+	stored := &storage.Agent{
+		Name:         name,
+		Instructions: cfg.Instructions,
+		Tools:        cfg.Tools,
+		Provider:     cfg.Provider,
+		Model:        cfg.Model,
+		Options:      cfg.Options,
+		OutputSchema: cfg.OutputSchema,
+	}
+
+	return s.buildAgent(stored)
+}
+
+func mapEdgePayload(edge formationEdge, input map[string]any, output map[string]any, outputs map[string]map[string]any) (map[string]any, bool) {
+	if edge.When == "all_workers_done" {
+		ready, _ := output["all_workers_done"].(bool)
+		if !ready {
+			return nil, false
+		}
+	}
+
+	if len(edge.Map) == 0 {
+		return cloneMap(output), true
+	}
+
+	mapped := map[string]any{}
+	for toKey, expr := range edge.Map {
+		mapped[toKey] = evalEdgeExpr(expr, input, output, outputs)
+	}
+	return mapped, true
+}
+
+func evalEdgeExpr(expr string, input map[string]any, output map[string]any, outputs map[string]map[string]any) any {
+	expr = strings.TrimSpace(expr)
+	if expr == "output" {
+		return output
+	}
+	if expr == "input" {
+		return input
+	}
+	if strings.HasPrefix(expr, "output.") {
+		return getPath(output, strings.Split(strings.TrimPrefix(expr, "output."), "."))
+	}
+	if strings.HasPrefix(expr, "input.") {
+		return getPath(input, strings.Split(strings.TrimPrefix(expr, "input."), "."))
+	}
+
+	parts := strings.Split(expr, ".")
+	if len(parts) > 1 {
+		if root, ok := outputs[parts[0]]; ok {
+			return getPath(root, parts[1:])
+		}
+	}
+
+	return expr
+}
+
+func resolveFanoutItems(fanout string, input map[string]any, outputs map[string]map[string]any) ([]any, error) {
+	if strings.HasPrefix(fanout, "input.") {
+		v := getPath(input, strings.Split(strings.TrimPrefix(fanout, "input."), "."))
+		return castToSlice(v)
+	}
+
+	parts := strings.Split(fanout, ".")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid fanout_from path: %s", fanout)
+	}
+	root, ok := outputs[parts[0]]
+	if !ok {
+		return nil, fmt.Errorf("fanout_from references unknown node output: %s", parts[0])
+	}
+	v := getPath(root, parts[1:])
+	return castToSlice(v)
+}
+
+func castToSlice(v any) ([]any, error) {
+	s, ok := v.([]any)
+	if ok {
+		return s, nil
+	}
+	return nil, errors.New("fanout value must be an array")
+}
+
+func evalItemExpr(expr string, item any) any {
+	expr = strings.TrimSpace(expr)
+	if expr == "item" {
+		return item
+	}
+	if strings.HasPrefix(expr, "item.") {
+		if m, ok := item.(map[string]any); ok {
+			return getPath(m, strings.Split(strings.TrimPrefix(expr, "item."), "."))
+		}
+	}
+	return expr
+}
+
+func getPath(root map[string]any, parts []string) any {
+	var current any = root
+	for _, part := range parts {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = m[part]
+	}
+	return current
+}
+
+func cloneMap(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}

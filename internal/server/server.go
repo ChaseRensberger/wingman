@@ -98,16 +98,16 @@ func (s *Server) setupRoutes() {
 		r.Post("/{id}/run/stream", s.handleRunFleetStream)
 	})
 
-	// s.router.Route("/formations", func(r chi.Router) {
-	// 	r.Post("/", s.handleCreateFormation)
-	// 	r.Get("/", s.handleListFormations)
-	// 	r.Get("/{id}", s.handleGetFormation)
-	// 	r.Put("/{id}", s.handleUpdateFormation)
-	// 	r.Delete("/{id}", s.handleDeleteFormation)
-	// 	r.Post("/{id}/start", s.handleStartFormation)
-	// 	r.Post("/{id}/stop", s.handleStopFormation)
-	// 	r.Post("/{id}/message", s.handleMessageFormation)
-	// })
+	s.router.Route("/formations", func(r chi.Router) {
+		r.Post("/", s.handleCreateFormation)
+		r.Get("/", s.handleListFormations)
+		r.Get("/{id}", s.handleGetFormation)
+		r.Put("/{id}", s.handleUpdateFormation)
+		r.Delete("/{id}", s.handleDeleteFormation)
+		r.Get("/{id}/export", s.handleExportFormation)
+		r.Post("/{id}/run", s.handleRunFormation)
+		r.Post("/{id}/run/stream", s.handleRunFormationStream)
+	})
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

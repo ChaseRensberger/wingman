@@ -43,34 +43,13 @@ type Fleet struct {
 	UpdatedAt   string      `json:"updated_at"`
 }
 
-type FormationStatus string
-
-const (
-	FormationStatusStopped FormationStatus = "stopped"
-	FormationStatusRunning FormationStatus = "running"
-)
-
-type FormationRole struct {
-	Name    string `json:"name"`
-	AgentID string `json:"agent_id"`
-	Count   int    `json:"count"`
-}
-
-type FormationEdge struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Condition string `json:"condition,omitempty"`
-}
-
 type Formation struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	WorkDir   string          `json:"work_dir,omitempty"`
-	Roles     []FormationRole `json:"roles"`
-	Edges     []FormationEdge `json:"edges"`
-	Status    FormationStatus `json:"status"`
-	CreatedAt string          `json:"created_at"`
-	UpdatedAt string          `json:"updated_at"`
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Version    int            `json:"version"`
+	Definition map[string]any `json:"definition"`
+	CreatedAt  string         `json:"created_at"`
+	UpdatedAt  string         `json:"updated_at"`
 }
 
 type AuthCredential struct {

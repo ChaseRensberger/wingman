@@ -2,57 +2,54 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
 
 	"github.com/chaserensberger/wingman/internal/storage"
 )
 
-type CreateFormationRequest struct {
-	Name    string                  `json:"name"`
-	WorkDir string                  `json:"work_dir,omitempty"`
-	Roles   []storage.FormationRole `json:"roles"`
-	Edges   []storage.FormationEdge `json:"edges,omitempty"`
+type runFormationRequest struct {
+	Inputs    map[string]any `json:"inputs"`
+	Overrides map[string]any `json:"overrides,omitempty"`
+}
+
+type runFormationResponse struct {
+	Status    string                    `json:"status"`
+	Outputs   map[string]map[string]any `json:"outputs"`
+	Stats     formationRunStats         `json:"stats"`
+	Artifacts []map[string]any          `json:"artifacts"`
 }
 
 func (s *Server) handleCreateFormation(w http.ResponseWriter, r *http.Request) {
-	var req CreateFormationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	definition, err := decodeFormationDefinition(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	if len(req.Roles) == 0 {
-		writeError(w, http.StatusBadRequest, "roles is required")
+	compiled, err := compileAndValidateDefinition(definition)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	for _, role := range req.Roles {
-		if _, err := s.store.GetAgent(role.AgentID); err != nil {
-			writeError(w, http.StatusNotFound, "agent not found for role "+role.Name+": "+role.AgentID)
-			return
-		}
+	f := &storage.Formation{
+		Name:       compiled.Name,
+		Version:    compiled.Version,
+		Definition: definition,
 	}
 
-	formation := &storage.Formation{
-		Name:    req.Name,
-		WorkDir: req.WorkDir,
-		Roles:   req.Roles,
-		Edges:   req.Edges,
-		Status:  storage.FormationStatusStopped,
-	}
-
-	if err := s.store.CreateFormation(formation); err != nil {
+	if err := s.store.CreateFormation(f); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, formation)
+	writeJSON(w, http.StatusCreated, f)
 }
 
 func (s *Server) handleListFormations(w http.ResponseWriter, r *http.Request) {
@@ -71,138 +68,159 @@ func (s *Server) handleListFormations(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
+	f, err := s.store.GetFormation(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, formation)
-}
-
-type UpdateFormationRequest struct {
-	Name    *string                 `json:"name,omitempty"`
-	WorkDir *string                 `json:"work_dir,omitempty"`
-	Roles   []storage.FormationRole `json:"roles,omitempty"`
-	Edges   []storage.FormationEdge `json:"edges,omitempty"`
+	writeJSON(w, http.StatusOK, f)
 }
 
 func (s *Server) handleUpdateFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
+	f, err := s.store.GetFormation(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	if formation.Status == storage.FormationStatusRunning {
-		writeError(w, http.StatusConflict, "cannot update running formation")
+	definition, err := decodeFormationDefinition(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	var req UpdateFormationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	compiled, err := compileAndValidateDefinition(definition)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if req.Name != nil {
-		formation.Name = *req.Name
-	}
-	if req.WorkDir != nil {
-		formation.WorkDir = *req.WorkDir
-	}
-	if req.Roles != nil {
-		for _, role := range req.Roles {
-			if _, err := s.store.GetAgent(role.AgentID); err != nil {
-				writeError(w, http.StatusNotFound, "agent not found for role "+role.Name+": "+role.AgentID)
-				return
-			}
-		}
-		formation.Roles = req.Roles
-	}
-	if req.Edges != nil {
-		formation.Edges = req.Edges
-	}
+	f.Name = compiled.Name
+	f.Version = compiled.Version
+	f.Definition = definition
 
-	if err := s.store.UpdateFormation(formation); err != nil {
+	if err := s.store.UpdateFormation(f); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, formation)
+	writeJSON(w, http.StatusOK, f)
 }
 
 func (s *Server) handleDeleteFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
-
-	if formation.Status == storage.FormationStatusRunning {
-		writeError(w, http.StatusConflict, "cannot delete running formation, stop it first")
-		return
-	}
-
 	if err := s.store.DeleteFormation(id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-func (s *Server) handleStartFormation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleExportFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
+	f, err := s.store.GetFormation(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	if formation.Status == storage.FormationStatusRunning {
-		writeError(w, http.StatusConflict, "formation already running")
-		return
+	format := strings.ToLower(r.URL.Query().Get("format"))
+	if format == "" {
+		format = "json"
 	}
 
-	writeError(w, http.StatusNotImplemented, "formation runtime not yet implemented")
+	switch format {
+	case "yaml", "yml":
+		b, err := yaml.Marshal(f.Definition)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to encode yaml")
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(b)
+	default:
+		writeJSON(w, http.StatusOK, f.Definition)
+	}
 }
 
-func (s *Server) handleStopFormation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRunFormation(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
+	f, err := s.store.GetFormation(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	if formation.Status != storage.FormationStatusRunning {
-		writeError(w, http.StatusConflict, "formation not running")
+	compiled, err := compileAndValidateDefinition(f.Definition)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid formation definition: "+err.Error())
 		return
 	}
 
-	writeError(w, http.StatusNotImplemented, "formation runtime not yet implemented")
+	var req runFormationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	result, err := s.runFormation(r.Context(), compiled, req.Inputs, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, runFormationResponse{
+		Status:    "ok",
+		Outputs:   result.Outputs,
+		Stats:     result.Stats,
+		Artifacts: []map[string]any{},
+	})
 }
 
-func (s *Server) handleMessageFormation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRunFormationStream(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	formation, err := s.store.GetFormation(id)
+	f, err := s.store.GetFormation(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	if formation.Status != storage.FormationStatusRunning {
-		writeError(w, http.StatusConflict, "formation not running, start it first")
+	compiled, err := compileAndValidateDefinition(f.Definition)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid formation definition: "+err.Error())
 		return
 	}
 
-	writeError(w, http.StatusNotImplemented, "formation runtime not yet implemented")
+	var req runFormationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	sink := func(e formationEvent) {
+		b, _ := json.Marshal(e)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Type, b)
+		flusher.Flush()
+	}
+
+	_, _ = s.runFormation(r.Context(), compiled, req.Inputs, sink)
 }
