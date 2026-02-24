@@ -224,7 +224,7 @@ add_path() {
   fi
 
   local line file
-  line="export PATH=${install_dir}:\$PATH"
+  line="export PATH=\"${install_dir}:\$PATH\""
 
   for file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
     if [[ -f "$file" ]]; then
@@ -252,5 +252,9 @@ fi
 
 echo
 echo "Installed ${APP} to ${install_dir}"
+if [[ ":$PATH:" != *":${install_dir}:"* ]]; then
+  echo "Add ${install_dir} to your PATH:"
+  echo "  export PATH=\"${install_dir}:\$PATH\""
+fi
 echo "Run '${APP} version' to verify"
 echo
