@@ -77,7 +77,7 @@ Formations compose the lower-level primitives: agent execution, session loops, a
 
 ## Actor system
 
-Wingman includes a lightweight actor system (`actor/`) for concurrent execution. An `AgentActor` wraps an agent, receives work messages, creates a session, runs inference, and sends results to a collector. The higher-level `fleet/` package is the recommended fan-out API; the actor system is the lower-level primitive that will eventually power formations.
+Wingman includes a lightweight actor system (`actor/`) for concurrent execution. An `AgentActor` wraps an agent, receives work messages, creates a session, runs inference, and sends results to a collector. The higher-level `fleet/` package is the recommended fan-out API; the actor system remains a lower-level/advanced primitive for compatibility and custom orchestration patterns.
 
 This system is intentionally simple — no supervision trees, no mailbox persistence, no distributed actors. It provides clean concurrency semantics (message passing, no shared state) without requiring a full framework.
 

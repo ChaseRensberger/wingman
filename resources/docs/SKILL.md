@@ -7,6 +7,21 @@ order: 1001
 
 > Disclaimer: You can copy the contents of this file into your coding agent's skill directory to make building with Wingman as easy as possible.
 
+---
+
+---
+name: wingman
+description: Use when building with Wingman, a self-hostable Go agent orchestration engine with SDK and HTTP server modes, provider/model separation, tools, sessions, and fleets.
+license: MIT
+metadata:
+  author: https://github.com/chaserensberger
+  version: "0.5.1"
+  triggers: Wingman, wingman, agent orchestration, Go SDK agents, self-hosted agents, airgapped AI, session tool use, fleet fanout, formations
+  role: specialist
+  scope: implementation
+  output-format: code
+---
+
 This skill gives an AI coding agent the minimum context needed to build with Wingman correctly.
 
 ## What Wingman is
@@ -21,7 +36,7 @@ Core design goals:
 - Self-contained runtime (no external provider/model registries required)
 - Works in airgapped environments
 - Provider + model treated as separate first-class fields
-- Composable abstractions: agent -> session -> fleet (formations later)
+- Composable abstractions: agent -> session -> fleet -> formations
 
 ## Repository map
 
@@ -31,7 +46,7 @@ Use these packages as canonical boundaries:
 - `agent/`: agent config and options
 - `session/`: agentic loop (blocking + streaming)
 - `fleet/`: concurrent fan-out execution
-- `actor/`: lower-level actor primitives (future formations)
+- `actor/`: lower-level actor primitives (advanced/legacy)
 - `provider/`: provider registry + metadata
 - `provider/anthropic/`, `provider/ollama/`: provider implementations
 - `tool/`: tool interfaces + built-in tools
@@ -86,6 +101,22 @@ Important:
 
 Use `Run` for blocking all results, `RunStream` for incremental results.
 
+## Formations mental model
+
+Formations are an implemented server-side DAG runtime for multi-agent workflows.
+
+- Definitions are persisted (`formations` table) and runs are ephemeral.
+- Node kinds: `agent`, `fleet`, `join`.
+- Edges map structured outputs into downstream inputs (`edges[].map`) with optional `when: all_workers_done`.
+- `fleet` nodes fan out from an array path (`fanout_from`) with bounded concurrency via `worker_count`.
+- Runtime requires agent/fleet-agent `output_schema` and parseable JSON object outputs.
+
+Current `actor/` status:
+
+- `actor/` provides lower-level mailbox primitives (`Actor`, `System`, `Ref`, `Message`).
+- `actor.Fleet` exists for compatibility; `fleet.Fleet` is the recommended fan-out API.
+- Formation execution currently uses the dedicated runtime in `internal/server/formations_runtime.go`.
+
 ## Providers
 
 Provider construction options are intentionally provider-specific.
@@ -125,6 +156,7 @@ SDK supports custom tools via `core.Tool`; server resolves built-ins by name onl
 - CRUD agents: `/agents`
 - CRUD sessions + run message + stream: `/sessions`
 - CRUD fleets + run + stream: `/fleets`
+- CRUD formations + export + run + stream + report: `/formations`
 
 Conventions:
 
@@ -135,7 +167,7 @@ Conventions:
 ## Persistence defaults
 
 - SQLite path: `~/.local/share/wingman/wingman.db`
-- Primary tables: `agents`, `sessions`, `fleets`, `auth`
+- Primary tables: `agents`, `sessions`, `fleets`, `formations`, `auth`
 
 ## Recommended implementation workflow for agents
 
@@ -157,10 +189,10 @@ When debugging runtime issues:
 
 ## Known current limitations
 
-- No formations runtime yet (storage shape exists, runtime is future work).
 - No built-in provider capability database (context windows/features are user-known).
 - Server does not load user-defined custom tools.
 - Session loop has no configurable max-steps ceiling yet.
+- Formation runs are ephemeral (no durable run records/resume), and request `overrides` are not applied yet.
 
 ## Minimal SDK pattern (reference)
 

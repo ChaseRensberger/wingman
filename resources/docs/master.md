@@ -10,7 +10,7 @@ order: 0
 
 # Wingman — Master Reference
 
-This document is the single authoritative reference for Wingman's design, architecture, data flow, and all major decisions made during development. It is a living document; update it when anything material changes.
+This document is an authoritative reference for Wingman's design, architecture, data flow, and many major decisions made during development. It is a living document; I try to update it when anything material changes.
 
 ---
 
@@ -18,8 +18,8 @@ This document is the single authoritative reference for Wingman's design, archit
 
 Wingman is a **self-hostable, airgap-friendly agent orchestration engine** written in Go. It can be used two ways:
 
-1. **Go SDK** — import the packages directly. Run agents in-process. You own the persistence layer (or skip it entirely).
-2. **HTTP server** — run `wingman serve`. Agents, sessions, and fleets are persisted in SQLite. Any HTTP client can talk to it.
+1. **HTTP server** — run `wingman serve`. Agents, sessions, fleets, and formations are persisted in SQLite. Any HTTP client can talk to it.
+2. **Go SDK** — import the packages directly. Run agents in-process. You own the persistence layer (or skip it entirely).
 
 The two modes are designed to be interchangeable. The same core types describe an agent, a session, and a message regardless of whether they live in memory or in a database.
 
@@ -27,7 +27,7 @@ The two modes are designed to be interchangeable. The same core types describe a
 - Entirely self-contained — no calls to external model/provider registries at runtime.
 - Works in airgapped environments.
 - Providers and models are first-class concepts, but capability metadata is left to the user for now (no built-in model database).
-- Composable: agents → sessions → fleets → (formations, future).
+- Composable: agents → sessions → fleets → formations.
 
 ---
 
@@ -38,7 +38,7 @@ core/                  Canonical types and interfaces (the foundation)
 agent/                 Agent type and functional options
 session/               Session type, blocking and streaming agentic loop
 fleet/                 High-level concurrent work primitive
-actor/                 Low-level actor system (mailbox-based; used by future formations)
+actor/                 Low-level actor system (mailbox-based; advanced/legacy primitive)
 provider/              Provider registry, interfaces, ProviderMeta
 provider/anthropic/    Anthropic Messages API provider
 provider/ollama/       Ollama chat API provider
@@ -403,7 +403,7 @@ The streaming endpoint emits one `event: result` SSE event per completed worker,
 
 ## Actor System (`actor/`)
 
-The `actor` package is a lightweight in-process actor model. It is the **lower-level primitive** that will eventually underpin formations.
+The `actor` package is a lightweight in-process actor model. It remains a lower-level primitive for advanced orchestration and compatibility with older actor-style flows.
 
 ### Core types
 
@@ -420,35 +420,45 @@ Wraps an `*agent.Agent`. When it receives a `"work"` message with a `WorkPayload
 
 The `actor.Fleet` type still exists for backward compatibility. It uses the actor system under the hood (N `AgentActor` workers + a collector actor). The new `fleet.Fleet` (in the `fleet/` package) is the recommended API for most use cases — it is simpler and doesn't require understanding the actor primitives.
 
-The `actor` package's value will become clearer when formations are implemented: a formation is a user-defined graph of actors that communicate via messages, which the actor system handles natively.
+Current formation execution in `internal/server` runs through the dedicated DAG runtime (`agent`/`session`/`fleet` composition) rather than the `actor` package directly.
 
 ---
 
-## Formations (future)
+## Formations
 
-Formations are deferred — the design is still evolving. The current direction is an **actor-model-inspired** approach:
+Formations are implemented as a declarative DAG runtime exposed through server endpoints.
 
-- A formation is a graph where each node is an actor (agent, fleet, or pure function).
-- Actors have mailboxes. They communicate by sending messages to named actors.
-- The graph is defined upfront (edges declared at formation-creation time), but message passing within it is dynamic.
+Execution model:
 
-This allows workflows like:
+- Definitions are persisted in SQLite (`formations` table) as normalized JSON.
+- Runs are ephemeral and execute on demand through `POST /formations/{id}/run` or `/run/stream`.
+- Node kinds: `agent`, `fleet`, `join`.
+- Edges route structured outputs to downstream inputs via expression mapping.
+
+Validation and runtime behavior:
+
+- Create/update validates required fields, node kind/config, edge references, and acyclicity.
+- Agent/fleet-agent nodes currently require `output_schema`.
+- Runtime expects parseable JSON object output from model responses.
+- Fleet fanout supports bounded concurrency with `worker_count` and queueing when tasks exceed workers.
+
+Streaming events include:
+
+- `run_start`, `node_start`, `tool_call`, `node_output`, `edge_emit`, `node_end`, `node_error`, `run_end`.
+
+Key endpoints:
 
 ```
-PDF Parser Agent → transaction_list
-transaction_list → Category Summing Function → budget_summary
-budget_summary   → Budget Advisor Agent → final_advice
+POST   /formations
+GET    /formations
+GET    /formations/{id}
+PUT    /formations/{id}
+DELETE /formations/{id}
+GET    /formations/{id}/export
+POST   /formations/{id}/run
+POST   /formations/{id}/run/stream
+GET    /formations/{id}/report
 ```
-
-Or:
-
-```
-Outline Agent → outline
-outline        → Fleet of N Researcher Agents (one per section) → sections[]
-sections[]     → Assembly Agent → final_document
-```
-
-The `storage.Formation` type (with `Roles` and `Edges`) exists in SQLite but has no runtime implementation yet. The `actor/` package provides the execution primitives.
 
 ---
 
@@ -799,7 +809,7 @@ Two separate fields — `provider: "anthropic"`, `model: "claude-opus-4-6"` — 
 
 `actor.Fleet` (in `actor/`) uses the lower-level actor system (mailbox-based). It was the original implementation and is kept for existing consumers. The new `fleet.Fleet` (in `fleet/`) is a simpler, higher-level API that doesn't require understanding actors. It is the recommended API for straightforward fan-out patterns.
 
-When formations are implemented, they will use the `actor` package directly to build dynamic actor graphs. The `fleet` package is then the "easy mode" abstraction on top.
+Current formations run through the dedicated server DAG runtime; `actor` remains useful for lower-level orchestration patterns and compatibility.
 
 ### Why is `ToolCallResult.ToolName` the call ID, not the tool name?
 
@@ -809,16 +819,16 @@ The tool_result content block that gets sent back to the model must reference th
 
 ## Open Questions / Future Work
 
-1. **Formations runtime** — the `Formation` storage type (with `Roles` and `Edges`) exists but there is no execution engine. Design is pending.
+1. **Provider capability metadata** — no database of "what models does provider X support" or "what's the context window for claude-opus-4-6 via bedrock". Users must know this themselves. A future `models.dev`-style internal registry is planned.
 
-2. **Provider capability metadata** — no database of "what models does provider X support" or "what's the context window for claude-opus-4-6 via bedrock". Users must know this themselves. A future `models.dev`-style internal registry is planned.
+2. **OpenAI provider** — not yet implemented. Trivially addable following the same pattern as `provider/anthropic`.
 
-3. **OpenAI provider** — not yet implemented. Trivially addable following the same pattern as `provider/anthropic`.
+3. **Custom tools on the server** — the server only resolves the 7 built-in tools by name. Custom tools require the SDK. MCP or webhook-based extension is a future possibility.
 
-4. **Custom tools on the server** — the server only resolves the 7 built-in tools by name. Custom tools require the SDK. MCP or webhook-based extension is a future possibility.
+4. **Max steps / turn limit** — the agentic loop has no configurable ceiling. A runaway model loops until context exhaustion. Adding `WithMaxSteps(n)` to `session.Session` and returning `ErrMaxSteps` is a near-term improvement.
 
-5. **Max steps / turn limit** — the agentic loop has no configurable ceiling. A runaway model loops until context exhaustion. Adding `WithMaxSteps(n)` to `session.Session` and returning `ErrMaxSteps` is a near-term improvement.
+5. **Fleet streaming with persistence** — `RunStream` emits results but doesn't persist them. If the connection drops mid-flight, results are lost. A durable run model (like a job queue) is future work.
 
-6. **Fleet streaming with persistence** — `RunStream` emits results but doesn't persist them. If the connection drops mid-flight, results are lost. A durable run model (like a job queue) is future work.
+6. **Session-level tool overrides** — tools are set on the agent, not the session. You can't add a one-off tool for a specific conversation without creating a new agent. Per-session tool injection is a possible future addition.
 
-7. **Session-level tool overrides** — tools are set on the agent, not the session. You can't add a one-off tool for a specific conversation without creating a new agent. Per-session tool injection is a possible future addition.
+7. **Formation runtime maturity** — formation runs are currently ephemeral (no durable run records/resume), retry policy configuration is minimal, and API `overrides` are accepted but not yet applied by runtime.

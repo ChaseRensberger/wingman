@@ -513,10 +513,43 @@ Export stored definition as JSON or YAML (`?format=yaml`).
 
 Run a formation and return final outputs.
 
+**Request:**
+```json
+{
+  "inputs": {
+    "topic": "State of local inference in 2026"
+  }
+}
+```
+
+**Example Response:**
+```json
+{
+  "status": "ok",
+  "outputs": {
+    "planner": {"sections": []}
+  },
+  "stats": {
+    "nodes_executed": 1,
+    "duration_ms": 1234
+  }
+}
+```
+
 ### POST /formations/{id}/run/stream
 
 Stream formation lifecycle events over SSE.
 
+Event types include: `run_start`, `node_start`, `tool_call`, `node_output`, `edge_emit`, `node_end`, `node_error`, `run_end`.
+
 ### GET /formations/{id}/report
 
 Read `report.md` from the formation work directory.
+
+**Example Response:**
+```json
+{
+  "path": "./report.md",
+  "content": "# Report\n..."
+}
+```
