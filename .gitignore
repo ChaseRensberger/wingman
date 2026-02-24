@@ -6,3 +6,4 @@ sandbox/
 node_modules/
 
 dist/
+report.md
