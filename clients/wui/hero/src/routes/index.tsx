@@ -52,15 +52,15 @@ function InstallSection() {
 	return (
 		<div className="space-y-6">
 			<div className="space-y-2">
-				<p className="text-xs text-muted-foreground uppercase tracking-wider">SDK</p>
-				<CopyCommand command={SDK_COMMAND}>
-					{SDK_COMMAND}
-				</CopyCommand>
-			</div>
-			<div className="space-y-2">
 				<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
 				<CopyCommand command={SERVER_COMMAND}>
 					{SERVER_COMMAND}
+				</CopyCommand>
+			</div>
+			<div className="space-y-2">
+				<p className="text-xs text-muted-foreground uppercase tracking-wider">SDK</p>
+				<CopyCommand command={SDK_COMMAND}>
+					{SDK_COMMAND}
 				</CopyCommand>
 			</div>
 		</div >
