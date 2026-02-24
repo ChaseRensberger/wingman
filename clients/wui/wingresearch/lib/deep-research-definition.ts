@@ -24,7 +24,7 @@ export function buildDeepResearchDefinition(
             max_retries: 6,
           },
           instructions:
-            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe write must create a compact skeleton only (title, table of contents, and section stubs).\nEach section stub MUST be wrapped in unique marker comments exactly like:\n<!-- SECTION:{section_id}:START -->\n## {section_title}\n_TODO: {section_id}_\n<!-- SECTION:{section_id}:END -->\nAlso emit each section.marker value equal to `SECTION:{section_id}`.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
+            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 non-conclusion sections.\nThe sections array MUST include those sections plus a final Conclusion section.\nConclusion requirements: id must be `conclusion`, title must be `Conclusion`, marker must be `SECTION:conclusion`.\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe write must create a compact skeleton only (title, table of contents, and section stubs).\nEach section stub MUST be wrapped in unique marker comments exactly like:\n<!-- SECTION:{section_id}:START -->\n## {section_title}\n_TODO: {section_id}_\n<!-- SECTION:{section_id}:END -->\nAlso emit each section.marker value equal to `SECTION:{section_id}`.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
           tools: ["perplexity_search", "write", "edit"],
           output_schema: {
             type: "object",
@@ -80,7 +80,7 @@ export function buildDeepResearchDefinition(
               max_retries: 6,
             },
             instructions:
-              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nEdit only your section marker block.\nYour marker namespace is provided as section_marker (example: SECTION:section_1).\nUse exactly one edit call with:\n- old_string = full current block between <!-- {section_marker}:START --> and <!-- {section_marker}:END -->\n- new_string = same markers and heading, but replace TODO body with final content\nDo not edit outside your marker block.\nReturn structured JSON when finished.",
+              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nIf section_id is `conclusion`, synthesize the report into a complete final conclusion (no TODO placeholders).\nEdit only your section marker block.\nYour marker namespace is provided as section_marker (example: SECTION:section_1).\nUse exactly one edit call with:\n- old_string = full current block between <!-- {section_marker}:START --> and <!-- {section_marker}:END -->\n- new_string = same markers and heading, but replace TODO body with final content\nDo not edit outside your marker block.\nReturn structured JSON when finished.",
             tools: ["perplexity_search", "read", "edit"],
             output_schema: {
               type: "object",
@@ -110,7 +110,7 @@ export function buildDeepResearchDefinition(
             max_retries: 6,
           },
           instructions:
-            "Do a final lightweight proofreading pass over ./report.md.\nRead the report once, then perform at most one edit call for minor polish.\nDo not do additional research or extra edit loops.\nImprove spelling and readability without changing intent.\nRemove all marker comments like <!-- SECTION:*:START/END --> from the final report.\nReplace any remaining TODO placeholders (including conclusion) with final prose.\nEnsure no system tags (for example <system-reminder>...</system-reminder>) remain in the file.\nReturn structured JSON status.",
+            "You are the final proofreader for ./report.md.\nPerform only a light spelling, grammar, and readability pass.\nDo not add or remove sections, do not rewrite structure, and do not do additional research.\nThe iterative researchers are responsible for completing all section content, including the conclusion.\nUse edit tool only for small targeted corrections and preserve existing meaning.\nReturn structured JSON status.",
           tools: ["read", "edit"],
           output_schema: {
             type: "object",

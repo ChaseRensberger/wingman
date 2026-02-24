@@ -22,7 +22,9 @@ nodes:
         You may call perplexity_search at most 3 times total.
         Keep tool outputs concise and summarized; never paste large raw source text.
         Use at most 2 webfetch calls total in this planning phase.
-        Build an outline with no more than 8 sections (excluding Conclusion).
+        Build an outline with no more than 8 non-conclusion sections.
+        The sections array MUST include those sections plus a final Conclusion section.
+        Conclusion requirements: id must be `conclusion`, title must be `Conclusion`, marker must be `SECTION:conclusion`.
         Before your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.
         The write must create a compact skeleton only (title, table of contents, and section stubs).
         Each section stub MUST be wrapped in unique marker comments exactly like:
@@ -87,6 +89,7 @@ nodes:
           You may call perplexity_search at most 3 times for this section.
           Use at most 1 webfetch call for this section unless strictly needed.
           Summarize findings; do not include large quoted source text.
+          If section_id is `conclusion`, synthesize the report into a complete final conclusion (no TODO placeholders).
           Edit only your section marker block.
           Your marker namespace is provided as section_marker (example: SECTION:section_1).
           Use exactly one edit call with:
@@ -117,14 +120,17 @@ nodes:
         max_tokens: 700
         max_retries: 6
       instructions: |
-        Do a final lightweight proofreading pass over ./report.md.
-        Read the report once, then perform at most one edit call for minor polish.
-        Do not do additional research or extra edit loops.
-        Improve spelling and readability without changing intent.
-        Remove all marker comments like <!-- SECTION:*:START/END --> from the final report.
-        Replace any remaining TODO placeholders (including conclusion) with final prose.
-        Ensure no system tags (for example <system-reminder>...</system-reminder>) remain in the file.
-        Return structured JSON status.
+        You are the final proofreader for ./report.md.
+        Read the full report first.
+        Then use exactly one write call to rewrite the entire report into clean final markdown.
+        Do NOT use edit.
+        Requirements for final report:
+        - Preserve all substantive content and improve clarity/flow
+        - Remove all marker comments like <!-- SECTION:*:START/END -->
+        - Remove any process/meta/system text (including <system-reminder> tags)
+        - Replace placeholders like TODO, TBD, or 'To be written.' with final prose
+        - Ensure headings, spacing, and formatting are publication-ready
+        After the write succeeds, return structured JSON status.
       tools: [read, edit]
       output_schema:
         type: object
