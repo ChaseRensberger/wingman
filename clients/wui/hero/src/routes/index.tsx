@@ -88,8 +88,8 @@ function Hero() {
 				<img src={WingmanIcon} className="w-12 h-12" />
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
-					{/*
 					<NavLink name="Docs" url={"/docs"} />
+					{/*
 					<NavLink name="Blog" url={"/blog"} />
 					*/}
 				</div>
