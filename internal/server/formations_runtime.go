@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -83,6 +85,7 @@ type formationEvent struct {
 	Worker string         `json:"worker,omitempty"`
 	Tool   string         `json:"tool,omitempty"`
 	CallID string         `json:"call_id,omitempty"`
+	Path   string         `json:"path,omitempty"`
 	Output map[string]any `json:"output,omitempty"`
 	Error  string         `json:"error,omitempty"`
 	Status string         `json:"status,omitempty"`
@@ -368,13 +371,34 @@ func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDe
 		message = rawMessage
 	}
 
-	result, err := runSessionWithToolEvents(ctx, runSession, message, node.ID, "", emit)
+	runResult, err := runSessionWithToolEvents(ctx, runSession, message, node.ID, "", emit)
 	if err != nil {
 		return nil, err
 	}
 
+	if node.ID == "planner" {
+		if !runResult.writeStarted {
+			return nil, errors.New("planner must call write to create report.md")
+		}
+		if !runResult.writeCompleted {
+			return nil, fmt.Errorf("planner started write tool call but did not complete it (likely truncated tool input or token limit). write attempts: %s", summarizeWriteAttempts(runResult.toolCalls))
+		}
+		if !runResult.writeExecuted {
+			return nil, fmt.Errorf("planner completed write tool block but write did not execute successfully. write attempts: %s", summarizeWriteAttempts(runResult.toolCalls))
+		}
+
+		reportPath := filepath.Join(resolveWorkDir(def.Defaults.WorkDir), "report.md")
+		reportBytes, readErr := os.ReadFile(reportPath)
+		if readErr != nil {
+			return nil, fmt.Errorf("planner did not produce report.md at %s: %w (write attempts: %s)", reportPath, readErr, summarizeWriteAttempts(runResult.toolCalls))
+		}
+		if strings.TrimSpace(string(reportBytes)) == "" {
+			return nil, fmt.Errorf("planner produced empty report.md at %s (write attempts: %s)", reportPath, summarizeWriteAttempts(runResult.toolCalls))
+		}
+	}
+
 	parsed := map[string]any{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(result.Response)), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(runResult.result.Response)), &parsed); err != nil {
 		return nil, fmt.Errorf("node %q must return structured json output: %w", node.ID, err)
 	}
 	return parsed, nil
@@ -420,17 +444,39 @@ func (s *Server) executeFormationFleetNode(ctx context.Context, def *formationDe
 	}, nil
 }
 
-func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, message, nodeID, worker string, emit func(formationEvent)) (*session.Result, error) {
+type streamedRunResult struct {
+	result         *session.Result
+	writeStarted   bool
+	writeCompleted bool
+	writeExecuted  bool
+	toolCalls      []formationToolCall
+}
+
+type formationToolCall struct {
+	CallID string
+	Tool   string
+	Path   string
+	Error  string
+}
+
+func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, message, nodeID, worker string, emit func(formationEvent)) (*streamedRunResult, error) {
 	stream, err := runSession.RunStream(ctx, message)
 	if err != nil {
 		return nil, err
 	}
 
 	pending := map[int]core.StreamContentBlock{}
+	callTools := map[string]string{}
+	writeStarted := false
+	writeCompleted := false
 	for stream.Next() {
 		event := stream.Event()
 		if event.Type == core.EventContentBlockStart && event.ContentBlock != nil && event.ContentBlock.Type == "tool_use" {
 			pending[event.Index] = *event.ContentBlock
+			callTools[event.ContentBlock.ID] = event.ContentBlock.Name
+			if event.ContentBlock.Name == "write" {
+				writeStarted = true
+			}
 			emit(formationEvent{
 				Type:   "tool_call",
 				NodeID: nodeID,
@@ -443,6 +489,9 @@ func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, 
 
 		if event.Type == core.EventContentBlockStop {
 			if block, ok := pending[event.Index]; ok {
+				if block.Name == "write" {
+					writeCompleted = true
+				}
 				emit(formationEvent{
 					Type:   "tool_call",
 					NodeID: nodeID,
@@ -460,7 +509,43 @@ func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, 
 		return nil, err
 	}
 
-	return stream.Result(), nil
+	toolCalls := make([]formationToolCall, 0, len(stream.Result().ToolCalls))
+	writeExecuted := false
+	for _, call := range stream.Result().ToolCalls {
+		toolName := callTools[call.ToolName]
+		path := extractToolPath(call.Input)
+		callError := ""
+		status := "done"
+		if call.Error != nil {
+			callError = call.Error.Error()
+			status = "error"
+		}
+
+		toolCalls = append(toolCalls, formationToolCall{
+			CallID: call.ToolName,
+			Tool:   toolName,
+			Path:   path,
+			Error:  callError,
+		})
+
+		if toolName == "write" {
+			if call.Error == nil {
+				writeExecuted = true
+			}
+			emit(formationEvent{
+				Type:   "tool_call",
+				NodeID: nodeID,
+				Worker: worker,
+				Tool:   toolName,
+				CallID: call.ToolName,
+				Path:   path,
+				Status: status,
+				Error:  callError,
+			})
+		}
+	}
+
+	return &streamedRunResult{result: stream.Result(), writeStarted: writeStarted, writeCompleted: writeCompleted, writeExecuted: writeExecuted, toolCalls: toolCalls}, nil
 }
 
 func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, agentInstance *agent.Agent, workDir string, messages []string, maxWorkers int, emit func(formationEvent)) ([]map[string]any, error) {
@@ -493,7 +578,7 @@ func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, ag
 			workerName := fmt.Sprintf("worker-%d", workerNum)
 			for idx := range jobs {
 				runSession := session.New(session.WithAgent(agentInstance), session.WithWorkDir(workDir))
-				res, err := runSessionWithToolEvents(ctx, runSession, messages[idx], nodeID, workerName, emit)
+				runResult, err := runSessionWithToolEvents(ctx, runSession, messages[idx], nodeID, workerName, emit)
 				if err != nil {
 					out <- result{index: idx, err: err}
 					cancel()
@@ -501,7 +586,7 @@ func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, ag
 				}
 
 				parsed := map[string]any{}
-				if err := json.Unmarshal([]byte(strings.TrimSpace(res.Response)), &parsed); err != nil {
+				if err := json.Unmarshal([]byte(strings.TrimSpace(runResult.result.Response)), &parsed); err != nil {
 					out <- result{index: idx, err: fmt.Errorf("fleet node %q must return structured json output: %w", nodeID, err)}
 					cancel()
 					return
@@ -544,6 +629,47 @@ func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, ag
 	}
 
 	return final, nil
+}
+
+func resolveWorkDir(workDir string) string {
+	trimmed := strings.TrimSpace(workDir)
+	if trimmed == "" {
+		return "."
+	}
+	return trimmed
+}
+
+func extractToolPath(input any) string {
+	params, ok := input.(map[string]any)
+	if !ok {
+		return ""
+	}
+	path, _ := params["path"].(string)
+	return path
+}
+
+func summarizeWriteAttempts(calls []formationToolCall) string {
+	attempts := make([]string, 0)
+	for _, call := range calls {
+		if call.Tool != "write" {
+			continue
+		}
+		path := call.Path
+		if path == "" {
+			path = "<no-path>"
+		}
+		if call.Error != "" {
+			attempts = append(attempts, fmt.Sprintf("%s (error: %s)", path, call.Error))
+			continue
+		}
+		attempts = append(attempts, fmt.Sprintf("%s (ok)", path))
+	}
+
+	if len(attempts) == 0 {
+		return "none"
+	}
+
+	return strings.Join(attempts, "; ")
 }
 
 func (s *Server) buildFormationAgent(cfg *formationAgentConfig, fallbackName string) (*agent.Agent, error) {

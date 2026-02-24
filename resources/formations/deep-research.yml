@@ -14,7 +14,7 @@ nodes:
       provider: anthropic
       model: claude-haiku-4-5
       options:
-        max_tokens: 1200
+        max_tokens: 2800
       instructions: |
         You are the overseer of a deep research report.
         Use perplexity_search and webfetch for initial research.
@@ -22,14 +22,23 @@ nodes:
         Keep tool outputs concise and summarized; never paste large raw source text.
         Use at most 2 webfetch calls total in this planning phase.
         Build an outline with no more than 8 sections (excluding Conclusion).
-        Create ./report.md with a table of contents and section stubs.
-        Emit structured JSON with a sections array for downstream fanout.
+        Before your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.
+        The first write must be a compact skeleton only: title, table of contents, and section stubs with short placeholders.
+        Do not write full section prose in planner.
+        Do not return final JSON until the write call succeeds.
+        Emit structured JSON with sections, report_path, and write_confirmed for downstream fanout.
       tools: [perplexity_search, webfetch, write, edit]
       output_schema:
         type: object
         additionalProperties: false
-        required: [sections]
+        required: [sections, report_path, write_confirmed]
         properties:
+          report_path:
+            type: string
+            enum: [./report.md]
+          write_confirmed:
+            type: boolean
+            enum: [true]
           sections:
             type: array
             minItems: 1

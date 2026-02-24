@@ -20,16 +20,24 @@ export function buildDeepResearchDefinition(
           provider: "anthropic",
           model: "claude-haiku-4-5",
           options: {
-            max_tokens: 1200,
+            max_tokens: 2800,
           },
           instructions:
-            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nCreate ./report.md with a table of contents and section stubs.\nEmit structured JSON with a sections array for downstream fanout.",
+            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe first write must be a compact skeleton only: title, table of contents, and section stubs with short placeholders.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
           tools: ["perplexity_search", "write", "edit"],
           output_schema: {
             type: "object",
             additionalProperties: false,
-            required: ["sections"],
+            required: ["sections", "report_path", "write_confirmed"],
             properties: {
+              report_path: {
+                type: "string",
+                enum: ["./report.md"],
+              },
+              write_confirmed: {
+                type: "boolean",
+                enum: [true],
+              },
               sections: {
                 type: "array",
                 minItems: 1,

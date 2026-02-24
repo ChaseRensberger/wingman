@@ -35,6 +35,7 @@ export type FormationRunEvent = {
   worker?: string
   tool?: string
   call_id?: string
+  path?: string
   output?: Record<string, unknown>
   error?: string
   status?: string

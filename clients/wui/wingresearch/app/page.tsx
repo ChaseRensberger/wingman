@@ -217,11 +217,13 @@ export default function WingResearchPage() {
           const nodeID = event.node_id || "unknown"
           const worker = event.worker ? ` [${event.worker}]` : ""
           const status = event.status ? ` (${event.status})` : ""
+          const path = event.path ? ` path=${event.path}` : ""
+          const error = event.error ? ` error=${event.error}` : ""
           appendLog({
             agent: nodeToAgentName[nodeID] || nodeID,
-            message: `Tool${worker}: ${event.tool || "unknown"}${event.call_id ? ` [${event.call_id}]` : ""}${status}`,
+            message: `Tool${worker}: ${event.tool || "unknown"}${event.call_id ? ` [${event.call_id}]` : ""}${status}${path}${error}`,
             timestamp,
-            type: "tool",
+            type: event.error ? "error" : "tool",
           })
           break
         }
