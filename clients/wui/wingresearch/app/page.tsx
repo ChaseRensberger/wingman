@@ -414,7 +414,7 @@ export default function WingResearchPage() {
     <div className="flex h-screen flex-col bg-background">
       <header className="flex items-center justify-between border-b border-border px-6 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <Image src="/WingmanBlue.png" alt="Wingman" width={20} height={20} className="h-5 w-5" />
+          <Image src="/WingmanBlue.png" alt="Wingman" width={32} height={32} className="h-8 w-8" />
           <h1 className="text-sm font-semibold text-foreground tracking-tight font-sans">WingResearch</h1>
         </div>
         <div className="flex items-center gap-2">
