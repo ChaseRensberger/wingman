@@ -661,15 +661,33 @@ func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, ag
 
 				parsed, parseErr := parseStructuredObject(runResult.result.Response)
 				if parseErr != nil {
-					retryPrompt := "Your previous response was not valid JSON. Return ONLY valid JSON that matches the required output_schema. No prose, no markdown, no code fences."
-					retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, nodeID, workerName, emit)
-					if retryErr != nil {
-						out <- result{index: idx, err: retryErr}
-						cancel()
-						return
+					sectionID := extractSectionIDFromWorkerMessage(messages[idx])
+					retryPrompts := []string{
+						"Your previous response was not valid JSON. Return ONLY valid JSON that matches the required output_schema. No prose, no markdown, no code fences.",
 					}
-					runResult = mergeStreamedRunResults(runResult, retryResult)
-					parsed, parseErr = parseStructuredObject(runResult.result.Response)
+					if sectionID != "" {
+						retryPrompts = append(retryPrompts, fmt.Sprintf("Return ONLY this exact JSON object now with no tool calls and no extra text: {\"section_id\":\"%s\",\"status\":\"done\"}", sectionID))
+					}
+
+					for _, retryPrompt := range retryPrompts {
+						retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, nodeID, workerName, emit)
+						if retryErr != nil {
+							out <- result{index: idx, err: retryErr}
+							cancel()
+							return
+						}
+						runResult = mergeStreamedRunResults(runResult, retryResult)
+						parsed, parseErr = parseStructuredObject(runResult.result.Response)
+						if parseErr == nil {
+							break
+						}
+					}
+
+					if parseErr != nil && sectionID != "" && hasSuccessfulEditCall(runResult.toolCalls) {
+						parsed = map[string]any{"section_id": sectionID, "status": "done"}
+						parseErr = nil
+					}
+
 					if parseErr != nil {
 						out <- result{index: idx, err: fmt.Errorf("fleet node %q must return structured json output: %w (response preview: %s)", nodeID, parseErr, previewResponse(runResult.result.Response))}
 						cancel()
@@ -816,6 +834,28 @@ func summarizeWriteAttempts(calls []formationToolCall) string {
 	}
 
 	return strings.Join(attempts, "; ")
+}
+
+func extractSectionIDFromWorkerMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return ""
+	}
+	parsed := map[string]any{}
+	if err := json.Unmarshal([]byte(message), &parsed); err != nil {
+		return ""
+	}
+	sectionID, _ := parsed["section_id"].(string)
+	return strings.TrimSpace(sectionID)
+}
+
+func hasSuccessfulEditCall(calls []formationToolCall) bool {
+	for _, call := range calls {
+		if call.Tool == "edit" && call.Error == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) buildFormationAgent(cfg *formationAgentConfig, fallbackName string) (*agent.Agent, error) {
