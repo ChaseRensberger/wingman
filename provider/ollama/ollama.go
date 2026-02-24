@@ -13,11 +13,6 @@ import (
 	"github.com/chaserensberger/wingman/provider"
 )
 
-// ============================================================
-//  Registry registration
-// ============================================================
-
-// Meta is the provider metadata registered in the default provider registry.
 var Meta = provider.ProviderMeta{
 	ID:        "ollama",
 	Name:      "Ollama",
@@ -31,27 +26,11 @@ func init() {
 	provider.Register(Meta)
 }
 
-// ============================================================
-//  Config and constructor
-// ============================================================
-
-// Config configures the Ollama provider.
-//
-// BaseURL is optional; defaults to http://localhost:11434. It can also be set
-// via Options["base_url"].
-//
-// Options recognises the following keys:
-//
-//   - "model"      string      — model name (REQUIRED; returns error if absent)
-//   - "base_url"   string      — alternative to the BaseURL field
-//   - "max_tokens" int/float64 — maps to Ollama's num_predict
-//   - "temperature" float64    — sampling temperature
 type Config struct {
-	BaseURL string         // optional; defaults to http://localhost:11434
-	Options map[string]any // model (required), max_tokens, temperature, base_url
+	BaseURL string
+	Options map[string]any
 }
 
-// Client implements core.Provider for the Ollama chat API.
 type Client struct {
 	baseURL     string
 	model       string
@@ -65,7 +44,6 @@ const (
 	httpTimeout    = 10 * time.Minute
 )
 
-// New creates an Ollama Client. Returns an error if no model is specified.
 func New(cfg Config) (*Client, error) {
 	model, _ := cfg.Options["model"].(string)
 	if model == "" {
@@ -107,10 +85,6 @@ func New(cfg Config) (*Client, error) {
 		httpClient:  &http.Client{Timeout: httpTimeout},
 	}, nil
 }
-
-// ============================================================
-//  Internal wire types
-// ============================================================
 
 type chatMessage struct {
 	Role       string     `json:"role"`
@@ -166,10 +140,6 @@ type response struct {
 	EvalCount          int         `json:"eval_count"`
 	EvalDuration       int64       `json:"eval_duration"`
 }
-
-// ============================================================
-//  Type conversions
-// ============================================================
 
 func (c *Client) toOllamaMessages(msg core.Message) []chatMessage {
 	var result []chatMessage
@@ -304,11 +274,6 @@ func (c *Client) toInferenceResponse(resp response) *core.InferenceResponse {
 	}
 }
 
-// ============================================================
-//  Provider interface implementation
-// ============================================================
-
-// RunInference performs a blocking inference call.
 func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error) {
 	ollamaReq := c.buildRequest(req)
 	ollamaReq.Stream = false
@@ -348,7 +313,6 @@ func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*
 	return c.toInferenceResponse(apiResp), nil
 }
 
-// StreamInference begins a streaming inference call.
 func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error) {
 	ollamaReq := c.buildRequest(req)
 	ollamaReq.Stream = true

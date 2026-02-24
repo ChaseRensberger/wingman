@@ -15,14 +15,9 @@ import (
 	"github.com/chaserensberger/wingman/session"
 	"github.com/chaserensberger/wingman/tool"
 
-	// Import provider implementations so their init() functions register them.
 	_ "github.com/chaserensberger/wingman/provider/anthropic"
 	_ "github.com/chaserensberger/wingman/provider/ollama"
 )
-
-// ============================================================
-//  Session CRUD
-// ============================================================
 
 type CreateSessionRequest struct {
 	WorkDir string `json:"work_dir,omitempty"`
@@ -114,20 +109,11 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ============================================================
-//  Message endpoints
-// ============================================================
-
-// MessageSessionRequest is the body for POST /sessions/{id}/message.
-// agent_id identifies which agent to use for this message. The session acts
-// as a conversation container; the agent (and its provider/model) can vary
-// per message, allowing multi-agent conversations.
 type MessageSessionRequest struct {
 	AgentID string `json:"agent_id"`
 	Message string `json:"message"`
 }
 
-// MessageSessionResponse is the response body for a completed (non-streaming) message.
 type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
 	ToolCalls []session.ToolCallResult `json:"tool_calls"`
@@ -303,12 +289,6 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	flusher.Flush()
 }
 
-// ============================================================
-//  Agent / provider building helpers
-// ============================================================
-
-// buildAgent converts a stored agent into a live *agent.Agent with a
-// provider instance, resolved tools, and output schema attached.
 func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	opts := []agent.Option{
 		agent.WithID(stored.ID),
@@ -342,19 +322,13 @@ func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
 	return agent.New(stored.Name, opts...), nil
 }
 
-// buildProvider constructs a live Provider using the registry factory.
-// It merges the model ID and auth credentials into the options map before
-// passing them to the factory.
 func (s *Server) buildProvider(providerID, model string, opts map[string]any) (core.Provider, error) {
-	// Build the merged options map: user options + model + auth key.
 	merged := make(map[string]any, len(opts)+2)
 	for k, v := range opts {
 		merged[k] = v
 	}
 	merged["model"] = model
 
-	// Inject auth credential from storage into the options map so the
-	// provider factory can pick it up without needing a separate code path.
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load auth: %w", err)
@@ -370,9 +344,6 @@ func (s *Server) buildProvider(providerID, model string, opts map[string]any) (c
 	return p, nil
 }
 
-// resolveTools maps a list of tool name strings to live Tool instances.
-// Only the 7 built-in tools are available via the server; custom tools
-// require the SDK.
 func (s *Server) resolveTools(toolNames []string) []core.Tool {
 	builtins := map[string]core.Tool{
 		"bash":     tool.NewBashTool(),

@@ -9,13 +9,12 @@ import (
 	"github.com/chaserensberger/wingman/internal/storage"
 )
 
-// CreateAgentRequest is the request body for POST /agents.
 type CreateAgentRequest struct {
 	Name         string         `json:"name"`
 	Instructions string         `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
-	Provider     string         `json:"provider,omitempty"` // e.g. "anthropic"
-	Model        string         `json:"model,omitempty"`    // e.g. "claude-opus-4-6"
+	Provider     string         `json:"provider,omitempty"`
+	Model        string         `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
 }
@@ -74,8 +73,6 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-// UpdateAgentRequest is the request body for PUT /agents/{id}. All fields are
-// optional pointers so that a partial update only changes provided fields.
 type UpdateAgentRequest struct {
 	Name         *string        `json:"name,omitempty"`
 	Instructions *string        `json:"instructions,omitempty"`

@@ -12,15 +12,10 @@ import (
 	"github.com/chaserensberger/wingman/internal/storage"
 )
 
-// ============================================================
-//  Fleet CRUD
-// ============================================================
-
-// CreateFleetRequest is the body for POST /fleets.
 type CreateFleetRequest struct {
 	Name        string `json:"name"`
 	AgentID     string `json:"agent_id"`
-	WorkerCount int    `json:"worker_count,omitempty"` // default concurrency cap; 0 = unlimited
+	WorkerCount int    `json:"worker_count,omitempty"`
 	WorkDir     string `json:"work_dir,omitempty"`
 }
 
@@ -83,7 +78,6 @@ func (s *Server) handleGetFleet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, f)
 }
 
-// UpdateFleetRequest is the body for PUT /fleets/{id}.
 type UpdateFleetRequest struct {
 	Name        *string `json:"name,omitempty"`
 	WorkerCount *int    `json:"worker_count,omitempty"`
@@ -132,11 +126,6 @@ func (s *Server) handleDeleteFleet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ============================================================
-//  Fleet execution
-// ============================================================
-
-// FleetTask is the per-task input for a fleet run.
 type FleetTask struct {
 	Message      string `json:"message"`
 	WorkDir      string `json:"work_dir,omitempty"`
@@ -144,13 +133,10 @@ type FleetTask struct {
 	Data         any    `json:"data,omitempty"`
 }
 
-// RunFleetRequest is the body for POST /fleets/{id}/run and
-// POST /fleets/{id}/run/stream.
 type RunFleetRequest struct {
 	Tasks []FleetTask `json:"tasks"`
 }
 
-// FleetResultResponse is one worker result serialised in HTTP responses.
 type FleetResultResponse struct {
 	TaskIndex  int    `json:"task_index"`
 	WorkerName string `json:"worker_name"`
@@ -160,7 +146,6 @@ type FleetResultResponse struct {
 	Data       any    `json:"data,omitempty"`
 }
 
-// handleRunFleet is POST /fleets/{id}/run — blocks until all tasks complete.
 func (s *Server) handleRunFleet(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -192,7 +177,6 @@ func (s *Server) handleRunFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert request tasks to fleet.Task.
 	tasks := make([]fleet.Task, len(req.Tasks))
 	for i, t := range req.Tasks {
 		wd := t.WorkDir
@@ -239,8 +223,6 @@ func (s *Server) handleRunFleet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleRunFleetStream is POST /fleets/{id}/run/stream — results arrive as
-// workers finish via SSE. Each SSE event is a FleetResultResponse.
 func (s *Server) handleRunFleetStream(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 

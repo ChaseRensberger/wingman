@@ -8,9 +8,6 @@ import (
 	"github.com/chaserensberger/wingman/tool"
 )
 
-// SessionStream provides incremental access to a streaming agentic loop.
-// Callers iterate with Next() / Event() and collect the final Result() after
-// Next() returns false.
 type SessionStream struct {
 	session      *Session
 	ctx          context.Context
@@ -25,9 +22,6 @@ type SessionStream struct {
 	done           bool
 }
 
-// RunStream starts the agentic loop in a background goroutine and returns a
-// SessionStream immediately. The goroutine drains provider stream events into
-// an internal channel; callers read them via Next() / Event().
 func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream, error) {
 	s.mu.Lock()
 	if s.agent == nil {
@@ -149,8 +143,6 @@ func (ss *SessionStream) run(p core.Provider) {
 	}
 }
 
-// Next blocks until the next stream event is available. Returns false when the
-// stream is exhausted or an error occurred.
 func (ss *SessionStream) Next() bool {
 	if ss.done {
 		return false
@@ -164,18 +156,14 @@ func (ss *SessionStream) Next() bool {
 	return true
 }
 
-// Event returns the most recent event read by Next.
 func (ss *SessionStream) Event() core.StreamEvent {
 	return ss.currentEvent
 }
 
-// Err returns any error that occurred during streaming.
 func (ss *SessionStream) Err() error {
 	return ss.err
 }
 
-// Result returns the accumulated Result after the stream is exhausted.
-// Only valid after Next() has returned false.
 func (ss *SessionStream) Result() *Result {
 	return ss.result
 }

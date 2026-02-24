@@ -16,11 +16,6 @@ import (
 	"github.com/chaserensberger/wingman/provider"
 )
 
-// ============================================================
-//  Registry registration
-// ============================================================
-
-// Meta is the provider metadata registered in the default provider registry.
 var Meta = provider.ProviderMeta{
 	ID:        "anthropic",
 	Name:      "Anthropic",
@@ -34,27 +29,11 @@ func init() {
 	provider.Register(Meta)
 }
 
-// ============================================================
-//  Config and constructor
-// ============================================================
-
-// Config configures the Anthropic provider.
-//
-// APIKey is optional; if empty the provider falls back to Options["api_key"]
-// and then the ANTHROPIC_API_KEY environment variable.
-//
-// Options recognises the following keys:
-//
-//   - "model"       string   — model ID (default: "claude-sonnet-4-5")
-//   - "max_tokens"  int/float64 — maximum output tokens (default: 4096)
-//   - "temperature" float64  — sampling temperature (omitted if not set)
-//   - "api_key"     string   — alternative to the APIKey field
 type Config struct {
-	APIKey  string         // optional; falls back to Options["api_key"] then env
-	Options map[string]any // inference parameters and optional auth override
+	APIKey  string
+	Options map[string]any
 }
 
-// Client implements core.Provider for the Anthropic Messages API.
 type Client struct {
 	apiKey      string
 	model       string
@@ -71,8 +50,6 @@ const (
 	httpTimeout      = 5 * time.Minute
 )
 
-// New creates an Anthropic Client. It returns an error if no API key can be
-// resolved (Config.APIKey, Options["api_key"], or ANTHROPIC_API_KEY env var).
 func New(cfg ...Config) (*Client, error) {
 	var c Config
 	if len(cfg) > 0 {
@@ -97,8 +74,6 @@ func New(cfg ...Config) (*Client, error) {
 		model = m
 	}
 
-	// Default max_tokens to 4096 — Anthropic's API requires this field and
-	// returns a 400 if it is absent. Users can override via Options["max_tokens"].
 	maxTokens := defaultMaxTokens
 	if v, ok := c.Options["max_tokens"]; ok {
 		switch n := v.(type) {
@@ -124,10 +99,6 @@ func New(cfg ...Config) (*Client, error) {
 		httpClient:  &http.Client{Timeout: httpTimeout},
 	}, nil
 }
-
-// ============================================================
-//  Internal wire types
-// ============================================================
 
 type anthropicMessage struct {
 	Role    string         `json:"role"`
@@ -199,10 +170,6 @@ type response struct {
 	Usage        usage          `json:"usage"`
 }
 
-// ============================================================
-//  Type conversions
-// ============================================================
-
 func (c *Client) toAnthropicMessage(msg core.Message) anthropicMessage {
 	blocks := make([]contentBlock, len(msg.Content))
 	for i, b := range msg.Content {
@@ -265,10 +232,6 @@ func (c *Client) toInferenceResponse(resp response) *core.InferenceResponse {
 	}
 }
 
-// ============================================================
-//  Provider interface implementation
-// ============================================================
-
 func (c *Client) buildRequest(req core.InferenceRequest) request {
 	messages := make([]anthropicMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -301,7 +264,6 @@ func (c *Client) buildRequest(req core.InferenceRequest) request {
 	return r
 }
 
-// RunInference performs a blocking inference call.
 func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error) {
 	anthropicReq := c.buildRequest(req)
 
@@ -342,7 +304,6 @@ func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*
 	return c.toInferenceResponse(apiResp), nil
 }
 
-// StreamInference begins a streaming inference call.
 func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error) {
 	anthropicReq := c.buildRequest(req)
 	anthropicReq.Stream = true
@@ -374,10 +335,6 @@ func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest)
 
 	return newStream(resp), nil
 }
-
-// ============================================================
-//  Streaming
-// ============================================================
 
 type Stream struct {
 	resp         *http.Response

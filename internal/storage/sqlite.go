@@ -29,11 +29,6 @@ CREATE TABLE IF NOT EXISTS agents (
 	updated_at TEXT NOT NULL
 );
 
--- Migration: add provider column if it doesn't exist (for existing databases).
--- SQLite doesn't support IF NOT EXISTS on ALTER TABLE so we ignore the error.
-
-CREATE TABLE IF NOT EXISTS agents_migration_done (id INTEGER PRIMARY KEY);
-
 CREATE TABLE IF NOT EXISTS sessions (
 	id TEXT PRIMARY KEY,
 	work_dir TEXT,
@@ -93,9 +88,6 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	// Runtime migration: add provider column to agents table if it was created
-	// before this column existed. SQLite ignores "duplicate column" errors so
-	// we just attempt it and discard the error.
 	_, _ = db.Exec(`ALTER TABLE agents ADD COLUMN provider TEXT`)
 
 	return &SQLiteStore{db: db}, nil
