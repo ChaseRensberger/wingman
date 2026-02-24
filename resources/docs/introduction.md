@@ -1,7 +1,7 @@
 ---
 title: "Introduction"
 group: "Wingman"
-order: 0
+order: 1
 ---
 # Wingman
 
@@ -19,8 +19,8 @@ Wingman is a self-hostable, airgap-friendly agent orchestration engine written i
 - **Agent** — A stateless template: instructions, tools, output schema, and a provider + model.
 - **Session** — A stateful container that holds conversation history and runs the agentic loop.
 - **Fleet** — A fan-out primitive for running many tasks concurrently.
-- **Actor system** — A low-level mailbox-based runtime used by future formations.
-- **Formations (future)** — Directed graphs of agents and functions that pass work between roles.
+- **Formation** — A declarative DAG runtime for multi-agent workflows.
+- **Actor system** — A low-level mailbox-based runtime used by concurrent primitives.
 
 ## For more info
 

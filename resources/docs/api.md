@@ -435,6 +435,8 @@ data: {"usage":{"input_tokens":120,"output_tokens":240},"steps":1}
 
 ## Fleets
 
+For the conceptual/runtime guide, see [Fleets](./fleets).
+
 ### POST /fleets
 
 Create a fleet definition.
@@ -478,3 +480,43 @@ Delete a fleet definition.
 ### POST /fleets/{id}/run/stream
 
 Streams one `event: result` per worker, then `event: done`.
+
+## Formations
+
+For the conceptual/runtime guide, see [Formations](./formations).
+
+### POST /formations
+
+Create a formation definition (JSON or YAML).
+
+### GET /formations
+
+List formation definitions.
+
+### GET /formations/{id}
+
+Get a formation definition.
+
+### PUT /formations/{id}
+
+Update a formation definition.
+
+### DELETE /formations/{id}
+
+Delete a formation definition.
+
+### GET /formations/{id}/export
+
+Export stored definition as JSON or YAML (`?format=yaml`).
+
+### POST /formations/{id}/run
+
+Run a formation and return final outputs.
+
+### POST /formations/{id}/run/stream
+
+Stream formation lifecycle events over SSE.
+
+### GET /formations/{id}/report
+
+Read `report.md` from the formation work directory.

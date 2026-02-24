@@ -1,7 +1,7 @@
 ---
 title: "Architecture"
 group: "Wingman"
-order: 1
+order: 2
 ---
 # Architecture
 
@@ -52,6 +52,28 @@ A session is a stateful container that holds conversation history and runs the a
 s := session.New(session.WithAgent(a))
 result, _ := s.Run(ctx, "Summarize this article...")
 ```
+
+### Fleet
+
+A fleet runs one agent across many tasks concurrently with bounded workers. Each task carries its own message and can optionally override work directory and instructions.
+
+```go
+f := fleet.New(fleet.Config{
+    Agent: a,
+    Tasks: []fleet.Task{
+        {Message: "Analyze auth module"},
+        {Message: "Analyze API module"},
+    },
+    MaxWorkers: 2,
+})
+results, _ := f.Run(ctx)
+```
+
+### Formation
+
+A formation is a declarative DAG of nodes (`agent`, `fleet`, `join`) connected by edges that map outputs to downstream inputs. Definitions are persisted; runs are executed ephemerally through the server runtime.
+
+Formations compose the lower-level primitives: agent execution, session loops, and fleet fan-out.
 
 ## Actor system
 
