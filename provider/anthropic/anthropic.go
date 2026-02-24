@@ -43,7 +43,7 @@ type Client struct {
 }
 
 const (
-	defaultModel     = "claude-sonnet-4-5"
+	defaultModel     = "claude-haiku-4-5"
 	defaultMaxTokens = 4096
 	apiURL           = "https://api.anthropic.com/v1/messages"
 	apiVersion       = "2023-06-01"

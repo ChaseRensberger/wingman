@@ -101,6 +101,35 @@ export function SessionProvider(props: {
 						if (prev[prev.length - 1]?.role === "assistant") return prev;
 						return [...prev, { role: "assistant", content: "" }];
 					});
+				} else if (type === "content_block_start") {
+					const block = payload.content_block;
+					if (block?.type === "tool_use") {
+						setStatus("Using tool...");
+						setMessages((prev) => [
+							...prev,
+							{ role: "tool" as const, toolName: block.name, status: "running" as const },
+						]);
+					} else if (block?.type === "text") {
+						// New text block after a tool call — ensure there's an assistant message to append to
+						setMessages((prev) => {
+							const last = prev[prev.length - 1];
+							if (last?.role === "assistant") return prev;
+							return [...prev, { role: "assistant", content: "" }];
+						});
+					}
+				} else if (type === "content_block_stop") {
+					// Mark the most recent running tool as done
+					setMessages((prev) => {
+						const updated = [...prev];
+						for (let i = updated.length - 1; i >= 0; i -= 1) {
+							const msg = updated[i];
+							if (msg?.role === "tool" && msg.status === "running") {
+								updated[i] = { ...msg, status: "done" };
+								break;
+							}
+						}
+						return updated;
+					});
 				} else if (type === "done") {
 					const done = payload as DoneEvent;
 					if (done.usage) {

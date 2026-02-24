@@ -18,11 +18,12 @@ export function SessionView() {
 				) : (
 					session.messages.map((message, index) => (
 						<box key={index} paddingBottom={1} flexDirection="column">
-							{message.role === "tool" ? (
-								<text fg={theme.textMuted}>
-									<strong>Tool</strong>
-									{message.toolName ? `: ${message.toolName}` : ""}
-								</text>
+						{message.role === "tool" ? (
+							<text fg={message.status === "running" ? theme.primary : theme.textMuted}>
+								<strong>Tool</strong>
+								{message.toolName ? `: ${message.toolName}` : ""}
+								{message.status === "running" ? " (running...)" : ""}
+							</text>
 							) : (
 								<>
 									<text fg={message.role === "user" ? theme.primary : theme.text}>
