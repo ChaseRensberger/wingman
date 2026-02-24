@@ -96,7 +96,7 @@ function Hero() {
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
-					This project is under active development and is not yet stable. APIs may change without notice.
+					This project is under active development. When you update versions, APIs may change drastically (do not expect backward compatibility).
 				</div>
 				<h1 className="text-4xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
 				<div className="space-y-4">
