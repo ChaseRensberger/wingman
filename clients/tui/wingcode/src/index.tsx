@@ -16,7 +16,7 @@ Be concise and direct. When writing code:
 
 Always explain what you're doing briefly. Follow existing code conventions.`;
 
-const TOOLS = ["bash", "read", "write", "edit", "glob", "grep", "webfetch"];
+const TOOLS = ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "perplexity_search"];
 const AGENT_NAME = "WingCode";
 
 async function main() {

@@ -346,13 +346,14 @@ func (s *Server) buildProvider(providerID, model string, opts map[string]any) (c
 
 func (s *Server) resolveTools(toolNames []string) []core.Tool {
 	builtins := map[string]core.Tool{
-		"bash":     tool.NewBashTool(),
-		"read":     tool.NewReadTool(),
-		"write":    tool.NewWriteTool(),
-		"edit":     tool.NewEditTool(),
-		"glob":     tool.NewGlobTool(),
-		"grep":     tool.NewGrepTool(),
-		"webfetch": tool.NewWebFetchTool(),
+		"bash":              tool.NewBashTool(),
+		"read":              tool.NewReadTool(),
+		"write":             tool.NewWriteTool(),
+		"edit":              tool.NewEditTool(),
+		"glob":              tool.NewGlobTool(),
+		"grep":              tool.NewGrepTool(),
+		"webfetch":          tool.NewWebFetchTool(),
+		"perplexity_search": tool.NewPerplexityTool(),
 	}
 
 	var tools []core.Tool
