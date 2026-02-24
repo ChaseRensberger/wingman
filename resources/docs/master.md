@@ -1,7 +1,11 @@
 ---
 title: "Wingman — Master Reference"
-draft: true
+group: "Wingman"
+draft: false
+order: 0
 ---
+
+***IF YOU ARE A YC PARTNER READING THIS, THIS IS THE BEST PLACE TO START TO SEE A LOT OF THE DESIGN DECISIONS FOR WINGMAN LAID OUT CLEANLY. IT IS ALSO VERY SIMILAR TO WINGMAN'S SKILL.md. IT WILL LIKELY BE REMOVED/HIDDEN AFTER MY INTERVIEW IN FAVOR OF THE REST OF THE DOCS WHICH HAVE MORE OF A SEPARATION OF CONCERNS.***
 
 # Wingman — Master Reference
 
@@ -798,7 +802,7 @@ When formations are implemented, they will use the `actor` package directly to b
 
 ### Why is `ToolCallResult.ToolName` the call ID, not the tool name?
 
-The tool_result content block that gets sent back to the model must reference the `ID` of the corresponding tool_use block (e.g., `"toulu_abc123"`), not the tool name. Storing the call ID on `ToolCallResult.ToolName` makes building that block trivial for the caller. The human-readable tool name is available from the registry or from the original content block but is not separately persisted on the result.
+The tool_result content block that gets sent back to the model must reference the `ID` of the corresponding tool_use block (e.g., `"toolu_abc123"`), not the tool name. Storing the call ID on `ToolCallResult.ToolName` makes building that block trivial for the caller. The human-readable tool name is available from the registry or from the original content block but is not separately persisted on the result.
 
 ---
 
