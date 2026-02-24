@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -46,8 +47,39 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
-	s.router.Use(middleware.Timeout(60 * time.Second))
+	s.router.Use(timeoutWithBypass(60*time.Second, shouldBypassTimeout))
 	s.router.Use(jsonContentType)
+}
+
+func timeoutWithBypass(timeout time.Duration, bypass func(*http.Request) bool) func(http.Handler) http.Handler {
+	timed := middleware.Timeout(timeout)
+	return func(next http.Handler) http.Handler {
+		timedNext := timed(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if bypass != nil && bypass(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			timedNext.ServeHTTP(w, r)
+		})
+	}
+}
+
+func shouldBypassTimeout(r *http.Request) bool {
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/formations/") && (strings.HasSuffix(path, "/run") || strings.HasSuffix(path, "/run/stream")) {
+		return true
+	}
+
+	if strings.HasPrefix(path, "/sessions/") && strings.HasSuffix(path, "/message/stream") {
+		return true
+	}
+
+	if strings.HasPrefix(path, "/fleets/") && strings.HasSuffix(path, "/run/stream") {
+		return true
+	}
+
+	return false
 }
 
 func jsonContentType(next http.Handler) http.Handler {
