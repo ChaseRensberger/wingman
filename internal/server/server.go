@@ -102,6 +102,7 @@ func (s *Server) setupRoutes() {
 		r.Post("/", s.handleCreateFormation)
 		r.Get("/", s.handleListFormations)
 		r.Get("/{id}", s.handleGetFormation)
+		r.Get("/{id}/report", s.handleGetFormationReport)
 		r.Put("/{id}", s.handleUpdateFormation)
 		r.Delete("/{id}", s.handleDeleteFormation)
 		r.Get("/{id}/export", s.handleExportFormation)

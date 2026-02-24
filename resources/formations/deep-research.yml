@@ -18,6 +18,7 @@ nodes:
       instructions: |
         You are the overseer of a deep research report.
         Use perplexity_search and webfetch for initial research.
+        You may call perplexity_search at most 3 times total.
         Keep tool outputs concise and summarized; never paste large raw source text.
         Use at most 2 webfetch calls total in this planning phase.
         Build an outline with no more than 8 sections (excluding Conclusion).
@@ -63,6 +64,7 @@ nodes:
         instructions: |
           You are assigned one section of ./report.md.
           Do targeted research with perplexity_search and webfetch.
+          You may call perplexity_search at most 3 times for this section.
           Use at most 1 webfetch call for this section unless strictly needed.
           Summarize findings; do not include large quoted source text.
           Fill only your assigned section.

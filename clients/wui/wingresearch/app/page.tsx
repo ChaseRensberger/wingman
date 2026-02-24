@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Play, Square, Radar, Map, Search, SpellCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -51,14 +51,6 @@ const nodeToAgentName: Record<string, string> = {
   proofreader: "Proofreader",
 }
 
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
 function toTimestamp(ts?: string): string {
   const date = ts ? new Date(ts) : new Date()
   if (Number.isNaN(date.getTime())) {
@@ -92,59 +84,6 @@ function summarizeOutput(output: Record<string, unknown> | undefined): string {
   return `keys: ${keys.join(", ")}`
 }
 
-function buildReportPreview(topic: string, outputs: Record<string, Record<string, unknown>>, isRunning: boolean): string {
-  const planner = outputs.planner
-  const iterative = outputs.iterative_research
-  const proofreader = outputs.proofreader
-
-  const sections = Array.isArray(planner?.sections) ? planner.sections : []
-  const completed = typeof iterative?.completed === "number" ? iterative.completed : 0
-  const allWorkersDone = iterative?.all_workers_done === true
-  const proofreadStatus = typeof proofreader?.status === "string" ? proofreader.status : "pending"
-
-  const sectionLines =
-    sections.length > 0
-      ? sections
-          .map((section, idx) => {
-            if (typeof section !== "object" || section === null) {
-              return `- ${idx + 1}. (invalid section)`
-            }
-            const candidate = section as { id?: unknown; title?: unknown; guidance?: unknown }
-            const id = typeof candidate.id === "string" ? candidate.id : `section-${idx + 1}`
-            const title = typeof candidate.title === "string" ? candidate.title : "Untitled"
-            const guidance = typeof candidate.guidance === "string" ? candidate.guidance : ""
-            return `- ${id}: ${title}${guidance ? `\n  - guidance: ${guidance}` : ""}`
-          })
-          .join("\n")
-      : "- No sections emitted yet"
-
-  return [
-    "# WingResearch Formation Run",
-    "",
-    `**Topic:** ${topic}`,
-    `**Status:** ${isRunning ? "Running" : "Idle or complete"}`,
-    "",
-    "## Planner Output",
-    sectionLines,
-    "",
-    "## Fleet Progress",
-    `- Completed section tasks: ${completed}`,
-    `- All workers done: ${allWorkersDone ? "yes" : "no"}`,
-    "",
-    "## Proofreader",
-    `- Status: ${proofreadStatus}`,
-    "",
-    "## Raw Node Outputs",
-    "```json",
-    safeStringify(outputs),
-    "```",
-    "",
-    "---",
-    "",
-    "Note: this UI shows structured formation outputs. The canonical report file is written by Wingman as `./report.md` in the server process working directory.",
-  ].join("\n")
-}
-
 export default function WingResearchPage() {
   const [topic, setTopic] = useState(
     "State of open-source local inference in 2026"
@@ -156,9 +95,10 @@ export default function WingResearchPage() {
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [currentNode, setCurrentNode] = useState<string>("")
   const [nodeOutputs, setNodeOutputs] = useState<Record<string, Record<string, unknown>>>({})
+  const [reportMarkdown, setReportMarkdown] = useState("")
   const abortRef = useRef<AbortController | null>(null)
 
-  const reportContent = useMemo(() => buildReportPreview(topic, nodeOutputs, isRunning), [topic, nodeOutputs, isRunning])
+  const reportContent = reportMarkdown
 
   const appendLog = useCallback((entry: Omit<LogEntry, "id">) => {
     setLogEntries((prev) => [
@@ -168,6 +108,47 @@ export default function WingResearchPage() {
         ...entry,
       },
     ])
+  }, [])
+
+  const loadReportWithRetry = useCallback(async (formationID: string, attempts = 5) => {
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const report = await api.getFormationReport(formationID)
+        setReportMarkdown(report.content)
+        setReportPath(report.path)
+        return report
+      } catch {
+        if (i === attempts - 1) {
+          throw new Error("report.md not found for this formation")
+        }
+        await new Promise((resolve) => setTimeout(resolve, 700))
+      }
+    }
+
+    throw new Error("report.md not found for this formation")
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadLatestReport = async () => {
+      try {
+        const formations = await api.listFormations()
+        const existing = formations.find((formation) => formation.name === "deep-research")
+        if (!existing || cancelled) return
+        const report = await api.getFormationReport(existing.id)
+        if (cancelled) return
+        setReportMarkdown(report.content)
+      } catch {
+        // no-op: report may not exist yet
+      }
+    }
+
+    void loadLatestReport()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const setNodeActive = useCallback((nodeId: string) => {
@@ -330,6 +311,7 @@ export default function WingResearchPage() {
     setBaseUrlState(normalizedUrl)
     setAgents(defaultAgents)
     setNodeOutputs({})
+    setReportMarkdown("")
     setLogEntries([])
     setCurrentNode("")
     setIsRunning(true)
@@ -361,6 +343,24 @@ export default function WingResearchPage() {
         controller.signal,
         handleFormationEvent
       )
+
+      try {
+        const report = await loadReportWithRetry(formationID)
+        setReportMarkdown(report.content)
+        appendLog({
+          agent: "System",
+          message: `Loaded report from ${report.path}`,
+          timestamp: toTimestamp(),
+          type: "complete",
+        })
+      } catch (reportError) {
+        appendLog({
+          agent: "System",
+          message: reportError instanceof Error ? reportError.message : "Report not found",
+          timestamp: toTimestamp(),
+          type: "error",
+        })
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         appendLog({
@@ -383,7 +383,7 @@ export default function WingResearchPage() {
     } finally {
       abortRef.current = null
     }
-  }, [appendLog, baseUrl, ensureDeepResearchFormation, handleFormationEvent, isRunning, parallelResearchers, topic])
+  }, [appendLog, baseUrl, ensureDeepResearchFormation, handleFormationEvent, isRunning, loadReportWithRetry, parallelResearchers, topic])
 
   const handleStop = useCallback(() => {
     if (abortRef.current) {

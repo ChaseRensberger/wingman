@@ -23,7 +23,7 @@ export function buildDeepResearchDefinition(
             max_tokens: 1200,
           },
           instructions:
-            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nCreate ./report.md with a table of contents and section stubs.\nEmit structured JSON with a sections array for downstream fanout.",
+            "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nCreate ./report.md with a table of contents and section stubs.\nEmit structured JSON with a sections array for downstream fanout.",
           tools: ["perplexity_search", "write", "edit"],
           output_schema: {
             type: "object",
@@ -68,7 +68,7 @@ export function buildDeepResearchDefinition(
               max_tokens: 900,
             },
             instructions:
-              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nConcisely summarize findings; do not include large quoted source text.\nFill only your assigned section.\nReturn structured JSON when finished.",
+              "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nFill only your assigned section.\nReturn structured JSON when finished.",
             tools: ["perplexity_search", "edit"],
             output_schema: {
               type: "object",

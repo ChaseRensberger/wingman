@@ -21,6 +21,11 @@ export type FormationRecord = {
   updated_at: string
 }
 
+export type FormationReport = {
+  path: string
+  content: string
+}
+
 export type FormationRunEvent = {
   type: "run_start" | "node_start" | "node_output" | "edge_emit" | "node_end" | "node_error" | "run_end" | "tool_call"
   node_id?: string
@@ -140,6 +145,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(definition),
     }),
+  getFormationReport: (id: string) => request<FormationReport>(`/formations/${id}/report`),
   runFormationStream: (
     formationID: string,
     body: { inputs: Record<string, unknown> },

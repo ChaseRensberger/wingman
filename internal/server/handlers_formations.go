@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -22,6 +24,11 @@ type runFormationResponse struct {
 	Status  string                    `json:"status"`
 	Outputs map[string]map[string]any `json:"outputs"`
 	Stats   formationRunStats         `json:"stats"`
+}
+
+type formationReportResponse struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 func (s *Server) handleCreateFormation(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +81,43 @@ func (s *Server) handleGetFormation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, f)
+}
+
+func (s *Server) handleGetFormationReport(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	f, err := s.store.GetFormation(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	compiled, err := compileAndValidateDefinition(f.Definition)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid formation definition: "+err.Error())
+		return
+	}
+
+	workDir := strings.TrimSpace(compiled.Defaults.WorkDir)
+	if workDir == "" {
+		workDir = "."
+	}
+
+	reportPath := filepath.Clean(filepath.Join(workDir, "report.md"))
+	b, err := os.ReadFile(reportPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "report.md not found at "+reportPath)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to read report: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, formationReportResponse{
+		Path:    reportPath,
+		Content: string(b),
+	})
 }
 
 func (s *Server) handleUpdateFormation(w http.ResponseWriter, r *http.Request) {
