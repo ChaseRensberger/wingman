@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Play, Square, Radar, Map, Search, SpellCheck } from "lucide-react"
+import { Play, Square, Map, Search, SpellCheck } from "lucide-react"
+import Image from "next/image"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -97,6 +98,7 @@ export default function WingResearchPage() {
   const [nodeOutputs, setNodeOutputs] = useState<Record<string, Record<string, unknown>>>({})
   const [reportMarkdown, setReportMarkdown] = useState("")
   const abortRef = useRef<AbortController | null>(null)
+  const formationIDRef = useRef("")
 
   const reportContent = reportMarkdown
 
@@ -115,7 +117,6 @@ export default function WingResearchPage() {
       try {
         const report = await api.getFormationReport(formationID)
         setReportMarkdown(report.content)
-        setReportPath(report.path)
         return report
       } catch {
         if (i === attempts - 1) {
@@ -126,6 +127,17 @@ export default function WingResearchPage() {
     }
 
     throw new Error("report.md not found for this formation")
+  }, [])
+
+  const refreshReport = useCallback(async () => {
+    const formationID = formationIDRef.current
+    if (!formationID) return
+    try {
+      const report = await api.getFormationReport(formationID)
+      setReportMarkdown(report.content)
+    } catch {
+      // no-op: report may not exist yet
+    }
   }, [])
 
   useEffect(() => {
@@ -225,6 +237,10 @@ export default function WingResearchPage() {
             timestamp,
             type: event.error ? "error" : "tool",
           })
+
+          if ((event.tool === "write" || event.tool === "edit") && event.status === "done" && !event.error && event.path) {
+            void refreshReport()
+          }
           break
         }
         case "edge_emit": {
@@ -275,7 +291,7 @@ export default function WingResearchPage() {
         }
       }
     },
-    [appendLog, markNodeDone, setNodeActive]
+    [appendLog, markNodeDone, refreshReport, setNodeActive]
   )
 
   const ensureDeepResearchFormation = useCallback(async (definition: FormationDefinition) => {
@@ -331,6 +347,7 @@ export default function WingResearchPage() {
     try {
       const definition = buildDeepResearchDefinition(parallelResearchers)
       const formationID = await ensureDeepResearchFormation(definition)
+      formationIDRef.current = formationID
 
       appendLog({
         agent: "System",
@@ -397,7 +414,7 @@ export default function WingResearchPage() {
     <div className="flex h-screen flex-col bg-background">
       <header className="flex items-center justify-between border-b border-border px-6 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <Radar className="h-5 w-5 text-primary" />
+          <Image src="/WingmanBlue.png" alt="Wingman" width={20} height={20} className="h-5 w-5" />
           <h1 className="text-sm font-semibold text-foreground tracking-tight font-sans">WingResearch</h1>
         </div>
         <div className="flex items-center gap-2">

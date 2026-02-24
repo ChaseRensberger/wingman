@@ -376,6 +376,17 @@ func (s *Server) executeFormationAgentNode(ctx context.Context, def *formationDe
 		return nil, err
 	}
 
+	if node.ID == "planner" && !runResult.writeStarted {
+		retryPrompt := `You must call the write tool now.
+Write non-empty markdown to ./report.md (title, table of contents, and section stubs), then return structured JSON only.
+Do not skip the write tool call.`
+		retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, node.ID, "", emit)
+		if retryErr != nil {
+			return nil, retryErr
+		}
+		runResult = mergeStreamedRunResults(runResult, retryResult)
+	}
+
 	if node.ID == "planner" {
 		if !runResult.writeStarted {
 			return nil, errors.New("planner must call write to create report.md")
@@ -450,6 +461,22 @@ type streamedRunResult struct {
 	writeCompleted bool
 	writeExecuted  bool
 	toolCalls      []formationToolCall
+}
+
+func mergeStreamedRunResults(a, b *streamedRunResult) *streamedRunResult {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &streamedRunResult{
+		result:         b.result,
+		writeStarted:   a.writeStarted || b.writeStarted,
+		writeCompleted: a.writeCompleted || b.writeCompleted,
+		writeExecuted:  a.writeExecuted || b.writeExecuted,
+		toolCalls:      append(a.toolCalls, b.toolCalls...),
+	}
 }
 
 type formationToolCall struct {
@@ -528,9 +555,11 @@ func runSessionWithToolEvents(ctx context.Context, runSession *session.Session, 
 			Error:  callError,
 		})
 
-		if toolName == "write" {
+		if toolName == "write" || toolName == "edit" {
 			if call.Error == nil {
-				writeExecuted = true
+				if toolName == "write" {
+					writeExecuted = true
+				}
 			}
 			emit(formationEvent{
 				Type:   "tool_call",
