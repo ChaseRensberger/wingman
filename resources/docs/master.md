@@ -5,7 +5,8 @@ draft: false
 order: 0
 ---
 
-***IF YOU ARE A YC PARTNER READING THIS, THIS IS THE BEST PLACE TO START TO SEE A LOT OF THE DESIGN DECISIONS FOR WINGMAN LAID OUT CLEANLY. IT IS ALSO VERY SIMILAR TO WINGMAN'S SKILL.md. IT WILL LIKELY BE REMOVED/HIDDEN AFTER MY INTERVIEW IN FAVOR OF THE REST OF THE DOCS WHICH HAVE MORE OF A SEPARATION OF CONCERNS.***
+
+> Disclaimer: If you are a YC partner reading this, this is the best place to start to see a lot of the design decisions for Wingman laid out cleanly. It is also very similar to Wingman's `SKILL.md`. It will likely be removed/hidden after my interview in favor of the rest of the docs, which have more of a separation of concerns.
 
 # Wingman — Master Reference
 
