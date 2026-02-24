@@ -8,7 +8,7 @@ export interface LogEntry {
   agent: string
   message: string
   timestamp: string
-  type: "info" | "tool" | "handoff" | "complete"
+  type: "info" | "tool" | "handoff" | "complete" | "error"
 }
 
 interface ActivityLogProps {
@@ -20,6 +20,7 @@ const typeStyles = {
   tool: "text-primary",
   handoff: "text-amber-400",
   complete: "text-emerald-400",
+  error: "text-destructive",
 }
 
 const agentColors: Record<string, string> = {

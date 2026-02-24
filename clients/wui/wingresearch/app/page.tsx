@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
+import { Play, Square, Radar, Map, Search, SpellCheck } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -8,10 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { ReportViewer } from "@/components/report-viewer"
 import { ActivityLog, type LogEntry } from "@/components/activity-log"
-import { Play, Square, Radar, Map, Search, SpellCheck } from "lucide-react"
+import { buildDeepResearchDefinition } from "@/lib/deep-research-definition"
+import { api, getBaseUrl, setBaseUrl, type FormationDefinition, type FormationRunEvent } from "@/lib/wingman"
 
 interface AgentDef {
   name: string
+  nodeId: string
   description: string
   icon: typeof Map
   status: "idle" | "active" | "done"
@@ -20,414 +24,356 @@ interface AgentDef {
 const defaultAgents: AgentDef[] = [
   {
     name: "Planner",
+    nodeId: "planner",
     description: "Orchestrates research, builds outline, and delegates sections",
     icon: Map,
     status: "idle",
   },
   {
     name: "IterativeResearcher",
-    description: "Fills out assigned report sections with deep research",
+    nodeId: "iterative_research",
+    description: "Fills assigned report sections with deep research",
     icon: Search,
     status: "idle",
   },
   {
     name: "Proofreader",
+    nodeId: "proofreader",
     description: "Final review, proofreading, and structural improvements",
     icon: SpellCheck,
     status: "idle",
   },
 ]
 
-// Simulation data for the demo
-const simulationSteps = [
-  { agent: "Planner", message: "Starting deep research on the topic...", type: "info" as const, delay: 800 },
-  { agent: "Planner", message: "Calling perplexity_search for initial research", type: "tool" as const, delay: 1200 },
-  { agent: "Planner", message: "Analyzing SERP results for agentic AI + government intelligence", type: "info" as const, delay: 2000 },
-  { agent: "Planner", message: "Calling webfetch on top 3 results for deeper context", type: "tool" as const, delay: 1500 },
-  { agent: "Planner", message: "Constructing report outline with 5 sections + conclusion", type: "info" as const, delay: 2000 },
-  { agent: "Planner", message: "Writing initial report.md with TOC and section headers", type: "tool" as const, delay: 1000 },
-  { agent: "Planner", message: "Handing off Section 1 to IterativeResearcher", type: "handoff" as const, delay: 800 },
-  { agent: "IterativeResearcher", message: "Received Section 1: Introduction to Agentic AI", type: "info" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Calling perplexity_search for agentic AI definitions and frameworks", type: "tool" as const, delay: 1500 },
-  { agent: "IterativeResearcher", message: "Calling webfetch to retrieve detailed technical sources", type: "tool" as const, delay: 2000 },
-  { agent: "IterativeResearcher", message: "Writing Section 1 content to report.md", type: "tool" as const, delay: 1200 },
-  { agent: "IterativeResearcher", message: "Section 1 complete", type: "complete" as const, delay: 500 },
-  { agent: "Planner", message: "Handing off Section 2 to IterativeResearcher", type: "handoff" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Received Section 2: Government Intelligence Landscape", type: "info" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Calling perplexity_search for IC community + AI adoption", type: "tool" as const, delay: 1800 },
-  { agent: "IterativeResearcher", message: "Calling webfetch on ODNI and NSA AI strategy papers", type: "tool" as const, delay: 2200 },
-  { agent: "IterativeResearcher", message: "Writing Section 2 content to report.md", type: "tool" as const, delay: 1000 },
-  { agent: "IterativeResearcher", message: "Section 2 complete", type: "complete" as const, delay: 500 },
-  { agent: "Planner", message: "Handing off Section 3 to IterativeResearcher", type: "handoff" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Received Section 3: Open Source Enterprise (OSE)", type: "info" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Calling perplexity_search for OSE initiatives and frameworks", type: "tool" as const, delay: 1500 },
-  { agent: "IterativeResearcher", message: "Calling webfetch for CIA OSE program details", type: "tool" as const, delay: 1800 },
-  { agent: "IterativeResearcher", message: "Writing Section 3 content to report.md", type: "tool" as const, delay: 1200 },
-  { agent: "IterativeResearcher", message: "Section 3 complete", type: "complete" as const, delay: 500 },
-  { agent: "Planner", message: "Handing off Section 4 to IterativeResearcher", type: "handoff" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Received Section 4: Applications and Use Cases", type: "info" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Calling perplexity_search for agentic AI use cases in OSINT", type: "tool" as const, delay: 1800 },
-  { agent: "IterativeResearcher", message: "Writing Section 4 content to report.md", type: "tool" as const, delay: 1200 },
-  { agent: "IterativeResearcher", message: "Section 4 complete", type: "complete" as const, delay: 500 },
-  { agent: "Planner", message: "Handing off Section 5 to IterativeResearcher", type: "handoff" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Received Section 5: Conclusion", type: "info" as const, delay: 600 },
-  { agent: "IterativeResearcher", message: "Writing conclusion and final synthesis", type: "tool" as const, delay: 1500 },
-  { agent: "IterativeResearcher", message: "Section 5 complete", type: "complete" as const, delay: 500 },
-  { agent: "Planner", message: "All sections complete. Handing off to Proofreader.", type: "handoff" as const, delay: 800 },
-  { agent: "Proofreader", message: "Received report for final review", type: "info" as const, delay: 600 },
-  { agent: "Proofreader", message: "Correcting formatting, fixing typos, improving transitions", type: "tool" as const, delay: 2000 },
-  { agent: "Proofreader", message: "Report finalized and polished", type: "complete" as const, delay: 800 },
-  { agent: "System", message: "Research complete.", type: "complete" as const, delay: 500 },
-]
-
-const reportStages = [
-  { atStep: 5, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----` },
-  { atStep: 10, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.` },
-  { atStep: 17, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.
-
-## 2. Government Intelligence Landscape
-
-The U.S. Intelligence Community (IC), comprising 18 distinct agencies and organizations, has been undergoing a significant transformation in its approach to artificial intelligence. The Office of the Director of National Intelligence (ODNI) published its AI Strategy in 2024, emphasizing the need for AI systems that can augment human analysts rather than replace them.
-
-The National Security Agency (NSA) established its AI Security Center to lead efforts in securing AI adoption across the defense and intelligence sectors. Meanwhile, the CIA's Directorate of Digital Innovation has been investing heavily in AI capabilities that can process vast amounts of open-source and classified data simultaneously.
-
-A critical challenge in this space is the tension between the need for transparency and explainability in AI decision-making and the inherently secretive nature of intelligence operations. Agentic AI systems add complexity to this challenge, as their autonomous decision chains can be difficult to audit and verify.` },
-  { atStep: 23, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.
-
-## 2. Government Intelligence Landscape
-
-The U.S. Intelligence Community (IC), comprising 18 distinct agencies and organizations, has been undergoing a significant transformation in its approach to artificial intelligence. The Office of the Director of National Intelligence (ODNI) published its AI Strategy in 2024, emphasizing the need for AI systems that can augment human analysts rather than replace them.
-
-The National Security Agency (NSA) established its AI Security Center to lead efforts in securing AI adoption across the defense and intelligence sectors. Meanwhile, the CIA's Directorate of Digital Innovation has been investing heavily in AI capabilities that can process vast amounts of open-source and classified data simultaneously.
-
-A critical challenge in this space is the tension between the need for transparency and explainability in AI decision-making and the inherently secretive nature of intelligence operations. Agentic AI systems add complexity to this challenge, as their autonomous decision chains can be difficult to audit and verify.
-
-## 3. Open Source Enterprise (OSE)
-
-The Open Source Enterprise (OSE), managed by the CIA's Directorate of Digital Innovation, serves as the IC's primary hub for open-source intelligence (OSINT) collection and analysis. OSE aggregates publicly available information from news outlets, social media, academic publications, government reports, and commercial data providers.
-
-OSE processes millions of documents daily and makes them available to analysts across all 18 IC agencies. The integration of agentic AI into OSE operations represents a paradigm shift: instead of analysts manually querying databases and reading through results, autonomous agents can continuously monitor, filter, correlate, and synthesize information across multiple sources.
-
-The architecture naturally lends itself to agentic AI: a planner agent can identify intelligence requirements, task specialized researcher agents to investigate specific topics across open sources, and synthesize findings into actionable intelligence products. This mirrors the existing organizational workflow but at machine speed and scale.` },
-  { atStep: 28, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.
-
-## 2. Government Intelligence Landscape
-
-The U.S. Intelligence Community (IC), comprising 18 distinct agencies and organizations, has been undergoing a significant transformation in its approach to artificial intelligence. The Office of the Director of National Intelligence (ODNI) published its AI Strategy in 2024, emphasizing the need for AI systems that can augment human analysts rather than replace them.
-
-The National Security Agency (NSA) established its AI Security Center to lead efforts in securing AI adoption across the defense and intelligence sectors. Meanwhile, the CIA's Directorate of Digital Innovation has been investing heavily in AI capabilities that can process vast amounts of open-source and classified data simultaneously.
-
-A critical challenge in this space is the tension between the need for transparency and explainability in AI decision-making and the inherently secretive nature of intelligence operations. Agentic AI systems add complexity to this challenge, as their autonomous decision chains can be difficult to audit and verify.
-
-## 3. Open Source Enterprise (OSE)
-
-The Open Source Enterprise (OSE), managed by the CIA's Directorate of Digital Innovation, serves as the IC's primary hub for open-source intelligence (OSINT) collection and analysis. OSE aggregates publicly available information from news outlets, social media, academic publications, government reports, and commercial data providers.
-
-OSE processes millions of documents daily and makes them available to analysts across all 18 IC agencies. The integration of agentic AI into OSE operations represents a paradigm shift: instead of analysts manually querying databases and reading through results, autonomous agents can continuously monitor, filter, correlate, and synthesize information across multiple sources.
-
-The architecture naturally lends itself to agentic AI: a planner agent can identify intelligence requirements, task specialized researcher agents to investigate specific topics across open sources, and synthesize findings into actionable intelligence products. This mirrors the existing organizational workflow but at machine speed and scale.
-
-## 4. Applications and Use Cases
-
-Several concrete applications of agentic AI are emerging at the intersection of government intelligence and open source analysis:
-
-- Automated Threat Monitoring: Multi-agent systems that continuously scan global news, social media, and dark web sources for emerging threats, with specialized agents handling different languages, regions, and threat categories.
-
-- Supply Chain Intelligence: Agentic workflows that map global supply chains by correlating corporate filings, shipping records, sanctions lists, and trade data to identify vulnerabilities and foreign dependencies.
-
-- Influence Operation Detection: Coordinated agent teams that identify and track information operations by analyzing social media patterns, content provenance, and network topology across platforms.
-
-- Technical Collection Augmentation: AI agents that process and correlate signals intelligence with open-source technical data, such as satellite imagery analysis combined with social media geolocation data.
-
-- Counterproliferation Analysis: Multi-source research agents that track procurement networks for weapons of mass destruction components by monitoring trade records, academic publications, and patent filings.` },
-  { atStep: 32, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.
-
-## 2. Government Intelligence Landscape
-
-The U.S. Intelligence Community (IC), comprising 18 distinct agencies and organizations, has been undergoing a significant transformation in its approach to artificial intelligence. The Office of the Director of National Intelligence (ODNI) published its AI Strategy in 2024, emphasizing the need for AI systems that can augment human analysts rather than replace them.
-
-The National Security Agency (NSA) established its AI Security Center to lead efforts in securing AI adoption across the defense and intelligence sectors. Meanwhile, the CIA's Directorate of Digital Innovation has been investing heavily in AI capabilities that can process vast amounts of open-source and classified data simultaneously.
-
-A critical challenge in this space is the tension between the need for transparency and explainability in AI decision-making and the inherently secretive nature of intelligence operations. Agentic AI systems add complexity to this challenge, as their autonomous decision chains can be difficult to audit and verify.
-
-## 3. Open Source Enterprise (OSE)
-
-The Open Source Enterprise (OSE), managed by the CIA's Directorate of Digital Innovation, serves as the IC's primary hub for open-source intelligence (OSINT) collection and analysis. OSE aggregates publicly available information from news outlets, social media, academic publications, government reports, and commercial data providers.
-
-OSE processes millions of documents daily and makes them available to analysts across all 18 IC agencies. The integration of agentic AI into OSE operations represents a paradigm shift: instead of analysts manually querying databases and reading through results, autonomous agents can continuously monitor, filter, correlate, and synthesize information across multiple sources.
-
-The architecture naturally lends itself to agentic AI: a planner agent can identify intelligence requirements, task specialized researcher agents to investigate specific topics across open sources, and synthesize findings into actionable intelligence products. This mirrors the existing organizational workflow but at machine speed and scale.
-
-## 4. Applications and Use Cases
-
-Several concrete applications of agentic AI are emerging at the intersection of government intelligence and open source analysis:
-
-- Automated Threat Monitoring: Multi-agent systems that continuously scan global news, social media, and dark web sources for emerging threats, with specialized agents handling different languages, regions, and threat categories.
-
-- Supply Chain Intelligence: Agentic workflows that map global supply chains by correlating corporate filings, shipping records, sanctions lists, and trade data to identify vulnerabilities and foreign dependencies.
-
-- Influence Operation Detection: Coordinated agent teams that identify and track information operations by analyzing social media patterns, content provenance, and network topology across platforms.
-
-- Technical Collection Augmentation: AI agents that process and correlate signals intelligence with open-source technical data, such as satellite imagery analysis combined with social media geolocation data.
-
-- Counterproliferation Analysis: Multi-source research agents that track procurement networks for weapons of mass destruction components by monitoring trade records, academic publications, and patent filings.
-
-## 5. Conclusion
-
-The convergence of agentic AI and government intelligence operations, particularly through the lens of the Open Source Enterprise, represents one of the most consequential applications of autonomous AI systems. The ability to deploy coordinated teams of AI agents that can plan, research, analyze, and synthesize information across vast open-source datasets fundamentally changes the speed and scale at which intelligence can be produced.
-
-However, this capability comes with significant challenges around oversight, accountability, and the potential for autonomous systems to introduce bias or errors into intelligence products that inform critical national security decisions. The intelligence community must develop robust frameworks for human-AI teaming that leverage the speed and scale of agentic systems while maintaining the judgment and accountability that human analysts provide.
-
-As agentic AI matures, the organizations that succeed will be those that treat these systems not as replacements for human intelligence work, but as force multipliers that enable analysts to focus on higher-order thinking while AI handles the labor-intensive collection and initial synthesis of open-source information.` },
-  { atStep: 36, content: `# Agentic AI in Government Intelligence and Open Source Enterprise
-
-## Table of Contents
-- 1. Introduction to Agentic AI
-- 2. Government Intelligence Landscape
-- 3. Open Source Enterprise (OSE)
-- 4. Applications and Use Cases
-- 5. Conclusion
-
----
-
-## 1. Introduction to Agentic AI
-
-Agentic AI refers to artificial intelligence systems capable of autonomous decision-making and action-taking without continuous human intervention. Unlike traditional AI models that respond to individual prompts, agentic systems can plan multi-step operations, delegate subtasks, use external tools, and adapt their approach based on intermediate results.
-
-The core architectural pattern involves a supervisor or planner agent that orchestrates the work of specialized sub-agents, each equipped with domain-specific tools. This mirrors the organizational structures found within intelligence agencies, where analysts, collectors, and operators coordinate through a chain of command.
-
-Key frameworks driving agentic AI development include LangGraph, CrewAI, AutoGen, and custom orchestration layers. These frameworks provide the scaffolding for tool use, memory management, and inter-agent communication that make autonomous research and analysis possible at scale.
-
-## 2. The Government Intelligence Landscape
-
-The U.S. Intelligence Community (IC), comprising 18 distinct agencies and organizations, has been undergoing a significant transformation in its approach to artificial intelligence. The Office of the Director of National Intelligence (ODNI) published its AI Strategy in 2024, emphasizing the need for AI systems that can augment human analysts rather than replace them.
-
-The National Security Agency (NSA) established its AI Security Center to lead efforts in securing AI adoption across the defense and intelligence sectors. Meanwhile, the CIA's Directorate of Digital Innovation has been investing heavily in AI capabilities that can process vast amounts of open-source and classified data simultaneously.
-
-A critical challenge in this space is the tension between the need for transparency and explainability in AI decision-making and the inherently secretive nature of intelligence operations. Agentic AI systems add complexity to this challenge, as their autonomous decision chains can be difficult to audit and verify.
-
-## 3. The Open Source Enterprise (OSE)
-
-The Open Source Enterprise (OSE), managed by the CIA's Directorate of Digital Innovation, serves as the IC's primary hub for open-source intelligence (OSINT) collection and analysis. OSE aggregates publicly available information from news outlets, social media, academic publications, government reports, and commercial data providers.
-
-OSE processes millions of documents daily and makes them available to analysts across all 18 IC agencies. The integration of agentic AI into OSE operations represents a paradigm shift: instead of analysts manually querying databases and reading through results, autonomous agents can continuously monitor, filter, correlate, and synthesize information across multiple sources.
-
-The architecture naturally lends itself to agentic AI: a planner agent can identify intelligence requirements, task specialized researcher agents to investigate specific topics across open sources, and synthesize findings into actionable intelligence products. This mirrors the existing organizational workflow but at machine speed and scale.
-
-## 4. Applications and Use Cases
-
-Several concrete applications of agentic AI are emerging at the intersection of government intelligence and open-source analysis:
-
-- **Automated Threat Monitoring:** Multi-agent systems that continuously scan global news, social media, and dark web sources for emerging threats, with specialized agents handling different languages, regions, and threat categories.
-
-- **Supply Chain Intelligence:** Agentic workflows that map global supply chains by correlating corporate filings, shipping records, sanctions lists, and trade data to identify vulnerabilities and foreign dependencies.
-
-- **Influence Operation Detection:** Coordinated agent teams that identify and track information operations by analyzing social media patterns, content provenance, and network topology across platforms.
-
-- **Technical Collection Augmentation:** AI agents that process and correlate signals intelligence with open-source technical data, such as satellite imagery analysis combined with social media geolocation data.
-
-- **Counterproliferation Analysis:** Multi-source research agents that track procurement networks for weapons of mass destruction components by monitoring trade records, academic publications, and patent filings.
-
-## 5. Conclusion
-
-The convergence of agentic AI and government intelligence operations, particularly through the lens of the Open Source Enterprise, represents one of the most consequential applications of autonomous AI systems. The ability to deploy coordinated teams of AI agents that can plan, research, analyze, and synthesize information across vast open-source datasets fundamentally changes the speed and scale at which intelligence can be produced.
-
-However, this capability comes with significant challenges around oversight, accountability, and the potential for autonomous systems to introduce bias or errors into intelligence products that inform critical national security decisions. The intelligence community must develop robust frameworks for human-AI teaming that leverage the speed and scale of agentic systems while maintaining the judgment and accountability that human analysts provide.
-
-As agentic AI matures, the organizations that succeed will be those that treat these systems not as replacements for human intelligence work, but as force multipliers that enable analysts to focus on higher-order thinking while AI handles the labor-intensive collection and initial synthesis of open-source information.` },
-]
-
-function getActiveAgent(stepIndex: number): string | null {
-  if (stepIndex < 0 || stepIndex >= simulationSteps.length) return null
-  return simulationSteps[stepIndex].agent
+const nodeToAgentName: Record<string, string> = {
+  planner: "Planner",
+  iterative_research: "IterativeResearcher",
+  proofreader: "Proofreader",
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function toTimestamp(ts?: string): string {
+  const date = ts ? new Date(ts) : new Date()
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+  }
+
+  return date.toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function normalizeBaseUrl(url: string): string {
+  const trimmed = url.trim()
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+  const parsed = new URL(withProtocol)
+  return parsed.toString().replace(/\/$/, "")
+}
+
+function buildReportPreview(topic: string, outputs: Record<string, Record<string, unknown>>, isRunning: boolean): string {
+  const planner = outputs.planner
+  const iterative = outputs.iterative_research
+  const proofreader = outputs.proofreader
+
+  const sections = Array.isArray(planner?.sections) ? planner.sections : []
+  const completed = typeof iterative?.completed === "number" ? iterative.completed : 0
+  const allWorkersDone = iterative?.all_workers_done === true
+  const proofreadStatus = typeof proofreader?.status === "string" ? proofreader.status : "pending"
+
+  const sectionLines =
+    sections.length > 0
+      ? sections
+          .map((section, idx) => {
+            if (typeof section !== "object" || section === null) {
+              return `- ${idx + 1}. (invalid section)`
+            }
+            const candidate = section as { id?: unknown; title?: unknown; guidance?: unknown }
+            const id = typeof candidate.id === "string" ? candidate.id : `section-${idx + 1}`
+            const title = typeof candidate.title === "string" ? candidate.title : "Untitled"
+            const guidance = typeof candidate.guidance === "string" ? candidate.guidance : ""
+            return `- ${id}: ${title}${guidance ? `\n  - guidance: ${guidance}` : ""}`
+          })
+          .join("\n")
+      : "- No sections emitted yet"
+
+  return [
+    "# WingResearch Formation Run",
+    "",
+    `**Topic:** ${topic}`,
+    `**Status:** ${isRunning ? "Running" : "Idle or complete"}`,
+    "",
+    "## Planner Output",
+    sectionLines,
+    "",
+    "## Fleet Progress",
+    `- Completed section tasks: ${completed}`,
+    `- All workers done: ${allWorkersDone ? "yes" : "no"}`,
+    "",
+    "## Proofreader",
+    `- Status: ${proofreadStatus}`,
+    "",
+    "## Raw Node Outputs",
+    "```json",
+    safeStringify(outputs),
+    "```",
+    "",
+    "---",
+    "",
+    "Note: this UI shows structured formation outputs. The canonical report file is written by Wingman as `./report.md` in the server process working directory.",
+  ].join("\n")
 }
 
 export default function WingResearchPage() {
   const [topic, setTopic] = useState(
-    "An in depth paper on agentic AI in the context of the government intelligence and OSE (open source enterprise)."
+    "State of open-source local inference in 2026"
   )
+  const [baseUrl, setBaseUrlState] = useState(getBaseUrl())
   const [agents, setAgents] = useState<AgentDef[]>(defaultAgents)
   const [parallelResearchers, setParallelResearchers] = useState(3)
   const [isRunning, setIsRunning] = useState(false)
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
-  const [reportContent, setReportContent] = useState("")
-  const [currentStep, setCurrentStep] = useState(-1)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const stepRef = useRef(0)
+  const [currentNode, setCurrentNode] = useState<string>("")
+  const [nodeOutputs, setNodeOutputs] = useState<Record<string, Record<string, unknown>>>({})
+  const abortRef = useRef<AbortController | null>(null)
 
-  const updateAgentStatuses = useCallback((stepIdx: number) => {
-    const activeAgentName = getActiveAgent(stepIdx)
+  const reportContent = useMemo(() => buildReportPreview(topic, nodeOutputs, isRunning), [topic, nodeOutputs, isRunning])
+
+  const appendLog = useCallback((entry: Omit<LogEntry, "id">) => {
+    setLogEntries((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${prev.length}`,
+        ...entry,
+      },
+    ])
+  }, [])
+
+  const setNodeActive = useCallback((nodeId: string) => {
     setAgents((prev) =>
-      prev.map((a) => {
-        if (stepIdx >= simulationSteps.length - 1) {
-          return { ...a, status: "done" }
+      prev.map((agent) => {
+        if (agent.nodeId === nodeId) {
+          return { ...agent, status: "active" }
         }
-        if (a.name === activeAgentName) return { ...a, status: "active" }
-        // Check if agent was done in a previous step
-        const lastEntryForAgent = [...simulationSteps].slice(0, stepIdx + 1).reverse().find(s => s.agent === a.name)
-        if (lastEntryForAgent?.type === "complete" && a.name !== activeAgentName) {
-          return { ...a, status: "done" }
+        if (agent.status === "active") {
+          return { ...agent, status: "idle" }
         }
-        if (a.name !== activeAgentName && a.status === "active") return { ...a, status: "idle" }
-        return a
+        return agent
       })
     )
   }, [])
 
-  const runStep = useCallback(() => {
-    const idx = stepRef.current
-    if (idx >= simulationSteps.length) {
-      setIsRunning(false)
-      setAgents((prev) => prev.map((a) => ({ ...a, status: "done" })))
+  const markNodeDone = useCallback((nodeId: string) => {
+    setAgents((prev) =>
+      prev.map((agent) => (agent.nodeId === nodeId ? { ...agent, status: "done" } : agent))
+    )
+  }, [])
+
+  const handleFormationEvent = useCallback(
+    (event: FormationRunEvent) => {
+      const timestamp = toTimestamp(event.ts)
+
+      switch (event.type) {
+        case "run_start": {
+          appendLog({
+            agent: "System",
+            message: "Formation run started",
+            timestamp,
+            type: "info",
+          })
+          break
+        }
+        case "node_start": {
+          const nodeID = event.node_id || ""
+          setCurrentNode(nodeID)
+          if (nodeID) {
+            setNodeActive(nodeID)
+          }
+          appendLog({
+            agent: nodeToAgentName[nodeID] || nodeID || "System",
+            message: `Node started: ${nodeID}`,
+            timestamp,
+            type: "info",
+          })
+          break
+        }
+        case "node_output": {
+          const nodeID = event.node_id || "unknown"
+          setNodeOutputs((prev) => ({
+            ...prev,
+            [nodeID]: event.output || {},
+          }))
+          appendLog({
+            agent: nodeToAgentName[nodeID] || nodeID,
+            message: "Node emitted structured output",
+            timestamp,
+            type: "tool",
+          })
+          break
+        }
+        case "edge_emit": {
+          appendLog({
+            agent: "System",
+            message: `Handoff: ${event.from} -> ${event.to}`,
+            timestamp,
+            type: "handoff",
+          })
+          break
+        }
+        case "node_end": {
+          const nodeID = event.node_id || ""
+          if (nodeID) {
+            markNodeDone(nodeID)
+          }
+          appendLog({
+            agent: nodeToAgentName[nodeID] || nodeID || "System",
+            message: `Node completed with status: ${event.status || "ok"}`,
+            timestamp,
+            type: "complete",
+          })
+          break
+        }
+        case "node_error": {
+          const nodeID = event.node_id || "unknown"
+          appendLog({
+            agent: nodeToAgentName[nodeID] || nodeID,
+            message: event.error || "Node failed",
+            timestamp,
+            type: "error",
+          })
+          setIsRunning(false)
+          setCurrentNode("")
+          break
+        }
+        case "run_end": {
+          setIsRunning(false)
+          setCurrentNode("")
+          setAgents((prev) => prev.map((agent) => ({ ...agent, status: "done" })))
+          appendLog({
+            agent: "System",
+            message: "Formation run completed",
+            timestamp,
+            type: "complete",
+          })
+          break
+        }
+      }
+    },
+    [appendLog, markNodeDone, setNodeActive]
+  )
+
+  const ensureDeepResearchFormation = useCallback(async (definition: FormationDefinition) => {
+    const formations = await api.listFormations()
+    const existing = formations.find((formation) => formation.name === "deep-research")
+
+    if (existing) {
+      const updated = await api.updateFormation(existing.id, definition)
+      return updated.id
+    }
+
+    const created = await api.createFormation(definition)
+    return created.id
+  }, [])
+
+  const handleStart = useCallback(async () => {
+    if (isRunning || !topic.trim()) {
       return
     }
 
-    const step = simulationSteps[idx]
-    const now = new Date()
-    const timestamp = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
-
-    setLogEntries((prev) => [
-      ...prev,
-      {
-        id: `log-${idx}`,
-        agent: step.agent,
-        message: step.message,
-        timestamp,
-        type: step.type,
-      },
-    ])
-
-    setCurrentStep(idx)
-    updateAgentStatuses(idx)
-
-    // Update report content at specific steps
-    const reportStage = reportStages.find((r) => r.atStep === idx)
-    if (reportStage) {
-      setReportContent(reportStage.content)
+    let normalizedUrl: string
+    try {
+      normalizedUrl = normalizeBaseUrl(baseUrl)
+    } catch {
+      appendLog({
+        agent: "System",
+        message: "Invalid Wingman base URL",
+        timestamp: toTimestamp(),
+        type: "error",
+      })
+      return
     }
 
-    stepRef.current = idx + 1
-    const nextStep = simulationSteps[idx + 1]
-    timeoutRef.current = setTimeout(runStep, nextStep?.delay ?? 500)
-  }, [updateAgentStatuses])
-
-  function handleStart() {
-    if (isRunning) return
-    // Reset state
+    setBaseUrl(normalizedUrl)
+    setBaseUrlState(normalizedUrl)
+    setAgents(defaultAgents)
+    setNodeOutputs({})
     setLogEntries([])
-    setReportContent("")
-    setCurrentStep(-1)
-    stepRef.current = 0
-    setAgents((prev) => prev.map((a) => ({ ...a, status: "idle" })))
+    setCurrentNode("")
     setIsRunning(true)
-    timeoutRef.current = setTimeout(runStep, 500)
-  }
 
-  function handleStop() {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    setIsRunning(false)
-    setAgents((prev) => prev.map((a) => (a.status === "active" ? { ...a, status: "idle" } : a)))
-  }
+    appendLog({
+      agent: "System",
+      message: `Connecting to ${normalizedUrl}`,
+      timestamp: toTimestamp(),
+      type: "info",
+    })
 
+    const controller = new AbortController()
+    abortRef.current = controller
 
+    try {
+      const definition = buildDeepResearchDefinition(parallelResearchers)
+      const formationID = await ensureDeepResearchFormation(definition)
+
+      appendLog({
+        agent: "System",
+        message: `Running formation ${formationID}`,
+        timestamp: toTimestamp(),
+        type: "info",
+      })
+
+      await api.runFormationStream(
+        formationID,
+        { inputs: { topic: topic.trim() } },
+        controller.signal,
+        handleFormationEvent
+      )
+    } catch (error) {
+      if (controller.signal.aborted) {
+        appendLog({
+          agent: "System",
+          message: "Run stopped",
+          timestamp: toTimestamp(),
+          type: "handoff",
+        })
+      } else {
+        appendLog({
+          agent: "System",
+          message: error instanceof Error ? error.message : "Run failed",
+          timestamp: toTimestamp(),
+          type: "error",
+        })
+      }
+      setIsRunning(false)
+      setCurrentNode("")
+      setAgents((prev) => prev.map((agent) => (agent.status === "active" ? { ...agent, status: "idle" } : agent)))
+    } finally {
+      abortRef.current = null
+    }
+  }, [appendLog, baseUrl, ensureDeepResearchFormation, handleFormationEvent, isRunning, parallelResearchers, topic])
+
+  const handleStop = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+  }, [])
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      {/* Header */}
       <header className="flex items-center justify-between border-b border-border px-6 py-3 shrink-0">
         <div className="flex items-center gap-3">
           <Radar className="h-5 w-5 text-primary" />
@@ -448,11 +394,22 @@ export default function WingResearchPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Config */}
         <aside className="flex w-[380px] shrink-0 flex-col border-r border-border">
-          {/* Topic Input */}
+          <div className="border-b border-border p-4">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-2 block">
+              Wingman Base URL
+            </label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(e) => setBaseUrlState(e.target.value)}
+              disabled={isRunning}
+              placeholder="http://127.0.0.1:2323"
+              className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+
           <div className="border-b border-border p-4">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-2 block">
               Research Topic
@@ -466,7 +423,6 @@ export default function WingResearchPage() {
             />
           </div>
 
-          {/* Parallel Researchers */}
           <div className="border-b border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
@@ -491,17 +447,16 @@ export default function WingResearchPage() {
             />
             <div className="flex justify-between mt-1.5 px-0.5">
               {[1, 2, 3, 4, 5, 6].map((n) => (
-                <span key={n} className={cn(
-                  "text-[10px] font-mono",
-                  n === parallelResearchers ? "text-primary" : "text-muted-foreground/50"
-                )}>
+                <span
+                  key={n}
+                  className={cn("text-[10px] font-mono", n === parallelResearchers ? "text-primary" : "text-muted-foreground/50")}
+                >
                   {n}
                 </span>
               ))}
             </div>
           </div>
 
-          {/* Agent Pipeline */}
           <div className="flex-1 overflow-auto p-4">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest mb-3 block">
               Agent Pipeline
@@ -520,27 +475,22 @@ export default function WingResearchPage() {
                     key={agent.name}
                     className={cn(
                       "flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors",
-                      agent.status === "active"
-                        ? "border-primary/40 bg-primary/[0.03]"
-                        : "border-border bg-card"
+                      agent.status === "active" ? "border-primary/40 bg-primary/[0.03]" : "border-border bg-card"
                     )}
                   >
-                    <div className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                      agent.status === "active"
-                        ? "bg-primary/20 text-primary"
-                        : "bg-secondary text-secondary-foreground"
-                    )}>
+                    <div
+                      className={cn(
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+                        agent.status === "active" ? "bg-primary/20 text-primary" : "bg-secondary text-secondary-foreground"
+                      )}
+                    >
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{agent.name}</p>
                       <p className="text-[11px] text-muted-foreground truncate">{agent.description}</p>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className={cn("text-[10px] uppercase tracking-wider font-mono px-2 py-0 shrink-0", info.className)}
-                    >
+                    <Badge variant="outline" className={cn("text-[10px] uppercase tracking-wider font-mono px-2 py-0 shrink-0", info.className)}>
                       {agent.status === "active" && (
                         <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                       )}
@@ -553,7 +503,6 @@ export default function WingResearchPage() {
           </div>
         </aside>
 
-        {/* Right Panel - Report & Activity */}
         <main className="flex flex-1 flex-col overflow-hidden">
           <Tabs defaultValue="report" className="flex flex-1 flex-col overflow-hidden">
             <div className="flex items-center border-b border-border px-4">
@@ -570,20 +519,14 @@ export default function WingResearchPage() {
                 >
                   Activity
                   {logEntries.length > 0 && (
-                    <span className="ml-1.5 text-[10px] font-mono text-muted-foreground">
-                      ({logEntries.length})
-                    </span>
+                    <span className="ml-1.5 text-[10px] font-mono text-muted-foreground">({logEntries.length})</span>
                   )}
                 </TabsTrigger>
               </TabsList>
               {isRunning && (
                 <div className="ml-auto flex items-center gap-2 text-xs text-primary">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="font-mono text-[11px]">
-                    {currentStep >= 0 && currentStep < simulationSteps.length
-                      ? simulationSteps[currentStep].agent
-                      : "Initializing"}
-                  </span>
+                  <span className="font-mono text-[11px]">{nodeToAgentName[currentNode] || "Initializing"}</span>
                 </div>
               )}
             </div>

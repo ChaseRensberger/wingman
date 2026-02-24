@@ -22,6 +22,7 @@ nodes:
       tools: [perplexity_search, webfetch, write, edit]
       output_schema:
         type: object
+        additionalProperties: false
         required: [sections]
         properties:
           sections:
@@ -29,6 +30,7 @@ nodes:
             minItems: 1
             items:
               type: object
+              additionalProperties: false
               required: [id, title, guidance]
               properties:
                 id:
@@ -60,6 +62,7 @@ nodes:
         tools: [perplexity_search, webfetch, edit]
         output_schema:
           type: object
+          additionalProperties: false
           required: [section_id, status]
           properties:
             section_id:
@@ -82,6 +85,7 @@ nodes:
       tools: [edit]
       output_schema:
         type: object
+        additionalProperties: false
         required: [status]
         properties:
           status:
