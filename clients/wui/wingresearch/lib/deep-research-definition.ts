@@ -109,8 +109,8 @@ export function buildDeepResearchDefinition(
             max_tokens: 700,
             max_retries: 6,
           },
-            instructions:
-              "Do a final lightweight proofreading pass over ./report.md.\nRead the report once, then perform at most one edit call for minor polish.\nDo not do additional research or extra edit loops.\nImprove spelling and readability without changing intent.\nReturn structured JSON status.",
+          instructions:
+            "Do a final lightweight proofreading pass over ./report.md.\nRead the report once, then perform at most one edit call for minor polish.\nDo not do additional research or extra edit loops.\nImprove spelling and readability without changing intent.\nRemove all marker comments like <!-- SECTION:*:START/END --> from the final report.\nReplace any remaining TODO placeholders (including conclusion) with final prose.\nEnsure no system tags (for example <system-reminder>...</system-reminder>) remain in the file.\nReturn structured JSON status.",
           tools: ["read", "edit"],
           output_schema: {
             type: "object",

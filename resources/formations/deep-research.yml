@@ -121,6 +121,9 @@ nodes:
         Read the report once, then perform at most one edit call for minor polish.
         Do not do additional research or extra edit loops.
         Improve spelling and readability without changing intent.
+        Remove all marker comments like <!-- SECTION:*:START/END --> from the final report.
+        Replace any remaining TODO placeholders (including conclusion) with final prose.
+        Ensure no system tags (for example <system-reminder>...</system-reminder>) remain in the file.
         Return structured JSON status.
       tools: [read, edit]
       output_schema:

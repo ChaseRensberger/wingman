@@ -409,6 +409,21 @@ Do not skip the write tool call.`
 		}
 	}
 
+	if node.ID == "proofreader" {
+		reportPath := filepath.Join(resolveWorkDir(def.Defaults.WorkDir), "report.md")
+		if artifactErr := validateReportArtifacts(reportPath); artifactErr != nil {
+			retryPrompt := "The report still contains markers/placeholders/artifacts. Remove SECTION marker comments, remove any system-reminder tags, replace all TODO placeholders with final prose (including conclusion), and keep valid markdown. Then return structured JSON status."
+			retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, node.ID, "", emit)
+			if retryErr != nil {
+				return nil, retryErr
+			}
+			runResult = mergeStreamedRunResults(runResult, retryResult)
+			if secondErr := validateReportArtifacts(reportPath); secondErr != nil {
+				return nil, fmt.Errorf("proofreader left report artifacts: %w", secondErr)
+			}
+		}
+	}
+
 	parsed, parseErr := parseStructuredObject(runResult.result.Response)
 	if parseErr != nil {
 		retryPrompt := "Your previous response was not valid JSON. Return ONLY valid JSON that matches the required output_schema. No prose, no markdown, no code fences."
@@ -761,6 +776,28 @@ func previewResponse(raw string) string {
 		return trimmed
 	}
 	return trimmed[:max] + "..."
+}
+
+func validateReportArtifacts(reportPath string) error {
+	b, err := os.ReadFile(reportPath)
+	if err != nil {
+		return fmt.Errorf("failed to read report: %w", err)
+	}
+	content := string(b)
+	issues := make([]string, 0)
+	if strings.Contains(content, "<!-- SECTION:") {
+		issues = append(issues, "section markers still present")
+	}
+	if strings.Contains(content, "TODO:") || strings.Contains(content, "_TODO:") {
+		issues = append(issues, "TODO placeholders still present")
+	}
+	if strings.Contains(strings.ToLower(content), "<system-reminder>") {
+		issues = append(issues, "system-reminder tag still present")
+	}
+	if len(issues) > 0 {
+		return errors.New(strings.Join(issues, "; "))
+	}
+	return nil
 }
 
 func extractToolPath(input any) string {
