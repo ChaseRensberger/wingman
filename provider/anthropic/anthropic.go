@@ -501,12 +501,12 @@ func (s *Stream) parseEvent(eventType, data string) (*core.StreamEvent, bool) {
 		var event struct {
 			Index int `json:"index"`
 		}
-		json.Unmarshal([]byte(data), &event) //nolint:errcheck
+		json.Unmarshal([]byte(data), &event)
 
 		if s.currentToolUse != nil {
 			var input map[string]any
 			if s.currentBlockJSON.Len() > 0 {
-				json.Unmarshal([]byte(s.currentBlockJSON.String()), &input) //nolint:errcheck
+				json.Unmarshal([]byte(s.currentBlockJSON.String()), &input)
 			}
 			s.currentToolUse.Input = input
 			s.contentBlocks = append(s.contentBlocks, *s.currentToolUse)
