@@ -1,6 +1,9 @@
+import { SyntaxStyle } from "@opentui/core";
 import { useSession } from "../context/session";
 import { MessageInput } from "../components/message-input";
 import { theme } from "../theme";
+
+const syntaxStyle = SyntaxStyle.create();
 
 export function SessionView() {
 	const session = useSession();
@@ -26,13 +29,11 @@ export function SessionView() {
 										<strong>{message.role === "user" ? "You" : "WingCode"}</strong>
 									</text>
 									{message.role === "assistant" ? (
-										<code
-											filetype="markdown"
-											drawUnstyledText={false}
-											streaming={true}
-											content={message.content || " "}
-											fg={theme.text}
-										/>
+									<markdown
+										syntaxStyle={syntaxStyle}
+										streaming={true}
+										content={message.content || " "}
+									/>
 									) : (
 										<text fg={theme.text}>{message.content || " "}</text>
 									)}
