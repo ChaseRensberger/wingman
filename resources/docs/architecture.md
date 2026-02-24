@@ -9,31 +9,33 @@ order: 1
 
 ### Provider
 
-A provider is a configured client for a specific model API. It owns the connection details and inference parameters (model, max tokens, temperature, etc.) and implements a minimal interface:
+A provider is a configured client for a specific model API. It translates Wingman's provider-agnostic types into the provider's wire format and implements a minimal interface:
 
 ```go
 type Provider interface {
-    RunInference(ctx context.Context, req WingmanInferenceRequest) (*WingmanInferenceResponse, error)
-    StreamInference(ctx context.Context, req WingmanInferenceRequest) (Stream, error)
+    RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error)
+    StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error)
 }
 ```
 
-Each provider package translates Wingman's generic request/response types into the wire format for its specific API. This is where provider differences get absorbed — the rest of the system only speaks Wingman types. The tradeoff is that adding a new provider requires implementing this translation layer, but it keeps the core dependency-free.
+Each provider package absorbs backend-specific differences so the rest of the system only speaks core types.
 
-In the SDK, providers are constructed with typed config structs:
+In the SDK, providers use a config struct with a generic `Options map[string]any` for inference parameters:
 
 ```go
-p := anthropic.New(anthropic.Config{
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
+p, err := anthropic.New(anthropic.Config{
+    Options: map[string]any{
+        "model":      "claude-sonnet-4-5",
+        "max_tokens": 4096,
+    },
 })
 ```
 
-In the HTTP API, provider configuration is encoded on the agent as a `model` string (`"provider/model"`) and a free-form `options` map. The server splits the model string at the first `/` to identify the provider, looks up credentials from the auth store, and constructs the typed provider instance at inference time.
+In the HTTP API, provider configuration is stored on the agent as separate `provider` and `model` fields plus a free-form `options` map. The server resolves credentials from SQLite and builds the provider through the registry at inference time.
 
 ### Agent
 
-An agent is a stateless template that defines how to handle a unit of work: a name, instructions (system prompt), a set of tools, an optional output schema, and a provider. The same agent instance can be used by many concurrent sessions.
+An agent is a stateless template: name, instructions (system prompt), tools, optional output schema, and provider + model. The same agent instance can be reused across many sessions.
 
 ```go
 a := agent.New("Summarizer",
@@ -44,18 +46,18 @@ a := agent.New("Summarizer",
 
 ### Session
 
-A session is a stateful container that holds conversation history and runs the agent loop. It takes an agent and an optional working directory, then handles the full cycle: send messages, process tool calls, accumulate history, and repeat until the model produces a final response.
+A session is a stateful container that holds conversation history and runs the agentic loop. It takes an agent and an optional working directory, then handles the full cycle: send messages, process tool calls, accumulate history, and repeat until the model produces a final response.
 
 ```go
 s := session.New(session.WithAgent(a))
 result, _ := s.Run(ctx, "Summarize this article...")
 ```
 
-## Actor model
+## Actor system
 
-Wingman uses a lightweight actor system for concurrent execution. An `AgentActor` wraps an agent, receives work messages, creates a session, runs inference, and sends results to a collector. A `Fleet` spawns multiple agent actors and distributes work across them.
+Wingman includes a lightweight actor system (`actor/`) for concurrent execution. An `AgentActor` wraps an agent, receives work messages, creates a session, runs inference, and sends results to a collector. The higher-level `fleet/` package is the recommended fan-out API; the actor system is the lower-level primitive that will eventually power formations.
 
-This is intentionally simple — no supervision trees, no mailbox persistence, no distributed actors. The actor model provides clean concurrency semantics (no shared state, message-passing only) without requiring a full framework.
+This system is intentionally simple — no supervision trees, no mailbox persistence, no distributed actors. It provides clean concurrency semantics (message passing, no shared state) without requiring a full framework.
 
 ## HTTP server
 

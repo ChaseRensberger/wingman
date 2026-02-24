@@ -5,7 +5,7 @@ order: 102
 ---
 # Session
 
-A session is a stateful container that maintains conversation history and executes agent loops. The agent (and its provider) define what model to use and how to run inference — the session just manages state and execution.
+A session is a stateful container that maintains conversation history and executes the agentic loop. The agent (and its provider) define what model to use and how to run inference — the session just manages state and execution.
 
 ## SDK
 
@@ -18,7 +18,7 @@ s := session.New(
 result, err := s.Run(ctx, "Your message")
 ```
 
-The `Run` method executes the agent loop: it sends the message, handles tool calls, and continues until the model produces a final response or hits the step limit.
+The `Run` method executes the agent loop: it sends the message, handles tool calls, and continues until the model produces a final response or the context is cancelled.
 
 ## Server
 
@@ -31,6 +31,8 @@ DELETE /sessions/{id}         # Delete session
 POST   /sessions/{id}/message        # Send message (blocking)
 POST   /sessions/{id}/message/stream # Send message (streaming SSE)
 ```
+
+On every message, the server reconstructs a `session.Session` from the stored history, runs inference, then persists the updated history back to SQLite.
 
 ```bash
 # Create a session
@@ -81,14 +83,17 @@ curl -N -X POST http://localhost:2323/sessions/01XYZ.../message/stream \
 
 **Event stream:**
 ```text
-event: text
-data: {"type":"text","content":"Hello"}
+event: text_delta
+data: {"type":"text_delta","text":"Hello ","index":0}
 
-event: text
-data: {"type":"text","content":" world"}
+event: text_delta
+data: {"type":"text_delta","text":"world","index":0}
+
+event: message_stop
+data: {"type":"message_stop"}
 
 event: done
 data: {"usage":{"input_tokens":120,"output_tokens":240},"steps":1}
 ```
 
-Event types: `text`, `tool_use`, `tool_result`, `done`, `error`
+Event types: `message_start`, `content_block_start`, `text_delta`, `input_json_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`, `error`, `done`

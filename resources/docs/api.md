@@ -38,9 +38,7 @@ curl -sS -X GET http://localhost:2323/provider | jq .
   {
     "id": "anthropic",
     "name": "Anthropic",
-    "auth_types": [
-        "api_key"
-    ]
+    "auth_types": ["api_key"]
   },
   {
     "id": "ollama",
@@ -96,7 +94,7 @@ curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic | jq .
 {"status": "deleted"}
 ```
 
-### GET /provider/{name}
+### GET /provider/{id}
 
 **Request:**
 ```bash
@@ -108,12 +106,13 @@ curl -sS -X GET http://localhost:2323/provider/anthropic | jq .
 {
   "id": "anthropic",
   "name": "Anthropic",
-  "type": "chat",
-  "models": true
+  "auth_types": ["api_key"]
 }
 ```
 
-### GET /provider/{name}/models
+### GET /provider/{id}/models
+
+Models are fetched from models.dev and cached for 1 hour.
 
 **Request:**
 ```bash
@@ -128,13 +127,13 @@ curl -sS -X GET http://localhost:2323/provider/anthropic/models | jq .
     "name": "Claude Sonnet 4.5"
   },
   {
-    "id": "claude-opus-4-1",
-    "name": "Claude Opus 4.1"
+    "id": "claude-opus-4-6",
+    "name": "Claude Opus 4.6"
   }
 ]
 ```
 
-### GET /provider/{name}/models/{model}
+### GET /provider/{id}/models/{model}
 
 **Request:**
 ```bash
@@ -167,11 +166,13 @@ curl -sS -X GET http://localhost:2323/agents | jq .
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "model": "anthropic/claude-sonnet-4-5",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
     "options": {
       "max_tokens": 4096,
       "temperature": 0.7
     },
+    "output_schema": null,
     "created_at": "2026-02-21T00:00:00Z",
     "updated_at": "2026-02-21T00:00:00Z"
   }
@@ -188,7 +189,8 @@ curl -sS -X POST http://localhost:2323/agents \
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "model": "anthropic/claude-sonnet-4-5",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
     "options": {
       "max_tokens": 4096,
       "temperature": 0.7
@@ -203,11 +205,13 @@ curl -sS -X POST http://localhost:2323/agents \
   "name": "Assistant",
   "instructions": "Be helpful",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-  "model": "anthropic/claude-sonnet-4-5",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-5",
   "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },
+  "output_schema": null,
   "created_at": "2026-02-21T00:00:00Z",
   "updated_at": "2026-02-21T00:00:00Z"
 }
@@ -227,11 +231,13 @@ curl -sS -X GET http://localhost:2323/agents/01ABC... | jq .
   "name": "Assistant",
   "instructions": "Be helpful",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-  "model": "anthropic/claude-sonnet-4-5",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-5",
   "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },
+  "output_schema": null,
   "created_at": "2026-02-21T00:00:00Z",
   "updated_at": "2026-02-21T00:00:00Z"
 }
@@ -256,11 +262,13 @@ curl -sS -X PUT http://localhost:2323/agents/01ABC... \
   "name": "Assistant",
   "instructions": "You are a fast, practical coding assistant.",
   "tools": ["bash", "read", "edit", "glob", "grep"],
-  "model": "anthropic/claude-sonnet-4-5",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-5",
   "options": {
     "max_tokens": 4096,
     "temperature": 0.7
   },
+  "output_schema": null,
   "created_at": "2026-02-21T00:00:00Z",
   "updated_at": "2026-02-21T00:00:00Z"
 }
@@ -386,7 +394,9 @@ curl -sS -X POST http://localhost:2323/sessions/01XYZ.../message \
 ```json
 {
   "response": "Here are the files in the directory...",
-  "tool_calls": [],
+  "tool_calls": [
+    { "tool_name": "toolu_abc123", "output": "...", "steps": 1 }
+  ],
   "usage": {
     "input_tokens": 120,
     "output_tokens": 240
@@ -410,12 +420,61 @@ curl -N -sS -X POST http://localhost:2323/sessions/01XYZ.../message/stream \
 
 **Example Response:**
 ```text
-event: text
-data: {"type":"text","content":"Hello"}
+event: text_delta
+data: {"type":"text_delta","text":"Hello ","index":0}
 
-event: text
-data: {"type":"text","content":" world"}
+event: text_delta
+data: {"type":"text_delta","text":"world","index":0}
+
+event: message_stop
+data: {"type":"message_stop"}
 
 event: done
 data: {"usage":{"input_tokens":120,"output_tokens":240},"steps":1}
 ```
+
+## Fleets
+
+### POST /fleets
+
+Create a fleet definition.
+
+### GET /fleets
+
+List fleet definitions.
+
+### GET /fleets/{id}
+
+Get a fleet definition.
+
+### PUT /fleets/{id}
+
+Update a fleet definition.
+
+### DELETE /fleets/{id}
+
+Delete a fleet definition.
+
+### POST /fleets/{id}/run
+
+**Request:**
+```json
+{
+  "tasks": [
+    { "message": "Explore this dir", "work_dir": "/src/auth", "data": "auth" },
+    { "message": "Explore this dir", "work_dir": "/src/api",  "data": "api" }
+  ]
+}
+```
+
+**Example Response:**
+```json
+[
+  { "task_index": 0, "worker_name": "worker-0", "response": "...", "steps": 1, "data": "auth" },
+  { "task_index": 1, "worker_name": "worker-1", "response": "...", "steps": 1, "data": "api" }
+]
+```
+
+### POST /fleets/{id}/run/stream
+
+Streams one `event: result` per worker, then `event: done`.

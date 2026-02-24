@@ -5,7 +5,7 @@ order: 10
 ---
 # Server
 
-The HTTP server is the primary way to use Wingman. Unlike [the SDK](./sdk), it comes batteries-included with object persistence (via SQLite) and a config file at `~/.config/wingman/`.
+The HTTP server is one way to use Wingman. Unlike [the SDK](./sdk), it includes SQLite-backed persistence for agents, sessions, and fleets.
 
 ## Installation
 
@@ -29,6 +29,8 @@ wingman serve
 
 Before making inference requests, configure your provider API keys:
 
+The server reads credentials only from its SQLite auth store (not environment variables).
+
 ```bash
 curl -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
@@ -45,7 +47,7 @@ curl -X POST http://localhost:2323/sessions/{id}/message/stream \
   -d '{"agent_id": "01ABC...", "message": "Hello"}'
 ```
 
-Events: `text`, `tool_use`, `tool_result`, `done`, `error`
+Events: `message_start`, `content_block_start`, `text_delta`, `input_json_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`, `error`, `done`
 
 ## Example Workflow
 
@@ -60,7 +62,8 @@ curl -X POST http://localhost:2323/agents \
     "name": "Assistant",
     "instructions": "Be helpful",
     "tools": ["bash"],
-    "model": "anthropic/claude-sonnet-4-5",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
     "options": {
       "max_tokens": 4096
     }

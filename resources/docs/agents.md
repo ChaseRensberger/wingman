@@ -11,9 +11,11 @@ The word agent gets thrown around a lot these days and it is possible this gets 
 ## SDK
 
 ```go
-p := anthropic.New(anthropic.Config{
-    Model:     "claude-sonnet-4-5",
-    MaxTokens: 4096,
+p, err := anthropic.New(anthropic.Config{
+    Options: map[string]any{
+        "model":      "claude-sonnet-4-5",
+        "max_tokens": 4096,
+    },
 })
 
 a := agent.New("AgentName",
@@ -36,12 +38,13 @@ DELETE /agents/{id} # Delete agent
 
 ### Create
 
-Use `model` in `"provider/model"` format. Use `options` for inference configuration — it is a free-form map of keys supported by the provider.
+Use `provider` and `model` as separate fields. Use `options` for inference configuration — it is a free-form map of keys supported by the provider.
 
-**Common options (all providers):**
+**Options map (SDK):**
 
 | Key | Type | Description |
 |-----|------|-------------|
+| `model` | string | Model identifier |
 | `max_tokens` | number | Maximum tokens to generate |
 | `temperature` | number | Sampling temperature |
 
@@ -50,7 +53,7 @@ Use `model` in `"provider/model"` format. Use `options` for inference configurat
 | Key | Provider | Description |
 |-----|----------|-------------|
 | `base_url` | ollama | Custom Ollama server URL (default: `http://localhost:11434`) |
-| `api_key` | anthropic | Override the API key set in auth (optional) |
+| `api_key` | anthropic | SDK only; server reads from `/provider/auth` |
 
 ```bash
 curl -X POST http://localhost:2323/agents \
@@ -59,7 +62,8 @@ curl -X POST http://localhost:2323/agents \
     "name": "CodeAssistant",
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "model": "anthropic/claude-sonnet-4-5",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
     "options": {
       "max_tokens": 4096
     }
@@ -73,7 +77,8 @@ curl -X POST http://localhost:2323/agents \
   -d '{
     "name": "LocalAgent",
     "instructions": "Be helpful",
-    "model": "ollama/llama3.2",
+    "provider": "ollama",
+    "model": "llama3.2",
     "options": {
       "base_url": "http://my-ollama-host:11434"
     }

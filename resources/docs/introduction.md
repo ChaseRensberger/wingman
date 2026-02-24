@@ -5,21 +5,22 @@ order: 0
 ---
 # Wingman
 
-Wingman is a highly performant agent orchestration framework written in Go. It provides opinionated primitives for building, running, and scaling LLM agents.
+Wingman is a self-hostable, airgap-friendly agent orchestration engine written in Go. It provides a small set of primitives for building, running, and scaling LLM agents.
 
 ## Two ways to use it
 
-**HTTP Server** — A batteries included REST API designed to make it easy to interface with SOTA agent orchestration without leaving your language of choice.
+**Go SDK** — Run agents in-process. You own the persistence layer (or skip it entirely). Ideal for embedding in Go apps.
 
-**Go SDK** — For more granular control, you can use the Wingman Go SDK for full control over storage, providers, context, and execution flow. Good for embedding agents into a Go application or building something the server doesn't support out of the box.
+**HTTP Server** — Run `wingman serve`. Agents, sessions, and fleets are persisted in SQLite. Any HTTP client can talk to it.
 
 ## Core primitives
 
-- **Provider** — A configured client for a specific model API (Anthropic, Ollama, etc.). Owns the model ID, API key, and inference parameters.
-- **Agent** — A stateless template: instructions, tools, output schema, and a provider. Defines how to handle a unit of work.
-- **Session** — A stateful container that holds conversation history and runs the agent loop. Send a message; it handles tool calls and multi-step inference until a final response is produced.
-- **Fleet** — A pool of agent workers that process tasks concurrently.
-- **Formation** — A directed graph of agents that pass work between roles (inspired by the actor framework).
+- **Provider** — Translates Wingman's provider-agnostic request into a specific model API.
+- **Agent** — A stateless template: instructions, tools, output schema, and a provider + model.
+- **Session** — A stateful container that holds conversation history and runs the agentic loop.
+- **Fleet** — A fan-out primitive for running many tasks concurrently.
+- **Actor system** — A low-level mailbox-based runtime used by future formations.
+- **Formations (future)** — Directed graphs of agents and functions that pass work between roles.
 
 ## For more info
 

@@ -31,7 +31,8 @@ curl -X POST http://localhost:2323/agents \
     "name": "CodeAssistant",
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-    "model": "anthropic/claude-sonnet-4-5",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5",
     "options": {
       "max_tokens": 4096
     }
@@ -56,13 +57,13 @@ agent.New("MyAgent",
 
 ## Custom Tools
 
-Implement the `Tool` interface:
+Implement the `Tool` interface (SDK only). The server only resolves the 7 built-in tools by name.
 
 ```go
 type Tool interface {
     Name() string
     Description() string
-    Definition() models.WingmanToolDefinition
+    Definition() core.ToolDefinition
     Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
 }
 ```

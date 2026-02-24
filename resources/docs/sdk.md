@@ -5,7 +5,7 @@ order: 11
 ---
 # SDK
 
-If you want more fine grained control over messages, storage, or anything else that the built in server tries to handle for you, the Go SDK provides direct access to Wingman's primitives so that you may do with them what you please.
+If you want more fine-grained control over messages, storage, or anything else that the built-in server handles for you, the Go SDK provides direct access to Wingman's primitives.
 
 ## Installation
 
@@ -20,39 +20,43 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
 
-    "wingman/provider/anthropic"
-    "wingman/agent"
-    "wingman/session"
-    "wingman/tool"
+    "github.com/joho/godotenv"
+
+    "github.com/chaserensberger/wingman/agent"
+    "github.com/chaserensberger/wingman/provider/anthropic"
+    "github.com/chaserensberger/wingman/session"
+    "github.com/chaserensberger/wingman/tool"
 )
 
 func main() {
-    p := anthropic.New(anthropic.Config{
+    godotenv.Load(".env.local")
+
+    p, err := anthropic.New(anthropic.Config{
         Options: map[string]any{
-            "model": "claude-sonnet-4-5",
+            "model":      "claude-sonnet-4-5",
+            "max_tokens": 4096,
         },
     })
-
-    a := agent.New("MyAgent",
-        agent.WithInstructions("You are a helpful assistant."),
-        agent.WithProvider(p),
-        agent.WithTools(
-            tool.NewBashTool(),
-        ),
-    )
-
-    s := session.New(
-        session.WithAgent(a),
-    )
-
-    result, err := s.Run(context.Background(), "What operating system am I using?")
     if err != nil {
         log.Fatal(err)
     }
 
-    log.Println(result.Response)
+    a := agent.New("Coder",
+        agent.WithInstructions("You are a senior Go developer."),
+        agent.WithProvider(p),
+        agent.WithTools(tool.NewBashTool(), tool.NewWriteTool()),
+    )
+
+    s := session.New(session.WithAgent(a))
+    result, err := s.Run(context.Background(), "Write hello.go and run it")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(result.Response)
 }
 ```
 
@@ -63,8 +67,8 @@ func main() {
 Each provider has a `Config` with a provider-specific field for auth/connection and a generic `Options map[string]any` for inference parameters — using the same key names as the HTTP API.
 
 ```go
-p := anthropic.New(anthropic.Config{
-    APIKey: "sk-...",  // optional; defaults to ANTHROPIC_API_KEY env var
+p, err := anthropic.New(anthropic.Config{
+    APIKey: "sk-...", // optional; defaults to ANTHROPIC_API_KEY env var
     Options: map[string]any{
         "model":      "claude-sonnet-4-5",
         "max_tokens": 4096,
@@ -78,7 +82,7 @@ a := agent.New("MyAgent",
 ```
 
 ```go
-p := ollama.New(ollama.Config{
+p, err := ollama.New(ollama.Config{
     Options: map[string]any{
         "model":    "llama3.2",
         "base_url": "http://localhost:11434",
@@ -101,28 +105,29 @@ agent.New("MyAgent",
 
 ## Fleet (Concurrent Execution)
 
-Run multiple messages concurrently across worker actors:
+Run multiple tasks concurrently:
 
 ```go
-fleet := actor.NewFleet(actor.FleetConfig{
-    WorkerCount: 3,
-    Agent:       a,
-    WorkDir:     "/path/to/workdir",
-})
-defer fleet.Shutdown()
-
-fleet.SubmitAll([]string{
-    "Task 1",
-    "Task 2",
-    "Task 3",
+f := fleet.New(fleet.Config{
+    Agent: a,
+    Tasks: []fleet.Task{
+        {Message: "Task 1", WorkDir: "/dir1"},
+        {Message: "Task 2", WorkDir: "/dir2"},
+        {Message: "Task 3", WorkDir: "/dir3"},
+    },
+    MaxWorkers: 2,
 })
 
-results := fleet.AwaitAll()
+ctx := context.Background()
+results, err := f.Run(ctx)
+if err != nil {
+    log.Fatal(err)
+}
 for _, r := range results {
     if r.Error != nil {
-        log.Printf("Error: %v", r.Error)
+        log.Printf("Task %d failed: %v", r.TaskIndex, r.Error)
     } else {
-        log.Printf("Result: %s", r.Result.Response)
+        log.Printf("Task %d: %s", r.TaskIndex, r.Result.Response)
     }
 }
 ```
@@ -139,7 +144,9 @@ if err != nil {
 
 for stream.Next() {
     event := stream.Event()
-    // Handle streaming events
+    if event.Type == core.EventTextDelta {
+        fmt.Print(event.Text)
+    }
 }
 
 if err := stream.Err(); err != nil {
@@ -153,7 +160,7 @@ if err := stream.Err(); err != nil {
 type Result struct {
     Response  string           // Final text response
     ToolCalls []ToolCallResult // All tool calls made
-    Usage     WingmanUsage     // Token usage (InputTokens, OutputTokens)
+    Usage     core.Usage       // Token usage (InputTokens, OutputTokens)
     Steps     int              // Number of inference steps
 }
 ```
