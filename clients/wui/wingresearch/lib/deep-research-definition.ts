@@ -8,7 +8,7 @@ export function buildDeepResearchDefinition(
     version: 1,
     description: "Multi-agent deep research report pipeline",
     defaults: {
-      work_dir: ".",
+      work_dir: "/home/chase/Projects/wingman/resources",
     },
     nodes: [
       {
