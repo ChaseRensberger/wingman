@@ -15,6 +15,7 @@ nodes:
       model: claude-haiku-4-5
       options:
         max_tokens: 2800
+        max_retries: 6
       instructions: |
         You are the overseer of a deep research report.
         Use perplexity_search and webfetch for initial research.
@@ -69,7 +70,8 @@ nodes:
         provider: anthropic
         model: claude-haiku-4-5
         options:
-          max_tokens: 900
+          max_tokens: 1400
+          max_retries: 6
         instructions: |
           You are assigned one section of ./report.md.
           Do targeted research with perplexity_search and webfetch.
@@ -99,6 +101,7 @@ nodes:
       model: claude-haiku-4-5
       options:
         max_tokens: 700
+        max_retries: 6
       instructions: |
         Do a final proofreading and quality pass over ./report.md.
         Improve spelling, structure, and readability without changing intent.

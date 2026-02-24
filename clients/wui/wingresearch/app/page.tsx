@@ -91,7 +91,7 @@ export default function WingResearchPage() {
   )
   const [baseUrl, setBaseUrlState] = useState(getBaseUrl())
   const [agents, setAgents] = useState<AgentDef[]>(defaultAgents)
-  const [parallelResearchers, setParallelResearchers] = useState(3)
+  const [parallelResearchers, setParallelResearchers] = useState(2)
   const [isRunning, setIsRunning] = useState(false)
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [currentNode, setCurrentNode] = useState<string>("")

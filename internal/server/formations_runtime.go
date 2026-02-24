@@ -408,10 +408,20 @@ Do not skip the write tool call.`
 		}
 	}
 
-	parsed := map[string]any{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(runResult.result.Response)), &parsed); err != nil {
-		return nil, fmt.Errorf("node %q must return structured json output: %w", node.ID, err)
+	parsed, parseErr := parseStructuredObject(runResult.result.Response)
+	if parseErr != nil {
+		retryPrompt := "Your previous response was not valid JSON. Return ONLY valid JSON that matches the required output_schema. No prose, no markdown, no code fences."
+		retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, node.ID, "", emit)
+		if retryErr != nil {
+			return nil, retryErr
+		}
+		runResult = mergeStreamedRunResults(runResult, retryResult)
+		parsed, parseErr = parseStructuredObject(runResult.result.Response)
+		if parseErr != nil {
+			return nil, fmt.Errorf("node %q must return structured json output: %w (response preview: %s)", node.ID, parseErr, previewResponse(runResult.result.Response))
+		}
 	}
+
 	return parsed, nil
 }
 
@@ -614,11 +624,22 @@ func (s *Server) runFormationFleetWorkers(ctx context.Context, nodeID string, ag
 					return
 				}
 
-				parsed := map[string]any{}
-				if err := json.Unmarshal([]byte(strings.TrimSpace(runResult.result.Response)), &parsed); err != nil {
-					out <- result{index: idx, err: fmt.Errorf("fleet node %q must return structured json output: %w", nodeID, err)}
-					cancel()
-					return
+				parsed, parseErr := parseStructuredObject(runResult.result.Response)
+				if parseErr != nil {
+					retryPrompt := "Your previous response was not valid JSON. Return ONLY valid JSON that matches the required output_schema. No prose, no markdown, no code fences."
+					retryResult, retryErr := runSessionWithToolEvents(ctx, runSession, retryPrompt, nodeID, workerName, emit)
+					if retryErr != nil {
+						out <- result{index: idx, err: retryErr}
+						cancel()
+						return
+					}
+					runResult = mergeStreamedRunResults(runResult, retryResult)
+					parsed, parseErr = parseStructuredObject(runResult.result.Response)
+					if parseErr != nil {
+						out <- result{index: idx, err: fmt.Errorf("fleet node %q must return structured json output: %w (response preview: %s)", nodeID, parseErr, previewResponse(runResult.result.Response))}
+						cancel()
+						return
+					}
 				}
 
 				out <- result{index: idx, data: parsed}
@@ -666,6 +687,23 @@ func resolveWorkDir(workDir string) string {
 		return "."
 	}
 	return trimmed
+}
+
+func parseStructuredObject(raw string) (map[string]any, error) {
+	parsed := map[string]any{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
+func previewResponse(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	const max = 220
+	if len(trimmed) <= max {
+		return trimmed
+	}
+	return trimmed[:max] + "..."
 }
 
 func extractToolPath(input any) string {

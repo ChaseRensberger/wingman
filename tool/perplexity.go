@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chaserensberger/wingman/core"
@@ -82,8 +83,8 @@ func (t *PerplexityTool) Execute(ctx context.Context, params map[string]any, wor
 
 	reqBody := perplexitySearchRequest{
 		Query:            query,
-		MaxResults:       5,
-		MaxTokensPerPage: 1024,
+		MaxResults:       3,
+		MaxTokensPerPage: 256,
 	}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
@@ -125,10 +126,28 @@ func (t *PerplexityTool) Execute(ctx context.Context, params map[string]any, wor
 		return "", fmt.Errorf("perplexity search error: %s", result.Error)
 	}
 
+	if result.Answer != "" {
+		result.Answer = truncateText(result.Answer, 1200)
+	}
+	for i := range result.Results {
+		result.Results[i].Snippet = truncateText(result.Results[i].Snippet, 320)
+	}
+
 	formatted, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("failed to format result: %w", err)
 	}
 
 	return string(formatted), nil
+}
+
+func truncateText(input string, max int) string {
+	clean := strings.TrimSpace(input)
+	if len(clean) <= max {
+		return clean
+	}
+	if max <= 3 {
+		return clean[:max]
+	}
+	return clean[:max-3] + "..."
 }

@@ -21,6 +21,7 @@ export function buildDeepResearchDefinition(
           model: "claude-haiku-4-5",
           options: {
             max_tokens: 2800,
+            max_retries: 6,
           },
           instructions:
             "You are the overseer of a deep research report.\nUse perplexity_search for initial research.\nYou may call perplexity_search at most 3 times total.\nKeep tool outputs concise and summarized; never paste large raw source text.\nBuild an outline with no more than 3 sections (excluding Conclusion).\nBefore your final response, you MUST call write exactly once to create ./report.md with non-empty markdown content.\nThe first write must be a compact skeleton only: title, table of contents, and section stubs with short placeholders.\nDo not write full section prose in planner.\nDo not return final JSON until the write call succeeds.\nEmit structured JSON with sections, report_path, and write_confirmed for downstream fanout.",
@@ -73,7 +74,8 @@ export function buildDeepResearchDefinition(
             provider: "anthropic",
             model: "claude-haiku-4-5",
             options: {
-              max_tokens: 900,
+              max_tokens: 1400,
+              max_retries: 6,
             },
             instructions:
               "You are assigned one section of ./report.md.\nDo targeted research with perplexity_search.\nYou may call perplexity_search at most 3 times for this section.\nConcisely summarize findings; do not include large quoted source text.\nFill only your assigned section.\nReturn structured JSON when finished.",
@@ -103,6 +105,7 @@ export function buildDeepResearchDefinition(
           model: "claude-haiku-4-5",
           options: {
             max_tokens: 700,
+            max_retries: 6,
           },
           instructions:
             "Do a final proofreading and quality pass over ./report.md.\nImprove spelling, structure, and readability without changing intent.\nReturn structured JSON status.",

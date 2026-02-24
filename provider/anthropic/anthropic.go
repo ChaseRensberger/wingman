@@ -40,14 +40,17 @@ type Client struct {
 	maxTokens   int
 	temperature *float64
 	httpClient  *http.Client
+	maxRetries  int
 }
 
 const (
-	defaultModel     = "claude-haiku-4-5"
-	defaultMaxTokens = 4096
-	apiURL           = "https://api.anthropic.com/v1/messages"
-	apiVersion       = "2023-06-01"
-	httpTimeout      = 5 * time.Minute
+	defaultModel      = "claude-haiku-4-5"
+	defaultMaxTokens  = 4096
+	defaultMaxRetries = 3
+	apiURL            = "https://api.anthropic.com/v1/messages"
+	apiVersion        = "2023-06-01"
+	httpTimeout       = 5 * time.Minute
+	maxRetryDelay     = 60 * time.Second
 )
 
 func New(cfg ...Config) (*Client, error) {
@@ -91,12 +94,27 @@ func New(cfg ...Config) (*Client, error) {
 		}
 	}
 
+	maxRetries := defaultMaxRetries
+	if v, ok := c.Options["max_retries"]; ok {
+		switch n := v.(type) {
+		case int:
+			if n >= 0 {
+				maxRetries = n
+			}
+		case float64:
+			if int(n) >= 0 {
+				maxRetries = int(n)
+			}
+		}
+	}
+
 	return &Client{
 		apiKey:      apiKey,
 		model:       model,
 		maxTokens:   maxTokens,
 		temperature: temperature,
 		httpClient:  &http.Client{Timeout: httpTimeout},
+		maxRetries:  maxRetries,
 	}, nil
 }
 
@@ -272,28 +290,9 @@ func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*
 		return nil, fmt.Errorf("anthropic: failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
+	body, err := c.doWithRetry(ctx, jsonData)
 	if err != nil {
-		return nil, fmt.Errorf("anthropic: failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
-	httpReq.Header.Set("anthropic-version", apiVersion)
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var apiResp response
@@ -313,6 +312,86 @@ func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest)
 		return nil, fmt.Errorf("anthropic: failed to marshal request: %w", err)
 	}
 
+	resp, err := c.doStreamWithRetry(ctx, jsonData)
+	if err != nil {
+		return nil, err
+	}
+
+	return newStream(resp), nil
+}
+
+func (c *Client) doWithRetry(ctx context.Context, jsonData []byte) ([]byte, error) {
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		resp, err := c.doRequest(ctx, jsonData)
+		if err != nil {
+			if shouldRetryTransport(err) && attempt < c.maxRetries {
+				if waitErr := waitForRetry(ctx, backoffDelay(attempt)); waitErr != nil {
+					return nil, fmt.Errorf("anthropic: request failed: %w", waitErr)
+				}
+				continue
+			}
+			return nil, fmt.Errorf("anthropic: request failed: %w", err)
+		}
+
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("anthropic: failed to read response: %w", readErr)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return body, nil
+		}
+
+		if shouldRetryStatus(resp.StatusCode) && attempt < c.maxRetries {
+			delay := retryDelay(resp, attempt)
+			if waitErr := waitForRetry(ctx, delay); waitErr != nil {
+				return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+			}
+			continue
+		}
+
+		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil, fmt.Errorf("anthropic: retries exhausted")
+}
+
+func (c *Client) doStreamWithRetry(ctx context.Context, jsonData []byte) (*http.Response, error) {
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		resp, err := c.doRequest(ctx, jsonData)
+		if err != nil {
+			if shouldRetryTransport(err) && attempt < c.maxRetries {
+				if waitErr := waitForRetry(ctx, backoffDelay(attempt)); waitErr != nil {
+					return nil, fmt.Errorf("anthropic: request failed: %w", waitErr)
+				}
+				continue
+			}
+			return nil, fmt.Errorf("anthropic: request failed: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			return resp, nil
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if shouldRetryStatus(resp.StatusCode) && attempt < c.maxRetries {
+			delay := retryDelay(resp, attempt)
+			if waitErr := waitForRetry(ctx, delay); waitErr != nil {
+				return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+			}
+			continue
+		}
+
+		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil, fmt.Errorf("anthropic: retries exhausted")
+}
+
+func (c *Client) doRequest(ctx context.Context, jsonData []byte) (*http.Response, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: failed to create request: %w", err)
@@ -322,18 +401,80 @@ func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest)
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: request failed: %w", err)
+	return c.httpClient.Do(httpReq)
+}
+
+func shouldRetryStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code >= http.StatusInternalServerError
+}
+
+func shouldRetryTransport(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == context.Canceled || err == context.DeadlineExceeded {
+		return false
+	}
+	return true
+}
+
+func retryDelay(resp *http.Response, attempt int) time.Duration {
+	if resp != nil {
+		if d, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok {
+			return d
+		}
+	}
+	return backoffDelay(attempt)
+}
+
+func parseRetryAfter(value string) (time.Duration, bool) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return 0, false
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+	if seconds, err := time.ParseDuration(v + "s"); err == nil {
+		if seconds < 0 {
+			return 0, false
+		}
+		if seconds > maxRetryDelay {
+			seconds = maxRetryDelay
+		}
+		return seconds, true
 	}
 
-	return newStream(resp), nil
+	if t, err := time.Parse(time.RFC1123, v); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			return 0, false
+		}
+		if d > maxRetryDelay {
+			d = maxRetryDelay
+		}
+		return d, true
+	}
+
+	return 0, false
+}
+
+func backoffDelay(attempt int) time.Duration {
+	d := time.Second * time.Duration(2<<attempt)
+	if d > maxRetryDelay {
+		return maxRetryDelay
+	}
+	return d
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 type Stream struct {
