@@ -1,6 +1,6 @@
 ---
 title: "SKILL"
-group: "reference"
+group: "Reference"
 order: 1001
 ---
 # Wingman Skill
