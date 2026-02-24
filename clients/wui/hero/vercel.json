@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/install",
+      "destination": "https://raw.githubusercontent.com/chaserensberger/wingman/main/install",
+      "statusCode": 307
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
