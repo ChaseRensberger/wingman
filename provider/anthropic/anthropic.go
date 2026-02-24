@@ -189,9 +189,12 @@ type response struct {
 }
 
 func (c *Client) toAnthropicMessage(msg core.Message) anthropicMessage {
-	blocks := make([]contentBlock, len(msg.Content))
-	for i, b := range msg.Content {
-		blocks[i] = contentBlock{
+	blocks := make([]contentBlock, 0, len(msg.Content))
+	for _, b := range msg.Content {
+		if b.Type == core.ContentTypeText && strings.TrimSpace(b.Text) == "" {
+			continue
+		}
+		blocks = append(blocks, contentBlock{
 			Type:      string(b.Type),
 			Text:      b.Text,
 			ID:        b.ID,
@@ -200,7 +203,7 @@ func (c *Client) toAnthropicMessage(msg core.Message) anthropicMessage {
 			ToolUseID: b.ToolUseID,
 			Content:   b.Content,
 			IsError:   b.IsError,
-		}
+		})
 	}
 	return anthropicMessage{Role: string(msg.Role), Content: blocks}
 }
@@ -251,9 +254,13 @@ func (c *Client) toInferenceResponse(resp response) *core.InferenceResponse {
 }
 
 func (c *Client) buildRequest(req core.InferenceRequest) request {
-	messages := make([]anthropicMessage, len(req.Messages))
-	for i, msg := range req.Messages {
-		messages[i] = c.toAnthropicMessage(msg)
+	messages := make([]anthropicMessage, 0, len(req.Messages))
+	for _, msg := range req.Messages {
+		converted := c.toAnthropicMessage(msg)
+		if len(converted.Content) == 0 {
+			continue
+		}
+		messages = append(messages, converted)
 	}
 
 	var tools []toolDefinition
