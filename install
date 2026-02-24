@@ -111,6 +111,48 @@ resolve_version() {
   echo "${tag#v}"
 }
 
+resolve_asset_url() {
+  local version="$1" os="$2" arch="$3" ext="$4"
+  local api url name candidate fallback
+  api="https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/v${version}"
+
+  while IFS= read -r url; do
+    [[ -z "$url" ]] && continue
+    name=$(basename "$url")
+
+    [[ "$name" != ${APP}* ]] && continue
+    [[ "$name" != *".${ext}" ]] && continue
+    [[ "$name" != *"${os}"* ]] && continue
+    [[ "$name" != *"${arch}"* ]] && continue
+
+    if [[ "$name" == "${APP}_${version}_${os}_${arch}.${ext}" ]]; then
+      candidate="$url"
+      break
+    fi
+
+    if [[ "$name" == "${APP}_.${version}_.${os}_.${arch}.${ext}" ]]; then
+      candidate="$url"
+      break
+    fi
+
+    if [[ -z "$fallback" ]]; then
+      fallback="$url"
+    fi
+  done < <(curl -fsSL "$api" | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+
+  if [[ -n "$candidate" ]]; then
+    echo "$candidate"
+    return
+  fi
+
+  if [[ -n "$fallback" ]]; then
+    echo "$fallback"
+    return
+  fi
+
+  echo ""
+}
+
 install_from_archive() {
   local os arch version ext filename url tmp_dir archive bin_name
   os=$(detect_os)
@@ -123,13 +165,16 @@ install_from_archive() {
   fi
 
   filename="${APP}_${version}_${os}_${arch}.${ext}"
-  url="https://github.com/${OWNER}/${REPO}/releases/download/v${version}/${filename}"
+  url=$(resolve_asset_url "$version" "$os" "$arch" "$ext")
+  if [[ -z "$url" ]]; then
+    url="https://github.com/${OWNER}/${REPO}/releases/download/v${version}/${filename}"
+  fi
 
   echo "Installing ${APP} v${version} (${os}/${arch})"
 
   tmp_dir=$(mktemp -d)
   archive="${tmp_dir}/${filename}"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
 
   if ! curl -fL "$url" -o "$archive"; then
     echo "Failed to download release artifact: $url" >&2
