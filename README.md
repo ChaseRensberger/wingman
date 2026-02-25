@@ -23,3 +23,17 @@ curl -fsSL https://wingman.actor/install | bash
 ## Documentation
 
 Check out the [docs site](https://wingman.actor/docs) for more detailed information about Wingman's primitives, architecture, and usage patterns. The docs site is also generated from [the docs folder](./resources/docs) if that's more your style.
+
+## Clients
+
+Frontends that use Wingman.
+
+## WingResearch
+
+Example deep research client I built for demo purposes. Showcases formations and fleet execution.
+
+[./client/wui/wingresearch](./clients/wui/wingresearch)
+<p align="center">
+    <img src="./resources/assets/wingresearch.png" alt="Wingresearch Picture"/>
+</p>
+
