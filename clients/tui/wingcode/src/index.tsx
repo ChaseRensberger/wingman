@@ -18,6 +18,9 @@ Always explain what you're doing briefly. Follow existing code conventions.`;
 
 const TOOLS = ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "perplexity_search"];
 const AGENT_NAME = "WingCode";
+const AGENT_PROVIDER = "ollama";
+const AGENT_MODEL = "lfm2";
+const AGENT_OPTIONS = { max_tokens: 16384 };
 
 async function main() {
 	loadEnvLocal();
@@ -31,31 +34,45 @@ async function main() {
 	}
 
 	const agents = await api.listAgents();
-	let agent = agents.find((item) => item.name === AGENT_NAME);
-	if (!agent) {
+	const existingAgent = agents.find((item) => item.name === AGENT_NAME);
+	let agentID = existingAgent?.id;
+	if (!existingAgent) {
 		try {
-			agent = await api.createAgent({
+			const created = await api.createAgent({
 				name: AGENT_NAME,
 				instructions: INSTRUCTIONS,
 				tools: TOOLS,
-				provider: "anthropic",
-				model: "claude-sonnet-4-6",
-				options: { max_tokens: 16384 },
+				provider: AGENT_PROVIDER,
+				model: AGENT_MODEL,
+				options: AGENT_OPTIONS,
 			});
+			agentID = created.id;
 		} catch (err) {
 			console.error("Error: failed to create agent.");
 			console.error(String(err));
 			console.error("If this is a schema mismatch, migrate your Wingman DB.");
 			return;
 		}
+	} else {
+		try {
+			await api.updateAgent(existingAgent.id, {
+				provider: AGENT_PROVIDER,
+				model: AGENT_MODEL,
+				options: AGENT_OPTIONS,
+			});
+		} catch (err) {
+			console.error("Error: failed to update WingCode agent model.");
+			console.error(String(err));
+			return;
+		}
 	}
-	if (!agent) return;
+	if (!agentID) return;
 
 	const session = await api.createSession(process.cwd());
 
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	createRoot(renderer).render(
-		<SessionProvider agentID={agent.id} sessionID={session.id}>
+		<SessionProvider agentID={agentID} sessionID={session.id}>
 			<App />
 		</SessionProvider>,
 	);

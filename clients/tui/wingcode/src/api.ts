@@ -33,6 +33,20 @@ export const api = {
 		});
 	},
 
+	updateAgent(
+		agentID: string,
+		opts: {
+			provider?: string;
+			model?: string;
+			options?: Record<string, unknown>;
+		},
+	): Promise<{ id: string; name?: string }> {
+		return request(`/agents/${agentID}`, {
+			method: "PUT",
+			body: JSON.stringify(opts),
+		});
+	},
+
 	listAgents(): Promise<Array<{ id: string; name: string }>> {
 		return request("/agents");
 	},
