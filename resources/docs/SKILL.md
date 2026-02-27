@@ -1,6 +1,7 @@
 ---
 title: "SKILL"
 group: "Reference"
+draft: true
 order: 1001
 ---
 # Wingman Skill

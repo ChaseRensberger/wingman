@@ -1,6 +1,7 @@
 ---
 title: "Architecture"
 group: "Wingman"
+draft: true
 order: 2
 ---
 # Architecture
