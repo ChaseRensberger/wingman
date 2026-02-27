@@ -91,17 +91,19 @@ function Hero() {
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					{/*
 					<NavLink name="Blog" url={"/blog"} />
-					<NavLink name="Docs" url={"/docs"} />
 					*/}
+					<NavLink name="Docs" url={"/docs"} />
 				</div>
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">
+				{/*
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
 					This project is under active development. When you update versions, APIs may change drastically (do not expect backward compatibility).
 				</div>
+					*/}
 				<ASCIILOGO />
 				<div className="space-y-4">
-					<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
+					<h2 className="md:text-lg text-muted-foreground leading-relaxed">
 						An open source, highly performant, actor-based, agent orchestration framework
 					</h2>
 					<InstallSection />
