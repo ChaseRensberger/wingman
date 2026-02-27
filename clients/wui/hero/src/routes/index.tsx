@@ -4,6 +4,7 @@ import { Copy, Check } from "lucide-react";
 import { Button } from "@wingman/core/components/primitives/button";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { Link } from '@tanstack/react-router';
+import { ASCIILOGO } from '../components/ascii-logo';
 
 export const Route = createFileRoute('/')({
 	component: RouteComponent,
@@ -98,7 +99,7 @@ function Hero() {
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
 					This project is under active development. When you update versions, APIs may change drastically (do not expect backward compatibility).
 				</div>
-				<h1 className="text-4xl text-primary font-semibold text-center tracking-widest">WINGMAN</h1>
+				<ASCIILOGO />
 				<div className="space-y-4">
 					<h2 className="text-lg text-muted-foreground leading-relaxed text-balance">
 						An open source, highly performant, actor-based, agent orchestration framework
