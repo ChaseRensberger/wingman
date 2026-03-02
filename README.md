@@ -28,7 +28,7 @@ Check out the [docs site](https://wingman.actor/docs) for more detailed informat
 
 Frontends that use Wingman.
 
-## WingResearch
+### WingResearch
 
 Example deep research client I built for demo purposes. Showcases formations and fleet execution.
 
@@ -37,3 +37,7 @@ Example deep research client I built for demo purposes. Showcases formations and
     <img src="./resources/assets/wingresearch.png" alt="Wingresearch Picture"/>
 </p>
 
+
+### Other Random Things
+
+[WingNews](news.wingman.actor) - Dark Hacker News reader built with HTMX and Go
