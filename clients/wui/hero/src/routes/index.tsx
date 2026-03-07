@@ -101,7 +101,9 @@ function Hero() {
 					This project is under active development. When you update versions, APIs may change drastically (do not expect backward compatibility).
 				</div>
 					*/}
-				<ASCIILOGO />
+				<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">
+					<ASCIILOGO />
+				</div>
 				<div className="space-y-4">
 					<h2 className="md:text-lg text-muted-foreground leading-relaxed">
 						An open source, highly performant, actor-based, agent orchestration framework
