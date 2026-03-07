@@ -96,11 +96,9 @@ function Hero() {
 				</div>
 			</nav>
 			<section className="flex-1 border-b p-12 space-y-8">
-				{/*
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
-					This project is under active development. When you update versions, APIs may change drastically (do not expect backward compatibility).
+					This project is under active development and not ready for production use.
 				</div>
-					*/}
 				<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">
 					<ASCIILOGO />
 				</div>
