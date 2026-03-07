@@ -111,6 +111,13 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
+			<section className='flex-1 p-12 border-b space-y-4'>
+				<h2>Products</h2>
+				<ul className="list-['[*]'] list-inside ml-4 text-muted-foreground">
+					<li><a className="hover:text-primary" href="https://news.wingman.actor">{" "}WingNews - a minimalist Hacker News reader client</a></li>
+					<li><a className="hover:text-primary" href="https://models.wingman.actor">{" "}WingModels - an open source database of large language model specifications</a></li>
+				</ul >
+			</section >
 			<footer className="px-6 py-2 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
 					Wingman
