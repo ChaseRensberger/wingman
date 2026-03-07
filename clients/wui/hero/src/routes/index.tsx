@@ -95,7 +95,7 @@ function Hero() {
 					<NavLink name="Docs" url={"/docs"} />
 				</div>
 			</nav>
-			<section className="flex-1 border-b p-12 space-y-8">
+			<section className="border-b p-12 space-y-8">
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
 					This project is under active development and not ready for production use.
 				</div>
@@ -109,9 +109,9 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
-			<section className='flex-1 p-12 border-b space-y-4'>
-				<h2>Products</h2>
-				<ul className="list-['[*]'] list-inside ml-4 text-muted-foreground">
+			<section className='h-80 px-12 py-4 border-b space-y-4'>
+				<h2 className='font-extrabold text-lg'>Products</h2>
+				<ul className="list-['[*]'] list-inside text-muted-foreground space-y-2">
 					<li><a className="hover:text-primary" href="https://news.wingman.actor">{" "}WingNews - a minimalist Hacker News reader client</a></li>
 					<li><a className="hover:text-primary" href="https://models.wingman.actor">{" "}WingModels - an open source database of large language model specifications</a></li>
 				</ul >
