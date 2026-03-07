@@ -9,6 +9,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -48,7 +50,6 @@
 }
 
 :root {
-  font-family: "Roboto Mono", monospace, system-ui;
   color-scheme: dark light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
