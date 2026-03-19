@@ -42,7 +42,7 @@ actor/                 Low-level actor system (mailbox-based; advanced/legacy pr
 provider/              Provider registry, interfaces, ProviderMeta
 provider/anthropic/    Anthropic Messages API provider
 provider/ollama/       Ollama chat API provider
-tool/                  Tool interface, Registry, and all 7 built-in tools
+tool/                  Tool interface, Registry, and all 8 built-in tools
 internal/server/       HTTP server, route handlers
 internal/storage/      SQLite store + storage types
 examples/              Runnable examples for every major feature
@@ -187,7 +187,7 @@ Model configuration (temperature, max_tokens, top_p, etc.) flows through a singl
 
 | Key | Anthropic | Ollama |
 |---|---|---|
-| `"model"` | ✅ (default: claude-sonnet-4-5) | ✅ (required) |
+| `"model"` | ✅ (default: claude-haiku-4-5) | ✅ (required) |
 | `"max_tokens"` | ✅ (default: 4096) | ✅ (maps to `num_predict`) |
 | `"temperature"` | ✅ | ✅ |
 | `"api_key"` | ✅ | — |
@@ -466,17 +466,18 @@ GET    /formations/{id}/report
 
 | Tool | Name | What it does |
 |---|---|---|
-| Bash | `"bash"` | Executes shell commands; maintains a persistent shell per session |
+| Bash | `"bash"` | Executes shell commands |
 | Read | `"read"` | Reads a file from disk |
 | Write | `"write"` | Creates or overwrites a file |
 | Edit | `"edit"` | Makes exact string replacements in a file |
 | Glob | `"glob"` | Finds files matching a glob pattern |
 | Grep | `"grep"` | Searches file content with regex |
 | WebFetch | `"webfetch"` | Fetches a URL and returns its content as text/markdown |
+| Perplexity | `"perplexity_search"` | Searches the web via the Perplexity AI API |
 
-All 7 are available both in the SDK (import `tool.NewBashTool()` etc.) and the server (reference by name in the agent's `tools` array).
+All 8 are available both in the SDK (import `tool.NewBashTool()` etc.) and the server (reference by name in the agent's `tools` array).
 
-**Custom tools (SDK only):** Implement `core.Tool` and pass via `agent.WithTools(myTool)`. The server does not support custom tools; it only resolves the 7 built-in names.
+**Custom tools (SDK only):** Implement `core.Tool` and pass via `agent.WithTools(myTool)`. The server does not support custom tools; it only resolves the 8 built-in names.
 
 ---
 
