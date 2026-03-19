@@ -9,6 +9,7 @@ export interface ToolMessage {
 	role: "tool";
 	toolName?: string;
 	status: "running" | "done";
+	output?: string;
 }
 
 export interface StreamEvent {

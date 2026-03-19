@@ -4,6 +4,18 @@ import { MessageInput } from "../components/message-input";
 import { theme } from "../theme";
 
 const syntaxStyle = SyntaxStyle.create();
+const MAX_TOOL_OUTPUT_LINES = 30;
+
+function truncateOutput(output: string): { text: string; truncated: boolean } {
+	const lines = output.split("\n");
+	if (lines.length <= MAX_TOOL_OUTPUT_LINES) {
+		return { text: output, truncated: false };
+	}
+	return {
+		text: lines.slice(0, MAX_TOOL_OUTPUT_LINES).join("\n"),
+		truncated: true,
+	};
+}
 
 export function SessionView() {
 	const session = useSession();
@@ -19,11 +31,24 @@ export function SessionView() {
 					session.messages.map((message, index) => (
 						<box key={index} paddingBottom={1} flexDirection="column">
 						{message.role === "tool" ? (
-							<text fg={message.status === "running" ? theme.primary : theme.textMuted}>
-								<strong>Tool</strong>
-								{message.toolName ? `: ${message.toolName}` : ""}
-								{message.status === "running" ? " (running...)" : ""}
-							</text>
+							<>
+								<text fg={message.status === "running" ? theme.primary : theme.textMuted}>
+									<strong>Tool</strong>
+									{message.toolName ? `: ${message.toolName}` : ""}
+									{message.status === "running" ? " (running...)" : ""}
+								</text>
+								{message.output && message.status === "done" ? (() => {
+									const { text, truncated } = truncateOutput(message.output);
+									return (
+										<box flexDirection="column" paddingLeft={2}>
+											<text fg={theme.textMuted}>{text}</text>
+											{truncated ? (
+												<text fg={theme.textMuted}>{"... (output truncated)"}</text>
+											) : null}
+										</box>
+									);
+								})() : null}
+							</>
 							) : (
 								<>
 									<text fg={message.role === "user" ? theme.primary : theme.text}>

@@ -18,8 +18,8 @@ Always explain what you're doing briefly. Follow existing code conventions.`;
 
 const TOOLS = ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "perplexity_search"];
 const AGENT_NAME = "WingCode";
-const AGENT_PROVIDER = "ollama";
-const AGENT_MODEL = "lfm2";
+const AGENT_PROVIDER = "anthropic";
+const AGENT_MODEL = "claude-sonnet-4-6";
 const AGENT_OPTIONS = { max_tokens: 16384 };
 
 async function main() {

@@ -31,6 +31,18 @@ function buildMessagesFromHistory(history: StoredMessage[]): Message[] {
 				result.push(toolMessage);
 				continue;
 			}
+
+			if (block.type === "tool_result") {
+				// Attach output to the most recent tool message
+				for (let i = result.length - 1; i >= 0; i--) {
+					const existing = result[i];
+					if (existing?.role === "tool" && !existing.output) {
+						existing.output = block.content || "";
+						break;
+					}
+				}
+				continue;
+			}
 		}
 	}
 
