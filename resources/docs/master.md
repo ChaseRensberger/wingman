@@ -5,29 +5,27 @@ draft: false
 order: 0
 ---
 
-
-> Disclaimer: If you are a YC partner reading this, this is the best place to start to see a lot of the design decisions for Wingman laid out cleanly. It is also very similar to Wingman's `SKILL.md`. It will likely be removed/hidden after my interview in favor of the rest of the docs, which have more of a separation of concerns.
+> Disclaimer: If you are a YC partner reading this, this is the best place to start to see a lot of the design decisions for Wingman laid out cleanly. It is also very similar to Wingman's `SKILL.md`. 
 
 # Wingman — Master Reference
 
-This document is an authoritative reference for Wingman's design, architecture, data flow, and many major decisions made during development. It is a living document; I try to update it when anything material changes.
+This document is an (meant to be) an authoritative reference for Wingman's design, architecture, data flow, and many major decisions made during development. It is a living document; I try to update it when anything material changes.
+
+It also is not documentation but more so a sandbox where I make decisions.
 
 ---
 
 ## What Wingman Is
 
-Wingman is a **self-hostable, airgap-friendly agent orchestration engine** written in Go. It can be used two ways:
+Wingman is a **self-hostable, airgap-friendly agent runtime and orchestration engine** written in Go. It can be used two ways:
 
 1. **HTTP server** — run `wingman serve`. Agents, sessions, fleets, and formations are persisted in SQLite. Any HTTP client can talk to it.
 2. **Go SDK** — import the packages directly. Run agents in-process. You own the persistence layer (or skip it entirely).
 
-The two modes are designed to be interchangeable. The same core types describe an agent, a session, and a message regardless of whether they live in memory or in a database.
-
 **Design goals:**
-- Entirely self-contained — no calls to external model/provider registries at runtime.
+- Entirely self-contained — no calls to external model/provider registries at runtime (ships with [WingModels Data](https://models.wingman.actor).
 - Works in airgapped environments.
-- Providers and models are first-class concepts, but capability metadata is left to the user for now (no built-in model database).
-- Composable: agents → sessions → fleets → formations.
+- Composable: providers → agents → sessions → fleets → formations.
 
 ---
 
@@ -57,7 +55,7 @@ resources/docs/        Documentation
 
 ### Why a separate `core` package?
 
-Without it, packages form circular import chains. `session` needs `agent`, `agent` needs `provider`, `provider` needs message types — a `core` package with no dependencies breaks all cycles.
+Without it, packages form circular import chains. `session` needs `agent`, `agent` needs `provider`, `provider` needs message types, etc...
 
 It also gives a single file that explains the entire system's data model at a glance.
 
@@ -120,7 +118,7 @@ Adding a new provider requires:
 1. Writing a package that implements `core.Provider`.
 2. Registering a `ProviderFactory` in `init()` via `provider.Register(ProviderMeta{..., Factory: ...})`.
 
-That's it. The server's `buildProvider` picks up the factory automatically through the default registry — no switch statements to update.
+That's it. The server's `buildProvider` picks up the factory automatically through the default registry — no switch statements to update. This allows for Wingman's provider registry to be as flexible as you need.
 
 ### `provider.ProviderMeta`
 
@@ -147,7 +145,7 @@ p, err := provider.New("anthropic", map[string]any{
 
 This is the same code path the server uses. SDK users who prefer it to the direct constructor can import the provider package as a blank import and call `provider.New`.
 
-### Provider/model split
+### Provider/model split (outdated)
 
 Agent definitions carry two separate string fields — `Provider` and `Model` — not a combined `"provider/model"` string. This distinction matters because:
 
@@ -271,7 +269,7 @@ Both `Run` (blocking) and `RunStream` (streaming) implement the same loop:
 6. Return result.
 ```
 
-There is no hard cap on iterations. If the model keeps requesting tools, the loop continues until either the model stops or the context is cancelled.
+At the moment, there is no hard cap on iterations. If the model keeps requesting tools, the loop continues until either the model stops or the context is cancelled.
 
 ### Tool call ID pairing
 
