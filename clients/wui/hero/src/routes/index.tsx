@@ -103,17 +103,15 @@ function Hero() {
 					<ASCIILOGO />
 				</div>
 				<div className="space-y-4">
-					<h2 className="md:text-lg text-muted-foreground leading-relaxed">
-						An open source, highly performant, actor-based, agent orchestration framework
-					</h2>
 					<InstallSection />
 				</div>
 			</section>
 			<section className='h-80 px-12 py-4 border-b space-y-4'>
 				<h2 className='font-extrabold text-lg'>Products</h2>
 				<ul className="list-['[*]'] list-inside text-muted-foreground space-y-2">
-					<li><a className="hover:text-primary" href="https://news.wingman.actor">{" "}WingNews - a minimalist Hacker News reader client</a></li>
+					<li><a className="hover:text-primary" href="/">{" "}Wingman - A portable agent runtime</a></li>
 					<li><a className="hover:text-primary" href="https://models.wingman.actor">{" "}WingModels - an open source database of large language model specifications</a></li>
+					<li><a className="hover:text-primary" href="https://news.wingman.actor">{" "}WingNews - a minimalist Hacker News reader client</a></li>
 				</ul >
 			</section >
 			<footer className="px-6 py-2 text-center">
