@@ -28,7 +28,7 @@ Wingman is built around a small runtime model:
 
 These pieces are designed to compose cleanly. A provider powers an agent, a session executes that agent, fleets run many sessions in parallel, and formations orchestrate larger workflows across agents and fleets.
 
-## What to read next
+## Next steps
 
 - [Architecture](./architecture) for the system design and runtime model
 - [SDK](./sdk) for embedding Wingman in Go
