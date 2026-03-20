@@ -1,16 +1,38 @@
 ---
 title: "Architecture"
-group: "Wingman"
-draft: true
+group: "Overview"
+draft: false
 order: 2
 ---
+
 # Architecture
 
-## Core primitives
+Wingman is intentionally built from a small number of packages that can be used independently or composed into larger orchestration flows.
 
-### Provider
+## Layered design
 
-A provider is a configured client for a specific model API. It translates Wingman's provider-agnostic types into the provider's wire format and implements a minimal interface:
+At a high level, the system stacks like this:
+
+1. **`core/`** defines the canonical shared types and interfaces.
+2. **Providers** implement inference against specific model backends.
+3. **Agents** bundle configuration such as instructions, tools, and output schema.
+4. **Sessions** run the agentic loop and maintain conversation history.
+5. **Fleets** fan one agent template out across many concurrent tasks.
+6. **Formations** coordinate larger DAG-shaped workflows across agents and fleets.
+
+The HTTP server is a thin persistence and transport layer over those same primitives.
+
+## The `core` package
+
+`core/core.go` is the shared contract for the rest of the system. It defines message types, inference requests and responses, streaming events, tool definitions, and the key interfaces (`Provider`, `Stream`, and `Tool`).
+
+Separating `core` avoids circular imports and gives the rest of the codebase one stable type system to build against.
+
+## Providers
+
+Providers translate Wingman's provider-agnostic `InferenceRequest` into the wire format expected by a backend such as Anthropic or Ollama.
+
+Each provider implements the same minimal interface:
 
 ```go
 type Provider interface {
@@ -19,69 +41,76 @@ type Provider interface {
 }
 ```
 
-Each provider package absorbs backend-specific differences so the rest of the system only speaks core types.
+This keeps the rest of the runtime independent from provider-specific APIs.
 
-In the SDK, providers use a config struct with a generic `Options map[string]any` for inference parameters:
+## Agents
 
-```go
-p, err := anthropic.New(anthropic.Config{
-    Options: map[string]any{
-        "model":      "claude-sonnet-4-5",
-        "max_tokens": 4096,
-    },
-})
-```
+An agent is a reusable configuration bundle. It does not hold conversation state. Instead, it defines how work should be performed:
 
-In the HTTP API, provider configuration is stored on the agent as separate `provider` and `model` fields plus a free-form `options` map. The server resolves credentials from SQLite and builds the provider through the registry at inference time.
+- system instructions
+- provider and model
+- tool set
+- optional output schema
 
-### Agent
+Because agents are stateless templates, the same agent can be reused across many sessions and fleet workers.
 
-An agent is a stateless template: name, instructions (system prompt), tools, optional output schema, and provider + model. The same agent instance can be reused across many sessions.
+## Sessions and the agentic loop
 
-```go
-a := agent.New("Summarizer",
-    agent.WithInstructions("Summarize text concisely."),
-    agent.WithProvider(p),
-)
-```
+A session is where execution happens. It owns message history, optional working directory, and the tool-calling loop.
 
-### Session
+The loop is the same in blocking and streaming modes:
 
-A session is a stateful container that holds conversation history and runs the agentic loop. It takes an agent and an optional working directory, then handles the full cycle: send messages, process tool calls, accumulate history, and repeat until the model produces a final response.
+1. Append the user message to history.
+2. Build an inference request from history, tools, instructions, and schema.
+3. Call the provider.
+4. Append the assistant response.
+5. If the model requested tools, execute them, append tool results, and repeat.
+6. Return the final result when the model stops.
 
-```go
-s := session.New(session.WithAgent(a))
-result, _ := s.Run(ctx, "Summarize this article...")
-```
+This makes the session the main bridge between static agent configuration and live runtime behavior.
 
-### Fleet
+## Fleets
 
-A fleet runs one agent across many tasks concurrently with bounded workers. Each task carries its own message and can optionally override work directory and instructions.
+Fleets are Wingman's primary fan-out primitive. A fleet takes one agent template and a list of tasks, then runs those tasks concurrently with optional worker limits.
 
-```go
-f := fleet.New(fleet.Config{
-    Agent: a,
-    Tasks: []fleet.Task{
-        {Message: "Analyze auth module"},
-        {Message: "Analyze API module"},
-    },
-    MaxWorkers: 2,
-})
-results, _ := f.Run(ctx)
-```
+Each task can override:
 
-### Formation
+- `message`
+- `work_dir`
+- `instructions`
+- `data`
 
-A formation is a declarative DAG of nodes (`agent`, `fleet`, `join`) connected by edges that map outputs to downstream inputs. Definitions are persisted; runs are executed ephemerally through the server runtime.
+This makes fleets useful for parallel exploration, batch analysis, and map-reduce style agent workflows.
 
-Formations compose the lower-level primitives: agent execution, session loops, and fleet fan-out.
+## Formations
 
-## Actor system
+Formations are a declarative DAG runtime exposed by the server. They persist workflow definitions, then execute runs ephemerally on demand.
 
-Wingman includes a lightweight actor system (`actor/`) for concurrent execution. An `AgentActor` wraps an agent, receives work messages, creates a session, runs inference, and sends results to a collector. The higher-level `fleet/` package is the recommended fan-out API; the actor system remains a lower-level/advanced primitive for compatibility and custom orchestration patterns.
+Current node kinds are:
 
-This system is intentionally simple — no supervision trees, no mailbox persistence, no distributed actors. It provides clean concurrency semantics (message passing, no shared state) without requiring a full framework.
+- `agent`
+- `fleet`
+- `join`
+
+Edges map structured outputs from one node into the inputs of downstream nodes. In practice, formations sit above agents, sessions, and fleets and orchestrate them into larger workflows.
 
 ## HTTP server
 
-The server is a thin layer over the same primitives the SDK exposes. It adds SQLite persistence for agents, sessions, fleets, and formations, plus an auth store for provider credentials. When a message arrives, the server loads the agent from the database, constructs a provider from the agent's config and stored credentials, builds a session with the persisted history, and runs the agent loop — the same flow as the SDK, just with persistence and HTTP transport on top.
+The server does not introduce a separate execution model. It persists definitions in SQLite, reconstructs live runtime objects at request time, and executes the same primitives the SDK exposes.
+
+For example, when a session message arrives the server:
+
+1. loads the stored session history
+2. loads the referenced agent definition
+3. reconstructs the provider from `provider`, `model`, and `options`
+4. injects any stored provider credentials
+5. runs the session loop
+6. persists the updated history back to SQLite
+
+The same pattern applies to fleets and formations: persisted configuration, ephemeral execution.
+
+## Actor system
+
+Wingman also includes a lightweight actor system in `actor/`. It remains available for lower-level concurrency and compatibility with older flows, but it is no longer the main mental model for most users.
+
+If you are building new orchestration on Wingman, start with `agent`, `session`, `fleet`, and `formation` concepts first.

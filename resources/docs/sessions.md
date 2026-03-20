@@ -1,53 +1,91 @@
 ---
 title: "Sessions"
-group: "Primitives"
-draft: true
+group: "Concepts"
+draft: false
 order: 102
 ---
-# Session
 
-A session is a stateful container that maintains conversation history and executes the agentic loop. The agent (and its provider) define what model to use and how to run inference — the session just manages state and execution.
+# Sessions
+
+A session is the stateful execution context for an agent. It owns conversation history, optional working directory, and the tool-calling loop.
+
+## What a session does
+
+When you call `Run` or `RunStream`, the session:
+
+1. appends the user message to history
+2. builds an inference request from history, instructions, tools, and output schema
+3. calls the provider
+4. appends the assistant response
+5. executes any requested tools and appends tool results
+6. repeats until the model returns a final answer
 
 ## SDK
 
 ```go
 s := session.New(
     session.WithAgent(a),
-    session.WithWorkDir("/path/to/workdir"),
+    session.WithWorkDir("/path/to/project"),
 )
 
-result, err := s.Run(ctx, "Your message")
+result, err := s.Run(ctx, "Explain this codebase")
 ```
 
-The `Run` method executes the agent loop: it sends the message, handles tool calls, and continues until the model produces a final response or the context is cancelled.
+Keep the same `*session.Session` alive if you want multi-turn context.
 
-## Server
+## Blocking result
 
+Blocking execution returns a `Result` with:
+
+- final response text
+- all tool calls made across the run
+- aggregate token usage
+- number of inference steps
+
+## Streaming
+
+`RunStream` emits incremental events while the agent loop is running.
+
+```go
+stream, err := s.RunStream(ctx, "Write a Go HTTP server")
+if err != nil {
+    log.Fatal(err)
+}
+
+for stream.Next() {
+    event := stream.Event()
+    if event.Type == core.EventTextDelta {
+        fmt.Print(event.Text)
+    }
+}
 ```
-POST   /sessions              # Create session
-GET    /sessions              # List sessions
-GET    /sessions/{id}         # Get session
-PUT    /sessions/{id}         # Update session
-DELETE /sessions/{id}         # Delete session
-POST   /sessions/{id}/message        # Send message (blocking)
-POST   /sessions/{id}/message/stream # Send message (streaming SSE)
+
+## Server behavior
+
+The server persists session history in SQLite, but execution remains ephemeral. On each message request, the server rebuilds a fresh `session.Session`, replays stored history into it, runs the loop, and persists the updated history back to storage.
+
+```text
+POST   /sessions
+GET    /sessions
+GET    /sessions/{id}
+PUT    /sessions/{id}
+DELETE /sessions/{id}
+POST   /sessions/{id}/message
+POST   /sessions/{id}/message/stream
 ```
 
-On every message, the server reconstructs a `session.Session` from the stored history, runs inference, then persists the updated history back to SQLite.
+### Create a session
 
 ```bash
-# Create a session
-curl -X POST http://localhost:2323/sessions \
+curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
   -d '{"work_dir": "/path/to/project"}'
 ```
 
-### Send a message (blocking)
-
-Runs the agent loop and returns the full result when complete.
+### Send a message
 
 ```bash
-curl -X POST http://localhost:2323/sessions/01XYZ.../message \
+curl -sS -X POST http://localhost:2323/sessions/01XYZ.../message \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "01ABC...",
@@ -55,22 +93,7 @@ curl -X POST http://localhost:2323/sessions/01XYZ.../message \
   }'
 ```
 
-**Response:**
-```json
-{
-  "response": "Here are the files in the directory...",
-  "tool_calls": [],
-  "usage": {
-    "input_tokens": 120,
-    "output_tokens": 240
-  },
-  "steps": 1
-}
-```
-
-### Send a message (streaming)
-
-Streams events as SSE. Use `Accept: text/event-stream` and `-N` to disable curl buffering.
+### Stream a message
 
 ```bash
 curl -N -X POST http://localhost:2323/sessions/01XYZ.../message/stream \
@@ -82,19 +105,4 @@ curl -N -X POST http://localhost:2323/sessions/01XYZ.../message/stream \
   }'
 ```
 
-**Event stream:**
-```text
-event: text_delta
-data: {"type":"text_delta","text":"Hello ","index":0}
-
-event: text_delta
-data: {"type":"text_delta","text":"world","index":0}
-
-event: message_stop
-data: {"type":"message_stop"}
-
-event: done
-data: {"usage":{"input_tokens":120,"output_tokens":240},"steps":1}
-```
-
-Event types: `message_start`, `content_block_start`, `text_delta`, `input_json_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`, `error`, `done`
+Streaming responses are sent as SSE `StreamEvent` payloads followed by a final `done` event.

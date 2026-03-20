@@ -1,12 +1,23 @@
 ---
 title: "Agents"
-group: "Primitives"
+group: "Concepts"
+draft: false
 order: 101
-draft: true
 ---
+
 # Agents
 
-The word agent gets thrown around a lot these days and it is possible this gets renamed at some point but at least in Wingman, an **Agent** is stateless template that defines *how* to process some unit of work.
+An agent is a reusable configuration bundle that defines how Wingman should perform a unit of work. Agents are intentionally stateless: they do not own conversation history and they do not execute on their own.
+
+An agent typically includes:
+
+- a name
+- system instructions
+- a provider and model
+- a set of tools
+- an optional output schema
+
+Sessions and fleets execute agents; the agent itself is the template.
 
 ## SDK
 
@@ -18,85 +29,65 @@ p, err := anthropic.New(anthropic.Config{
     },
 })
 
-a := agent.New("AgentName",
-    agent.WithInstructions("System prompt"),
+a := agent.New("CodeAssistant",
+    agent.WithInstructions("You are a practical coding assistant."),
     agent.WithProvider(p),
-    agent.WithTools(tool.NewBashTool(), tool.NewReadTool()),
-    agent.WithOutputSchema(map[string]any{"type": "object", ...}),
+    agent.WithTools(tool.NewBashTool(), tool.NewReadTool(), tool.NewEditTool()),
+    agent.WithOutputSchema(map[string]any{"type": "object"}),
 )
 ```
 
 ## Server
 
+The server persists agent definitions in SQLite and reconstructs live agent instances when they are used.
+
+```text
+POST   /agents
+GET    /agents
+GET    /agents/{id}
+PUT    /agents/{id}
+DELETE /agents/{id}
 ```
-POST   /agents      # Create agent
-GET    /agents      # List agents
-GET    /agents/{id} # Get agent
-PUT    /agents/{id} # Update agent
-DELETE /agents/{id} # Delete agent
-```
 
-### Create
-
-Use `provider` and `model` as separate fields. Use `options` for inference configuration — it is a free-form map of keys supported by the provider.
-
-**Options map (SDK):**
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `model` | string | Model identifier |
-| `max_tokens` | number | Maximum tokens to generate |
-| `temperature` | number | Sampling temperature |
-
-**Provider-specific options:**
-
-| Key | Provider | Description |
-|-----|----------|-------------|
-| `base_url` | ollama | Custom Ollama server URL (default: `http://localhost:11434`) |
-| `api_key` | anthropic | SDK only; server reads from `/provider/auth` |
+### Create an agent
 
 ```bash
-curl -X POST http://localhost:2323/agents \
+curl -sS -X POST http://localhost:2323/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "CodeAssistant",
-    "instructions": "You are a helpful coding assistant.",
+    "instructions": "You are a practical coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
     "provider": "anthropic",
     "model": "claude-sonnet-4-5",
     "options": {
-      "max_tokens": 4096
+      "max_tokens": 4096,
+      "temperature": 0.2
     }
   }'
 ```
 
-```bash
-# Ollama with a custom server URL
-curl -X POST http://localhost:2323/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "LocalAgent",
-    "instructions": "Be helpful",
-    "provider": "ollama",
-    "model": "llama3.2",
-    "options": {
-      "base_url": "http://my-ollama-host:11434"
-    }
-  }'
-```
+## Agent fields
 
-Specify built-in tools by name. See [Tools](./tools) for the full list.
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Required display name |
+| `provider` | string | Provider ID such as `anthropic` |
+| `model` | string | Model ID such as `claude-sonnet-4-5` |
+| `options` | object | Provider-specific inference settings |
+| `instructions` | string | System prompt sent on each inference call |
+| `tools` | string[] | Built-in server tool names |
+| `output_schema` | object | Optional JSON Schema for structured output |
 
-### Update
+## Update behavior
 
-`PUT /agents/{id}` accepts the same fields as create; omitted fields are left unchanged.
+`PUT /agents/{id}` accepts the same fields as create. Omitted fields are left unchanged.
 
 ```bash
-curl -X PUT http://localhost:2323/agents/01ABC... \
+curl -sS -X PUT http://localhost:2323/agents/01ABC... \
   -H "Content-Type: application/json" \
   -d '{
     "instructions": "You are a fast, practical coding assistant.",
     "tools": ["bash", "read", "edit", "glob", "grep"]
   }'
-```
 ```

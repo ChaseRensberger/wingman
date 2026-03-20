@@ -1,18 +1,15 @@
 ---
 title: "Server"
 group: "Usage"
-draft: true
-order: 10
+draft: false
+order: 11
 ---
+
 # Server
 
-The HTTP server is one way to use Wingman. Unlike [the SDK](./sdk), it includes SQLite-backed persistence for agents, sessions, and fleets.
+`wingman serve` exposes the same runtime primitives as the SDK over HTTP and adds SQLite-backed persistence for agents, sessions, fleets, formations, and provider credentials.
 
-## Installation
-
-See the project README for installation instructions.
-
-## Starting the Server
+## Start the server
 
 ```bash
 wingman serve
@@ -21,104 +18,91 @@ wingman serve
 ## Flags
 
 | Flag | Default | Description |
-|------|---------|-------------|
-| `--port` | 2323 | Port to listen on |
-| `--host` | 127.0.0.1 | Host to bind to |
-| `--db` | ~/.local/share/wingman/wingman.db | Database path |
+|---|---|---|
+| `--host` | `127.0.0.1` | Host interface to bind |
+| `--port` | `2323` | Port to listen on |
+| `--db` | `~/.local/share/wingman/wingman.db` | SQLite database path |
 
-## Authentication
+## What the server adds
 
-Before making inference requests, configure your provider API keys:
+Compared with the SDK, the server provides:
 
-The server reads credentials only from its SQLite auth store (not environment variables).
+- persisted agents, sessions, fleets, and formations
+- provider credential management in SQLite
+- JSON APIs for every runtime primitive
+- SSE endpoints for streaming session, fleet, and formation execution
+
+## Provider auth
+
+The server reads provider credentials from its SQLite auth store. It does not resolve API keys from environment variables during request handling.
 
 ```bash
-curl -X PUT http://localhost:2323/provider/auth \
+curl -sS -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
   -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 ```
 
-## Streaming
+## Persistence model
 
-For streaming responses, use the `/message/stream` endpoint. Events are sent as SSE:
+The server persists definitions and history, then reconstructs live runtime objects on demand.
+
+- **Agents** are stored as configuration records.
+- **Sessions** persist `work_dir` and message history.
+- **Fleets** persist a template configuration and accept tasks at run time.
+- **Formations** persist workflow definitions and execute runs ephemerally.
+
+For example, when you post a message to a session, the server rebuilds a `session.Session`, replays history into it, runs the agent loop, and writes the updated history back to SQLite.
+
+## Streaming behavior
+
+Streaming endpoints use Server-Sent Events.
+
+- `POST /sessions/{id}/message/stream`
+- `POST /fleets/{id}/run/stream`
+- `POST /formations/{id}/run/stream`
+
+The standard 60 second request timeout is bypassed for these streaming paths.
+
+## Typical workflow
 
 ```bash
-curl -X POST http://localhost:2323/sessions/{id}/message/stream \
+# 1. Configure provider auth
+curl -sS -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
-  -d '{"agent_id": "01ABC...", "message": "Hello"}'
-```
-
-Events: `message_start`, `content_block_start`, `text_delta`, `input_json_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`, `error`, `done`
-
-## Example Workflow
-
-```bash
-# 1. Configure auth
-curl -X PUT http://localhost:2323/provider/auth \
   -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 
 # 2. Create an agent
-curl -X POST http://localhost:2323/agents \
+curl -sS -X POST http://localhost:2323/agents \
+  -H "Content-Type: application/json" \
   -d '{
     "name": "Assistant",
-    "instructions": "Be helpful",
-    "tools": ["bash"],
+    "instructions": "Be helpful and concise.",
+    "tools": ["bash", "read", "write"],
     "provider": "anthropic",
     "model": "claude-sonnet-4-5",
-    "options": {
-      "max_tokens": 4096
-    }
+    "options": {"max_tokens": 4096}
   }'
 
 # 3. Create a session
-curl -X POST http://localhost:2323/sessions \
+curl -sS -X POST http://localhost:2323/sessions \
+  -H "Content-Type: application/json" \
   -d '{"work_dir": "/tmp"}'
 
-# 4. Send messages
-curl -X POST http://localhost:2323/sessions/01XYZ.../message \
+# 4. Send a message
+curl -sS -X POST http://localhost:2323/sessions/01XYZ.../message \
+  -H "Content-Type: application/json" \
   -d '{"agent_id": "01ABC...", "message": "What OS am I on?"}'
 ```
 
----
+## Route families
 
-## Routes
+| Resource | Purpose |
+|---|---|
+| `/health` | Health check |
+| `/provider` | Provider registry, auth, and model metadata |
+| `/agents` | Agent CRUD |
+| `/sessions` | Session CRUD and message execution |
+| `/fleets` | Fleet CRUD and fan-out execution |
+| `/formations` | Formation CRUD, export, execution, and report retrieval |
 
-### Health
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-
-### Provider
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/provider` | List all available providers from wingman registry |
-| `GET` | `/provider/auth` | Get authentication status for configured providers |
-| `PUT` | `/provider/auth` | Set provider authentication credential(s) |
-| `DELETE` | `/provider/auth/{provider}` | Remove authentication for a provider |
-| `GET` | `/provider/{name}` | Get provider details |
-| `GET` | `/provider/{name}/models` | List all models for a provider |
-| `GET` | `/provider/{name}/models/{model}` | Get details for a specific model |
-
-### Agents
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/agents` | Create a new agent |
-| `GET` | `/agents` | List all agents |
-| `GET` | `/agents/{id}` | Get an agent by ID |
-| `PUT` | `/agents/{id}` | Update an agent |
-| `DELETE` | `/agents/{id}` | Delete an agent |
-
-### Sessions
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/sessions` | Create a new session |
-| `GET` | `/sessions` | List all sessions |
-| `GET` | `/sessions/{id}` | Get a session by ID |
-| `PUT` | `/sessions/{id}` | Update a session |
-| `DELETE` | `/sessions/{id}` | Delete a session |
-| `POST` | `/sessions/{id}/message` | Send a message and get a response |
-| `POST` | `/sessions/{id}/message/stream` | Send a message and stream the response (SSE) |
+See [API](./api) for endpoint-level details.

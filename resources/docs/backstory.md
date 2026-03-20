@@ -4,10 +4,13 @@ group: "Extra"
 draft: true
 order: 10000
 ---
+
 # Backstory
 
-I got the idea for Wingman in May 2025 while playing with [OpenCode](https://opencode.ai). I liked OpenCode's approach to agents — specifically the client/server relationship between the TUI frontend and the agentic backend. If you come from the web application world, this idea is nothing to write home about. Still, I couldn't help but feel like composing agents over HTTP was interesting enough to pursue.
+Wingman started as an attempt to separate agent orchestration from any single client experience.
 
-"So how is this different from OpenCode's server?" The short answer is fewer features. The slightly longer answer is that Wingman is opinionated about the relationships between providers, agents, and sessions — and introduces two additional primitives, fleets and formations — while being written in Go to take advantage of the language's built-in concurrency for running agents in parallel.
+The original inspiration came from working with [OpenCode](https://opencode.ai) and liking the split between an interactive client and an agentic backend. That general shape is familiar in web systems, but it felt especially useful for LLM workflows where you may want multiple frontends, multiple execution environments, and a runtime that can be reused outside one product.
 
-I also found OpenCode's server to be well-suited for their specific use case (powering a great agentic coding application) but not particularly flexible if you're trying to adapt it for something else. Wingman is meant to be that more general-purpose layer.
+Wingman takes that idea in a more opinionated direction. It focuses on explicit relationships between providers, agents, and sessions, then adds fleets and formations as first-class orchestration primitives. Writing it in Go also made it natural to lean into concurrency as a core part of the design.
+
+The goal is not to compete on surface-area or to reproduce every feature from other agent systems. The goal is to provide a small, composable runtime that can be self-hosted, embedded, and adapted to different workflows.

@@ -1,21 +1,49 @@
 ---
 title: "Providers"
-group: "Primitives"
-draft: true
+group: "Concepts"
+draft: false
 order: 100
 ---
 
 # Providers
 
-Providers translate Wingman's provider-agnostic request/response types into the wire format expected by a specific model API. Each provider package implements `core.Provider` and is registered in the provider registry.
+Providers are Wingman's abstraction over model backends. A provider turns a generic `core.InferenceRequest` into the wire format expected by a specific API and returns a generic `core.InferenceResponse` back to the runtime.
 
-## SDK
+## Interface
 
-In the SDK, a provider is a typed instance that knows how to connect to a specific API and how to configure inference. Each provider package exports a `Config` struct with a provider-specific field for auth/connection and a generic `Options map[string]any` for inference parameters.
+Every provider implements the same two methods:
 
 ```go
-import "github.com/chaserensberger/wingman/provider/anthropic"
+type Provider interface {
+    RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error)
+    StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error)
+}
+```
 
+This lets the rest of Wingman stay provider-agnostic.
+
+## Provider and model are separate
+
+Wingman stores `provider` and `model` as separate fields rather than a combined string. That distinction matters because the same model family can be exposed through different providers with different auth, limits, or capabilities.
+
+In practice, an agent definition looks like this:
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "options": {
+    "max_tokens": 4096,
+    "temperature": 0.2
+  }
+}
+```
+
+## SDK usage
+
+Most SDK users construct providers directly from provider packages.
+
+```go
 p, err := anthropic.New(anthropic.Config{
     Options: map[string]any{
         "model":      "claude-sonnet-4-5",
@@ -25,8 +53,6 @@ p, err := anthropic.New(anthropic.Config{
 ```
 
 ```go
-import "github.com/chaserensberger/wingman/provider/ollama"
-
 p, err := ollama.New(ollama.Config{
     Options: map[string]any{
         "model":    "llama3.2",
@@ -35,7 +61,7 @@ p, err := ollama.New(ollama.Config{
 })
 ```
 
-You can also use the registry factory, which is the same path the server uses:
+You can also use the registry factory path:
 
 ```go
 import _ "github.com/chaserensberger/wingman/provider/anthropic"
@@ -44,50 +70,37 @@ import "github.com/chaserensberger/wingman/provider"
 p, err := provider.New("anthropic", map[string]any{
     "model":      "claude-opus-4-6",
     "max_tokens": 4096,
-    "api_key":    os.Getenv("ANTHROPIC_API_KEY"),
+    "api_key":    "sk-...",
 })
 ```
 
-The provider is then attached to an agent:
+## The `options` map
 
-```go
-a := agent.New("MyAgent",
-    agent.WithProvider(p),
-    agent.WithInstructions("..."),
-)
-```
+Inference settings flow through a free-form `options` map. This keeps provider-specific parameters out of Wingman's core type system.
 
-## Server
+Common keys include:
 
-On the server side, provider configuration lives on the agent as separate `provider` and `model` fields plus a free-form `options` map. Auth credentials are managed in SQLite and injected at inference time.
+| Key | Anthropic | Ollama |
+|---|---|---|
+| `model` | required by provider config | required by provider config |
+| `max_tokens` | supported | maps to `num_predict` |
+| `temperature` | supported | supported |
+| `api_key` | SDK convenience | not used |
+| `base_url` | not used | supported |
 
-The server does not read credentials from environment variables; only the SQLite auth store is used.
+## Server behavior
 
-### Provider Discovery
+On the server, providers are rebuilt at request time from the agent's `provider`, `model`, and `options` fields. Credentials are loaded from the SQLite auth store and injected before the provider factory is called.
 
-```
-GET    /provider                    # List all providers
-GET    /provider/{id}               # Get provider info
-GET    /provider/{id}/models        # List available models (from models.dev, cached 1hr)
-GET    /provider/{id}/models/{model}# Get model details
-```
+The server does not read provider credentials from environment variables.
 
-### Auth Management
+## Provider metadata endpoints
 
-```
-GET    /provider/auth               # Check auth status
-PUT    /provider/auth               # Set provider credentials
-DELETE /provider/auth/{provider}    # Remove provider credentials
-```
+The server exposes provider metadata and model lookup routes:
 
-```bash
-curl -X PUT http://localhost:2323/provider/auth \
-  -H "Content-Type: application/json" \
-  -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
-```
+- `GET /provider`
+- `GET /provider/{id}`
+- `GET /provider/{id}/models`
+- `GET /provider/{id}/models/{model}`
 
-### Provider Config on Agents
-
-Agents reference a provider via separate `provider` and `model` fields. The server reads credentials from SQLite and injects them into the provider factory.
-
-See [Agents](./agents) for request and response examples.
+Model metadata is fetched from `models.dev` and cached by the server. That lookup path is useful for discovery, but it is separate from the core inference runtime.

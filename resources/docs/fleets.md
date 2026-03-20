@@ -1,13 +1,34 @@
 ---
 title: "Fleets"
-group: "Primitives"
-draft: true
-order: 104
+group: "Concepts"
+draft: false
+order: 103
 ---
 
 # Fleets
 
-A fleet is a concurrent fan-out primitive: one agent, many tasks, bounded workers. Use it when you want to run the same agent workflow across a batch of inputs in parallel.
+Fleets are Wingman's high-level concurrency primitive. A fleet takes one agent template and runs it across many tasks in parallel.
+
+Use a fleet when you want to fan one workflow out over a batch of inputs such as directories, documents, repositories, or research topics.
+
+## Task model
+
+Each task can supply:
+
+- `message` - required prompt for that worker
+- `work_dir` - optional working directory override
+- `instructions` - optional system prompt override
+- `data` - arbitrary passthrough metadata returned with the result
+
+If `instructions` is set, Wingman creates an agent copy for that task that shares the provider, tools, and schema while swapping only the instructions.
+
+## Concurrency
+
+`MaxWorkers` bounds concurrent execution.
+
+- `0` means unbounded concurrency
+- positive values limit the number of active workers
+- excess tasks queue until a worker is free
 
 ## SDK
 
@@ -27,26 +48,40 @@ if err != nil {
 }
 ```
 
-Each task can override `work_dir` and `instructions`. Results include `task_index`, `worker_name`, optional `error`, and passthrough `data`.
+## Streaming
+
+Fleet execution is also available in streaming mode so results can be processed as workers finish.
+
+```go
+fs, err := f.RunStream(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+for fs.Next() {
+    r := fs.Result()
+    fmt.Printf("worker %s done: %s\n", r.WorkerName, r.Result.Response)
+}
+```
 
 ## Server
 
-Fleet definitions are persisted in SQLite and reference an `agent_id`. You provide tasks at run time.
+Fleet definitions are persisted in SQLite and reference an `agent_id`. Tasks are provided when the fleet is run.
 
-```
-POST   /fleets               # Create fleet
-GET    /fleets               # List fleets
-GET    /fleets/{id}          # Get fleet
-PUT    /fleets/{id}          # Update fleet
-DELETE /fleets/{id}          # Delete fleet
-POST   /fleets/{id}/run      # Run fleet (blocking)
-POST   /fleets/{id}/run/stream # Run fleet (SSE)
+```text
+POST   /fleets
+GET    /fleets
+GET    /fleets/{id}
+PUT    /fleets/{id}
+DELETE /fleets/{id}
+POST   /fleets/{id}/run
+POST   /fleets/{id}/run/stream
 ```
 
-### Create
+### Create a fleet
 
 ```bash
-curl -X POST http://localhost:2323/fleets \
+curl -sS -X POST http://localhost:2323/fleets \
   -H "Content-Type: application/json" \
   -d '{
     "name": "CodebaseSweep",
@@ -56,10 +91,10 @@ curl -X POST http://localhost:2323/fleets \
   }'
 ```
 
-### Run (blocking)
+### Run a fleet
 
 ```bash
-curl -X POST http://localhost:2323/fleets/01FLEET.../run \
+curl -sS -X POST http://localhost:2323/fleets/01FLEET.../run \
   -H "Content-Type: application/json" \
   -d '{
     "tasks": [
@@ -69,6 +104,4 @@ curl -X POST http://localhost:2323/fleets/01FLEET.../run \
   }'
 ```
 
-### Run (streaming)
-
-`POST /fleets/{id}/run/stream` emits one `event: result` per completed task, then `event: done`.
+`POST /fleets/{id}/run/stream` emits one `result` event per completed worker followed by `done`.

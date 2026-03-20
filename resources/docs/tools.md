@@ -1,46 +1,48 @@
 ---
 title: "Tools"
-group: "Primitives"
-draft: true
-order: 103
+group: "Concepts"
+draft: false
+order: 105
 ---
 
 # Tools
 
-Tools are capabilities that agents can invoke during execution. Not all models support tools.
+Tools are capabilities that an agent can invoke while a session is running. They let the model interact with the local filesystem, shell, or external web resources.
 
-| Tool | Description |
-|------|-------------|
-| `bash` | Execute shell commands (2min default timeout) |
-| `read` | Read file contents |
-| `write` | Write/overwrite files |
-| `edit` | Find and replace in files |
-| `glob` | Find files by pattern |
-| `grep` | Search file contents with regex |
-| `webfetch` | Fetch URL contents |
+## Built-in tools
 
-## Usage
+Wingman currently ships with eight built-in tools:
 
-### HTTP Server
+| Tool | Name | Purpose |
+|---|---|---|
+| Bash | `bash` | Execute shell commands |
+| Read | `read` | Read files from disk |
+| Write | `write` | Create or overwrite files |
+| Edit | `edit` | Make exact string replacements in files |
+| Glob | `glob` | Find files by glob pattern |
+| Grep | `grep` | Search file contents with regex |
+| WebFetch | `webfetch` | Fetch URL content as text or markdown |
+| Perplexity | `perplexity_search` | Search the web through Perplexity |
 
-Specify tools by name when creating an agent:
+## Server usage
+
+On the server, agents reference built-in tools by name.
 
 ```bash
-curl -X POST http://localhost:2323/agents \
+curl -sS -X POST http://localhost:2323/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "CodeAssistant",
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
     "provider": "anthropic",
-    "model": "claude-sonnet-4-5",
-    "options": {
-      "max_tokens": 4096
-    }
+    "model": "claude-sonnet-4-5"
   }'
 ```
 
-### Go SDK
+## SDK usage
+
+In the SDK, built-in tools are created with constructors from `tool/`.
 
 ```go
 agent.New("MyAgent",
@@ -52,13 +54,14 @@ agent.New("MyAgent",
         tool.NewGlobTool(),
         tool.NewGrepTool(),
         tool.NewWebFetchTool(),
+        tool.NewPerplexityTool(),
     ),
 )
 ```
 
-## Custom Tools
+## Custom tools
 
-Implement the `Tool` interface (SDK only). The server only resolves the 7 built-in tools by name.
+Custom tools are supported in the SDK by implementing `core.Tool`.
 
 ```go
 type Tool interface {
@@ -68,3 +71,5 @@ type Tool interface {
     Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
 }
 ```
+
+The HTTP server only resolves the built-in tool names.

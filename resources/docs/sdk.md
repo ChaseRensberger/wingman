@@ -1,12 +1,13 @@
 ---
 title: "SDK"
 group: "Usage"
-draft: true
-order: 11
+draft: false
+order: 10
 ---
+
 # SDK
 
-If you want more fine-grained control over messages, storage, or anything else that the built-in server handles for you, the Go SDK provides direct access to Wingman's primitives.
+Use the Go SDK when you want direct access to Wingman's runtime primitives inside your own application.
 
 ## Installation
 
@@ -14,7 +15,7 @@ If you want more fine-grained control over messages, storage, or anything else t
 go get github.com/chaserensberger/wingman
 ```
 
-## Example
+## Minimal example
 
 ```go
 package main
@@ -33,7 +34,7 @@ import (
 )
 
 func main() {
-    godotenv.Load(".env.local")
+    _ = godotenv.Load(".env.local")
 
     p, err := anthropic.New(anthropic.Config{
         Options: map[string]any{
@@ -61,84 +62,75 @@ func main() {
 }
 ```
 
-## Core Primitives
+## Build from primitives
 
-### Provider
+The typical SDK flow is:
 
-Each provider has a `Config` with a provider-specific field for auth/connection and a generic `Options map[string]any` for inference parameters — using the same key names as the HTTP API.
+1. construct a provider
+2. create an agent
+3. attach tools and optional output schema
+4. create a session or fleet
+5. run work with your own lifecycle and persistence decisions
+
+The focused snippets below omit package imports unless they are relevant to the example.
+
+## Providers
+
+Provider packages expose typed constructors and accept a free-form `Options map[string]any` for inference settings.
 
 ```go
 p, err := anthropic.New(anthropic.Config{
-    APIKey: "sk-...", // optional; defaults to ANTHROPIC_API_KEY env var
+    APIKey: "sk-...",
     Options: map[string]any{
         "model":      "claude-sonnet-4-5",
         "max_tokens": 4096,
+        "temperature": 0.2,
     },
 })
+```
 
-a := agent.New("MyAgent",
-    agent.WithProvider(p),
-    agent.WithInstructions("..."),
+If you prefer the registry path used by the server, blank-import a provider and construct it by ID:
+
+```go
+import _ "github.com/chaserensberger/wingman/provider/anthropic"
+import "github.com/chaserensberger/wingman/provider"
+
+p, err := provider.New("anthropic", map[string]any{
+    "model":      "claude-opus-4-6",
+    "max_tokens": 4096,
+    "api_key":    "sk-...",
+})
+```
+
+## Sessions
+
+Sessions are ephemeral in the SDK. Keep a `*session.Session` alive if you want multi-turn context.
+
+```go
+s := session.New(session.WithAgent(a))
+
+result1, _ := s.Run(ctx, "What is 2 + 2?")
+result2, _ := s.Run(ctx, "Multiply that by 10")
+
+_ = result1
+_ = result2
+```
+
+You can also set a working directory for tool execution:
+
+```go
+s := session.New(
+    session.WithAgent(a),
+    session.WithWorkDir("/path/to/project"),
 )
-```
-
-```go
-p, err := ollama.New(ollama.Config{
-    Options: map[string]any{
-        "model":    "llama3.2",
-        "base_url": "http://localhost:11434",
-    },
-})
-```
-
-### Tools
-
-See [Tools](./tools) for the full list of built-in tools and the `Tool` interface for custom tools.
-
-```go
-agent.New("MyAgent",
-    agent.WithTools(
-        tool.NewBashTool(),
-        tool.NewReadTool(),
-    ),
-)
-```
-
-## Fleet (Concurrent Execution)
-
-Run multiple tasks concurrently:
-
-```go
-f := fleet.New(fleet.Config{
-    Agent: a,
-    Tasks: []fleet.Task{
-        {Message: "Task 1", WorkDir: "/dir1"},
-        {Message: "Task 2", WorkDir: "/dir2"},
-        {Message: "Task 3", WorkDir: "/dir3"},
-    },
-    MaxWorkers: 2,
-})
-
-ctx := context.Background()
-results, err := f.Run(ctx)
-if err != nil {
-    log.Fatal(err)
-}
-for _, r := range results {
-    if r.Error != nil {
-        log.Printf("Task %d failed: %v", r.TaskIndex, r.Error)
-    } else {
-        log.Printf("Task %d: %s", r.TaskIndex, r.Result.Response)
-    }
-}
 ```
 
 ## Streaming
 
-For streaming responses:
+Use `RunStream` when you want incremental events rather than waiting for the final response.
 
 ```go
-stream, err := s.RunStream(ctx, "Your message")
+stream, err := s.RunStream(ctx, "Tell me a story")
 if err != nil {
     log.Fatal(err)
 }
@@ -153,15 +145,41 @@ for stream.Next() {
 if err := stream.Err(); err != nil {
     log.Fatal(err)
 }
+
+result := stream.Result()
+_ = result
 ```
 
-## Result Structure
+## Fleets
+
+Use fleets when you want one agent template to handle many tasks concurrently.
 
 ```go
-type Result struct {
-    Response  string           // Final text response
-    ToolCalls []ToolCallResult // All tool calls made
-    Usage     core.Usage       // Token usage (InputTokens, OutputTokens)
-    Steps     int              // Number of inference steps
+f := fleet.New(fleet.Config{
+    Agent: a,
+    Tasks: []fleet.Task{
+        {Message: "Analyze auth module", WorkDir: "/src/auth", Data: "auth"},
+        {Message: "Analyze API module", WorkDir: "/src/api", Data: "api"},
+    },
+    MaxWorkers: 2,
+})
+
+results, err := f.Run(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, r := range results {
+    if r.Error != nil {
+        log.Printf("task %d failed: %v", r.TaskIndex, r.Error)
+        continue
+    }
+    log.Printf("task %d: %s", r.TaskIndex, r.Result.Response)
 }
 ```
+
+## Tools
+
+Built-in tools are available in the SDK as constructors in `tool/`, and custom tools are supported by implementing `core.Tool`.
+
+See [Tools](./tools) for the built-in list and the custom-tool interface.
