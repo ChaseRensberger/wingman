@@ -9,7 +9,7 @@ order: 1
 
 > Disclaimer: This project is under active development and not ready for production use. This documentation is also under active development and constantly changing.
 
-Wingman is a self-hostable, airgap-friendly agent runtime and orchestration engine written in Go. It gives you a small set of composable primitives for building agent systems without committing to a hosted control plane.
+Wingman is a self-hostable, airgap-friendly agent runtime and orchestration engine written in Go. It gives you a small set of composable primitives for building agent systems of arbitrary complexity.
 
 You can use Wingman in two ways:
 
