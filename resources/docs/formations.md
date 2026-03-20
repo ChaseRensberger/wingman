@@ -18,7 +18,7 @@ Formations are Wingman's declarative DAG runtime for multi-step workflows. A for
 
 Formations are currently a server feature. If you want fully in-process orchestration, compose SDK primitives directly.
 
-## Node kinds
+## Nodes
 
 ### `agent`
 
