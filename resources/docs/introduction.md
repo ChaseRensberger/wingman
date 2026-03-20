@@ -34,4 +34,4 @@ These pieces are designed to compose cleanly. A provider powers an agent, a sess
 - [SDK](./sdk) for embedding Wingman in Go
 - [Server](./server) for running the HTTP service
 - [Agents](./agents), [Sessions](./sessions), [Fleets](./fleets), and [Formations](./formations) for the core concepts
-- [API](./api) for endpoint-level reference
+- [API](./api) for an endpoint-level reference
