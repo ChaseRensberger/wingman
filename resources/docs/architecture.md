@@ -30,7 +30,7 @@ Separating `core` avoids circular imports and gives the rest of the codebase one
 
 ## Providers
 
-Providers translate Wingman's provider-agnostic `InferenceRequest` into the wire format expected by a backend such as Anthropic or Ollama.
+Providers translate Wingman's provider-agnostic `InferenceRequest` into the wire format expected by a supported provider backend such as OpenAI, Anthropic, Ollama, GitHub, etc...
 
 Each provider implements the same minimal interface:
 
