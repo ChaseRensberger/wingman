@@ -1,7 +1,7 @@
 ---
-title: "A blog post"
+title: "Winger - Bringing back .plan and the finger protcol"
 date: "2026-02-13"
-draft: true
+draft: false
 ---
 
 a blog post
