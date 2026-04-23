@@ -1,4 +1,4 @@
-package models_dev
+package catalog
 
 type ModelsDB map[string]ProviderData
 
