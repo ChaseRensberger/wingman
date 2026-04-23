@@ -1,10 +1,10 @@
 *.local
 /wingman
 __debug*
-sandbox/
 
 node_modules/
 
 dist/
 report.md
 bb/
+snapshot.json
