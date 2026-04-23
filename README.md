@@ -3,5 +3,3 @@
 </p>
 
 # Wingman
-
-Wingman is a portable agent runtime written in go with zero (required) external dependencies.
