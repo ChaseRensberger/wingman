@@ -130,9 +130,9 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	models, err := models_dev.GetModels(name)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	models, ok := catalog.GetModels(name)
+	if !ok {
+		writeError(w, http.StatusNotFound, "no models for provider: "+name)
 		return
 	}
 
@@ -148,9 +148,9 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	model, err := models_dev.GetModel(name, modelID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	model, ok := catalog.GetModel(name, modelID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
 		return
 	}
 

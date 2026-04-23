@@ -341,7 +341,7 @@ func (s *Server) buildProvider(providerID, model string, opts map[string]any) (c
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate provider %q: %w", providerID, err)
 	}
-	return p, nil
+	return core.ProviderFromModel(p), nil
 }
 
 func (s *Server) resolveTools(toolNames []string) []core.Tool {
