@@ -1,3 +1,36 @@
+// Package anthropic implements wingmodels.Model for Anthropic's Messages API.
+//
+// Wire reference: https://docs.anthropic.com/en/api/messages-streaming
+//
+// Stream mapping (Anthropic SSE -> wingmodels.StreamPart):
+//
+//	message_start          -> StreamStartPart{} + ResponseMetadataPart{id, model}
+//	content_block_start
+//	  text                 -> TextStartPart{id=block_index}
+//	  thinking             -> ReasoningStartPart{id=block_index}
+//	  tool_use             -> ToolInputStartPart{id=tool_use_id, tool_name}
+//	content_block_delta
+//	  text_delta           -> TextDeltaPart{id, delta}
+//	  thinking_delta       -> ReasoningDeltaPart{id, delta}
+//	  input_json_delta     -> ToolInputDeltaPart{id=tool_use_id, delta}
+//	content_block_stop
+//	  text                 -> TextEndPart{id}
+//	  thinking             -> ReasoningEndPart{id}
+//	  tool_use             -> ToolInputEndPart{id} + ToolCallPart_{id, name, input}
+//	message_delta          -> (accumulated; emitted via FinishPart)
+//	message_stop           -> FinishPart{reason, usage, message}
+//	error                  -> ErrorPart + FinishPart{reason: error}
+//	ping                   -> (skipped)
+//
+// Anthropic stop reasons map to wingmodels.FinishReason:
+//
+//	end_turn      -> stop
+//	max_tokens    -> length
+//	stop_sequence -> stop
+//	tool_use      -> tool-calls
+//	pause_turn    -> stop  (treated as end-of-turn for now)
+//	refusal       -> content-filter
+//	(empty/other) -> unknown
 package anthropic
 
 import (
@@ -9,38 +42,38 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
-	"github.com/chaserensberger/wingman/wingmodels/providers"
+	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/wingmodels/catalog"
+	provider "github.com/chaserensberger/wingman/wingmodels/providers"
 )
 
+// Meta is the registry entry for the Anthropic provider.
+//
+// Factory returns a *Client typed as wingmodels.Model. Callers that need
+// provider-specific knobs construct *Client directly via New.
 var Meta = provider.ProviderMeta{
 	ID:        "anthropic",
 	Name:      "Anthropic",
 	AuthTypes: []provider.AuthType{provider.AuthTypeAPIKey},
-	Factory: func(opts map[string]any) (core.Provider, error) {
+	Factory: func(opts map[string]any) (wingmodels.Model, error) {
 		return New(Config{Options: opts})
 	},
 }
 
-func init() {
-	provider.Register(Meta)
-}
+func init() { provider.Register(Meta) }
 
+// Config controls construction of a Client. Options is the open-ended bag the
+// registry passes through; explicit fields take precedence.
 type Config struct {
-	APIKey  string
-	Options map[string]any
-}
-
-type Client struct {
-	apiKey      string
-	model       string
-	maxTokens   int
-	temperature *float64
-	httpClient  *http.Client
-	maxRetries  int
+	APIKey     string
+	Model      string
+	MaxTokens  int
+	MaxRetries int
+	Options    map[string]any
 }
 
 const (
@@ -48,11 +81,25 @@ const (
 	defaultMaxTokens  = 4096
 	defaultMaxRetries = 3
 	apiURL            = "https://api.anthropic.com/v1/messages"
+	apiTokenURL       = "https://api.anthropic.com/v1/messages/count_tokens"
 	apiVersion        = "2023-06-01"
 	httpTimeout       = 5 * time.Minute
 	maxRetryDelay     = 60 * time.Second
 )
 
+// Client is a configured Anthropic Model. One Client = one model id; create
+// separate Clients for separate models.
+type Client struct {
+	apiKey     string
+	model      string
+	maxTokens  int
+	httpClient *http.Client
+	maxRetries int
+}
+
+// New constructs a Client. API key resolution order: Config.APIKey, then
+// Options["api_key"], then ANTHROPIC_API_KEY env var. Returns an error if
+// none are set.
 func New(cfg ...Config) (*Client, error) {
 	var c Config
 	if len(cfg) > 0 {
@@ -69,346 +116,686 @@ func New(cfg ...Config) (*Client, error) {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("anthropic: no API key provided (set Config.APIKey, Options[\"api_key\"], or ANTHROPIC_API_KEY)")
+		return nil, fmt.Errorf("anthropic: no API key (set Config.APIKey, Options[\"api_key\"], or ANTHROPIC_API_KEY)")
 	}
 
-	model := defaultModel
-	if m, ok := c.Options["model"].(string); ok && m != "" {
-		model = m
-	}
-
-	maxTokens := defaultMaxTokens
-	if v, ok := c.Options["max_tokens"]; ok {
-		switch n := v.(type) {
-		case int:
-			maxTokens = n
-		case float64:
-			maxTokens = int(n)
+	model := c.Model
+	if model == "" {
+		if m, ok := c.Options["model"].(string); ok && m != "" {
+			model = m
 		}
 	}
-
-	var temperature *float64
-	if v, ok := c.Options["temperature"]; ok {
-		if f, ok := v.(float64); ok {
-			temperature = &f
-		}
+	if model == "" {
+		model = defaultModel
 	}
 
-	maxRetries := defaultMaxRetries
-	if v, ok := c.Options["max_retries"]; ok {
-		switch n := v.(type) {
-		case int:
-			if n >= 0 {
-				maxRetries = n
-			}
-		case float64:
-			if int(n) >= 0 {
-				maxRetries = int(n)
+	maxTokens := c.MaxTokens
+	if maxTokens == 0 {
+		if v, ok := c.Options["max_tokens"]; ok {
+			switch n := v.(type) {
+			case int:
+				maxTokens = n
+			case float64:
+				maxTokens = int(n)
 			}
 		}
+	}
+	if maxTokens == 0 {
+		maxTokens = defaultMaxTokens
+	}
+
+	maxRetries := c.MaxRetries
+	if maxRetries == 0 {
+		if v, ok := c.Options["max_retries"]; ok {
+			switch n := v.(type) {
+			case int:
+				if n >= 0 {
+					maxRetries = n
+				}
+			case float64:
+				if int(n) >= 0 {
+					maxRetries = int(n)
+				}
+			}
+		}
+	}
+	if maxRetries == 0 {
+		maxRetries = defaultMaxRetries
 	}
 
 	return &Client{
-		apiKey:      apiKey,
-		model:       model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
-		httpClient:  &http.Client{Timeout: httpTimeout},
-		maxRetries:  maxRetries,
+		apiKey:     apiKey,
+		model:      model,
+		maxTokens:  maxTokens,
+		httpClient: &http.Client{Timeout: httpTimeout},
+		maxRetries: maxRetries,
 	}, nil
 }
 
+// Info returns the catalog ModelInfo for this client's model. If the model is
+// not in the catalog (e.g. a brand-new id), returns a minimal ModelInfo with
+// just provider+id populated.
+func (c *Client) Info() wingmodels.ModelInfo {
+	if info, ok := catalog.Get("anthropic", c.model); ok {
+		return info
+	}
+	return wingmodels.ModelInfo{Provider: "anthropic", ID: c.model}
+}
+
+// CountTokens calls Anthropic's /v1/messages/count_tokens for an exact count
+// of input tokens. Network round-trip; no fallback.
+func (c *Client) CountTokens(ctx context.Context, msgs []wingmodels.Message) (int, error) {
+	body, err := json.Marshal(struct {
+		Model    string             `json:"model"`
+		Messages []anthropicMessage `json:"messages"`
+	}{Model: c.model, Messages: c.toWireMessages(msgs)})
+	if err != nil {
+		return 0, fmt.Errorf("anthropic: marshal count_tokens: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiTokenURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, fmt.Errorf("anthropic: build count_tokens request: %w", err)
+	}
+	c.setHeaders(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("anthropic: count_tokens request: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("anthropic: read count_tokens: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("anthropic: count_tokens %d: %s", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		InputTokens int `json:"input_tokens"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return 0, fmt.Errorf("anthropic: parse count_tokens: %w", err)
+	}
+	return out.InputTokens, nil
+}
+
+// Stream begins a streaming Messages request. Setup failures (marshal,
+// network refused) return (nil, error); after the goroutine starts, all
+// failures terminate via ErrorPart + FinishPart{reason: error|aborted}.
+func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
+	wireReq := c.buildRequest(req)
+	wireReq.Stream = true
+
+	body, err := json.Marshal(wireReq)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: marshal request: %w", err)
+	}
+
+	resp, err := c.doStreamWithRetry(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// 64-event buffer is generous; Anthropic typically emits a few events
+	// per second and the consumer drains synchronously in the agent loop.
+	out := wingmodels.NewEventStream[wingmodels.StreamPart, *wingmodels.Message](64)
+	go runStream(ctx, resp, out)
+	return out, nil
+}
+
+// runStream owns the http.Response and emits parsed events on out. It MUST
+// close out exactly once before returning, with either the assembled message
+// or a terminal error.
+func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) {
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	// Anthropic events can carry large tool-input chunks; bump the line
+	// buffer well past Anthropic's max single-event size.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	p := newStreamParser(out)
+
+	var eventType string
+	for scanner.Scan() {
+		// Honor cancellation on every line. Without this the SSE read can
+		// block past ctx cancellation until Anthropic next emits.
+		if err := ctx.Err(); err != nil {
+			p.terminateAborted()
+			return
+		}
+
+		line := scanner.Text()
+		switch {
+		case line == "":
+			// SSE event boundary; nothing to emit.
+		case strings.HasPrefix(line, "event: "):
+			eventType = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			data := strings.TrimPrefix(line, "data: ")
+			if done := p.handle(eventType, data); done {
+				return
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		p.terminateError(fmt.Errorf("anthropic: scanner: %w", err))
+		return
+	}
+	// Stream ended without a terminator. Treat as error so consumers don't
+	// hang waiting for FinishPart.
+	p.terminateError(fmt.Errorf("anthropic: stream closed without message_stop"))
+}
+
+// streamParser holds the in-flight assembly state for one streaming response.
+// Anthropic streams content blocks by index; we map each index to its
+// wingmodels block id (we use a stable string derived from the index since
+// Anthropic doesn't supply ids for text/thinking blocks). For tool_use blocks
+// the Anthropic-supplied tool_use_id is the wingmodels id.
+type streamParser struct {
+	out      *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]
+	terminated bool
+
+	// Per-block bookkeeping keyed by Anthropic content block index.
+	blocks map[int]*blockState
+
+	// Final assembly.
+	content      wingmodels.Content
+	usage        wingmodels.Usage
+	stopReason   string
+	responseMeta wingmodels.ResponseMetadata
+	startEmitted bool
+}
+
+type blockKind int
+
+const (
+	blockText blockKind = iota
+	blockReasoning
+	blockToolUse
+)
+
+type blockState struct {
+	kind     blockKind
+	id       string         // wingmodels block id (also tool_use_id for tool blocks)
+	toolName string         // tool_use only
+	textBuf  strings.Builder
+	jsonBuf  strings.Builder // raw input JSON for tool_use
+	// Reasoning extras: Anthropic may emit a signature_delta (extended
+	// thinking redacted-payload) we must round-trip on next turn.
+	signature strings.Builder
+	redacted  bool
+}
+
+func newStreamParser(out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) *streamParser {
+	return &streamParser{out: out, blocks: make(map[int]*blockState)}
+}
+
+// handle dispatches one parsed SSE event. Returns true when the stream is
+// terminated (no more events should be processed).
+func (p *streamParser) handle(eventType, data string) bool {
+	switch eventType {
+	case "message_start":
+		var ev struct {
+			Message struct {
+				ID    string `json:"id"`
+				Model string `json:"model"`
+				Usage struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			p.terminateError(fmt.Errorf("anthropic: parse message_start: %w", err))
+			return true
+		}
+		p.responseMeta = wingmodels.ResponseMetadata{ID: ev.Message.ID, ModelID: ev.Message.Model}
+		p.usage.InputTokens = ev.Message.Usage.InputTokens
+		p.usage.OutputTokens = ev.Message.Usage.OutputTokens
+		// Emit stream-start (no warnings; Anthropic doesn't surface them
+		// in this shape) followed by response-metadata.
+		p.out.Push(wingmodels.StreamStartPart{})
+		p.startEmitted = true
+		p.out.Push(wingmodels.ResponseMetadataPart{ResponseMetadata: p.responseMeta})
+
+	case "content_block_start":
+		var ev struct {
+			Index        int `json:"index"`
+			ContentBlock struct {
+				Type string `json:"type"`
+				ID   string `json:"id,omitempty"`
+				Name string `json:"name,omitempty"`
+			} `json:"content_block"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			p.terminateError(fmt.Errorf("anthropic: parse content_block_start: %w", err))
+			return true
+		}
+
+		switch ev.ContentBlock.Type {
+		case "text":
+			id := blockID(ev.Index)
+			p.blocks[ev.Index] = &blockState{kind: blockText, id: id}
+			p.out.Push(wingmodels.TextStartPart{ID: id})
+		case "thinking":
+			id := blockID(ev.Index)
+			p.blocks[ev.Index] = &blockState{kind: blockReasoning, id: id}
+			p.out.Push(wingmodels.ReasoningStartPart{ID: id})
+		case "redacted_thinking":
+			// Anthropic sends only the encrypted payload; treat as a
+			// reasoning block that's redacted. The signature comes via
+			// the content_block itself, not a delta.
+			id := blockID(ev.Index)
+			b := &blockState{kind: blockReasoning, id: id, redacted: true}
+			p.blocks[ev.Index] = b
+			p.out.Push(wingmodels.ReasoningStartPart{ID: id})
+		case "tool_use":
+			id := ev.ContentBlock.ID
+			p.blocks[ev.Index] = &blockState{kind: blockToolUse, id: id, toolName: ev.ContentBlock.Name}
+			p.out.Push(wingmodels.ToolInputStartPart{ID: id, ToolName: ev.ContentBlock.Name})
+		default:
+			// Unknown block kind: skip. We'll log if/when we add a logger.
+		}
+
+	case "content_block_delta":
+		var ev struct {
+			Index int `json:"index"`
+			Delta struct {
+				Type        string `json:"type"`
+				Text        string `json:"text,omitempty"`
+				Thinking    string `json:"thinking,omitempty"`
+				Signature   string `json:"signature,omitempty"`
+				PartialJSON string `json:"partial_json,omitempty"`
+			} `json:"delta"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			p.terminateError(fmt.Errorf("anthropic: parse content_block_delta: %w", err))
+			return true
+		}
+		b := p.blocks[ev.Index]
+		if b == nil {
+			return false // unknown block; ignore
+		}
+		switch ev.Delta.Type {
+		case "text_delta":
+			b.textBuf.WriteString(ev.Delta.Text)
+			p.out.Push(wingmodels.TextDeltaPart{ID: b.id, Delta: ev.Delta.Text})
+		case "thinking_delta":
+			b.textBuf.WriteString(ev.Delta.Thinking)
+			p.out.Push(wingmodels.ReasoningDeltaPart{ID: b.id, Delta: ev.Delta.Thinking})
+		case "signature_delta":
+			// Signature is opaque encrypted material for redacted thinking
+			// or tool-use replay. Accumulate; emit only at content_block_stop.
+			b.signature.WriteString(ev.Delta.Signature)
+		case "input_json_delta":
+			b.jsonBuf.WriteString(ev.Delta.PartialJSON)
+			p.out.Push(wingmodels.ToolInputDeltaPart{ID: b.id, Delta: ev.Delta.PartialJSON})
+		}
+
+	case "content_block_stop":
+		var ev struct {
+			Index int `json:"index"`
+		}
+		_ = json.Unmarshal([]byte(data), &ev)
+		b := p.blocks[ev.Index]
+		if b == nil {
+			return false
+		}
+		switch b.kind {
+		case blockText:
+			p.content = append(p.content, wingmodels.TextPart{Text: b.textBuf.String()})
+			p.out.Push(wingmodels.TextEndPart{ID: b.id})
+		case blockReasoning:
+			p.content = append(p.content, wingmodels.ReasoningPart{
+				Reasoning: b.textBuf.String(),
+				Signature: b.signature.String(),
+				Redacted:  b.redacted,
+			})
+			p.out.Push(wingmodels.ReasoningEndPart{ID: b.id})
+		case blockToolUse:
+			var input map[string]any
+			if b.jsonBuf.Len() > 0 {
+				if err := json.Unmarshal([]byte(b.jsonBuf.String()), &input); err != nil {
+					// Surface the parse failure but don't terminate; the
+					// model may have produced malformed args and the agent
+					// loop should be allowed to handle/retry.
+					p.out.Push(wingmodels.ErrorPart{
+						Message: fmt.Sprintf("anthropic: tool input json: %v", err),
+						Code:    "invalid_tool_input",
+					})
+				}
+			}
+			p.content = append(p.content, wingmodels.ToolCallPart{
+				CallID: b.id,
+				Name:   b.toolName,
+				Input:  input,
+			})
+			p.out.Push(wingmodels.ToolInputEndPart{ID: b.id})
+			p.out.Push(wingmodels.ToolCallPart_{ID: b.id, ToolName: b.toolName, Input: input})
+		}
+		delete(p.blocks, ev.Index)
+
+	case "message_delta":
+		var ev struct {
+			Delta struct {
+				StopReason string `json:"stop_reason"`
+			} `json:"delta"`
+			Usage struct {
+				OutputTokens int `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(data), &ev); err != nil {
+			p.terminateError(fmt.Errorf("anthropic: parse message_delta: %w", err))
+			return true
+		}
+		p.stopReason = ev.Delta.StopReason
+		// Anthropic re-reports cumulative output_tokens here.
+		p.usage.OutputTokens = ev.Usage.OutputTokens
+
+	case "message_stop":
+		p.terminateNormal()
+		return true
+
+	case "error":
+		var ev struct {
+			Error struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal([]byte(data), &ev)
+		p.out.Push(wingmodels.ErrorPart{Message: ev.Error.Message, Code: ev.Error.Type})
+		p.terminate(wingmodels.FinishReasonError, fmt.Errorf("anthropic: %s: %s", ev.Error.Type, ev.Error.Message))
+		return true
+
+	case "ping":
+		// Keep-alive; ignore.
+	}
+	return false
+}
+
+func (p *streamParser) terminateNormal() {
+	p.usage.TotalTokens = p.usage.InputTokens + p.usage.OutputTokens
+	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	p.out.Push(wingmodels.FinishPart{
+		Reason:   mapStopReason(p.stopReason),
+		Usage:    p.usage,
+		Message:  msg,
+		Metadata: p.responseMeta,
+	})
+	p.close(msg, nil)
+}
+
+func (p *streamParser) terminateError(err error) {
+	if p.terminated {
+		return
+	}
+	if !p.startEmitted {
+		// Treat as setup failure path: emit minimal stream-start so consumers
+		// have a consistent prefix before the error.
+		p.out.Push(wingmodels.StreamStartPart{})
+	}
+	p.out.Push(wingmodels.ErrorPart{Message: err.Error()})
+	p.terminate(wingmodels.FinishReasonError, err)
+}
+
+func (p *streamParser) terminateAborted() {
+	if p.terminated {
+		return
+	}
+	p.terminate(wingmodels.FinishReasonAborted, context.Canceled)
+}
+
+func (p *streamParser) terminate(reason wingmodels.FinishReason, err error) {
+	if p.terminated {
+		return
+	}
+	p.usage.TotalTokens = p.usage.InputTokens + p.usage.OutputTokens
+	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	p.out.Push(wingmodels.FinishPart{
+		Reason:   reason,
+		Usage:    p.usage,
+		Message:  msg,
+		Metadata: p.responseMeta,
+	})
+	p.close(msg, err)
+}
+
+func (p *streamParser) close(msg *wingmodels.Message, err error) {
+	p.terminated = true
+	p.out.Close(msg, err)
+}
+
+// blockID returns the wingmodels stream-part id for an Anthropic content
+// block at the given index. Stable per-stream; "blk_<index>" is opaque to
+// consumers who only correlate within one stream.
+func blockID(index int) string { return "blk_" + strconv.Itoa(index) }
+
+// mapStopReason converts Anthropic's stop_reason into our normalized enum.
+func mapStopReason(r string) wingmodels.FinishReason {
+	switch r {
+	case "end_turn", "stop_sequence", "pause_turn":
+		return wingmodels.FinishReasonStop
+	case "max_tokens":
+		return wingmodels.FinishReasonLength
+	case "tool_use":
+		return wingmodels.FinishReasonToolCalls
+	case "refusal":
+		return wingmodels.FinishReasonContentFilter
+	case "":
+		return wingmodels.FinishReasonUnknown
+	default:
+		return wingmodels.FinishReasonOther
+	}
+}
+
+// ---- request building ------------------------------------------------------
+
+// anthropicMessage and contentBlock are the wire shapes we send to Anthropic.
+// They are NOT the wingmodels Message/Part shapes; they are the Anthropic
+// API's format. Conversion happens in toWireMessages.
 type anthropicMessage struct {
 	Role    string         `json:"role"`
 	Content []contentBlock `json:"content"`
 }
 
 type contentBlock struct {
-	Type      string `json:"type"`
-	Text      string `json:"text,omitempty"`
-	ID        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Input     any    `json:"input,omitempty"`
-	ToolUseID string `json:"tool_use_id,omitempty"`
-	Content   string `json:"content,omitempty"`
-	IsError   bool   `json:"is_error,omitempty"`
+	Type      string         `json:"type"`
+	Text      string         `json:"text,omitempty"`
+	ID        string         `json:"id,omitempty"`         // tool_use
+	Name      string         `json:"name,omitempty"`       // tool_use
+	Input     map[string]any `json:"input,omitempty"`      // tool_use
+	ToolUseID string         `json:"tool_use_id,omitempty"` // tool_result
+	Content   any            `json:"content,omitempty"`    // tool_result (string or []contentBlock)
+	IsError   bool           `json:"is_error,omitempty"`   // tool_result
+	// Extended thinking round-trip fields:
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Data      string `json:"data,omitempty"` // redacted_thinking encrypted payload
 }
 
 type toolDefinition struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	InputSchema inputSchema `json:"input_schema"`
-}
-
-type inputSchema struct {
-	Type       string              `json:"type"`
-	Properties map[string]property `json:"properties,omitempty"`
-	Required   []string            `json:"required,omitempty"`
-}
-
-type property struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description,omitempty"`
-	Enum        []string `json:"enum,omitempty"`
-}
-
-type outputFormat struct {
-	Type   string         `json:"type"`
-	Schema map[string]any `json:"schema,omitempty"`
-}
-
-type outputConfig struct {
-	Format *outputFormat `json:"format,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 type request struct {
-	Model        string             `json:"model"`
-	MaxTokens    int                `json:"max_tokens"`
-	Temperature  *float64           `json:"temperature,omitempty"`
-	System       string             `json:"system,omitempty"`
-	Messages     []anthropicMessage `json:"messages"`
-	Tools        []toolDefinition   `json:"tools,omitempty"`
-	OutputConfig *outputConfig      `json:"output_config,omitempty"`
-	Stream       bool               `json:"stream,omitempty"`
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	System      string             `json:"system,omitempty"`
+	Messages    []anthropicMessage `json:"messages"`
+	Tools       []toolDefinition   `json:"tools,omitempty"`
+	Stream      bool               `json:"stream,omitempty"`
 }
 
-type usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
-type response struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Role         string         `json:"role"`
-	Model        string         `json:"model"`
-	Content      []contentBlock `json:"content"`
-	StopReason   string         `json:"stop_reason"`
-	StopSequence *string        `json:"stop_sequence"`
-	Usage        usage          `json:"usage"`
-}
-
-func (c *Client) toAnthropicMessage(msg core.Message) anthropicMessage {
-	blocks := make([]contentBlock, 0, len(msg.Content))
-	for _, b := range msg.Content {
-		if b.Type == core.ContentTypeText && strings.TrimSpace(b.Text) == "" {
-			continue
-		}
-		blocks = append(blocks, contentBlock{
-			Type:      string(b.Type),
-			Text:      b.Text,
-			ID:        b.ID,
-			Name:      b.Name,
-			Input:     b.Input,
-			ToolUseID: b.ToolUseID,
-			Content:   b.Content,
-			IsError:   b.IsError,
-		})
+func (c *Client) buildRequest(req wingmodels.Request) request {
+	maxOut := req.MaxOutputTokens
+	if maxOut == 0 {
+		maxOut = c.maxTokens
 	}
-	return anthropicMessage{Role: string(msg.Role), Content: blocks}
-}
-
-func (c *Client) toAnthropicTool(t core.ToolDefinition) toolDefinition {
-	props := make(map[string]property)
-	for name, p := range t.InputSchema.Properties {
-		props[name] = property{Type: p.Type, Description: p.Description, Enum: p.Enum}
-	}
-	return toolDefinition{
-		Name:        t.Name,
-		Description: t.Description,
-		InputSchema: inputSchema{
-			Type:       t.InputSchema.Type,
-			Properties: props,
-			Required:   t.InputSchema.Required,
-		},
-	}
-}
-
-func (c *Client) toWingmanContentBlocks(blocks []contentBlock) []core.ContentBlock {
-	result := make([]core.ContentBlock, len(blocks))
-	for i, b := range blocks {
-		result[i] = core.ContentBlock{
-			Type:      core.ContentType(b.Type),
-			Text:      b.Text,
-			ID:        b.ID,
-			Name:      b.Name,
-			Input:     b.Input,
-			ToolUseID: b.ToolUseID,
-			Content:   b.Content,
-			IsError:   b.IsError,
-		}
-	}
-	return result
-}
-
-func (c *Client) toInferenceResponse(resp response) *core.InferenceResponse {
-	return &core.InferenceResponse{
-		ID:         resp.ID,
-		Content:    c.toWingmanContentBlocks(resp.Content),
-		StopReason: resp.StopReason,
-		Usage: core.Usage{
-			InputTokens:  resp.Usage.InputTokens,
-			OutputTokens: resp.Usage.OutputTokens,
-		},
-	}
-}
-
-func (c *Client) buildRequest(req core.InferenceRequest) request {
-	messages := make([]anthropicMessage, 0, len(req.Messages))
-	for _, msg := range req.Messages {
-		converted := c.toAnthropicMessage(msg)
-		if len(converted.Content) == 0 {
-			continue
-		}
-		messages = append(messages, converted)
-	}
-
-	var tools []toolDefinition
-	if len(req.Tools) > 0 {
-		tools = make([]toolDefinition, len(req.Tools))
-		for i, t := range req.Tools {
-			tools[i] = c.toAnthropicTool(t)
-		}
-	}
-
 	r := request{
-		Model:       c.model,
-		MaxTokens:   c.maxTokens,
-		Temperature: c.temperature,
-		System:      req.Instructions,
-		Messages:    messages,
-		Tools:       tools,
+		Model:     c.model,
+		MaxTokens: maxOut,
+		System:    req.System,
+		Messages:  c.toWireMessages(req.Messages),
 	}
-
-	if req.OutputSchema != nil {
-		r.OutputConfig = &outputConfig{
-			Format: &outputFormat{Type: "json_schema", Schema: req.OutputSchema},
+	if len(req.Tools) > 0 {
+		r.Tools = make([]toolDefinition, len(req.Tools))
+		for i, t := range req.Tools {
+			r.Tools[i] = toolDefinition{
+				Name:        t.Name,
+				Description: t.Description,
+				InputSchema: t.InputSchema,
+			}
 		}
 	}
-
 	return r
 }
 
-func (c *Client) RunInference(ctx context.Context, req core.InferenceRequest) (*core.InferenceResponse, error) {
-	anthropicReq := c.buildRequest(req)
-
-	jsonData, err := json.Marshal(anthropicReq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: failed to marshal request: %w", err)
-	}
-
-	body, err := c.doWithRetry(ctx, jsonData)
-	if err != nil {
-		return nil, err
-	}
-
-	var apiResp response
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("anthropic: failed to parse response: %w", err)
-	}
-
-	return c.toInferenceResponse(apiResp), nil
-}
-
-func (c *Client) StreamInference(ctx context.Context, req core.InferenceRequest) (core.Stream, error) {
-	anthropicReq := c.buildRequest(req)
-	anthropicReq.Stream = true
-
-	jsonData, err := json.Marshal(anthropicReq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: failed to marshal request: %w", err)
-	}
-
-	resp, err := c.doStreamWithRetry(ctx, jsonData)
-	if err != nil {
-		return nil, err
-	}
-
-	return newStream(resp), nil
-}
-
-func (c *Client) doWithRetry(ctx context.Context, jsonData []byte) ([]byte, error) {
-	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		resp, err := c.doRequest(ctx, jsonData)
-		if err != nil {
-			if shouldRetryTransport(err) && attempt < c.maxRetries {
-				if waitErr := waitForRetry(ctx, backoffDelay(attempt)); waitErr != nil {
-					return nil, fmt.Errorf("anthropic: request failed: %w", waitErr)
+// toWireMessages converts wingmodels.Message to Anthropic's wire format.
+//
+// Role mapping:
+//   - user, assistant -> same
+//   - tool -> "user" with tool_result content blocks (Anthropic places tool
+//     results in the user turn, not a separate role)
+//
+// Part mapping:
+//   - TextPart       -> {type:"text", text}
+//   - ReasoningPart  -> {type:"thinking", thinking, signature} or
+//                       {type:"redacted_thinking", data: signature} when redacted
+//   - ToolCallPart   -> {type:"tool_use", id, name, input}
+//   - ToolResultPart -> {type:"tool_result", tool_use_id, content, is_error}
+//   - ImagePart      -> currently dropped (image input not wired in v0.1)
+func (c *Client) toWireMessages(msgs []wingmodels.Message) []anthropicMessage {
+	out := make([]anthropicMessage, 0, len(msgs))
+	for _, m := range msgs {
+		role := string(m.Role)
+		if m.Role == wingmodels.RoleTool {
+			role = "user"
+		}
+		blocks := make([]contentBlock, 0, len(m.Content))
+		for _, p := range m.Content {
+			switch v := p.(type) {
+			case wingmodels.TextPart:
+				if strings.TrimSpace(v.Text) == "" {
+					continue
 				}
-				continue
+				blocks = append(blocks, contentBlock{Type: "text", Text: v.Text})
+			case wingmodels.ReasoningPart:
+				if v.Redacted {
+					blocks = append(blocks, contentBlock{Type: "redacted_thinking", Data: v.Signature})
+				} else {
+					blocks = append(blocks, contentBlock{Type: "thinking", Thinking: v.Reasoning, Signature: v.Signature})
+				}
+			case wingmodels.ToolCallPart:
+				blocks = append(blocks, contentBlock{Type: "tool_use", ID: v.CallID, Name: v.Name, Input: v.Input})
+			case wingmodels.ToolResultPart:
+				blocks = append(blocks, contentBlock{
+					Type:      "tool_result",
+					ToolUseID: v.CallID,
+					Content:   toolResultContent(v.Output),
+					IsError:   v.IsError,
+				})
+			case wingmodels.ImagePart:
+				// Skipped in v0.1; image input requires Anthropic's image
+				// content block which we'll wire when we surface ImagePart
+				// in the agent loop.
 			}
-			return nil, fmt.Errorf("anthropic: request failed: %w", err)
 		}
-
-		body, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return nil, fmt.Errorf("anthropic: failed to read response: %w", readErr)
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			return body, nil
-		}
-
-		if shouldRetryStatus(resp.StatusCode) && attempt < c.maxRetries {
-			delay := retryDelay(resp, attempt)
-			if waitErr := waitForRetry(ctx, delay); waitErr != nil {
-				return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
-			}
+		if len(blocks) == 0 {
 			continue
 		}
-
-		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+		out = append(out, anthropicMessage{Role: role, Content: blocks})
 	}
-
-	return nil, fmt.Errorf("anthropic: retries exhausted")
+	return out
 }
 
-func (c *Client) doStreamWithRetry(ctx context.Context, jsonData []byte) (*http.Response, error) {
+// toolResultContent flattens a Part slice to Anthropic's tool_result content
+// shape. Anthropic accepts either a plain string (single text part) or an
+// array of content blocks (text + image). We pick the simplest representation
+// for the input.
+func toolResultContent(out []wingmodels.Part) any {
+	if len(out) == 0 {
+		return ""
+	}
+	// Fast path: single text part -> string.
+	if len(out) == 1 {
+		if t, ok := out[0].(wingmodels.TextPart); ok {
+			return t.Text
+		}
+	}
+	blocks := make([]contentBlock, 0, len(out))
+	for _, p := range out {
+		switch v := p.(type) {
+		case wingmodels.TextPart:
+			blocks = append(blocks, contentBlock{Type: "text", Text: v.Text})
+		case wingmodels.ImagePart:
+			// Anthropic image source format:
+			// {type:"image", source:{type:"base64", media_type, data}}.
+			// Encode inline since we don't reuse contentBlock for it.
+			blocks = append(blocks, contentBlock{
+				Type: "image",
+				// Stuff the source object into Content; the "content" field
+				// is `any` so it round-trips. This is ugly; the cleaner fix
+				// is a dedicated image block type, deferred to when we wire
+				// image input end-to-end.
+				Content: map[string]any{
+					"type":       "base64",
+					"media_type": v.MimeType,
+					"data":       v.Data,
+				},
+			})
+		}
+	}
+	return blocks
+}
+
+// ---- HTTP plumbing ---------------------------------------------------------
+
+func (c *Client) setHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+	req.Header.Set("anthropic-version", apiVersion)
+}
+
+func (c *Client) doStreamWithRetry(ctx context.Context, body []byte) (*http.Response, error) {
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		resp, err := c.doRequest(ctx, jsonData)
+		resp, err := c.doRequest(ctx, body)
 		if err != nil {
 			if shouldRetryTransport(err) && attempt < c.maxRetries {
 				if waitErr := waitForRetry(ctx, backoffDelay(attempt)); waitErr != nil {
-					return nil, fmt.Errorf("anthropic: request failed: %w", waitErr)
+					return nil, fmt.Errorf("anthropic: %w", waitErr)
 				}
 				continue
 			}
-			return nil, fmt.Errorf("anthropic: request failed: %w", err)
+			return nil, fmt.Errorf("anthropic: request: %w", err)
 		}
-
 		if resp.StatusCode == http.StatusOK {
 			return resp, nil
 		}
-
-		body, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-
 		if shouldRetryStatus(resp.StatusCode) && attempt < c.maxRetries {
-			delay := retryDelay(resp, attempt)
-			if waitErr := waitForRetry(ctx, delay); waitErr != nil {
-				return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+			if waitErr := waitForRetry(ctx, retryDelay(resp, attempt)); waitErr != nil {
+				return nil, fmt.Errorf("anthropic: API %d: %s", resp.StatusCode, string(raw))
 			}
 			continue
 		}
-
-		return nil, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("anthropic: API %d: %s", resp.StatusCode, string(raw))
 	}
-
 	return nil, fmt.Errorf("anthropic: retries exhausted")
 }
 
-func (c *Client) doRequest(ctx context.Context, jsonData []byte) (*http.Response, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
+func (c *Client) doRequest(ctx context.Context, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("anthropic: failed to create request: %w", err)
+		return nil, err
 	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
-	httpReq.Header.Set("anthropic-version", apiVersion)
-
-	return c.httpClient.Do(httpReq)
+	c.setHeaders(req)
+	return c.httpClient.Do(req)
 }
 
 func shouldRetryStatus(code int) bool {
@@ -439,7 +826,6 @@ func parseRetryAfter(value string) (time.Duration, bool) {
 	if v == "" {
 		return 0, false
 	}
-
 	if seconds, err := time.ParseDuration(v + "s"); err == nil {
 		if seconds < 0 {
 			return 0, false
@@ -449,7 +835,6 @@ func parseRetryAfter(value string) (time.Duration, bool) {
 		}
 		return seconds, true
 	}
-
 	if t, err := time.Parse(time.RFC1123, v); err == nil {
 		d := time.Until(t)
 		if d < 0 {
@@ -460,7 +845,6 @@ func parseRetryAfter(value string) (time.Duration, bool) {
 		}
 		return d, true
 	}
-
 	return 0, false
 }
 
@@ -475,7 +859,6 @@ func backoffDelay(attempt int) time.Duration {
 func waitForRetry(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
-
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -484,265 +867,5 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-type Stream struct {
-	resp         *http.Response
-	scanner      *bufio.Scanner
-	currentEvent core.StreamEvent
-	err          error
-	closed       bool
-
-	accumulatedResponse *core.InferenceResponse
-	contentBlocks       []core.ContentBlock
-	currentBlockIndex   int
-	currentBlockText    strings.Builder
-	currentBlockJSON    strings.Builder
-	currentToolUse      *core.ContentBlock
-}
-
-func newStream(resp *http.Response) *Stream {
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	return &Stream{
-		resp:    resp,
-		scanner: scanner,
-		accumulatedResponse: &core.InferenceResponse{
-			Content: []core.ContentBlock{},
-		},
-		contentBlocks: []core.ContentBlock{},
-	}
-}
-
-func (s *Stream) Next() bool {
-	if s.err != nil || s.closed {
-		return false
-	}
-
-	var eventType string
-
-	for s.scanner.Scan() {
-		line := s.scanner.Text()
-
-		if line == "" {
-			continue
-		}
-
-		if strings.HasPrefix(line, "event: ") {
-			eventType = strings.TrimPrefix(line, "event: ")
-			continue
-		}
-
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-			event, done := s.parseEvent(eventType, data)
-			if event != nil {
-				s.currentEvent = *event
-				return true
-			}
-			if done {
-				return false
-			}
-		}
-	}
-
-	if err := s.scanner.Err(); err != nil {
-		s.err = err
-	}
-
-	return false
-}
-
-func (s *Stream) parseEvent(eventType, data string) (*core.StreamEvent, bool) {
-	switch eventType {
-	case "message_start":
-		var event struct {
-			Message struct {
-				ID    string `json:"id"`
-				Model string `json:"model"`
-				Usage struct {
-					InputTokens  int `json:"input_tokens"`
-					OutputTokens int `json:"output_tokens"`
-				} `json:"usage"`
-			} `json:"message"`
-		}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			s.err = fmt.Errorf("anthropic: failed to parse message_start: %w", err)
-			return nil, true
-		}
-		s.accumulatedResponse.ID = event.Message.ID
-		s.accumulatedResponse.Usage.InputTokens = event.Message.Usage.InputTokens
-		return &core.StreamEvent{Type: core.EventMessageStart}, false
-
-	case "content_block_start":
-		var event struct {
-			Index        int `json:"index"`
-			ContentBlock struct {
-				Type  string         `json:"type"`
-				ID    string         `json:"id,omitempty"`
-				Name  string         `json:"name,omitempty"`
-				Text  string         `json:"text,omitempty"`
-				Input map[string]any `json:"input,omitempty"`
-			} `json:"content_block"`
-		}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			s.err = fmt.Errorf("anthropic: failed to parse content_block_start: %w", err)
-			return nil, true
-		}
-
-		s.currentBlockIndex = event.Index
-		s.currentBlockText.Reset()
-		s.currentBlockJSON.Reset()
-
-		if event.ContentBlock.Type == "tool_use" {
-			s.currentToolUse = &core.ContentBlock{
-				Type: core.ContentTypeToolUse,
-				ID:   event.ContentBlock.ID,
-				Name: event.ContentBlock.Name,
-			}
-		} else {
-			s.currentToolUse = nil
-		}
-
-		return &core.StreamEvent{
-			Type:  core.EventContentBlockStart,
-			Index: event.Index,
-			ContentBlock: &core.StreamContentBlock{
-				Type: event.ContentBlock.Type,
-				ID:   event.ContentBlock.ID,
-				Name: event.ContentBlock.Name,
-				Text: event.ContentBlock.Text,
-			},
-		}, false
-
-	case "content_block_delta":
-		var event struct {
-			Index int `json:"index"`
-			Delta struct {
-				Type        string `json:"type"`
-				Text        string `json:"text,omitempty"`
-				PartialJSON string `json:"partial_json,omitempty"`
-			} `json:"delta"`
-		}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			s.err = fmt.Errorf("anthropic: failed to parse content_block_delta: %w", err)
-			return nil, true
-		}
-
-		if event.Delta.Type == "text_delta" {
-			s.currentBlockText.WriteString(event.Delta.Text)
-			return &core.StreamEvent{
-				Type:  core.EventTextDelta,
-				Text:  event.Delta.Text,
-				Index: event.Index,
-			}, false
-		} else if event.Delta.Type == "input_json_delta" {
-			s.currentBlockJSON.WriteString(event.Delta.PartialJSON)
-			return &core.StreamEvent{
-				Type:      core.EventInputJSONDelta,
-				InputJSON: event.Delta.PartialJSON,
-				Index:     event.Index,
-			}, false
-		}
-		return nil, false
-
-	case "content_block_stop":
-		var event struct {
-			Index int `json:"index"`
-		}
-		json.Unmarshal([]byte(data), &event)
-
-		if s.currentToolUse != nil {
-			var input map[string]any
-			if s.currentBlockJSON.Len() > 0 {
-				json.Unmarshal([]byte(s.currentBlockJSON.String()), &input)
-			}
-			s.currentToolUse.Input = input
-			s.contentBlocks = append(s.contentBlocks, *s.currentToolUse)
-		} else if s.currentBlockText.Len() > 0 {
-			s.contentBlocks = append(s.contentBlocks, core.ContentBlock{
-				Type: core.ContentTypeText,
-				Text: s.currentBlockText.String(),
-			})
-		}
-
-		return &core.StreamEvent{
-			Type:  core.EventContentBlockStop,
-			Index: event.Index,
-		}, false
-
-	case "message_delta":
-		var event struct {
-			Delta struct {
-				StopReason string `json:"stop_reason"`
-			} `json:"delta"`
-			Usage struct {
-				OutputTokens int `json:"output_tokens"`
-			} `json:"usage"`
-		}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			s.err = fmt.Errorf("anthropic: failed to parse message_delta: %w", err)
-			return nil, true
-		}
-
-		s.accumulatedResponse.StopReason = event.Delta.StopReason
-		s.accumulatedResponse.Usage.OutputTokens = event.Usage.OutputTokens
-
-		return &core.StreamEvent{
-			Type:       core.EventMessageDelta,
-			StopReason: event.Delta.StopReason,
-			Usage: &core.Usage{
-				InputTokens:  s.accumulatedResponse.Usage.InputTokens,
-				OutputTokens: event.Usage.OutputTokens,
-			},
-		}, false
-
-	case "message_stop":
-		s.accumulatedResponse.Content = s.contentBlocks
-		return &core.StreamEvent{Type: core.EventMessageStop}, true
-
-	case "ping":
-		return &core.StreamEvent{Type: core.EventPing}, false
-
-	case "error":
-		var event struct {
-			Error struct {
-				Type    string `json:"type"`
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			s.err = fmt.Errorf("anthropic: stream error: %s", data)
-		} else {
-			s.err = fmt.Errorf("anthropic: %s: %s", event.Error.Type, event.Error.Message)
-		}
-		return &core.StreamEvent{Type: core.EventError, Error: s.err}, true
-
-	default:
-		return nil, false
-	}
-}
-
-func (s *Stream) Event() core.StreamEvent {
-	return s.currentEvent
-}
-
-func (s *Stream) Err() error {
-	return s.err
-}
-
-func (s *Stream) Close() error {
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	if s.resp != nil && s.resp.Body != nil {
-		return s.resp.Body.Close()
-	}
-	return nil
-}
-
-func (s *Stream) Response() *core.InferenceResponse {
-	return s.accumulatedResponse
-}
-
-var _ io.Closer = (*Stream)(nil)
+// Compile-time check that *Client satisfies wingmodels.Model.
+var _ wingmodels.Model = (*Client)(nil)

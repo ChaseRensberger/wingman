@@ -1,12 +1,22 @@
+// Package provider is the small registry that maps a provider id (e.g.
+// "anthropic", "ollama") to a factory that constructs a wingmodels.Model.
+//
+// Providers register themselves at init via Register; cmd/wingman blank-
+// imports each provider package to trigger registration. The wingagent
+// session/server layers then look up providers by id and call New(opts) to
+// build a Model bound to a specific model id.
 package provider
 
 import (
 	"fmt"
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
+	"github.com/chaserensberger/wingman/wingmodels"
 )
 
+// AuthType describes how a provider authenticates. Only api_key is exercised
+// in v0.1; oauth is reserved for future provider integrations (Anthropic
+// Claude.ai, OpenAI ChatGPT).
 type AuthType string
 
 const (
@@ -14,8 +24,12 @@ const (
 	AuthTypeOAuth  AuthType = "oauth"
 )
 
-type ProviderFactory func(opts map[string]any) (core.Provider, error)
+// ProviderFactory builds a wingmodels.Model from an opaque options bag.
+// Returning a nil Model with a nil error is a contract violation; New rejects
+// it.
+type ProviderFactory func(opts map[string]any) (wingmodels.Model, error)
 
+// ProviderMeta is the registry entry for one provider.
 type ProviderMeta struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
@@ -23,15 +37,14 @@ type ProviderMeta struct {
 	Factory   ProviderFactory `json:"-"`
 }
 
+// Registry is a concurrency-safe map of provider id -> meta.
 type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]ProviderMeta
 }
 
 func NewRegistry() *Registry {
-	return &Registry{
-		providers: make(map[string]ProviderMeta),
-	}
+	return &Registry{providers: make(map[string]ProviderMeta)}
 }
 
 func (r *Registry) Register(meta ProviderMeta) {
@@ -50,7 +63,8 @@ func (r *Registry) Get(name string) (ProviderMeta, error) {
 	return meta, nil
 }
 
-func (r *Registry) New(providerID string, opts map[string]any) (core.Provider, error) {
+// New constructs a Model from the named provider's factory.
+func (r *Registry) New(providerID string, opts map[string]any) (wingmodels.Model, error) {
 	meta, err := r.Get(providerID)
 	if err != nil {
 		return nil, err
@@ -58,14 +72,14 @@ func (r *Registry) New(providerID string, opts map[string]any) (core.Provider, e
 	if meta.Factory == nil {
 		return nil, fmt.Errorf("provider %q has no factory registered", providerID)
 	}
-	p, err := meta.Factory(opts)
+	m, err := meta.Factory(opts)
 	if err != nil {
 		return nil, fmt.Errorf("provider %q factory error: %w", providerID, err)
 	}
-	if p == nil {
+	if m == nil {
 		return nil, fmt.Errorf("provider %q factory returned nil (missing auth?)", providerID)
 	}
-	return p, nil
+	return m, nil
 }
 
 func (r *Registry) List() []ProviderMeta {
@@ -87,26 +101,11 @@ func (r *Registry) IsValid(name string) bool {
 
 var defaultRegistry = NewRegistry()
 
-func DefaultRegistry() *Registry {
-	return defaultRegistry
-}
-
-func Register(meta ProviderMeta) {
-	defaultRegistry.Register(meta)
-}
-
-func Get(name string) (ProviderMeta, error) {
-	return defaultRegistry.Get(name)
-}
-
-func New(providerID string, opts map[string]any) (core.Provider, error) {
+func DefaultRegistry() *Registry             { return defaultRegistry }
+func Register(meta ProviderMeta)             { defaultRegistry.Register(meta) }
+func Get(name string) (ProviderMeta, error)  { return defaultRegistry.Get(name) }
+func New(providerID string, opts map[string]any) (wingmodels.Model, error) {
 	return defaultRegistry.New(providerID, opts)
 }
-
-func List() []ProviderMeta {
-	return defaultRegistry.List()
-}
-
-func IsValid(name string) bool {
-	return defaultRegistry.IsValid(name)
-}
+func List() []ProviderMeta { return defaultRegistry.List() }
+func IsValid(name string) bool { return defaultRegistry.IsValid(name) }
