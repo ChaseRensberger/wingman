@@ -8,9 +8,10 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	_ "github.com/chaserensberger/wingman/internal/autoregprov"
-	"github.com/chaserensberger/wingman/internal/server"
-	"github.com/chaserensberger/wingman/internal/storage"
+	"github.com/chaserensberger/wingman/wingagent/server"
+	"github.com/chaserensberger/wingman/wingagent/storage"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
 )
 
 var (

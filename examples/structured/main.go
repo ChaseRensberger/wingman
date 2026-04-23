@@ -8,9 +8,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/provider/anthropic"
-	"github.com/chaserensberger/wingman/session"
+	"github.com/chaserensberger/wingman/wingagent/agent"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	"github.com/chaserensberger/wingman/wingagent/session"
 )
 
 type Person struct {

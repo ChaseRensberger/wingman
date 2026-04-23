@@ -1,0 +1,448 @@
+package storage
+
+import (
+	"crypto/rand"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/oklog/ulid/v2"
+	_ "modernc.org/sqlite"
+
+	"github.com/chaserensberger/wingman/wingagent/core"
+)
+
+const schema = `
+CREATE TABLE IF NOT EXISTS agents (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	instructions TEXT,
+	tools TEXT,
+	provider TEXT,
+	model TEXT,
+	options TEXT,
+	output_schema TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+	id TEXT PRIMARY KEY,
+	work_dir TEXT,
+	history TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	providers TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+`
+
+type SQLiteStore struct {
+	db *sql.DB
+}
+
+func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	db.SetMaxOpenConns(1)
+
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	_, _ = db.Exec(`ALTER TABLE agents ADD COLUMN provider TEXT`)
+
+	return &SQLiteStore{db: db}, nil
+}
+
+func (s *SQLiteStore) Close() error {
+	return s.db.Close()
+}
+
+func DefaultDBPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "share", "wingman", "wingman.db"), nil
+}
+
+func NewID() string {
+	entropy := ulid.Monotonic(rand.Reader, 0)
+	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+}
+
+func Now() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+func (s *SQLiteStore) CreateAgent(agent *Agent) error {
+	if agent.ID == "" {
+		agent.ID = NewID()
+	}
+	now := Now()
+	agent.CreatedAt = now
+	agent.UpdatedAt = now
+
+	tools, err := json.Marshal(agent.Tools)
+	if err != nil {
+		return err
+	}
+
+	var optionsJSON *string
+	if agent.Options != nil {
+		b, err := json.Marshal(agent.Options)
+		if err != nil {
+			return err
+		}
+		str := string(b)
+		optionsJSON = &str
+	}
+
+	var outputSchemaJSON *string
+	if agent.OutputSchema != nil {
+		b, err := json.Marshal(agent.OutputSchema)
+		if err != nil {
+			return err
+		}
+		str := string(b)
+		outputSchemaJSON = &str
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO agents (id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("failed to create agent: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
+	var agent Agent
+	var toolsJSON string
+	var optionsJSON sql.NullString
+	var outputSchemaJSON sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at
+		FROM agents WHERE id = ?
+	`, id).Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Provider, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("agent not found: %s", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if toolsJSON != "" {
+		if err := json.Unmarshal([]byte(toolsJSON), &agent.Tools); err != nil {
+			return nil, err
+		}
+	}
+
+	if optionsJSON.Valid && optionsJSON.String != "" {
+		if err := json.Unmarshal([]byte(optionsJSON.String), &agent.Options); err != nil {
+			return nil, err
+		}
+	}
+
+	if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
+		if err := json.Unmarshal([]byte(outputSchemaJSON.String), &agent.OutputSchema); err != nil {
+			return nil, err
+		}
+	}
+
+	return &agent, nil
+}
+
+func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, instructions, tools, provider, model, options, output_schema, created_at, updated_at
+		FROM agents ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []*Agent
+	for rows.Next() {
+		var agent Agent
+		var toolsJSON string
+		var optionsJSON sql.NullString
+		var outputSchemaJSON sql.NullString
+
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.Instructions, &toolsJSON, &agent.Provider, &agent.Model, &optionsJSON, &outputSchemaJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		if toolsJSON != "" {
+			if err := json.Unmarshal([]byte(toolsJSON), &agent.Tools); err != nil {
+				return nil, err
+			}
+		}
+
+		if optionsJSON.Valid && optionsJSON.String != "" {
+			if err := json.Unmarshal([]byte(optionsJSON.String), &agent.Options); err != nil {
+				return nil, err
+			}
+		}
+
+		if outputSchemaJSON.Valid && outputSchemaJSON.String != "" {
+			if err := json.Unmarshal([]byte(outputSchemaJSON.String), &agent.OutputSchema); err != nil {
+				return nil, err
+			}
+		}
+
+		agents = append(agents, &agent)
+	}
+
+	return agents, rows.Err()
+}
+
+func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
+	agent.UpdatedAt = Now()
+
+	tools, err := json.Marshal(agent.Tools)
+	if err != nil {
+		return err
+	}
+
+	var optionsJSON *string
+	if agent.Options != nil {
+		b, err := json.Marshal(agent.Options)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		optionsJSON = &s
+	}
+
+	var outputSchemaJSON *string
+	if agent.OutputSchema != nil {
+		b, err := json.Marshal(agent.OutputSchema)
+		if err != nil {
+			return err
+		}
+		s := string(b)
+		outputSchemaJSON = &s
+	}
+
+	result, err := s.db.Exec(`
+		UPDATE agents SET name = ?, instructions = ?, tools = ?, provider = ?, model = ?, options = ?, output_schema = ?, updated_at = ?
+		WHERE id = ?
+	`, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("agent not found: %s", agent.ID)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteAgent(id string) error {
+	result, err := s.db.Exec(`DELETE FROM agents WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) CreateSession(session *Session) error {
+	if session.ID == "" {
+		session.ID = NewID()
+	}
+	now := Now()
+	session.CreatedAt = now
+	session.UpdatedAt = now
+
+	if session.History == nil {
+		session.History = []core.Message{}
+	}
+
+	history, err := json.Marshal(session.History)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO sessions (id, work_dir, history, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, session.ID, session.WorkDir, string(history), session.CreatedAt, session.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetSession(id string) (*Session, error) {
+	var session Session
+	var historyJSON string
+
+	err := s.db.QueryRow(`
+		SELECT id, work_dir, history, created_at, updated_at
+		FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.WorkDir, &historyJSON, &session.CreatedAt, &session.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("session not found: %s", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if historyJSON != "" {
+		if err := json.Unmarshal([]byte(historyJSON), &session.History); err != nil {
+			return nil, err
+		}
+	}
+
+	return &session, nil
+}
+
+func (s *SQLiteStore) ListSessions() ([]*Session, error) {
+	rows, err := s.db.Query(`
+		SELECT id, work_dir, history, created_at, updated_at
+		FROM sessions ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []*Session
+	for rows.Next() {
+		var session Session
+		var historyJSON string
+
+		if err := rows.Scan(&session.ID, &session.WorkDir, &historyJSON, &session.CreatedAt, &session.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		if historyJSON != "" {
+			if err := json.Unmarshal([]byte(historyJSON), &session.History); err != nil {
+				return nil, err
+			}
+		}
+
+		sessions = append(sessions, &session)
+	}
+
+	return sessions, rows.Err()
+}
+
+func (s *SQLiteStore) UpdateSession(session *Session) error {
+	session.UpdatedAt = Now()
+
+	history, err := json.Marshal(session.History)
+	if err != nil {
+		return err
+	}
+
+	result, err := s.db.Exec(`
+		UPDATE sessions SET work_dir = ?, history = ?, updated_at = ?
+		WHERE id = ?
+	`, session.WorkDir, string(history), session.UpdatedAt, session.ID)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("session not found: %s", session.ID)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteSession(id string) error {
+	result, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	return nil
+}
+
+
+func (s *SQLiteStore) GetAuth() (*Auth, error) {
+	var auth Auth
+	var providersJSON string
+
+	err := s.db.QueryRow(`SELECT providers, updated_at FROM auth WHERE id = 1`).Scan(&providersJSON, &auth.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		return &Auth{Providers: make(map[string]AuthCredential)}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal([]byte(providersJSON), &auth.Providers); err != nil {
+		return nil, err
+	}
+
+	return &auth, nil
+}
+
+func (s *SQLiteStore) SetAuth(auth *Auth) error {
+	auth.UpdatedAt = Now()
+
+	providers, err := json.Marshal(auth.Providers)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO auth (id, providers, updated_at) VALUES (1, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET providers = ?, updated_at = ?
+	`, string(providers), auth.UpdatedAt, string(providers), auth.UpdatedAt)
+
+	return err
+}
