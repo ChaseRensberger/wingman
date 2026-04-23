@@ -23,7 +23,7 @@ func main() {
 
 	a := agent.New("Storyteller",
 		agent.WithInstructions("You are a creative storyteller. Write engaging, vivid stories."),
-		agent.WithProvider(p),
+		agent.WithProvider(core.ProviderFromModel(p)),
 	)
 
 	s := session.New(

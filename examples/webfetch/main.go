@@ -8,9 +8,10 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
 	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 
 	a := agent.New("WebResearcher",
 		agent.WithInstructions("You are a helpful research assistant. Use the webfetch tool to retrieve information from websites when needed. Summarize the key points clearly and concisely."),
-		agent.WithProvider(p),
+		agent.WithProvider(core.ProviderFromModel(p)),
 		agent.WithTools(
 			tool.NewWebFetchTool(),
 		),

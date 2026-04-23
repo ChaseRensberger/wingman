@@ -8,9 +8,10 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
 	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 
 	a := agent.New("Hackernews Parser",
 		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json"),
-		agent.WithProvider(p),
+		agent.WithProvider(core.ProviderFromModel(p)),
 		agent.WithOutputSchema(schema),
 		agent.WithTools(
 			tool.NewWebFetchTool(),

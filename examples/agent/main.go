@@ -9,9 +9,10 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
 	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
@@ -29,7 +30,7 @@ func main() {
 
 	a := agent.New("WingmanAgent",
 		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
-		agent.WithProvider(p),
+		agent.WithProvider(core.ProviderFromModel(p)),
 		agent.WithTools(
 			tool.NewBashTool(),
 			tool.NewReadTool(),
