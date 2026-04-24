@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/wingmodels"
 )
 
 // SessionStream is the streaming counterpart to Session.Run. It exposes
@@ -38,6 +39,7 @@ type SessionStream struct {
 //   - "tool_start":      Data is loop.ToolExecutionStartEvent
 //   - "tool_end":        Data is loop.ToolExecutionEndEvent
 //   - "stream_part":     Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
+//   - "compaction":      Data is loop.CompactionEvent
 //   - "error":           Data is loop.ErrorEvent
 //
 // Consumers that want the loop's typed events simply type-assert on Data.
@@ -118,6 +120,19 @@ func toStreamEvent(e loop.Event) StreamEvent {
 		return StreamEvent{Type: "tool_end", Data: v}
 	case loop.StreamPartEvent:
 		return StreamEvent{Type: "stream_part", Data: v}
+	case loop.ContextTransformedEvent:
+		// Discriminate by inspecting the head message: if it leads with
+		// a CompactionMarkerPart, surface as the dedicated "compaction"
+		// type so UIs can render a distinct affordance. Other transforms
+		// (redaction, injection, …) ride the generic event.
+		if v.Head != nil {
+			for _, p := range v.Head.Content {
+				if _, ok := p.(wingmodels.CompactionMarkerPart); ok {
+					return StreamEvent{Type: "compaction", Data: v}
+				}
+			}
+		}
+		return StreamEvent{Type: "context_transformed", Data: v}
 	case loop.ErrorEvent:
 		return StreamEvent{Type: "error", Data: map[string]string{"error": fmt.Sprint(v.Err)}}
 	default:

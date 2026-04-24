@@ -64,6 +64,41 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return r.finalize(step, StopReasonMaxSteps), nil
 		}
 
+		// BeforeStep hook. Runs before BeforeIteration so the hook sees
+		// (and the per-turn hooks operate on) any persisted mutation
+		// the BeforeStep returned. step+1 reflects the upcoming turn.
+		// Compaction is the canonical user of this seam (shipped in
+		// wingagent/hook).
+		if r.cfg.Hooks.BeforeStep != nil {
+			info := BeforeStepInfo{
+				Step:     step + 1,
+				Messages: r.messages,
+				Usage:    r.usage,
+				Model:    r.cfg.Model,
+			}
+			newMsgs, err := r.cfg.Hooks.BeforeStep(ctx, info)
+			if err != nil {
+				r.emitError(err)
+				return r.finalize(step, StopReasonError), fmt.Errorf("hook BeforeStep: %w", err)
+			}
+			if newMsgs != nil && len(newMsgs) != len(r.messages) {
+				orig := len(r.messages)
+				r.messages = newMsgs
+				var head *wingmodels.Message
+				if len(newMsgs) > 0 {
+					h := newMsgs[0]
+					head = &h
+				}
+				r.emit(ContextTransformedEvent{
+					Step:          step + 1,
+					Phase:         "before_step",
+					OriginalCount: orig,
+					NewCount:      len(newMsgs),
+					Head:          head,
+				})
+			}
+		}
+
 		step++
 
 		if r.cfg.Hooks.BeforeIteration != nil {
@@ -119,12 +154,38 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 
 	msgs := r.messages
 	if r.cfg.Hooks.TransformContext != nil {
-		m, err := r.cfg.Hooks.TransformContext(ctx, append([]wingmodels.Message(nil), msgs...))
+		info := TransformContextInfo{
+			Step:     step,
+			Messages: append([]wingmodels.Message(nil), msgs...),
+			Model:    r.cfg.Model,
+		}
+		m, err := r.cfg.Hooks.TransformContext(ctx, info)
 		if err != nil {
 			return Turn{}, fmt.Errorf("hook TransformContext: %w", err)
 		}
-		msgs = m
+		if m != nil && len(m) != len(msgs) {
+			var head *wingmodels.Message
+			if len(m) > 0 {
+				h := m[0]
+				head = &h
+			}
+			r.emit(ContextTransformedEvent{
+				Step:          step,
+				Phase:         "transform_context",
+				OriginalCount: len(msgs),
+				NewCount:      len(m),
+				Head:          head,
+			})
+		}
+		if m != nil {
+			msgs = m
+		}
 	}
+
+	// Convert CompactionMarkerPart -> TextPart so providers stay
+	// oblivious to the compaction concept. We do this last so any
+	// TransformContext hook can see the marker if it cares.
+	msgs = renderForProvider(msgs)
 
 	req := wingmodels.Request{
 		System:   system,
@@ -139,8 +200,13 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's
 	// terminal FinishPart carries the assembled assistant message via
-	// stream.Final().
+	// stream.Final(); we also snapshot per-turn usage from FinishPart
+	// here since stream.Final() only returns the message.
+	var turnUsage wingmodels.Usage
 	for part := range stream.Iter() {
+		if fp, ok := part.(wingmodels.FinishPart); ok {
+			turnUsage = fp.Usage
+		}
 		r.emit(StreamPartEvent{Step: step, Part: part})
 	}
 	assistantMsg, err := stream.Final()
@@ -151,6 +217,15 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		return Turn{}, errors.New("model returned nil assistant message without error")
 	}
 
+	// Cumulative usage across the loop. Providers report cumulative
+	// per-call counts; we sum because each turn is a fresh call.
+	r.usage.InputTokens += turnUsage.InputTokens
+	r.usage.OutputTokens += turnUsage.OutputTokens
+	r.usage.TotalTokens += turnUsage.TotalTokens
+	r.usage.ReasoningTokens += turnUsage.ReasoningTokens
+	r.usage.CachedInputTokens += turnUsage.CachedInputTokens
+	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
+
 	// Append the assistant message to running history and emit it.
 	r.messages = append(r.messages, *assistantMsg)
 	r.emit(MessageEvent{Message: *assistantMsg})
@@ -160,13 +235,8 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	turn := Turn{
 		Step:      step,
 		Assistant: *assistantMsg,
-		Usage:     wingmodels.Usage{}, // populated below if present
+		Usage:     turnUsage,
 	}
-	// Capture turn-level usage by diffing cumulative usage. Providers
-	// report usage on FinishPart; that's already accumulated into the
-	// message Meta if the provider populated it. For now we approximate
-	// turn usage as zero and leave cumulative tracking for runner.usage.
-	// TODO(tier 4): plumb per-turn usage from FinishPart through Stream.
 	if len(calls) == 0 {
 		return turn, nil
 	}
@@ -383,9 +453,9 @@ func (r *runner) finalize(step int, reason StopReason) *Result {
 // buildRegistry produces a Registry seeded with every tool. Loop callers
 // could pass a pre-built Registry, but the per-Run cost is negligible
 // (small map of pointers) and freshness avoids stale registrations.
-func buildRegistry(tools []tool.Tool) *tool.Registry {
+func buildRegistry(ts []tool.Tool) *tool.Registry {
 	reg := tool.NewRegistry()
-	for _, t := range tools {
+	for _, t := range ts {
 		reg.Register(t)
 	}
 	return reg
@@ -393,13 +463,58 @@ func buildRegistry(tools []tool.Tool) *tool.Registry {
 
 // buildToolDefs converts the configured tools' typed Definitions to the
 // open-ended ToolDef shape providers expect.
-func buildToolDefs(tools []tool.Tool) []wingmodels.ToolDef {
-	if len(tools) == 0 {
+func buildToolDefs(ts []tool.Tool) []wingmodels.ToolDef {
+	if len(ts) == 0 {
 		return nil
 	}
-	out := make([]wingmodels.ToolDef, len(tools))
-	for i, t := range tools {
+	out := make([]wingmodels.ToolDef, len(ts))
+	for i, t := range ts {
 		out[i] = t.Definition().AsModelToolDef()
+	}
+	return out
+}
+
+// renderForProvider rewrites loop-internal Part types into Parts that
+// every provider's wire encoder understands. Today this only converts
+// CompactionMarkerPart into a TextPart prefixed with a clear marker so
+// the model knows it's reading a summary of dropped context.
+//
+// Why here and not in providers: keeping providers ignorant of loop-only
+// concepts (compaction markers, future debug markers, etc.) means we can
+// add part types without touching every provider. The cost is one extra
+// slice walk per turn.
+func renderForProvider(msgs []wingmodels.Message) []wingmodels.Message {
+	// Fast path: nothing to rewrite. Walk once to detect.
+	hasMarker := false
+	for _, m := range msgs {
+		for _, p := range m.Content {
+			if _, ok := p.(wingmodels.CompactionMarkerPart); ok {
+				hasMarker = true
+				break
+			}
+		}
+		if hasMarker {
+			break
+		}
+	}
+	if !hasMarker {
+		return msgs
+	}
+
+	out := make([]wingmodels.Message, len(msgs))
+	for i, m := range msgs {
+		nc := make(wingmodels.Content, 0, len(m.Content))
+		for _, p := range m.Content {
+			if marker, ok := p.(wingmodels.CompactionMarkerPart); ok {
+				nc = append(nc, wingmodels.TextPart{
+					Text: fmt.Sprintf("[Prior conversation summary — %d messages compacted at %s]\n%s",
+						marker.OriginalCount, marker.CompactedAt, marker.Summary),
+				})
+				continue
+			}
+			nc = append(nc, p)
+		}
+		out[i] = wingmodels.Message{Role: m.Role, Content: nc}
 	}
 	return out
 }

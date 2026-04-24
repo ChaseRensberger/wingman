@@ -28,10 +28,15 @@
 //
 //   - Persistence. The caller (typically wingagent/session) hooks into
 //     the event sink to write to storage as turns complete.
-//   - Compaction. Caller plugs in via TransformContext or runs it
-//     externally between Run invocations.
 //   - HTTP/SSE transport. Caller drains the sink to whatever wire format
 //     it needs.
+//
+// Compaction does not live in this package. Loop only offers a
+// BeforeStep hook seam (see Hooks.BeforeStep) plus per-turn cumulative
+// usage tracking; the wingagent/hook package ships a default compaction
+// implementation that plugs into BeforeStep, and consumers can install
+// their own hook for any other between-step transformation (budgeting,
+// tool-result trimming, redaction, etc.).
 //
 // # Event vocabulary
 //
@@ -135,13 +140,28 @@ const (
 //   - TransformContext and TransformSystem return new values; the loop
 //     uses the returned slice/string going forward but does not write
 //     back into Config.Messages. This means transforms are per-turn.
+//   - BeforeStep, in contrast, mutates the loop's running history: the
+//     returned slice replaces r.messages and persists across subsequent
+//     turns. Use BeforeStep for compaction / budget enforcement /
+//     anything that should outlive a single turn; use TransformContext
+//     for per-turn ephemeral edits (redaction, injection).
 //   - Hooks run synchronously on the loop goroutine. Slow hooks slow the
 //     loop. Hooks that need concurrency should fire-and-forget into
 //     their own goroutines.
+//
+// To add a new lifecycle seam:
+//  1. Declare the Info struct + Hook function type below.
+//  2. Add a field to Hooks here.
+//  3. Add the call site in run.go at the appropriate point.
+//  4. Define an event type (and isEvent method) if observers should see
+//     it cross the Sink boundary.
+//
+// Candidate future seams: BeforeRun (one-shot prelude), AfterStep
+// (per-iteration telemetry), AfterRun (final cleanup).
 type Hooks struct {
 	// BeforeIteration fires at the top of each turn, after MaxSteps is
-	// checked but before TransformContext / the LLM call. step is
-	// 1-indexed.
+	// checked but before BeforeStep / TransformContext / the LLM call.
+	// step is 1-indexed.
 	BeforeIteration func(ctx context.Context, step int) error
 
 	// AfterIteration fires after a turn's assistant message and tool
@@ -149,18 +169,34 @@ type Hooks struct {
 	// happened in the turn. Errors here fail the loop.
 	AfterIteration func(ctx context.Context, step int, turn Turn) error
 
+	// BeforeStep, if non-nil, is invoked at the top of each loop
+	// iteration (after MaxSteps gating, before BeforeIteration). The
+	// returned slice replaces the loop's running message history and
+	// persists across subsequent turns. Use this for compaction, budget
+	// enforcement, or any other transformation that should outlive a
+	// single turn. Returning the input slice unchanged is a no-op.
+	//
+	// If the returned slice's length differs from the input, the loop
+	// emits a ContextTransformedEvent so observers can react.
+	//
+	// Errors fail the loop.
+	BeforeStep BeforeStepHook
+
 	// TransformSystem may rewrite the system prompt for this turn. The
 	// returned string replaces Config.System for the LLM call only;
 	// subsequent turns see the original Config.System unless transformed
 	// again. Useful for time-of-day injection, project context, etc.
 	TransformSystem func(ctx context.Context, system string) (string, error)
 
-	// TransformContext may rewrite the message history for this turn.
-	// The returned slice is sent to the model in place of the loop's
-	// running history. The loop's running history is unaffected, so
-	// transforms compose only across the wire to the model. Use cases:
-	// compaction, redaction, tool-result truncation.
-	TransformContext func(ctx context.Context, messages []wingmodels.Message) ([]wingmodels.Message, error)
+	// TransformContext may rewrite the message history for this turn
+	// only. The returned slice is sent to the model in place of the
+	// loop's running history; the running history itself is unaffected,
+	// so transforms apply only to the wire request for this turn. Use
+	// cases: per-turn redaction, just-in-time injection, ephemeral
+	// trimming.
+	//
+	// Contrast with BeforeStep, which persists its mutations.
+	TransformContext TransformContextHook
 
 	// BeforeToolCall fires for each tool call after the assistant turn,
 	// before execution. It may return rewritten args to mutate the call.
@@ -175,6 +211,36 @@ type Hooks struct {
 	// the (possibly rewritten) result; an error here fails the loop.
 	AfterToolCall func(ctx context.Context, call ToolCall, result string, isError bool) (newResult string, err error)
 }
+
+// BeforeStepInfo is the input to a BeforeStepHook. Step is 1-indexed and
+// reflects the upcoming iteration. Messages is the loop's current
+// running history (the hook may inspect or copy but should treat it as
+// read-only; return a new slice to mutate). Usage is the cumulative
+// token usage across all completed turns. Model is the loop's model;
+// hooks may use it for sub-calls (e.g. summarization).
+type BeforeStepInfo struct {
+	Step     int
+	Messages []wingmodels.Message
+	Usage    wingmodels.Usage
+	Model    wingmodels.Model
+}
+
+// BeforeStepHook is the signature for Hooks.BeforeStep. See its docs.
+type BeforeStepHook func(ctx context.Context, info BeforeStepInfo) ([]wingmodels.Message, error)
+
+// TransformContextInfo is the input to a TransformContextHook. Step is
+// 1-indexed and reflects the current iteration. Messages is the slice
+// being prepared for the model (post-BeforeStep). Model is supplied so
+// hooks can introspect (e.g. context window) for budget decisions.
+type TransformContextInfo struct {
+	Step     int
+	Messages []wingmodels.Message
+	Model    wingmodels.Model
+}
+
+// TransformContextHook is the signature for Hooks.TransformContext. See
+// its docs.
+type TransformContextHook func(ctx context.Context, info TransformContextInfo) ([]wingmodels.Message, error)
 
 // ErrSkipTool is returned from BeforeToolCall to skip tool execution
 // without failing the loop. The loop synthesizes a tool result message
@@ -336,10 +402,28 @@ type ErrorEvent struct {
 	Err error
 }
 
-func (IterationStartEvent) isEvent()     {}
-func (IterationEndEvent) isEvent()       {}
-func (MessageEvent) isEvent()            {}
-func (ToolExecutionStartEvent) isEvent() {}
-func (ToolExecutionEndEvent) isEvent()   {}
-func (StreamPartEvent) isEvent()         {}
-func (ErrorEvent) isEvent()              {}
+// ContextTransformedEvent fires when a hook (BeforeStep or
+// TransformContext) replaced the message slice with one of a different
+// length. Phase is "before_step" (mutation persisted into running
+// history) or "transform_context" (mutation ephemeral, applied only to
+// this turn's request). Head is the first message of the post-hook
+// slice when len > 0, nil otherwise; observers wanting to discriminate
+// between hook kinds inspect Head's parts (e.g. a CompactionMarkerPart
+// identifies a compaction-driven mutation). This keeps the loop
+// ignorant of any specific hook's semantics.
+type ContextTransformedEvent struct {
+	Step          int
+	Phase         string // "before_step" | "transform_context"
+	OriginalCount int
+	NewCount      int
+	Head          *wingmodels.Message
+}
+
+func (IterationStartEvent) isEvent()      {}
+func (IterationEndEvent) isEvent()        {}
+func (MessageEvent) isEvent()             {}
+func (ToolExecutionStartEvent) isEvent()  {}
+func (ToolExecutionEndEvent) isEvent()    {}
+func (StreamPartEvent) isEvent()          {}
+func (ErrorEvent) isEvent()               {}
+func (ContextTransformedEvent) isEvent()  {}

@@ -24,11 +24,12 @@ type Part interface {
 
 // Part type discriminators. Stable; persisted in storage and on the SSE wire.
 const (
-	PartTypeText       = "text"
-	PartTypeReasoning  = "reasoning"
-	PartTypeImage      = "image"
-	PartTypeToolCall   = "tool_call"
-	PartTypeToolResult = "tool_result"
+	PartTypeText             = "text"
+	PartTypeReasoning        = "reasoning"
+	PartTypeImage            = "image"
+	PartTypeToolCall         = "tool_call"
+	PartTypeToolResult       = "tool_result"
+	PartTypeCompactionMarker = "compaction_marker"
 )
 
 // TextPart carries plain assistant or user text.
@@ -110,6 +111,36 @@ type ToolResultPart struct {
 
 func (ToolResultPart) Type() string { return PartTypeToolResult }
 func (ToolResultPart) isPart()      {}
+
+// CompactionMarkerPart records that a span of conversation history was
+// summarized away. Inserted by the loop's compactor in place of the
+// original messages it replaces.
+//
+// Why a first-class part instead of a TextPart with a magic prefix:
+//   - Storage and UIs can render compaction events specially (a divider,
+//     a "compacted N messages" badge) without parsing text.
+//   - The loop's request builder converts CompactionMarkerPart to a plain
+//     TextPart before calling the provider, so providers stay oblivious
+//     to the concept.
+//   - Modeled after opencode's CompactionPart (bb/opencode/packages/
+//     opencode/src/session/message-v2.ts:206) but simplified: we inline
+//     the summary text rather than splitting it across a sibling
+//     assistant message.
+type CompactionMarkerPart struct {
+	// Summary is the natural-language summary of the messages this marker
+	// replaces. Rendered to the model verbatim inside a "[Prior
+	// conversation summary]" block.
+	Summary string `json:"summary"`
+	// OriginalCount is how many messages were summarized away. Useful for
+	// UI labels ("Compacted 12 messages") and for debugging compaction
+	// behavior; not used by the loop itself.
+	OriginalCount int `json:"original_count"`
+	// CompactedAt is the RFC3339 UTC timestamp when compaction ran.
+	CompactedAt string `json:"compacted_at"`
+}
+
+func (CompactionMarkerPart) Type() string { return PartTypeCompactionMarker }
+func (CompactionMarkerPart) isPart()      {}
 
 // MarshalJSON for ToolResultPart hand-rolls the Output array so each child
 // Part gets its discriminator tag. Default struct marshaling would invoke
@@ -210,6 +241,12 @@ func UnmarshalPart(data []byte) (Part, error) {
 			out = append(out, child)
 		}
 		return ToolResultPart{CallID: raw.CallID, Output: out, IsError: raw.IsError}, nil
+	case PartTypeCompactionMarker:
+		var p CompactionMarkerPart
+		if err := json.Unmarshal(data, &p); err != nil {
+			return nil, fmt.Errorf("decode compaction_marker part: %w", err)
+		}
+		return p, nil
 	default:
 		return nil, fmt.Errorf("unknown part type %q", head.Type)
 	}

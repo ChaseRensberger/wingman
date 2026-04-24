@@ -5,15 +5,21 @@
 //   - a working directory passed to tool executions
 //   - a wingmodels.Model + system prompt + tool registry
 //   - the running message history
+//   - optional lifecycle hooks (BeforeStep / TransformContext)
 //
 // Session itself is concurrency-safe (mu-guarded). Run and RunStream
 // drive a single inference loop turn batch and append both the user
 // message and any new assistant/tool messages produced by the loop into
 // the session's running history.
 //
-// Session is deliberately minimal: it owns no persistence, no transport,
-// and no compaction. The caller (typically wingagent/server) wires those
-// in by reading History() after Run returns.
+// Compaction lives in wingagent/hook.Compaction and is installed by
+// default into the BeforeStep seam. WithoutCompaction disables it;
+// WithBeforeStep replaces it with a custom hook (compaction is no
+// longer installed automatically once a hook is supplied).
+//
+// Session is deliberately minimal: it owns no persistence and no
+// transport. The caller (typically wingagent/server) wires those in by
+// reading History() after Run returns.
 package session
 
 import (
@@ -22,6 +28,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/chaserensberger/wingman/wingagent/hook"
 	"github.com/chaserensberger/wingman/wingagent/loop"
 	"github.com/chaserensberger/wingman/wingagent/storage"
 	"github.com/chaserensberger/wingman/wingagent/tool"
@@ -36,6 +43,13 @@ type Session struct {
 	system  string
 	tools   []tool.Tool
 
+	// Hook overrides. Nil means "use default": for beforeStep that
+	// means hook.Compaction unless compactionDisabled is true; for
+	// transformContext it means no hook at all.
+	beforeStep         loop.BeforeStepHook
+	transformContext   loop.TransformContextHook
+	compactionDisabled bool
+
 	history []wingmodels.Message
 	mu      sync.RWMutex
 }
@@ -43,10 +57,14 @@ type Session struct {
 // Option configures a new Session.
 type Option func(*Session)
 
-// New returns a Session with a freshly minted KSUID (ses_ prefix) and the
-// supplied options applied. A new Session has an empty history and no
-// model; Run/RunStream will return ErrNoModel until WithModel (or
+// New returns a Session with a freshly minted KSUID (ses_ prefix) and
+// the supplied options applied. A new Session has an empty history and
+// no model; Run/RunStream will return ErrNoModel until WithModel (or
 // SetModel) is applied.
+//
+// Compaction is enabled by default via hook.Compaction (~85% of the
+// model's context window, keep last 4 messages). Use WithoutCompaction
+// to disable, or WithBeforeStep to replace it entirely.
 func New(opts ...Option) *Session {
 	s := &Session{
 		id:      storage.NewID(storage.PrefixSession),
@@ -76,6 +94,27 @@ func WithSystem(prompt string) Option {
 // WithTools registers the tools the model may call.
 func WithTools(tools ...tool.Tool) Option {
 	return func(s *Session) { s.tools = append(s.tools, tools...) }
+}
+
+// WithBeforeStep installs a hook that runs before each loop step and
+// may persistently mutate the message slice (compaction-shaped).
+// Setting any hook here suppresses the default compaction hook; if you
+// want both behaviors compose them yourself.
+func WithBeforeStep(h loop.BeforeStepHook) Option {
+	return func(s *Session) { s.beforeStep = h }
+}
+
+// WithTransformContext installs an ephemeral per-turn hook that may
+// rewrite the message slice sent to the provider without affecting
+// session history. Useful for redaction or per-turn context injection.
+func WithTransformContext(h loop.TransformContextHook) Option {
+	return func(s *Session) { s.transformContext = h }
+}
+
+// WithoutCompaction disables the default compaction hook. Has no
+// effect if WithBeforeStep was also supplied (the supplied hook wins).
+func WithoutCompaction() Option {
+	return func(s *Session) { s.compactionDisabled = true }
 }
 
 // ID returns the session identifier.
@@ -222,7 +261,19 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	system := s.system
 	tools := s.tools
 	workDir := s.workDir
+	beforeStep := s.beforeStep
+	transformContext := s.transformContext
+	compactionDisabled := s.compactionDisabled
 	s.mu.Unlock()
+
+	// Lazy default: install compaction hook if no BeforeStep was
+	// supplied and compaction wasn't explicitly disabled. Doing this
+	// here (not in New) means the hook closes over the *current* model
+	// at run time, so SetModel swaps are honored without rebuilding the
+	// session.
+	if beforeStep == nil && !compactionDisabled {
+		beforeStep = hook.Compaction()
+	}
 
 	// Collect tool results in execution order via the sink.
 	collected := []ToolCallResult{}
@@ -247,16 +298,26 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		Tools:    tools,
 		WorkDir:  workDir,
 		Sink:     internal,
+		Hooks: loop.Hooks{
+			BeforeStep:       beforeStep,
+			TransformContext: transformContext,
+		},
 	}
 
 	res, runErr := loop.Run(ctx, cfg)
 
-	// Even on error, res is non-nil (loop.Run guarantees it). Adopt the
-	// new tail of res.Messages into the session history (everything past
-	// the user message we appended).
+	// Adopt the loop's terminal message slice wholesale. This handles
+	// both the simple case (loop appended turns to historySnap) and the
+	// compaction case (loop replaced the head with a marker, leaving a
+	// shorter slice). loop.Run guarantees res != nil, even on error.
+	//
+	// startLen is now informational only; we trust the loop's view of
+	// history because compaction is loop-internal and we don't want to
+	// re-derive what was kept vs dropped.
+	_ = startLen
 	s.mu.Lock()
-	if res != nil && len(res.Messages) >= startLen {
-		s.history = append(s.history[:startLen], res.Messages[startLen:]...)
+	if res != nil {
+		s.history = append([]wingmodels.Message(nil), res.Messages...)
 	}
 	s.mu.Unlock()
 
