@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 type EditTool struct{}
@@ -24,13 +23,13 @@ func (t *EditTool) Description() string {
 	return "Edit an existing file by replacing a specific string with new content. The old_string must match exactly (including whitespace and indentation)."
 }
 
-func (t *EditTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *EditTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"path": {
 					Type:        "string",
 					Description: "The path to the file to edit",

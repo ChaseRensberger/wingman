@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 const (
@@ -32,13 +31,13 @@ func (t *WebFetchTool) Description() string {
 	return "Fetch content from a URL. Supports text, markdown, and html output formats. HTML is automatically converted to markdown by default."
 }
 
-func (t *WebFetchTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *WebFetchTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"url": {
 					Type:        "string",
 					Description: "The URL to fetch content from",

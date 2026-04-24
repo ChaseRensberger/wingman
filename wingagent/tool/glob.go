@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 type GlobTool struct{}
@@ -24,13 +23,13 @@ func (t *GlobTool) Description() string {
 	return "Find files matching a glob pattern. Returns a list of matching file paths relative to the working directory."
 }
 
-func (t *GlobTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *GlobTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"pattern": {
 					Type:        "string",
 					Description: "The glob pattern to match (e.g., '**/*.go', 'src/**/*.ts', '*.json')",

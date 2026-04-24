@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	_ "modernc.org/sqlite"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
+	"github.com/chaserensberger/wingman/wingmodels"
 )
 
 const schema = `
@@ -292,7 +292,7 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	session.UpdatedAt = now
 
 	if session.History == nil {
-		session.History = []core.Message{}
+		session.History = []wingmodels.Message{}
 	}
 
 	history, err := json.Marshal(session.History)

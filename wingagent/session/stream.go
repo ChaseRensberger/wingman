@@ -4,166 +4,164 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
-	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingagent/loop"
 )
 
+// SessionStream is the streaming counterpart to Session.Run. It exposes
+// the loop's lifecycle and provider stream parts as a serial sequence
+// the caller drains via Next/Event, plus a terminal Result accessible
+// after Next returns false.
+//
+// Concurrency: SessionStream is single-consumer. Behind the scenes, the
+// loop runs on a background goroutine; events are forwarded to a
+// buffered channel. If the consumer stops calling Next, the goroutine
+// blocks on the channel and the loop stalls; cancel ctx to abort.
 type SessionStream struct {
-	session      *Session
-	ctx          context.Context
-	events       chan core.StreamEvent
-	result       *Result
-	err          error
-	toolRegistry *tool.Registry
-	workDir      string
+	events  chan StreamEvent
+	resultC chan streamResult
 
-	currentEvent   core.StreamEvent
-	providerStream core.Stream
-	done           bool
+	current StreamEvent
+	result  *Result
+	err     error
+	done    bool
 }
 
+// StreamEvent is the unit of the SessionStream. Type names are stable
+// strings suitable for SSE event names. Data carries the per-type
+// payload, JSON-encodable by the standard library.
+//
+// Defined event types:
+//
+//   - "iteration_start": Data is loop.IterationStartEvent
+//   - "iteration_end":   Data is loop.IterationEndEvent
+//   - "message":         Data is loop.MessageEvent
+//   - "tool_start":      Data is loop.ToolExecutionStartEvent
+//   - "tool_end":        Data is loop.ToolExecutionEndEvent
+//   - "stream_part":     Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
+//   - "error":           Data is loop.ErrorEvent
+//
+// Consumers that want the loop's typed events simply type-assert on Data.
+type StreamEvent struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
+}
+
+// streamResult ferries the loop's Result + error across the goroutine
+// boundary. Sent exactly once on resultC.
+type streamResult struct {
+	res *Result
+	err error
+}
+
+// RunStream is the streaming counterpart to Run. It returns immediately
+// after starting the loop on a background goroutine; the caller drains
+// events via Next/Event and reads the terminal Result after the channel
+// closes.
+//
+// The session's history is updated by the underlying Run path on the
+// background goroutine. Callers reading History() concurrently with an
+// in-flight stream will see history snapshots that grow as turns
+// complete.
 func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream, error) {
-	s.mu.Lock()
-	if s.agent == nil {
-		s.mu.Unlock()
-		return nil, ErrNoAgent
+	s.mu.RLock()
+	if s.model == nil {
+		s.mu.RUnlock()
+		return nil, ErrNoModel
 	}
-	if s.agent.Provider() == nil {
-		s.mu.Unlock()
-		return nil, ErrNoProvider
-	}
-
-	s.history = append(s.history, core.NewUserMessage(message))
-	workDir := s.workDir
-	p := s.agent.Provider()
-	s.mu.Unlock()
-
-	toolRegistry := tool.NewRegistry()
-	for _, t := range s.agent.Tools() {
-		toolRegistry.Register(t)
-	}
+	s.mu.RUnlock()
 
 	ss := &SessionStream{
-		session:      s,
-		ctx:          ctx,
-		events:       make(chan core.StreamEvent, 100),
-		toolRegistry: toolRegistry,
-		workDir:      workDir,
-		result: &Result{
-			ToolCalls: []ToolCallResult{},
-		},
+		// 256 = comfortable headroom for streaming text deltas in a
+		// single turn before backpressuring the loop. Smaller would risk
+		// stalling; larger wastes memory on slow consumers.
+		events:  make(chan StreamEvent, 256),
+		resultC: make(chan streamResult, 1),
 	}
 
-	go ss.run(p)
+	// Forwarding sink: convert each loop.Event into a StreamEvent and
+	// push onto ss.events. The loop emits on its own goroutine, so the
+	// sink will block when ss.events is full; that's intentional
+	// backpressure on slow consumers.
+	sink := loop.SinkFunc(func(e loop.Event) {
+		ev := toStreamEvent(e)
+		select {
+		case ss.events <- ev:
+		case <-ctx.Done():
+			// Drop on cancel rather than block forever.
+		}
+	})
+
+	go func() {
+		defer close(ss.events)
+		res, err := s.runWith(ctx, message, sink)
+		ss.resultC <- streamResult{res: res, err: err}
+	}()
 
 	return ss, nil
 }
 
-func (ss *SessionStream) run(p core.Provider) {
-	defer close(ss.events)
-
-	for {
-		ss.result.Steps++
-
-		ss.session.mu.RLock()
-		req := core.InferenceRequest{
-			Messages:     ss.session.history,
-			Tools:        ss.toolRegistry.Definitions(),
-			Instructions: ss.session.agent.Instructions(),
-			OutputSchema: ss.session.agent.OutputSchema(),
-		}
-		ss.session.mu.RUnlock()
-
-		stream, err := p.StreamInference(ss.ctx, req)
-		if err != nil {
-			ss.err = fmt.Errorf("inference failed: %w", err)
-			return
-		}
-
-		for stream.Next() {
-			event := stream.Event()
-			select {
-			case ss.events <- event:
-			case <-ss.ctx.Done():
-				stream.Close()
-				ss.err = ss.ctx.Err()
-				return
-			}
-		}
-
-		if err := stream.Err(); err != nil {
-			ss.err = err
-			stream.Close()
-			return
-		}
-
-		resp := stream.Response()
-		stream.Close()
-
-		ss.result.Usage.InputTokens += resp.Usage.InputTokens
-		ss.result.Usage.OutputTokens += resp.Usage.OutputTokens
-
-		ss.session.mu.Lock()
-		ss.session.history = append(ss.session.history, core.Message{
-			Role:    core.RoleAssistant,
-			Content: resp.Content,
-		})
-		ss.session.mu.Unlock()
-
-		if !resp.HasToolCalls() {
-			ss.result.Response = resp.GetText()
-			return
-		}
-
-		toolResults := ss.session.executeToolCalls(ss.ctx, resp.GetToolCalls(), ss.toolRegistry, ss.workDir)
-		ss.result.ToolCalls = append(ss.result.ToolCalls, toolResults...)
-
-		var resultBlocks []core.ContentBlock
-		for _, result := range toolResults {
-			content := result.Output
-			isError := false
-			if result.Error != nil {
-				content = result.Error.Error()
-				isError = true
-			}
-			resultBlocks = append(resultBlocks, core.ContentBlock{
-				Type:      core.ContentTypeToolResult,
-				ToolUseID: result.ToolName,
-				Content:   content,
-				IsError:   isError,
-			})
-		}
-
-		ss.session.mu.Lock()
-		ss.session.history = append(ss.session.history, core.Message{
-			Role:    core.RoleUser,
-			Content: resultBlocks,
-		})
-		ss.session.mu.Unlock()
+// toStreamEvent classifies a loop.Event into the public envelope. Adding
+// a new loop event variant requires updating this switch; the default
+// branch surfaces the raw event under an "unknown" type so logs catch
+// the omission.
+func toStreamEvent(e loop.Event) StreamEvent {
+	switch v := e.(type) {
+	case loop.IterationStartEvent:
+		return StreamEvent{Type: "iteration_start", Data: v}
+	case loop.IterationEndEvent:
+		return StreamEvent{Type: "iteration_end", Data: v}
+	case loop.MessageEvent:
+		return StreamEvent{Type: "message", Data: v}
+	case loop.ToolExecutionStartEvent:
+		return StreamEvent{Type: "tool_start", Data: v}
+	case loop.ToolExecutionEndEvent:
+		return StreamEvent{Type: "tool_end", Data: v}
+	case loop.StreamPartEvent:
+		return StreamEvent{Type: "stream_part", Data: v}
+	case loop.ErrorEvent:
+		return StreamEvent{Type: "error", Data: map[string]string{"error": fmt.Sprint(v.Err)}}
+	default:
+		return StreamEvent{Type: "unknown", Data: v}
 	}
 }
 
+// Next blocks for the next event, returning false when the stream is
+// exhausted (loop done or aborted). After Next returns false, callers
+// should consult Err and Result.
 func (ss *SessionStream) Next() bool {
 	if ss.done {
 		return false
 	}
-	event, ok := <-ss.events
+	ev, ok := <-ss.events
 	if !ok {
+		// Channel closed: drain the terminal result.
 		ss.done = true
+		r := <-ss.resultC
+		ss.result = r.res
+		ss.err = r.err
 		return false
 	}
-	ss.currentEvent = event
+	ss.current = ev
 	return true
 }
 
-func (ss *SessionStream) Event() core.StreamEvent {
-	return ss.currentEvent
-}
+// Event returns the most recent event Next surfaced.
+func (ss *SessionStream) Event() StreamEvent { return ss.current }
 
-func (ss *SessionStream) Err() error {
-	return ss.err
-}
+// Err returns the loop error, if any, after Next returns false.
+func (ss *SessionStream) Err() error { return ss.err }
 
+// Result returns the terminal Result after Next returns false. It is
+// always non-nil so callers can persist partial state on errors. The
+// Result mirrors what Session.Run would have returned synchronously,
+// minus any tool calls whose ToolExecutionEndEvent was dropped due to
+// ctx cancellation.
 func (ss *SessionStream) Result() *Result {
+	// Defensive: callers occasionally call Result before draining; in
+	// that case we have no result yet. Returning nil there leaks the
+	// sentinel that they must drain first.
+	if ss.result == nil {
+		return &Result{}
+	}
 	return ss.result
 }

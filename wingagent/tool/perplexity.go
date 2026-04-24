@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 const perplexityBaseURL = "https://api.perplexity.ai"
@@ -34,13 +33,13 @@ func (t *PerplexityTool) Description() string {
 	return "Search the web using Perplexity AI. Returns real-time search results with titles, URLs, snippets, and dates."
 }
 
-func (t *PerplexityTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *PerplexityTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"query": {
 					Type:        "string",
 					Description: "The search query to send to Perplexity",

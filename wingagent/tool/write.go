@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 type WriteTool struct{}
@@ -23,13 +22,13 @@ func (t *WriteTool) Description() string {
 	return "Write content to a file. Creates the file if it doesn't exist, or overwrites if it does. Creates parent directories as needed."
 }
 
-func (t *WriteTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *WriteTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"path": {
 					Type:        "string",
 					Description: "The path to the file to write (relative to working directory or absolute)",

@@ -8,12 +8,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingagent/core"
-	"github.com/chaserensberger/wingman/wingagent/storage"
-	"github.com/chaserensberger/wingman/wingmodels/providers"
 	"github.com/chaserensberger/wingman/wingagent/session"
-	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/wingmodels/providers"
 
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
@@ -32,7 +31,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	sess := &storage.Session{
 		WorkDir: req.WorkDir,
-		History: []core.Message{},
+		History: []wingmodels.Message{},
 	}
 
 	if err := s.store.CreateSession(sess); err != nil {
@@ -117,7 +116,7 @@ type MessageSessionRequest struct {
 type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
 	ToolCalls []session.ToolCallResult `json:"tool_calls"`
-	Usage     core.Usage               `json:"usage"`
+	Usage     wingmodels.Usage         `json:"usage"`
 	Steps     int                      `json:"steps"`
 }
 
@@ -151,19 +150,10 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentInstance, err := s.buildAgent(storedAgent)
+	runSession, err := s.buildSession(storedAgent, sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-
-	runSession := session.New(
-		session.WithAgent(agentInstance),
-		session.WithWorkDir(sess.WorkDir),
-	)
-
-	for _, msg := range sess.History {
-		runSession.AddMessage(msg)
 	}
 
 	result, err := runSession.Run(r.Context(), req.Message)
@@ -220,19 +210,10 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	agentInstance, err := s.buildAgent(storedAgent)
+	runSession, err := s.buildSession(storedAgent, sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-
-	runSession := session.New(
-		session.WithAgent(agentInstance),
-		session.WithWorkDir(sess.WorkDir),
-	)
-
-	for _, msg := range sess.History {
-		runSession.AddMessage(msg)
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -257,12 +238,10 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 
 	for stream.Next() {
 		event := stream.Event()
-
-		data, err := json.Marshal(event)
+		data, err := json.Marshal(event.Data)
 		if err != nil {
 			continue
 		}
-
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 		flusher.Flush()
 	}
@@ -289,40 +268,39 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	flusher.Flush()
 }
 
-func (s *Server) buildAgent(stored *storage.Agent) (*agent.Agent, error) {
-	opts := []agent.Option{
-		agent.WithID(stored.ID),
-		agent.WithInstructions(stored.Instructions),
+// buildSession assembles a session.Session from a stored agent and the
+// stored session record. It instantiates the model via the providers
+// registry, resolves the tool registry, and rehydrates history.
+func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*session.Session, error) {
+	if stored.Provider == "" || stored.Model == "" {
+		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
 	}
 
-	if stored.Provider != "" {
-		opts = append(opts, agent.WithProviderID(stored.Provider))
-	}
-	if stored.Model != "" {
-		opts = append(opts, agent.WithModel(stored.Model))
+	model, err := s.buildModel(stored.Provider, stored.Model, stored.Options)
+	if err != nil {
+		return nil, err
 	}
 
-	tools := s.resolveTools(stored.Tools)
-	if len(tools) > 0 {
-		opts = append(opts, agent.WithTools(tools...))
+	opts := []session.Option{
+		session.WithModel(model),
+		session.WithSystem(stored.Instructions),
+		session.WithWorkDir(sess.WorkDir),
+	}
+	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
+		opts = append(opts, session.WithTools(tools...))
 	}
 
-	if stored.Provider != "" && stored.Model != "" {
-		p, err := s.buildProvider(stored.Provider, stored.Model, stored.Options)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, agent.WithProvider(p))
+	runSession := session.New(opts...)
+	for _, msg := range sess.History {
+		runSession.AddMessage(msg)
 	}
-
-	if stored.OutputSchema != nil {
-		opts = append(opts, agent.WithOutputSchema(stored.OutputSchema))
-	}
-
-	return agent.New(stored.Name, opts...), nil
+	return runSession, nil
 }
 
-func (s *Server) buildProvider(providerID, model string, opts map[string]any) (core.Provider, error) {
+// buildModel instantiates a wingmodels.Model from the providers registry.
+// It merges the stored options with the model name and any API key from
+// the auth store.
+func (s *Server) buildModel(providerID, model string, opts map[string]any) (wingmodels.Model, error) {
 	merged := make(map[string]any, len(opts)+2)
 	for k, v := range opts {
 		merged[k] = v
@@ -337,15 +315,18 @@ func (s *Server) buildProvider(providerID, model string, opts map[string]any) (c
 		merged["api_key"] = cred.Key
 	}
 
-	p, err := provider.New(providerID, merged)
+	m, err := provider.New(providerID, merged)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate provider %q: %w", providerID, err)
 	}
-	return core.ProviderFromModel(p), nil
+	return m, nil
 }
 
-func (s *Server) resolveTools(toolNames []string) []core.Tool {
-	builtins := map[string]core.Tool{
+// resolveTools maps stored tool name strings to live tool.Tool
+// implementations. Unknown names are silently dropped; callers that
+// need strict validation should validate at agent-creation time.
+func (s *Server) resolveTools(toolNames []string) []tool.Tool {
+	builtins := map[string]tool.Tool{
 		"bash":              tool.NewBashTool(),
 		"read":              tool.NewReadTool(),
 		"write":             tool.NewWriteTool(),
@@ -356,7 +337,7 @@ func (s *Server) resolveTools(toolNames []string) []core.Tool {
 		"perplexity_search": tool.NewPerplexityTool(),
 	}
 
-	var tools []core.Tool
+	var tools []tool.Tool
 	for _, name := range toolNames {
 		if t, ok := builtins[name]; ok {
 			tools = append(tools, t)

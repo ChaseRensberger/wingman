@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"github.com/chaserensberger/wingman/wingagent/core"
+	"github.com/chaserensberger/wingman/wingmodels"
 )
 
 type Agent struct {
@@ -20,7 +20,7 @@ type Agent struct {
 type Session struct {
 	ID        string         `json:"id"`
 	WorkDir   string         `json:"work_dir,omitempty"`
-	History   []core.Message `json:"history"`
+	History   []wingmodels.Message `json:"history"`
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
 }

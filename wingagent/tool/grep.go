@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/chaserensberger/wingman/wingagent/core"
 )
 
 type GrepTool struct{}
@@ -26,13 +25,13 @@ func (t *GrepTool) Description() string {
 	return "Search for a pattern in files. Returns matching lines with file paths and line numbers."
 }
 
-func (t *GrepTool) Definition() core.ToolDefinition {
-	return core.ToolDefinition{
+func (t *GrepTool) Definition() Definition {
+	return Definition{
 		Name:        t.Name(),
 		Description: t.Description(),
-		InputSchema: core.ToolInputSchema{
+		InputSchema: InputSchema{
 			Type: "object",
-			Properties: map[string]core.ToolProperty{
+			Properties: map[string]Property{
 				"pattern": {
 					Type:        "string",
 					Description: "The regex pattern to search for",
