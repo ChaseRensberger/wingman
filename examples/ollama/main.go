@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
 	"github.com/chaserensberger/wingman/wingmodels/providers/ollama"
 )
@@ -21,13 +19,9 @@ func main() {
 		log.Fatalf("failed to create Ollama provider: %v", err)
 	}
 
-	a := agent.New("WebResearcher",
-		agent.WithInstructions("You are a helpful research assistant. Use the webfetch tool to retrieve information from websites when needed. Summarize the key points clearly and concisely."),
-		agent.WithProvider(core.ProviderFromModel(p)),
-	)
-
 	s := session.New(
-		session.WithAgent(a),
+		session.WithModel(p),
+		session.WithSystem("You are a helpful research assistant. Use the webfetch tool to retrieve information from websites when needed. Summarize the key points clearly and concisely."),
 	)
 
 	ctx := context.Background()
@@ -41,8 +35,8 @@ func main() {
 	}
 
 	for _, tc := range result.ToolCalls {
-		if tc.Error != nil {
-			fmt.Printf("Tool: [%s] Error: %v\n", tc.ToolName, tc.Error)
+		if tc.Error != "" {
+			fmt.Printf("Tool: [%s] Error: %s\n", tc.ToolName, tc.Error)
 		} else {
 			fmt.Printf("Tool: [%s] Fetched %d bytes\n", tc.ToolName, len(tc.Output))
 		}

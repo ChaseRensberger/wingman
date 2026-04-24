@@ -8,10 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
-	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingagent/tool"
 	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
@@ -28,10 +26,11 @@ func main() {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("WingmanAgent",
-		agent.WithInstructions("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
-		agent.WithProvider(core.ProviderFromModel(p)),
-		agent.WithTools(
+	s := session.New(
+		session.WithWorkDir(workDir),
+		session.WithModel(p),
+		session.WithSystem("You are a helpful coding assistant. When asked to write code, use the write tool to create files. Use the bash tool to run commands."),
+		session.WithTools(
 			tool.NewBashTool(),
 			tool.NewReadTool(),
 			tool.NewWriteTool(),
@@ -39,11 +38,6 @@ func main() {
 			tool.NewGlobTool(),
 			tool.NewGrepTool(),
 		),
-	)
-
-	s := session.New(
-		session.WithWorkDir(workDir),
-		session.WithAgent(a),
 	)
 
 	ctx := context.Background()
@@ -57,8 +51,8 @@ func main() {
 	}
 
 	for _, tc := range result.ToolCalls {
-		if tc.Error != nil {
-			fmt.Printf("Tool: [%s] Error: %v\n", tc.ToolName, tc.Error)
+		if tc.Error != "" {
+			fmt.Printf("Tool: [%s] Error: %s\n", tc.ToolName, tc.Error)
 		} else {
 			fmt.Printf("Tool: [%s] %s\n", tc.ToolName, truncate(tc.Output, 200))
 		}

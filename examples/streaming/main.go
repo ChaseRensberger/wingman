@@ -7,10 +7,10 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingagent/core"
-	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	"github.com/chaserensberger/wingman/wingagent/loop"
 	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
@@ -21,13 +21,9 @@ func main() {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("Storyteller",
-		agent.WithInstructions("You are a creative storyteller. Write engaging, vivid stories."),
-		agent.WithProvider(core.ProviderFromModel(p)),
-	)
-
 	s := session.New(
-		session.WithAgent(a),
+		session.WithModel(p),
+		session.WithSystem("You are a creative storyteller. Write engaging, vivid stories."),
 	)
 
 	fmt.Println("Streaming story...")
@@ -40,10 +36,17 @@ func main() {
 
 	for stream.Next() {
 		event := stream.Event()
-		switch event.Type {
-		case core.EventTextDelta:
-			fmt.Print(event.Text)
-		case core.EventMessageStop:
+		if event.Type != "stream_part" {
+			continue
+		}
+		spe, ok := event.Data.(loop.StreamPartEvent)
+		if !ok {
+			continue
+		}
+		switch part := spe.Part.(type) {
+		case wingmodels.TextDeltaPart:
+			fmt.Print(part.Delta)
+		case wingmodels.FinishPart:
 			fmt.Println()
 		}
 	}

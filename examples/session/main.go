@@ -8,10 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/wingagent/agent"
-	"github.com/chaserensberger/wingman/wingagent/core"
 	"github.com/chaserensberger/wingman/wingagent/session"
-	"github.com/chaserensberger/wingman/wingagent/tools"
+	"github.com/chaserensberger/wingman/wingagent/tool"
 	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
@@ -28,18 +26,14 @@ func main() {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("WingmanAgent",
-		agent.WithInstructions("You are a helpful coding assistant. Keep track of our conversation."),
-		agent.WithProvider(core.ProviderFromModel(p)),
-		agent.WithTools(
+	s := session.New(
+		session.WithWorkDir(workDir),
+		session.WithModel(p),
+		session.WithSystem("You are a helpful coding assistant. Keep track of our conversation."),
+		session.WithTools(
 			tool.NewBashTool(),
 			tool.NewReadTool(),
 		),
-	)
-
-	s := session.New(
-		session.WithWorkDir(workDir),
-		session.WithAgent(a),
 	)
 
 	ctx := context.Background()
