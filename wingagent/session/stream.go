@@ -29,24 +29,37 @@ type SessionStream struct {
 
 // StreamEvent is the unit of the SessionStream. Type names are stable
 // strings suitable for SSE event names. Data carries the per-type
-// payload, JSON-encodable by the standard library.
+// payload, JSON-encodable by the standard library. Version is the
+// envelope schema version (currently EnvelopeVersion = 1); consumers
+// should refuse to interpret payloads with a Version they don't
+// recognize. The version describes the *envelope*, not the inner Data
+// shape — Data shapes are governed by their respective loop event
+// types' Go struct tags and may evolve additively (new optional fields)
+// without bumping Version.
 //
 // Defined event types:
 //
-//   - "iteration_start": Data is loop.IterationStartEvent
-//   - "iteration_end":   Data is loop.IterationEndEvent
-//   - "message":         Data is loop.MessageEvent
-//   - "tool_start":      Data is loop.ToolExecutionStartEvent
-//   - "tool_end":        Data is loop.ToolExecutionEndEvent
-//   - "stream_part":     Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
-//   - "compaction":      Data is loop.CompactionEvent
-//   - "error":           Data is loop.ErrorEvent
+//   - "iteration_start":     Data is loop.IterationStartEvent
+//   - "iteration_end":       Data is loop.IterationEndEvent
+//   - "message":             Data is loop.MessageEvent
+//   - "tool_start":          Data is loop.ToolExecutionStartEvent
+//   - "tool_end":            Data is loop.ToolExecutionEndEvent
+//   - "stream_part":         Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
+//   - "compaction":          Data is loop.ContextTransformedEvent (with CompactionMarkerPart head)
+//   - "context_transformed": Data is loop.ContextTransformedEvent (other transforms)
+//   - "error":               Data is loop.ErrorEvent
 //
 // Consumers that want the loop's typed events simply type-assert on Data.
 type StreamEvent struct {
-	Type string `json:"type"`
-	Data any    `json:"data"`
+	Type    string `json:"type"`
+	Version int    `json:"version"`
+	Data    any    `json:"data"`
 }
+
+// EnvelopeVersion is the current StreamEvent envelope schema version.
+// Bump only on breaking changes to the envelope itself (Type/Version/Data
+// shape, *not* changes to the Data payload's inner fields).
+const EnvelopeVersion = 1
 
 // streamResult ferries the loop's Result + error across the goroutine
 // boundary. Sent exactly once on resultC.
@@ -106,20 +119,30 @@ func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream
 // a new loop event variant requires updating this switch; the default
 // branch surfaces the raw event under an "unknown" type so logs catch
 // the omission.
+// toStreamEvent classifies a loop.Event into the public envelope.
+// Adding a new loop event variant requires updating classify; the
+// default branch surfaces the raw event under an "unknown" type so logs
+// catch the omission. Version is stamped centrally so call sites stay
+// uniform — never construct a StreamEvent without using this.
 func toStreamEvent(e loop.Event) StreamEvent {
+	t, data := classify(e)
+	return StreamEvent{Type: t, Version: EnvelopeVersion, Data: data}
+}
+
+func classify(e loop.Event) (string, any) {
 	switch v := e.(type) {
 	case loop.IterationStartEvent:
-		return StreamEvent{Type: "iteration_start", Data: v}
+		return "iteration_start", v
 	case loop.IterationEndEvent:
-		return StreamEvent{Type: "iteration_end", Data: v}
+		return "iteration_end", v
 	case loop.MessageEvent:
-		return StreamEvent{Type: "message", Data: v}
+		return "message", v
 	case loop.ToolExecutionStartEvent:
-		return StreamEvent{Type: "tool_start", Data: v}
+		return "tool_start", v
 	case loop.ToolExecutionEndEvent:
-		return StreamEvent{Type: "tool_end", Data: v}
+		return "tool_end", v
 	case loop.StreamPartEvent:
-		return StreamEvent{Type: "stream_part", Data: v}
+		return "stream_part", v
 	case loop.ContextTransformedEvent:
 		// Discriminate by inspecting the head message: if it leads with
 		// a CompactionMarkerPart, surface as the dedicated "compaction"
@@ -128,15 +151,15 @@ func toStreamEvent(e loop.Event) StreamEvent {
 		if v.Head != nil {
 			for _, p := range v.Head.Content {
 				if _, ok := p.(wingmodels.CompactionMarkerPart); ok {
-					return StreamEvent{Type: "compaction", Data: v}
+					return "compaction", v
 				}
 			}
 		}
-		return StreamEvent{Type: "context_transformed", Data: v}
+		return "context_transformed", v
 	case loop.ErrorEvent:
-		return StreamEvent{Type: "error", Data: map[string]string{"error": fmt.Sprint(v.Err)}}
+		return "error", map[string]string{"error": fmt.Sprint(v.Err)}
 	default:
-		return StreamEvent{Type: "unknown", Data: v}
+		return "unknown", v
 	}
 }
 

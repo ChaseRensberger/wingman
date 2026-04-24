@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +20,20 @@ import (
 type Server struct {
 	store  storage.Store
 	router *chi.Mux
+	aborts *abortRegistry
+
+	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
+	// (and any other long-lived in-flight request) should select on its
+	// Done channel so they can return promptly during a drain instead
+	// of blocking http.Server.Shutdown.
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+	// inflight tracks SSE handlers explicitly. http.Server.Shutdown
+	// already waits for unary handlers to return (they'll all be done
+	// in <60s thanks to the timeout middleware), but streaming handlers
+	// can run for minutes. We use this to wait on them after cancelling
+	// shutdownCtx.
+	inflight sync.WaitGroup
 }
 
 type Config struct {
@@ -24,9 +41,13 @@ type Config struct {
 }
 
 func New(cfg Config) *Server {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		store:  cfg.Store,
-		router: chi.NewRouter(),
+		store:          cfg.Store,
+		router:         chi.NewRouter(),
+		aborts:         newAbortRegistry(),
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 
 	s.setupMiddleware()
@@ -110,6 +131,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/{id}", s.handleDeleteSession)
 		r.Post("/{id}/message", s.handleMessageSession)
 		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
+		r.Post("/{id}/abort", s.handleAbortSession)
 	})
 }
 
@@ -117,10 +139,84 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
+// ListenAndServe starts the HTTP server on addr and blocks until the
+// server is shut down. Returns nil on a clean shutdown, or the listener
+// error otherwise. Shutdown is initiated via Shutdown.
+//
+// Kept for backward compatibility. New callers should prefer Serve,
+// which lets them own the listener / TLS config / etc.
 func (s *Server) ListenAndServe(addr string) error {
-	log.Printf("Starting server on %s", addr)
-	return http.ListenAndServe(addr, s.router)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: s.router,
+	}
+	return s.Serve(srv)
 }
+
+// Serve runs srv (caller-owned) until it terminates. The server's
+// Handler is overwritten with our router. Returns nil on a graceful
+// shutdown, the underlying error otherwise.
+func (s *Server) Serve(srv *http.Server) error {
+	srv.Handler = s.router
+	log.Printf("Starting server on %s", srv.Addr)
+	err := srv.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Shutdown initiates a graceful drain. It:
+//  1. cancels the server's shutdownCtx so SSE / long-lived handlers
+//     can return promptly;
+//  2. calls srv.Shutdown(ctx), which stops accepting new connections
+//     and waits for active handlers to return;
+//  3. waits for any tracked streaming handlers to finish via the
+//     inflight WaitGroup (with the same ctx as a deadline).
+//
+// Returns the first non-nil error encountered. Pass a deadlined ctx to
+// bound shutdown time; passing context.Background means "wait forever".
+//
+// It is safe to call Shutdown multiple times; the second call is a
+// no-op for the cancellation step but will still call srv.Shutdown
+// (which is itself idempotent).
+func (s *Server) Shutdown(ctx context.Context, srv *http.Server) error {
+	s.shutdownCancel()
+
+	var firstErr error
+	if err := srv.Shutdown(ctx); err != nil {
+		firstErr = err
+	}
+
+	// Wait for streaming handlers, but don't exceed ctx's deadline.
+	done := make(chan struct{})
+	go func() {
+		s.inflight.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		if firstErr == nil {
+			firstErr = ctx.Err()
+		}
+	}
+	return firstErr
+}
+
+// trackInflight is called by streaming handlers (SSE) to register
+// themselves with the WaitGroup so Shutdown can wait for them. The
+// returned func MUST be deferred. ShutdownCtx returns the server's
+// drain-signal context for the same handlers to monitor.
+func (s *Server) trackInflight() func() {
+	s.inflight.Add(1)
+	return s.inflight.Done
+}
+
+// ShutdownCtx returns a context that is cancelled when Shutdown is
+// called. Streaming handlers select on its Done channel to abort
+// promptly during a drain.
+func (s *Server) ShutdownCtx() context.Context { return s.shutdownCtx }
 
 type ErrorResponse struct {
 	Error string `json:"error"`

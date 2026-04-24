@@ -156,7 +156,15 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := runSession.Run(r.Context(), req.Message)
+	// Register for abort. Aborting the session via POST /abort cancels
+	// runCtx, which propagates through the loop and provider stream;
+	// the loop emits a terminal turn with FinishReasonAborted and
+	// returns. We still persist whatever history was produced before
+	// the cancel.
+	runCtx, release := s.aborts.register(id, r.Context())
+	defer release()
+
+	result, err := runSession.Run(runCtx, req.Message)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -229,6 +237,28 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	// Wire shutdown signaling: when Shutdown is called server-wide,
+	// shutdownCtx fires and we cancel this request's context so the
+	// loop returns and the SSE writer below exits its drain loop.
+	// trackInflight registers with the WaitGroup so Shutdown waits for
+	// us to actually finish (vs. just signalling).
+	done := s.trackInflight()
+	defer done()
+	go func() {
+		select {
+		case <-s.ShutdownCtx().Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	// Register for abort. See handleMessageSession for the full
+	// rationale; the streaming variant additionally flushes any events
+	// the loop emits on its way out (e.g. a final FinishPart with
+	// FinishReasonAborted).
+	ctx, release := s.aborts.register(id, ctx)
+	defer release()
+
 	stream, err := runSession.RunStream(ctx, req.Message)
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
@@ -238,7 +268,12 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 
 	for stream.Next() {
 		event := stream.Event()
-		data, err := json.Marshal(event.Data)
+		// Send the full envelope as the SSE data payload. The "event:"
+		// line still carries Type so EventSource consumers can filter
+		// without parsing JSON, but parsing the data yields a fully
+		// self-describing {type, version, data} blob suitable for
+		// replay/logging without out-of-band context.
+		data, err := json.Marshal(event)
 		if err != nil {
 			continue
 		}
@@ -260,12 +295,38 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	doneData, _ := json.Marshal(map[string]any{
-		"usage": result.Usage,
-		"steps": result.Steps,
-	})
+	doneEnvelope := session.StreamEvent{
+		Type:    "done",
+		Version: session.EnvelopeVersion,
+		Data: map[string]any{
+			"usage": result.Usage,
+			"steps": result.Steps,
+		},
+	}
+	doneData, _ := json.Marshal(doneEnvelope)
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 	flusher.Flush()
+}
+
+// AbortSessionResponse reports how many in-flight runs were cancelled.
+// Aborted is 0 when no run was active for the session; the request
+// still returns 200 because cancellation is idempotent — clients
+// shouldn't have to coordinate to issue an abort.
+type AbortSessionResponse struct {
+	SessionID string `json:"session_id"`
+	Aborted   int    `json:"aborted"`
+}
+
+func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	// Verify the session exists so callers get a 404 for typos rather
+	// than a misleading 200/aborted=0. Cheap lookup vs. silent miss.
+	if _, err := s.store.GetSession(id); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	n := s.aborts.abort(id)
+	writeJSON(w, http.StatusOK, AbortSessionResponse{SessionID: id, Aborted: n})
 }
 
 // buildSession assembles a session.Session from a stored agent and the

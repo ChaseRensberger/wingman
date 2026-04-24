@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -521,6 +522,106 @@ func TestMessageSessionValidation(t *testing.T) {
 
 		if resp.StatusCode != http.StatusNotFound {
 			t.Fatalf("expected 404, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestAbortSession exercises POST /sessions/{id}/abort. We can't easily
+// drive a real run from the unit-test harness (no live model), so we
+// only verify the surface contract: 404 for unknown sessions, 200 with
+// aborted=0 for known sessions with no in-flight runs. The "actually
+// cancels a run" path is exercised indirectly by the abortRegistry
+// test below.
+func TestAbortSession(t *testing.T) {
+	ts, _ := setupTestServer(t)
+
+	body := mustJSON(t, map[string]any{"work_dir": "/tmp"})
+	resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	var sess storage.Session
+	decodeJSON(t, resp, &sess)
+
+	t.Run("idempotent on idle session", func(t *testing.T) {
+		resp, err := http.Post(ts.URL+"/sessions/"+sess.ID+"/abort", "application/json", nil)
+		if err != nil {
+			t.Fatalf("abort failed: %v", err)
+		}
+		var out AbortSessionResponse
+		decodeJSON(t, resp, &out)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+		if out.SessionID != sess.ID {
+			t.Fatalf("session_id mismatch: got %q want %q", out.SessionID, sess.ID)
+		}
+		if out.Aborted != 0 {
+			t.Fatalf("expected aborted=0, got %d", out.Aborted)
+		}
+	})
+
+	t.Run("404 for unknown session", func(t *testing.T) {
+		resp, err := http.Post(ts.URL+"/sessions/nonexistent/abort", "application/json", nil)
+		if err != nil {
+			t.Fatalf("abort failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestAbortRegistry verifies the registration / cancellation core
+// directly, since the HTTP surface can't easily simulate an in-flight
+// run without a live model.
+func TestAbortRegistry(t *testing.T) {
+	t.Run("abort cancels registered ctx", func(t *testing.T) {
+		reg := newAbortRegistry()
+		ctx, release := reg.register("ses_x", t.Context())
+		defer release()
+		if n := reg.abort("ses_x"); n != 1 {
+			t.Fatalf("expected 1 cancellation, got %d", n)
+		}
+		select {
+		case <-ctx.Done():
+		default:
+			t.Fatal("expected ctx to be cancelled")
+		}
+	})
+
+	t.Run("multiple registrations all cancel", func(t *testing.T) {
+		reg := newAbortRegistry()
+		ctxA, releaseA := reg.register("ses_x", t.Context())
+		defer releaseA()
+		ctxB, releaseB := reg.register("ses_x", t.Context())
+		defer releaseB()
+		if n := reg.abort("ses_x"); n != 2 {
+			t.Fatalf("expected 2 cancellations, got %d", n)
+		}
+		for i, c := range []context.Context{ctxA, ctxB} {
+			select {
+			case <-c.Done():
+			default:
+				t.Fatalf("ctx %d not cancelled", i)
+			}
+		}
+	})
+
+	t.Run("release removes registration", func(t *testing.T) {
+		reg := newAbortRegistry()
+		_, release := reg.register("ses_x", t.Context())
+		release()
+		if n := reg.abort("ses_x"); n != 0 {
+			t.Fatalf("expected 0 cancellations after release, got %d", n)
+		}
+	})
+
+	t.Run("unknown session is no-op", func(t *testing.T) {
+		reg := newAbortRegistry()
+		if n := reg.abort("ses_does_not_exist"); n != 0 {
+			t.Fatalf("expected 0, got %d", n)
 		}
 	})
 }
