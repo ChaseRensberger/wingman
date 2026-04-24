@@ -18,15 +18,12 @@ package session
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"sync"
-	"time"
-
-	"github.com/oklog/ulid/v2"
 
 	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/wingagent/storage"
 	"github.com/chaserensberger/wingman/wingagent/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
@@ -46,16 +43,13 @@ type Session struct {
 // Option configures a new Session.
 type Option func(*Session)
 
-// New returns a Session with a freshly minted ULID and the supplied
-// options applied. A new Session has an empty history and no model;
-// Run/RunStream will return ErrNoModel until WithModel (or SetModel) is
-// applied.
+// New returns a Session with a freshly minted KSUID (ses_ prefix) and the
+// supplied options applied. A new Session has an empty history and no
+// model; Run/RunStream will return ErrNoModel until WithModel (or
+// SetModel) is applied.
 func New(opts ...Option) *Session {
-	entropy := ulid.Monotonic(rand.Reader, 0)
-	id := ulid.MustNew(ulid.Timestamp(time.Now()), entropy)
-
 	s := &Session{
-		id:      id.String(),
+		id:      storage.NewID(storage.PrefixSession),
 		history: []wingmodels.Message{},
 	}
 	for _, opt := range opts {
