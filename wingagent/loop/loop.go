@@ -156,9 +156,26 @@ const (
 //  4. Define an event type (and isEvent method) if observers should see
 //     it cross the Sink boundary.
 //
-// Candidate future seams: BeforeRun (one-shot prelude), AfterStep
-// (per-iteration telemetry), AfterRun (final cleanup).
+// Candidate future seams: AfterStep (per-iteration telemetry), AfterRun
+// (final cleanup).
 type Hooks struct {
+	// BeforeRun fires exactly once at the start of Run, after Config
+	// validation and before the first iteration. It returns the
+	// initial message history the loop will work with. The canonical
+	// user is the storage plugin (rehydrate from disk); other use
+	// cases include injecting a session-resumption marker or a header
+	// system-of-record message.
+	//
+	// Mutually exclusive with Config.Messages: if BeforeRun is set,
+	// Config.Messages must be empty. The loop returns a config error
+	// otherwise. This forces a single source of truth for initial
+	// history and prevents accidental double-loading.
+	//
+	// Multiple plugins compose via the plugin registry; each receives
+	// the previous hook's accumulated history. Returning a nil slice
+	// is a no-op (the chain continues with the accumulator unchanged).
+	BeforeRun BeforeRunHook
+
 	// BeforeIteration fires at the top of each turn, after MaxSteps is
 	// checked but before BeforeStep / TransformContext / the LLM call.
 	// step is 1-indexed.
@@ -232,6 +249,13 @@ type BeforeStepInfo struct {
 
 // BeforeStepHook is the signature for Hooks.BeforeStep. See its docs.
 type BeforeStepHook func(ctx context.Context, info BeforeStepInfo) ([]wingmodels.Message, error)
+
+// BeforeRunHook is the signature for Hooks.BeforeRun. It returns the
+// initial message history for the run. Composed across plugins by the
+// registry: each hook receives the accumulated history from prior hooks
+// and returns the new accumulated history. Returning nil is a no-op
+// (chain continues with the accumulator unchanged).
+type BeforeRunHook func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error)
 
 // TransformContextInfo is the input to a TransformContextHook. Step is
 // 1-indexed and reflects the current iteration. Messages is the slice

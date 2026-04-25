@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 
@@ -320,7 +319,9 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 
 // buildSession assembles a session.Session from a stored agent and the
 // stored session record. It instantiates the model via the providers
-// registry, resolves the tool registry, and rehydrates history.
+// registry, resolves the tool registry, and installs the storage plugin
+// so the session loads its history from disk on Run and persists every
+// new message back as it lands.
 func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*session.Session, error) {
 	if stored.Provider == "" || stored.Model == "" {
 		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
@@ -335,27 +336,20 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 		session.WithModel(model),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
-		// Persist every message (including plugin-injected ones such
-		// as compaction markers) to storage as it lands in the loop's
-		// running history. Errors are logged-and-swallowed: an
-		// AppendMessage failure shouldn't kill the in-flight run; the
-		// caller can rehydrate from history() at request end if
-		// needed. (Future: surface via a dedicated error event.)
-		session.WithMessageSink(func(msg wingmodels.Message) {
-			if err := s.store.AppendMessage(sess.ID, msg); err != nil {
-				fmt.Fprintf(os.Stderr, "wingman: append message to %s: %v\n", sess.ID, err)
-			}
-		}),
+		// The storage plugin packages both sides of persistence:
+		// BeforeRun loads sess.History from the store, and a sink
+		// listening for loop.MessageEvent appends each completed
+		// message back. Replacing the prior explicit AddMessage
+		// replay + WithMessageSink wiring with a single plugin call
+		// removes the chance of one side being installed without the
+		// other, and keeps storage out of the SDK and loop core.
+		session.WithPlugin(storage.NewPlugin(s.store, sess.ID)),
 	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
 
-	runSession := session.New(opts...)
-	for _, msg := range sess.History {
-		runSession.AddMessage(msg)
-	}
-	return runSession, nil
+	return session.New(opts...), nil
 }
 
 // buildModel instantiates a wingmodels.Model from the providers registry.

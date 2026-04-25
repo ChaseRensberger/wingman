@@ -28,10 +28,24 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	if cfg.Model == nil {
 		return nil, errors.New("loop.Run: Config.Model is required")
 	}
+	if cfg.Hooks.BeforeRun != nil && len(cfg.Messages) > 0 {
+		return nil, errors.New("loop.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
+	}
+
+	initial := append([]wingmodels.Message{}, cfg.Messages...)
+	if cfg.Hooks.BeforeRun != nil {
+		out, err := cfg.Hooks.BeforeRun(ctx, initial)
+		if err != nil {
+			return &Result{Messages: initial, StopReason: StopReasonError}, fmt.Errorf("hook BeforeRun: %w", err)
+		}
+		if out != nil {
+			initial = out
+		}
+	}
 
 	r := &runner{
 		cfg:      cfg,
-		messages: append([]wingmodels.Message{}, cfg.Messages...),
+		messages: initial,
 		registry: buildRegistry(cfg.Tools),
 		toolDefs: buildToolDefs(cfg.Tools),
 	}

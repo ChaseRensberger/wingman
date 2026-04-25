@@ -80,6 +80,7 @@ type Plugin interface {
 // have undefined effect. Sessions construct a fresh Registry per
 // activation.
 type Registry struct {
+	beforeRun        []loop.BeforeRunHook
 	beforeStep       []loop.BeforeStepHook
 	transformContext []loop.TransformContextHook
 	beforeToolCall   []loop.BeforeToolCallFunc
@@ -90,6 +91,18 @@ type Registry struct {
 
 // NewRegistry returns an empty Registry.
 func NewRegistry() *Registry { return &Registry{} }
+
+// RegisterBeforeRun adds a BeforeRun hook. Hooks compose in install
+// order: each receives the accumulated history from prior hooks and
+// returns the new accumulated history. Returning nil is a no-op.
+//
+// The canonical user is the storage plugin (rehydrate from disk);
+// other plugins layer on top (resumption markers, header context).
+func (r *Registry) RegisterBeforeRun(h loop.BeforeRunHook) {
+	if h != nil {
+		r.beforeRun = append(r.beforeRun, h)
+	}
+}
 
 // RegisterBeforeStep adds a BeforeStep hook to the pipeline. Hooks run
 // in install order; each receives the previous hook's output as
@@ -170,6 +183,15 @@ type Built struct {
 func (r *Registry) Build() Built {
 	hooks := loop.Hooks{}
 
+	switch len(r.beforeRun) {
+	case 0:
+		// no-op
+	case 1:
+		hooks.BeforeRun = r.beforeRun[0]
+	default:
+		hooks.BeforeRun = composeBeforeRun(r.beforeRun)
+	}
+
 	switch len(r.beforeStep) {
 	case 0:
 		// no-op
@@ -211,6 +233,26 @@ func (r *Registry) Build() Built {
 	tools := append([]tool.Tool(nil), r.tools...)
 
 	return Built{Hooks: hooks, Tools: tools, Sink: sink}
+}
+
+// composeBeforeRun chains BeforeRun hooks. Each receives the
+// accumulated history from prior hooks and may return a new
+// accumulated history. nil returns leave the accumulator unchanged.
+// Errors short-circuit the chain.
+func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
+	return func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
+		acc := current
+		for i, h := range hooks {
+			out, err := h(ctx, acc)
+			if err != nil {
+				return nil, fmt.Errorf("before_run[%d]: %w", i, err)
+			}
+			if out != nil {
+				acc = out
+			}
+		}
+		return acc, nil
+	}
 }
 
 // composeBeforeStep chains BeforeStep hooks: each one's output messages

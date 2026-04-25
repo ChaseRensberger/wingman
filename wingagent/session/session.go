@@ -289,7 +289,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		Content: wingmodels.Content{wingmodels.TextPart{Text: message}},
 	})
 	// Snapshot inputs.
-	startLen := len(s.history)
 	historySnap := append([]wingmodels.Message(nil), s.history...)
 	model := s.model
 	system := s.system
@@ -303,13 +302,33 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 
 	// Build the plugin registry. Done per-Run so plugins close over
 	// the *current* session state (model, etc.) and so plugin Install
-	// errors fail the call rather than the constructor.
+	// errors fail the call rather than the constructor. Plugin Name()
+	// must be unique within a session — duplicates almost always mean
+	// a misconfiguration (e.g. two storage plugins fighting over
+	// initial history) and should fail loudly.
 	reg := plugin.NewRegistry()
+	seen := make(map[string]bool, len(plugins))
 	for _, pl := range plugins {
+		name := pl.Name()
+		if seen[name] {
+			return nil, fmt.Errorf("plugin %q already installed in this session", name)
+		}
+		seen[name] = true
 		if err := pl.Install(reg); err != nil {
-			return nil, fmt.Errorf("plugin %q install: %w", pl.Name(), err)
+			return nil, fmt.Errorf("plugin %q install: %w", name, err)
 		}
 	}
+	// Inject the session's own in-memory history as the final
+	// BeforeRun contribution. Plugin BeforeRun hooks (e.g. storage
+	// rehydration) run first; the session then appends its
+	// in-memory snapshot on top. This keeps the loop's "BeforeRun is
+	// the single source of initial history" invariant intact while
+	// preserving the existing AddMessage / SetHistory / Run-then-
+	// Run-again semantics for SDK consumers who don't use a storage
+	// plugin.
+	reg.RegisterBeforeRun(func(_ context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
+		return append(current, historySnap...), nil
+	})
 	built := reg.Build()
 
 	// Hook composition: plugin-contributed hooks run first; user-
@@ -346,13 +365,13 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	})
 
 	cfg := loop.Config{
-		Model:    model,
-		Messages: historySnap,
-		System:   system,
-		Tools:    tools,
-		WorkDir:  workDir,
-		Sink:     internal,
+		Model:   model,
+		System:  system,
+		Tools:   tools,
+		WorkDir: workDir,
+		Sink:    internal,
 		Hooks: loop.Hooks{
+			BeforeRun:        built.Hooks.BeforeRun,
 			BeforeStep:       beforeStep,
 			TransformContext: transformContext,
 			BeforeToolCall:   built.Hooks.BeforeToolCall,
@@ -366,10 +385,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// both the simple case (loop appended turns to historySnap) and
 	// the plugin-mutation case (a BeforeStep hook rewrote the slice).
 	// loop.Run guarantees res != nil, even on error.
-	//
-	// startLen is now informational only; we trust the loop's view
-	// because plugin mutations are loop-internal.
-	_ = startLen
 	s.mu.Lock()
 	if res != nil {
 		s.history = append([]wingmodels.Message(nil), res.Messages...)
