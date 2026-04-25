@@ -8,6 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/chaserensberger/wingman/wingagent/plugin/compaction"
 	"github.com/chaserensberger/wingman/wingagent/session"
 	"github.com/chaserensberger/wingman/wingagent/tool"
 	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
@@ -34,6 +35,9 @@ func main() {
 			tool.NewBashTool(),
 			tool.NewReadTool(),
 		),
+		// Plugins are opt-in. Enable summarization so long-running
+		// sessions stay under the model's context window.
+		session.WithPlugin(compaction.New()),
 	)
 
 	ctx := context.Background()

@@ -204,12 +204,12 @@ type Hooks struct {
 	// tool result with the returned args (if non-nil) and the error's
 	// message (if of type *ToolDecision; see ErrSkipTool docs). Any
 	// other error fails the loop.
-	BeforeToolCall func(ctx context.Context, call ToolCall) (newArgs map[string]any, err error)
+	BeforeToolCall BeforeToolCallFunc
 
 	// AfterToolCall fires after each tool call's execution (including
 	// when execution failed). It may rewrite the result string. Returns
 	// the (possibly rewritten) result; an error here fails the loop.
-	AfterToolCall func(ctx context.Context, call ToolCall, result string, isError bool) (newResult string, err error)
+	AfterToolCall AfterToolCallFunc
 }
 
 // BeforeStepInfo is the input to a BeforeStepHook. Step is 1-indexed and
@@ -217,12 +217,17 @@ type Hooks struct {
 // running history (the hook may inspect or copy but should treat it as
 // read-only; return a new slice to mutate). Usage is the cumulative
 // token usage across all completed turns. Model is the loop's model;
-// hooks may use it for sub-calls (e.g. summarization).
+// hooks may use it for sub-calls (e.g. summarization). Sink is the
+// loop's event sink: hooks that synthesize new history messages
+// (compaction markers, redaction notices, etc.) should emit a
+// MessageEvent for each so observers (storage, UIs) see them on the
+// same channel as loop-produced messages.
 type BeforeStepInfo struct {
 	Step     int
 	Messages []wingmodels.Message
 	Usage    wingmodels.Usage
 	Model    wingmodels.Model
+	Sink     Sink
 }
 
 // BeforeStepHook is the signature for Hooks.BeforeStep. See its docs.
@@ -241,6 +246,14 @@ type TransformContextInfo struct {
 // TransformContextHook is the signature for Hooks.TransformContext. See
 // its docs.
 type TransformContextHook func(ctx context.Context, info TransformContextInfo) ([]wingmodels.Message, error)
+
+// BeforeToolCallFunc is the signature for Hooks.BeforeToolCall. See
+// the field docs for semantics. Named so plugin composition layers can
+// reference the type without re-stating the signature.
+type BeforeToolCallFunc func(ctx context.Context, call ToolCall) (newArgs map[string]any, err error)
+
+// AfterToolCallFunc is the signature for Hooks.AfterToolCall.
+type AfterToolCallFunc func(ctx context.Context, call ToolCall, result string, isError bool) (newResult string, err error)
 
 // ErrSkipTool is returned from BeforeToolCall to skip tool execution
 // without failing the loop. The loop synthesizes a tool result message
@@ -408,9 +421,10 @@ type ErrorEvent struct {
 // history) or "transform_context" (mutation ephemeral, applied only to
 // this turn's request). Head is the first message of the post-hook
 // slice when len > 0, nil otherwise; observers wanting to discriminate
-// between hook kinds inspect Head's parts (e.g. a CompactionMarkerPart
-// identifies a compaction-driven mutation). This keeps the loop
-// ignorant of any specific hook's semantics.
+// between hook kinds inspect Head's part type discriminators (e.g. a
+// part with Type() == "compaction_marker" identifies a compaction-
+// driven mutation). The loop never imports plugin types — it only
+// surfaces the message and lets observers introspect.
 type ContextTransformedEvent struct {
 	Step          int
 	Phase         string // "before_step" | "transform_context"

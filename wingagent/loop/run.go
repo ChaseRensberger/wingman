@@ -75,6 +75,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 				Messages: r.messages,
 				Usage:    r.usage,
 				Model:    r.cfg.Model,
+				Sink:     r.cfg.Sink,
 			}
 			newMsgs, err := r.cfg.Hooks.BeforeStep(ctx, info)
 			if err != nil {
@@ -182,10 +183,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 	}
 
-	// Convert CompactionMarkerPart -> TextPart so providers stay
-	// oblivious to the compaction concept. We do this last so any
-	// TransformContext hook can see the marker if it cares.
-	msgs = renderForProvider(msgs)
+	// Note: any plugin-defined Part types that providers don't
+	// understand must be reduced to core types by the plugin's own
+	// TransformContextHook (the read-side seam). The loop is
+	// deliberately unaware of any specific plugin's part types.
 
 	req := wingmodels.Request{
 		System:   system,
@@ -466,51 +467,6 @@ func buildToolDefs(ts []tool.Tool) []wingmodels.ToolDef {
 	out := make([]wingmodels.ToolDef, len(ts))
 	for i, t := range ts {
 		out[i] = t.Definition().AsModelToolDef()
-	}
-	return out
-}
-
-// renderForProvider rewrites loop-internal Part types into Parts that
-// every provider's wire encoder understands. Today this only converts
-// CompactionMarkerPart into a TextPart prefixed with a clear marker so
-// the model knows it's reading a summary of dropped context.
-//
-// Why here and not in providers: keeping providers ignorant of loop-only
-// concepts (compaction markers, future debug markers, etc.) means we can
-// add part types without touching every provider. The cost is one extra
-// slice walk per turn.
-func renderForProvider(msgs []wingmodels.Message) []wingmodels.Message {
-	// Fast path: nothing to rewrite. Walk once to detect.
-	hasMarker := false
-	for _, m := range msgs {
-		for _, p := range m.Content {
-			if _, ok := p.(wingmodels.CompactionMarkerPart); ok {
-				hasMarker = true
-				break
-			}
-		}
-		if hasMarker {
-			break
-		}
-	}
-	if !hasMarker {
-		return msgs
-	}
-
-	out := make([]wingmodels.Message, len(msgs))
-	for i, m := range msgs {
-		nc := make(wingmodels.Content, 0, len(m.Content))
-		for _, p := range m.Content {
-			if marker, ok := p.(wingmodels.CompactionMarkerPart); ok {
-				nc = append(nc, wingmodels.TextPart{
-					Text: fmt.Sprintf("[Prior conversation summary — %d messages compacted at %s]\n%s",
-						marker.OriginalCount, marker.CompactedAt, marker.Summary),
-				})
-				continue
-			}
-			nc = append(nc, p)
-		}
-		out[i] = wingmodels.Message{Role: m.Role, Content: nc}
 	}
 	return out
 }

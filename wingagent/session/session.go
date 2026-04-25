@@ -12,14 +12,18 @@
 // message and any new assistant/tool messages produced by the loop into
 // the session's running history.
 //
-// Compaction lives in wingagent/hook.Compaction and is installed by
-// default into the BeforeStep seam. WithoutCompaction disables it;
-// WithBeforeStep replaces it with a custom hook (compaction is no
-// longer installed automatically once a hook is supplied).
+// Plugins (wingagent/plugin) are opt-in: nothing is installed by
+// default. Pass WithPlugin(compaction.New()) to enable summarization;
+// pass any other plugin to extend behavior at the BeforeStep,
+// TransformContext, BeforeToolCall, AfterToolCall, Sink, Tool, or
+// Part-registry seams. WithBeforeStep / WithTransformContext remain
+// available for power users who want to install one-off hooks without
+// the plugin bundle.
 //
 // Session is deliberately minimal: it owns no persistence and no
 // transport. The caller (typically wingagent/server) wires those in by
-// reading History() after Run returns.
+// reading History() after Run returns or by attaching its own sink via
+// a plugin.
 package session
 
 import (
@@ -28,8 +32,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingagent/hook"
 	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/wingagent/plugin"
 	"github.com/chaserensberger/wingman/wingagent/storage"
 	"github.com/chaserensberger/wingman/wingagent/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
@@ -43,12 +47,22 @@ type Session struct {
 	system  string
 	tools   []tool.Tool
 
-	// Hook overrides. Nil means "use default": for beforeStep that
-	// means hook.Compaction unless compactionDisabled is true; for
-	// transformContext it means no hook at all.
-	beforeStep         loop.BeforeStepHook
-	transformContext   loop.TransformContextHook
-	compactionDisabled bool
+	// Plugins installed via WithPlugin. Composed into Built at Run
+	// time so the session sees the model that was set most recently
+	// (model can change via SetModel between turns).
+	plugins []plugin.Plugin
+
+	// Raw hook overrides installed via WithBeforeStep / WithTransformContext.
+	// These run *after* plugin-contributed hooks (last wins for transform
+	// pipelines), so a user-supplied hook always has the final word.
+	beforeStep       loop.BeforeStepHook
+	transformContext loop.TransformContextHook
+
+	// messageSink, if non-nil, is invoked for every loop MessageEvent
+	// (including plugin-injected messages such as compaction markers
+	// emitted via info.Sink). Servers wire this to storage.AppendMessage
+	// for incremental persistence.
+	messageSink func(wingmodels.Message)
 
 	history []wingmodels.Message
 	mu      sync.RWMutex
@@ -62,9 +76,9 @@ type Option func(*Session)
 // no model; Run/RunStream will return ErrNoModel until WithModel (or
 // SetModel) is applied.
 //
-// Compaction is enabled by default via hook.Compaction (~85% of the
-// model's context window, keep last 4 messages). Use WithoutCompaction
-// to disable, or WithBeforeStep to replace it entirely.
+// Plugins are opt-in. A bare New() session runs the loop with no
+// hooks, no extra tools, and no extra sinks. Use WithPlugin to install
+// behavior bundles such as compaction.New().
 func New(opts ...Option) *Session {
 	s := &Session{
 		id:      storage.NewID(storage.PrefixSession),
@@ -96,25 +110,45 @@ func WithTools(tools ...tool.Tool) Option {
 	return func(s *Session) { s.tools = append(s.tools, tools...) }
 }
 
-// WithBeforeStep installs a hook that runs before each loop step and
-// may persistently mutate the message slice (compaction-shaped).
-// Setting any hook here suppresses the default compaction hook; if you
-// want both behaviors compose them yourself.
+// WithBeforeStep installs a raw hook that runs before each loop step
+// and may persistently mutate the message slice (compaction-shaped).
+// Composed *after* any plugin-contributed BeforeStep hooks; receives
+// the post-plugin slice. Prefer WithPlugin for reusable behavior;
+// reserve this for one-off ad-hoc hooks.
 func WithBeforeStep(h loop.BeforeStepHook) Option {
 	return func(s *Session) { s.beforeStep = h }
 }
 
-// WithTransformContext installs an ephemeral per-turn hook that may
+// WithTransformContext installs a raw ephemeral per-turn hook that may
 // rewrite the message slice sent to the provider without affecting
-// session history. Useful for redaction or per-turn context injection.
+// session history. Composed *after* any plugin-contributed
+// TransformContext hooks (sees the post-plugin slice). Useful for
+// redaction or per-turn context injection.
 func WithTransformContext(h loop.TransformContextHook) Option {
 	return func(s *Session) { s.transformContext = h }
 }
 
-// WithoutCompaction disables the default compaction hook. Has no
-// effect if WithBeforeStep was also supplied (the supplied hook wins).
-func WithoutCompaction() Option {
-	return func(s *Session) { s.compactionDisabled = true }
+// WithPlugin installs one or more plugins. Plugins contribute hooks,
+// tools, sinks, and Part-type decoders. Hook composition order is
+// install order (the first plugin's hook sees the raw slice; later
+// plugins see the previous plugin's output). Tool name collisions
+// resolve last-wins; sinks fan out to all installed plugins.
+//
+// Nothing is installed by default; bare New() sessions run with an
+// empty plugin set.
+func WithPlugin(plugins ...plugin.Plugin) Option {
+	return func(s *Session) { s.plugins = append(s.plugins, plugins...) }
+}
+
+// WithMessageSink installs a callback fired for every complete
+// message added to history during a Run — including plugin-injected
+// messages (e.g. compaction markers) when the plugin emits a
+// MessageEvent through the loop sink. Use this to persist messages
+// incrementally as they're produced rather than batching at end of
+// turn. Calls are synchronous on the loop goroutine; the callback
+// must not block.
+func WithMessageSink(fn func(wingmodels.Message)) Option {
+	return func(s *Session) { s.messageSink = fn }
 }
 
 // ID returns the session identifier.
@@ -259,21 +293,33 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	historySnap := append([]wingmodels.Message(nil), s.history...)
 	model := s.model
 	system := s.system
-	tools := s.tools
+	tools := append([]tool.Tool(nil), s.tools...)
 	workDir := s.workDir
-	beforeStep := s.beforeStep
-	transformContext := s.transformContext
-	compactionDisabled := s.compactionDisabled
+	rawBeforeStep := s.beforeStep
+	rawTransformContext := s.transformContext
+	plugins := append([]plugin.Plugin(nil), s.plugins...)
+	messageSink := s.messageSink
 	s.mu.Unlock()
 
-	// Lazy default: install compaction hook if no BeforeStep was
-	// supplied and compaction wasn't explicitly disabled. Doing this
-	// here (not in New) means the hook closes over the *current* model
-	// at run time, so SetModel swaps are honored without rebuilding the
-	// session.
-	if beforeStep == nil && !compactionDisabled {
-		beforeStep = hook.Compaction()
+	// Build the plugin registry. Done per-Run so plugins close over
+	// the *current* session state (model, etc.) and so plugin Install
+	// errors fail the call rather than the constructor.
+	reg := plugin.NewRegistry()
+	for _, pl := range plugins {
+		if err := pl.Install(reg); err != nil {
+			return nil, fmt.Errorf("plugin %q install: %w", pl.Name(), err)
+		}
 	}
+	built := reg.Build()
+
+	// Hook composition: plugin-contributed hooks run first; user-
+	// supplied raw hooks run last and see the post-plugin slice.
+	beforeStep := composeBeforeStep(built.Hooks.BeforeStep, rawBeforeStep)
+	transformContext := composeTransformContext(built.Hooks.TransformContext, rawTransformContext)
+
+	// Tool composition: session tools first, then plugin tools (later
+	// wins on name collision via the loop's registry).
+	tools = append(tools, built.Tools...)
 
 	// Collect tool results in execution order via the sink.
 	collected := []ToolCallResult{}
@@ -285,6 +331,14 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 				Output:   end.Result.Output,
 				Error:    errStringIf(end.Result.IsError, end.Result.Output),
 			})
+		}
+		if messageSink != nil {
+			if me, ok := e.(loop.MessageEvent); ok {
+				messageSink(me.Message)
+			}
+		}
+		if built.Sink != nil {
+			built.Sink.OnEvent(e)
 		}
 		if extraSink != nil {
 			extraSink.OnEvent(e)
@@ -301,19 +355,20 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		Hooks: loop.Hooks{
 			BeforeStep:       beforeStep,
 			TransformContext: transformContext,
+			BeforeToolCall:   built.Hooks.BeforeToolCall,
+			AfterToolCall:    built.Hooks.AfterToolCall,
 		},
 	}
 
 	res, runErr := loop.Run(ctx, cfg)
 
 	// Adopt the loop's terminal message slice wholesale. This handles
-	// both the simple case (loop appended turns to historySnap) and the
-	// compaction case (loop replaced the head with a marker, leaving a
-	// shorter slice). loop.Run guarantees res != nil, even on error.
+	// both the simple case (loop appended turns to historySnap) and
+	// the plugin-mutation case (a BeforeStep hook rewrote the slice).
+	// loop.Run guarantees res != nil, even on error.
 	//
-	// startLen is now informational only; we trust the loop's view of
-	// history because compaction is loop-internal and we don't want to
-	// re-derive what was kept vs dropped.
+	// startLen is now informational only; we trust the loop's view
+	// because plugin mutations are loop-internal.
 	_ = startLen
 	s.mu.Lock()
 	if res != nil {
@@ -370,4 +425,51 @@ func textOf(msg wingmodels.Message) string {
 		}
 	}
 	return out
+}
+
+// composeBeforeStep returns the composition of plugin and user
+// BeforeStep hooks. If only one (or neither) is non-nil, returns it
+// directly to keep the call path obvious.
+func composeBeforeStep(pluginHook, userHook loop.BeforeStepHook) loop.BeforeStepHook {
+	switch {
+	case pluginHook == nil && userHook == nil:
+		return nil
+	case pluginHook == nil:
+		return userHook
+	case userHook == nil:
+		return pluginHook
+	}
+	return func(ctx context.Context, info loop.BeforeStepInfo) ([]wingmodels.Message, error) {
+		out, err := pluginHook(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		// Re-issue with the rewritten slice so the user hook sees
+		// the post-plugin view.
+		next := info
+		next.Messages = out
+		return userHook(ctx, next)
+	}
+}
+
+// composeTransformContext mirrors composeBeforeStep for the per-turn
+// transform seam.
+func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loop.TransformContextHook {
+	switch {
+	case pluginHook == nil && userHook == nil:
+		return nil
+	case pluginHook == nil:
+		return userHook
+	case userHook == nil:
+		return pluginHook
+	}
+	return func(ctx context.Context, info loop.TransformContextInfo) ([]wingmodels.Message, error) {
+		out, err := pluginHook(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		next := info
+		next.Messages = out
+		return userHook(ctx, next)
+	}
 }

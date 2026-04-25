@@ -312,24 +312,16 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	return out, nil
 }
 
-// UpdateSession overwrites the session's mutable fields and replaces its
-// entire message history.
-//
-// Implementation: we DELETE the session's messages (cascading to parts)
-// and re-INSERT the full History slice. This is wasteful for long
-// histories but keeps the API symmetric with the Tier 2 caller (which
-// passes the full slice). A future tier may add AppendMessage for the
-// streaming case.
+// UpdateSession overwrites the session's mutable metadata (work_dir
+// and updated_at). It does NOT touch the message history — use
+// AppendMessage for incremental appends or ReplaceMessages for full
+// rewrites. This split prevents the wasteful "delete+rewrite the
+// whole transcript on every turn" pattern the original implementation
+// forced.
 func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
 
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	res, err := tx.Exec(`
+	res, err := s.db.Exec(`
 		UPDATE sessions SET work_dir = ?, updated_at = ? WHERE id = ?
 	`, session.WorkDir, session.UpdatedAt, session.ID)
 	if err != nil {
@@ -342,12 +334,107 @@ func (s *SQLiteStore) UpdateSession(session *Session) error {
 	if n == 0 {
 		return fmt.Errorf("session not found: %s", session.ID)
 	}
+	return nil
+}
 
-	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, session.ID); err != nil {
+// AppendMessage appends a single message (and its parts) to the
+// session's history at the next idx. Wrapped in a transaction so
+// either every part lands or none do; idx is computed by selecting
+// MAX(idx)+1 inside the transaction to keep ordering stable under
+// concurrent writers (SQLite WAL serializes via the single conn cap,
+// but the SELECT-then-INSERT pattern still requires the txn).
+//
+// Also bumps the parent session's updated_at so listing/sorting
+// reflects activity without the caller having to issue a separate
+// UpdateSession.
+func (s *SQLiteStore) AppendMessage(sessionID string, msg wingmodels.Message) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Verify the session exists. Without this check a stray
+	// AppendMessage call on a deleted session would silently insert
+	// orphan rows (foreign-key cascades wouldn't fire because the
+	// parent is already gone — actually sqlite would reject the FK,
+	// but we want a clearer error).
+	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("session not found: %s", sessionID)
+		}
+		return err
+	}
+
+	var nextIdx int
+	if err := tx.QueryRow(
+		`SELECT COALESCE(MAX(idx), -1) + 1 FROM messages WHERE session_id = ?`,
+		sessionID,
+	).Scan(&nextIdx); err != nil {
+		return fmt.Errorf("compute next idx: %w", err)
+	}
+
+	now := Now()
+	msgID := NewID(PrefixMessage)
+	if _, err := tx.Exec(`
+		INSERT INTO messages (id, session_id, idx, role, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, msgID, sessionID, nextIdx, string(msg.Role), now); err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+	for j, part := range msg.Content {
+		payload, err := wingmodels.MarshalPart(part)
+		if err != nil {
+			return fmt.Errorf("marshal part %d: %w", j, err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO parts (id, message_id, idx, kind, payload_json)
+			VALUES (?, ?, ?, ?, ?)
+		`, NewID(PrefixPart), msgID, j, part.Type(), string(payload)); err != nil {
+			return fmt.Errorf("insert part %d: %w", j, err)
+		}
+	}
+
+	if _, err := tx.Exec(
+		`UPDATE sessions SET updated_at = ? WHERE id = ?`,
+		now, sessionID,
+	); err != nil {
+		return fmt.Errorf("bump session updated_at: %w", err)
+	}
+	return tx.Commit()
+}
+
+// ReplaceMessages atomically clears the session's history and writes
+// msgs in order. Reserved for rehydration / history-edit tools; do
+// not call this in routine message paths (use AppendMessage instead).
+// Verifies the session exists; touches updated_at like AppendMessage.
+func (s *SQLiteStore) ReplaceMessages(sessionID string, msgs []wingmodels.Message) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists int
+	if err := tx.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("session not found: %s", sessionID)
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID); err != nil {
 		return fmt.Errorf("delete prior messages: %w", err)
 	}
-	if err := writeMessages(tx, session.ID, session.History); err != nil {
+	if err := writeMessages(tx, sessionID, msgs); err != nil {
 		return err
+	}
+	if _, err := tx.Exec(
+		`UPDATE sessions SET updated_at = ? WHERE id = ?`,
+		Now(), sessionID,
+	); err != nil {
+		return fmt.Errorf("bump session updated_at: %w", err)
 	}
 	return tx.Commit()
 }

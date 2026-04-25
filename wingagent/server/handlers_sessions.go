@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 
@@ -160,19 +161,14 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	// runCtx, which propagates through the loop and provider stream;
 	// the loop emits a terminal turn with FinishReasonAborted and
 	// returns. We still persist whatever history was produced before
-	// the cancel.
+	// the cancel because AppendMessage runs synchronously per
+	// MessageEvent during the loop.
 	runCtx, release := s.aborts.register(id, r.Context())
 	defer release()
 
 	result, err := runSession.Run(runCtx, req.Message)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	sess.History = runSession.History()
-	if err := s.store.UpdateSession(sess); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save session: "+err.Error())
 		return
 	}
 
@@ -288,13 +284,6 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	}
 
 	result := stream.Result()
-	sess.History = runSession.History()
-	if err := s.store.UpdateSession(sess); err != nil {
-		fmt.Fprintf(w, "event: error\ndata: failed to save session\n\n")
-		flusher.Flush()
-		return
-	}
-
 	doneEnvelope := session.StreamEvent{
 		Type:    "done",
 		Version: session.EnvelopeVersion,
@@ -346,6 +335,17 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 		session.WithModel(model),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
+		// Persist every message (including plugin-injected ones such
+		// as compaction markers) to storage as it lands in the loop's
+		// running history. Errors are logged-and-swallowed: an
+		// AppendMessage failure shouldn't kill the in-flight run; the
+		// caller can rehydrate from history() at request end if
+		// needed. (Future: surface via a dedicated error event.)
+		session.WithMessageSink(func(msg wingmodels.Message) {
+			if err := s.store.AppendMessage(sess.ID, msg); err != nil {
+				fmt.Fprintf(os.Stderr, "wingman: append message to %s: %v\n", sess.ID, err)
+			}
+		}),
 	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))

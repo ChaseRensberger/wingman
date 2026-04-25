@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingmodels"
 )
 
 // SessionStream is the streaming counterpart to Session.Run. It exposes
@@ -45,7 +44,7 @@ type SessionStream struct {
 //   - "tool_start":          Data is loop.ToolExecutionStartEvent
 //   - "tool_end":            Data is loop.ToolExecutionEndEvent
 //   - "stream_part":         Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
-//   - "compaction":          Data is loop.ContextTransformedEvent (with CompactionMarkerPart head)
+//   - "compaction":          Data is loop.ContextTransformedEvent (head Part type "compaction_marker")
 //   - "context_transformed": Data is loop.ContextTransformedEvent (other transforms)
 //   - "error":               Data is loop.ErrorEvent
 //
@@ -140,13 +139,18 @@ func classify(e loop.Event) (string, any) {
 	case loop.StreamPartEvent:
 		return "stream_part", v
 	case loop.ContextTransformedEvent:
-		// Discriminate by inspecting the head message: if it leads with
-		// a CompactionMarkerPart, surface as the dedicated "compaction"
-		// type so UIs can render a distinct affordance. Other transforms
-		// (redaction, injection, …) ride the generic event.
+		// Discriminate by inspecting the head message's first part
+		// type discriminator. Plugins that wish to surface their own
+		// SSE event type for a context transform install a Part whose
+		// Type() string the wire layer can recognize. We hardcode one
+		// well-known name ("compaction_marker") so the canonical
+		// compaction plugin gets a distinct UI affordance; other
+		// transforms (redaction, injection, …) ride the generic event.
+		// Loop and core remain ignorant of plugin Go types — only the
+		// string discriminator is consulted.
 		if v.Head != nil {
 			for _, p := range v.Head.Content {
-				if _, ok := p.(wingmodels.CompactionMarkerPart); ok {
+				if p.Type() == "compaction_marker" {
 					return "compaction", v
 				}
 			}

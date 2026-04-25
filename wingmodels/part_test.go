@@ -46,8 +46,33 @@ func TestPartRoundTrip(t *testing.T) {
 }
 
 func TestUnknownPartType(t *testing.T) {
-	if _, err := UnmarshalPart([]byte(`{"type":"banana"}`)); err == nil {
-		t.Fatal("expected error for unknown part type")
+	// Unknown discriminators round-trip as OpaquePart so storage
+	// preserves plugin-defined parts even when the plugin isn't
+	// loaded.
+	in := []byte(`{"type":"banana","peel":true}`)
+	p, err := UnmarshalPart(in)
+	if err != nil {
+		t.Fatalf("expected OpaquePart, got error: %v", err)
+	}
+	op, ok := p.(OpaquePart)
+	if !ok {
+		t.Fatalf("expected OpaquePart, got %T", p)
+	}
+	if op.TypeName != "banana" {
+		t.Errorf("TypeName: got %q want %q", op.TypeName, "banana")
+	}
+	out, err := MarshalPart(op)
+	if err != nil {
+		t.Fatalf("re-marshal: %v", err)
+	}
+	if string(out) != string(in) {
+		t.Errorf("round-trip changed bytes:\n in=%s\nout=%s", in, out)
+	}
+}
+
+func TestMissingPartType(t *testing.T) {
+	if _, err := UnmarshalPart([]byte(`{}`)); err == nil {
+		t.Fatal("expected error for missing type discriminator")
 	}
 }
 
