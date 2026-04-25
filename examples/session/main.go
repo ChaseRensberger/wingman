@@ -8,10 +8,10 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/provider/anthropic"
-	"github.com/chaserensberger/wingman/session"
-	"github.com/chaserensberger/wingman/tool"
+	"github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
@@ -27,18 +27,17 @@ func main() {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("WingmanAgent",
-		agent.WithInstructions("You are a helpful coding assistant. Keep track of our conversation."),
-		agent.WithProvider(p),
-		agent.WithTools(
+	s := session.New(
+		session.WithWorkDir(workDir),
+		session.WithModel(p),
+		session.WithSystem("You are a helpful coding assistant. Keep track of our conversation."),
+		session.WithTools(
 			tool.NewBashTool(),
 			tool.NewReadTool(),
 		),
-	)
-
-	s := session.New(
-		session.WithWorkDir(workDir),
-		session.WithAgent(a),
+		// Plugins are opt-in. Enable summarization so long-running
+		// sessions stay under the model's context window.
+		session.WithPlugin(compaction.New()),
 	)
 
 	ctx := context.Background()

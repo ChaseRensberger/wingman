@@ -4,13 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
-	_ "github.com/chaserensberger/wingman/internal/autoregprov"
-	"github.com/chaserensberger/wingman/internal/server"
-	"github.com/chaserensberger/wingman/internal/storage"
+	"github.com/chaserensberger/wingman/wingagent/server"
+	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/wingmodels/catalog"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
 )
 
 var (
@@ -85,6 +91,39 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	port := cmd.Int("port")
 	addr := fmt.Sprintf("%s:%d", host, port)
 
+	httpSrv := &http.Server{Addr: addr}
+
+	// Background catalog refresh. Models.dev publishes incremental
+	// updates we want to pick up without restarting; failures are
+	// silent (the embedded snapshot remains the source of truth).
+	catalogStop := make(chan struct{})
+	defer close(catalogStop)
+	catalog.Default().StartRefresher(time.Hour, catalogStop)
+
+	// SIGINT/SIGTERM → graceful shutdown. Drain has a 30s budget;
+	// after that we return with the deadline error and let the
+	// process exit (defers still run).
+	sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stopSig()
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(httpSrv) }()
+
 	log.Printf("Database: %s", dbPath)
-	return srv.ListenAndServe(addr)
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-sigCtx.Done():
+		log.Printf("Shutdown signal received; draining (30s budget)...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx, httpSrv); err != nil {
+			return fmt.Errorf("shutdown: %w", err)
+		}
+		// Wait for Serve to return so we don't race the defer-store-Close.
+		<-serveErr
+		log.Printf("Shutdown complete")
+		return nil
+	}
 }

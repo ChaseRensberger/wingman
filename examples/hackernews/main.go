@@ -7,61 +7,33 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/provider/anthropic"
-	"github.com/chaserensberger/wingman/session"
-	"github.com/chaserensberger/wingman/tool"
+	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
 	godotenv.Load(".env.local")
-
-	schema := map[string]any{
-		"type": "array",
-		"items": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name": map[string]any{
-					"type":        "string",
-					"description": "The name of the post",
-				},
-				"link": map[string]any{
-					"type":        "string",
-					"description": "The URL of the post",
-				},
-				"points": map[string]any{
-					"type":        "integer",
-					"description": "The number of points of the post",
-				},
-			},
-			"required":             []string{"name", "link", "points"},
-			"additionalProperties": false,
-		},
-	}
 
 	p, err := anthropic.New()
 	if err != nil {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("Hackernews Parser",
-		agent.WithInstructions("Your job is to read the top 5 posts on hackernews and structure them as json"),
-		agent.WithProvider(p),
-		agent.WithOutputSchema(schema),
-		agent.WithTools(
-			tool.NewWebFetchTool(),
-		),
+	s := session.New(
+		session.WithModel(p),
+		session.WithSystem("Your job is to read the top 5 posts on hackernews and structure them as json. Return ONLY a JSON array of {name, link, points} objects."),
+		session.WithTools(tool.NewWebFetchTool()),
 	)
 
-	s := session.New(session.WithAgent(a))
 	result, err := s.Run(context.Background(), "Fetch the top 5 posts on hackernews for me")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, tc := range result.ToolCalls {
-		if tc.Error != nil {
-			fmt.Printf("Tool: [%s] Error: %v\n", tc.ToolName, tc.Error)
+		if tc.Error != "" {
+			fmt.Printf("Tool: [%s] Error: %s\n", tc.ToolName, tc.Error)
 		} else {
 			fmt.Printf("Tool: [%s] Fetched %d bytes\n", tc.ToolName, len(tc.Output))
 		}

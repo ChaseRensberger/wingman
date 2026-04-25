@@ -8,9 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/chaserensberger/wingman/agent"
-	"github.com/chaserensberger/wingman/provider/anthropic"
-	"github.com/chaserensberger/wingman/session"
+	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 type Person struct {
@@ -23,46 +22,20 @@ type Person struct {
 func main() {
 	godotenv.Load(".env.local")
 
-	schema := map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name": map[string]any{
-				"type":        "string",
-				"description": "The person's full name",
-			},
-			"age": map[string]any{
-				"type":        "integer",
-				"description": "The person's age in years",
-			},
-			"occupation": map[string]any{
-				"type":        "string",
-				"description": "The person's job or profession",
-			},
-			"hobbies": map[string]any{
-				"type":        "array",
-				"description": "List of the person's hobbies",
-				"items": map[string]any{
-					"type": "string",
-				},
-			},
-		},
-		"required":             []string{"name", "age", "occupation", "hobbies"},
-		"additionalProperties": false,
-	}
-
 	p, err := anthropic.New(anthropic.Config{})
 	if err != nil {
 		log.Fatalf("failed to create Anthropic provider: %v", err)
 	}
 
-	a := agent.New("Extractor",
-		agent.WithInstructions("Extract person information from the given text. Return only valid JSON."),
-		agent.WithProvider(p),
-		agent.WithOutputSchema(schema),
-	)
+	// NOTE: structured-output enforcement (json_schema response_format)
+	// is deferred to a later tier. For now we coerce by prompt.
+	system := `Extract person information from the given text. Return ONLY a JSON object with fields:
+{"name": string, "age": integer, "occupation": string, "hobbies": [string]}
+No prose, no markdown fencing.`
 
 	s := session.New(
-		session.WithAgent(a),
+		session.WithModel(p),
+		session.WithSystem(system),
 	)
 
 	ctx := context.Background()
