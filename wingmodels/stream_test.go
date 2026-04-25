@@ -57,7 +57,6 @@ func TestEventStreamFinalBlocksUntilClose(t *testing.T) {
 
 	select {
 	case <-time.After(10 * time.Millisecond):
-		// Final should still be blocked.
 	}
 	s.Close(nil, nil)
 	wg.Wait() // Final unblocks after Close.

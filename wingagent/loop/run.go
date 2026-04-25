@@ -226,11 +226,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CachedInputTokens += turnUsage.CachedInputTokens
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
-	// Append the assistant message to running history and emit it.
 	r.messages = append(r.messages, *assistantMsg)
 	r.emit(MessageEvent{Message: *assistantMsg})
 
-	// Extract tool calls. No calls = turn complete.
 	calls := extractToolCalls(*assistantMsg)
 	turn := Turn{
 		Step:      step,
@@ -448,8 +446,6 @@ func (r *runner) finalize(step int, reason StopReason) *Result {
 	}
 }
 
-// ---- helpers --------------------------------------------------------------
-
 // buildRegistry produces a Registry seeded with every tool. Loop callers
 // could pass a pre-built Registry, but the per-Run cost is negligible
 // (small map of pointers) and freshness avoids stale registrations.
@@ -564,8 +560,6 @@ func buildToolResultMessage(results []ToolResult) wingmodels.Message {
 	}
 	return wingmodels.Message{Role: wingmodels.RoleTool, Content: content}
 }
-
-// ---- argument coercion ---------------------------------------------------
 
 // CoerceArgs turns an arbitrary value (typically the model's parsed tool
 // input) into a map[string]any. Providers occasionally return JSON-RAW

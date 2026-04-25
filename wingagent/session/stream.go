@@ -115,10 +115,6 @@ func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream
 	return ss, nil
 }
 
-// toStreamEvent classifies a loop.Event into the public envelope. Adding
-// a new loop event variant requires updating this switch; the default
-// branch surfaces the raw event under an "unknown" type so logs catch
-// the omission.
 // toStreamEvent classifies a loop.Event into the public envelope.
 // Adding a new loop event variant requires updating classify; the
 // default branch surfaces the raw event under an "unknown" type so logs
