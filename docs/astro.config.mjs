@@ -35,6 +35,12 @@ export default defineConfig({
 					items: [
 						{ label: 'Introduction', slug: '' },
 						{ label: 'Architecture', slug: 'architecture' },
+					],
+				},
+				{
+					label: 'Getting started',
+					items: [
+						{ label: 'Quickstart', slug: 'getting-started' },
 						{ label: 'Demos', slug: 'demos' },
 					],
 				},
@@ -49,11 +55,14 @@ export default defineConfig({
 					label: 'Concepts',
 					items: [
 						{ label: 'Providers', slug: 'providers' },
-						{ label: 'Agents', slug: 'agents' },
 						{ label: 'Sessions', slug: 'sessions' },
-						{ label: 'Fleets', slug: 'fleets' },
-						{ label: 'Formations', slug: 'formations' },
+						{ label: 'Streaming', slug: 'streaming' },
 						{ label: 'Tools', slug: 'tools' },
+						{ label: 'Lifecycle hooks', slug: 'lifecycle' },
+						{ label: 'Plugins', slug: 'plugins' },
+						{ label: 'Storage', slug: 'storage' },
+						{ label: 'Parts', slug: 'parts' },
+						{ label: 'Agents (server)', slug: 'agents' },
 					],
 				},
 				{

@@ -7,16 +7,16 @@ order: 1000
 
 # API
 
-Base URL: `http://localhost:2323`
+Base URL: `http://localhost:2323` (configurable via `--host` and `--port`).
 
-All endpoints return JSON unless noted otherwise. Error responses use the shape `{"error": "..."}`.
+All endpoints accept and return JSON unless noted. Error responses use the shape `{"error": "..."}`.
 
 ## Conventions
 
-- request bodies are JSON unless a formation definition is being sent as YAML
-- standard request timeout is 60 seconds
-- SSE endpoints bypass the standard timeout
-- streaming endpoints return `text/event-stream`
+- Request bodies are JSON.
+- Standard request timeout is 60 seconds.
+- `POST /sessions/{id}/message/stream` bypasses the standard timeout and returns `text/event-stream`.
+- ID prefixes are stable: `agt_` (agent), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Health
 
@@ -24,12 +24,8 @@ All endpoints return JSON unless noted otherwise. Error responses use the shape 
 |---|---|---|
 | `GET` | `/health` | Health check |
 
-Example response:
-
 ```json
-{
-  "status": "ok"
-}
+{ "status": "ok" }
 ```
 
 ## Provider endpoints
@@ -37,37 +33,33 @@ Example response:
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/provider` | List registered providers |
-| `GET` | `/provider/{id}` | Get provider metadata |
-| `GET` | `/provider/{id}/models` | List models for a provider |
-| `GET` | `/provider/{id}/models/{model}` | Get model metadata |
+| `GET` | `/provider/{name}` | Get provider metadata |
+| `GET` | `/provider/{name}/models` | List models for a provider |
+| `GET` | `/provider/{name}/models/{model}` | Get model metadata |
 | `GET` | `/provider/auth` | Get configured credential status |
 | `PUT` | `/provider/auth` | Set credentials for one or more providers |
 | `DELETE` | `/provider/auth/{provider}` | Remove credentials for a provider |
 
-Example auth request:
+### Set auth
 
 ```json
 {
   "providers": {
-    "anthropic": {
-      "type": "api_key",
-      "key": "sk-ant-..."
-    }
+    "anthropic": { "type": "api_key", "key": "sk-ant-..." }
   }
 }
 ```
 
-Example auth response:
+### Auth response
+
+`GET /provider/auth` returns a `configured` flag per provider without leaking the secret:
 
 ```json
 {
   "providers": {
-    "anthropic": {
-      "type": "api_key",
-      "configured": true
-    }
+    "anthropic": { "type": "api_key", "configured": true }
   },
-  "updated_at": "2026-02-21T00:00:00Z"
+  "updated_at": "2026-04-25T00:00:00Z"
 }
 ```
 
@@ -78,18 +70,18 @@ Example auth response:
 | `POST` | `/agents` | Create agent |
 | `GET` | `/agents` | List agents |
 | `GET` | `/agents/{id}` | Get agent |
-| `PUT` | `/agents/{id}` | Update agent |
+| `PUT` | `/agents/{id}` | Update agent (omitted fields unchanged) |
 | `DELETE` | `/agents/{id}` | Delete agent |
 
-Create request example:
+### Create request
 
 ```json
 {
   "name": "Assistant",
-  "instructions": "Be helpful",
+  "instructions": "Be helpful and concise.",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
   "provider": "anthropic",
-  "model": "claude-sonnet-4-5",
+  "model": "claude-haiku-4-5",
   "options": {
     "max_tokens": 4096,
     "temperature": 0.7
@@ -105,91 +97,65 @@ Create request example:
 | `POST` | `/sessions` | Create session |
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
-| `PUT` | `/sessions/{id}` | Update session |
+| `PUT` | `/sessions/{id}` | Update session metadata (work_dir) |
 | `DELETE` | `/sessions/{id}` | Delete session |
-| `POST` | `/sessions/{id}/message` | Send message and wait for final result |
-| `POST` | `/sessions/{id}/message/stream` | Send message and stream SSE events |
+| `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
+| `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
+| `POST` | `/sessions/{id}/abort` | Cancel every in-flight Run for the session |
 
-Message request example:
+`PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
+
+### Message request
 
 ```json
 {
-  "agent_id": "01ABC...",
+  "agent_id": "agt_...",
   "message": "Write a Python script"
 }
 ```
 
-Blocking response example:
+### Blocking response
 
 ```json
 {
   "response": "Here is the script...",
   "tool_calls": [
-    {
-      "tool_name": "toolu_abc123",
-      "output": "...",
-      "steps": 1
-    }
+    { "tool_name": "write", "input": {"path": "x.py"}, "output": "" }
   ],
-  "usage": {
-    "input_tokens": 120,
-    "output_tokens": 45
-  },
+  "usage": { "input_tokens": 120, "output_tokens": 45 },
   "steps": 2
 }
 ```
 
-SSE events are serialized `StreamEvent` payloads such as `text_delta`, `message_stop`, and `done`.
+### Streaming
 
-## Fleet endpoints
+`POST /sessions/{id}/message/stream` returns `text/event-stream`. Each event is:
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/fleets` | Create fleet definition |
-| `GET` | `/fleets` | List fleets |
-| `GET` | `/fleets/{id}` | Get fleet definition |
-| `PUT` | `/fleets/{id}` | Update fleet definition |
-| `DELETE` | `/fleets/{id}` | Delete fleet definition |
-| `POST` | `/fleets/{id}/run` | Run fleet and return all results |
-| `POST` | `/fleets/{id}/run/stream` | Run fleet and stream worker results |
+```text
+event: <type>
+data: <json>
 
-Run request example:
-
-```json
-{
-  "tasks": [
-    {"message": "Explore this dir", "work_dir": "/src/auth", "data": "auth"},
-    {"message": "Explore this dir", "work_dir": "/src/api", "data": "api"}
-  ]
-}
 ```
 
-Streaming emits one `result` event per completed worker followed by `done`.
-
-## Formation endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/formations` | Create formation definition |
-| `GET` | `/formations` | List formations |
-| `GET` | `/formations/{id}` | Get formation |
-| `PUT` | `/formations/{id}` | Update formation |
-| `DELETE` | `/formations/{id}` | Delete formation |
-| `GET` | `/formations/{id}/export` | Export definition as JSON or YAML |
-| `POST` | `/formations/{id}/run` | Run formation |
-| `POST` | `/formations/{id}/run/stream` | Run formation with SSE |
-| `GET` | `/formations/{id}/report` | Read `report.md` from the formation work dir |
-
-Create accepts either `application/json` or `application/x-yaml`.
-
-Run request example:
+Where `<json>` is the envelope:
 
 ```json
-{
-  "inputs": {
-    "topic": "State of local inference in 2026"
-  }
-}
+{ "type": "tool_start", "version": 1, "data": { ... } }
 ```
 
-Streaming events include `run_start`, `node_start`, `tool_call`, `node_output`, `edge_emit`, `node_end`, `node_error`, and `run_end`.
+The `type` is one of `iteration_start`, `iteration_end`, `message`, `tool_start`, `tool_end`, `stream_part`, `compaction`, `context_transformed`, `error`. After the loop returns, the server writes one terminal envelope:
+
+```text
+event: done
+data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
+```
+
+See [Streaming](./streaming) for the envelope reference and the per-type `data` shapes.
+
+### Abort response
+
+```json
+{ "session_id": "ses_...", "aborted": 2 }
+```
+
+`aborted` is the number of in-flight runs cancelled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.

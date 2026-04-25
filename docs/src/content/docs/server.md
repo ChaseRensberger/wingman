@@ -7,7 +7,7 @@ order: 11
 
 # Server
 
-`wingman serve` exposes the same runtime primitives as the SDK over HTTP and adds SQLite-backed persistence for agents, sessions, fleets, formations, and provider credentials.
+`wingman serve` exposes the same runtime primitives as the SDK over HTTP, with SQLite-backed persistence for agents, sessions, message history, and provider credentials.
 
 ## Start the server
 
@@ -27,10 +27,12 @@ wingman serve
 
 Compared with the SDK, the server provides:
 
-- persisted agents, sessions, fleets, and formations
-- provider credential management in SQLite
+- persisted agents, sessions, and message history
+- provider credential storage (per-provider, in SQLite)
 - JSON APIs for every runtime primitive
-- SSE endpoints for streaming session, fleet, and formation execution
+- SSE streaming for `POST /sessions/{id}/message/stream`
+- per-session abort via `POST /sessions/{id}/abort`
+- graceful shutdown that drains in-flight streaming handlers
 
 ## Provider auth
 
@@ -42,26 +44,35 @@ curl -sS -X PUT http://localhost:2323/provider/auth \
   -d '{"providers": {"anthropic": {"type": "api_key", "key": "sk-ant-..."}}}'
 ```
 
+`GET /provider/auth` returns a `configured` flag per provider without leaking the secret.
+
 ## Persistence model
 
 The server persists definitions and history, then reconstructs live runtime objects on demand.
 
-- **Agents** are stored as configuration records.
-- **Sessions** persist `work_dir` and message history.
-- **Fleets** persist a template configuration and accept tasks at run time.
-- **Formations** persist workflow definitions and execute runs ephemerally.
+- **Agents** are stored as configuration records (provider, model, options, instructions, tool names, optional output schema).
+- **Sessions** persist `work_dir` and message history (one row per message, with parts as separate rows).
 
-For example, when you post a message to a session, the server rebuilds a `session.Session`, replays history into it, runs the agent loop, and writes the updated history back to SQLite.
+When you post a message, the server:
+
+1. loads the stored session and replays its history into a fresh `*session.Session`
+2. loads the referenced agent record
+3. constructs the provider via the registry, injecting stored credentials
+4. wires `session.WithMessageSink(store.AppendMessage)` so each new message is persisted incrementally as the loop emits it
+5. runs `Run` or `RunStream`
+6. returns the response (or streams events) to the client
+
+See [Storage](./storage) for the schema and [Sessions](./sessions) for what `Run` actually does.
 
 ## Streaming behavior
 
-Streaming endpoints use Server-Sent Events.
+`POST /sessions/{id}/message/stream` returns `text/event-stream`. Each event is `event: <type>\ndata: <json>\n\n`. The standard 60-second request timeout is bypassed for this path. The server tracks in-flight streams in a `WaitGroup` and waits for them during graceful shutdown (subject to the shutdown context's deadline).
 
-- `POST /sessions/{id}/message/stream`
-- `POST /fleets/{id}/run/stream`
-- `POST /formations/{id}/run/stream`
+The full envelope schema is in [Streaming](./streaming).
 
-The standard 60 second request timeout is bypassed for these streaming paths.
+## Aborting a session
+
+`POST /sessions/{id}/abort` cancels every in-flight Run for that session. The loop returns with `StopReasonAborted` and the streaming endpoint emits a final `finish` part with `FinishReasonAborted` before closing. Aborts are idempotent — if no run is in flight, the response still returns 200 with `aborted: 0`. A 404 is only returned when the session id is unknown.
 
 ## Typical workflow
 
@@ -79,7 +90,7 @@ curl -sS -X POST http://localhost:2323/agents \
     "instructions": "Be helpful and concise.",
     "tools": ["bash", "read", "write"],
     "provider": "anthropic",
-    "model": "claude-sonnet-4-5",
+    "model": "claude-haiku-4-5",
     "options": {"max_tokens": 4096}
   }'
 
@@ -89,9 +100,9 @@ curl -sS -X POST http://localhost:2323/sessions \
   -d '{"work_dir": "/tmp"}'
 
 # 4. Send a message
-curl -sS -X POST http://localhost:2323/sessions/01XYZ.../message \
+curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
   -H "Content-Type: application/json" \
-  -d '{"agent_id": "01ABC...", "message": "What OS am I on?"}'
+  -d '{"agent_id": "agt_...", "message": "What OS am I on?"}'
 ```
 
 ## Route families
@@ -99,10 +110,8 @@ curl -sS -X POST http://localhost:2323/sessions/01XYZ.../message \
 | Resource | Purpose |
 |---|---|
 | `/health` | Health check |
-| `/provider` | Provider registry, auth, and model metadata |
+| `/provider` | Provider registry, model metadata, and auth |
 | `/agents` | Agent CRUD |
-| `/sessions` | Session CRUD and message execution |
-| `/fleets` | Fleet CRUD and fan-out execution |
-| `/formations` | Formation CRUD, export, execution, and report retrieval |
+| `/sessions` | Session CRUD, message execution, streaming, abort |
 
 See [API](./api) for endpoint-level details.

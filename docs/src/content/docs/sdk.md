@@ -7,7 +7,7 @@ order: 10
 
 # SDK
 
-Use the Go SDK when you want direct access to Wingman's runtime primitives inside your own application.
+Use the Go SDK when you want direct access to Wingman's runtime primitives inside your own application. The SDK has no `agent` package — the unit of execution is a `*session.Session`.
 
 ## Installation
 
@@ -24,35 +24,32 @@ import (
     "context"
     "fmt"
     "log"
+    "os"
 
     "github.com/joho/godotenv"
 
-    "github.com/chaserensberger/wingman/agent"
-    "github.com/chaserensberger/wingman/provider/anthropic"
-    "github.com/chaserensberger/wingman/session"
-    "github.com/chaserensberger/wingman/tool"
+    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/wingagent/tool"
+    "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
 func main() {
-    _ = godotenv.Load(".env.local")
+    godotenv.Load(".env.local")
 
-    p, err := anthropic.New(anthropic.Config{
-        Options: map[string]any{
-            "model":      "claude-sonnet-4-5",
-            "max_tokens": 4096,
-        },
-    })
+    workDir, _ := os.Getwd()
+
+    p, err := anthropic.New(anthropic.Config{})
     if err != nil {
         log.Fatal(err)
     }
 
-    a := agent.New("Coder",
-        agent.WithInstructions("You are a senior Go developer."),
-        agent.WithProvider(p),
-        agent.WithTools(tool.NewBashTool(), tool.NewWriteTool()),
+    s := session.New(
+        session.WithWorkDir(workDir),
+        session.WithModel(p),
+        session.WithSystem("You are a senior Go developer."),
+        session.WithTools(tool.NewBashTool(), tool.NewWriteTool()),
     )
 
-    s := session.New(session.WithAgent(a))
     result, err := s.Run(context.Background(), "Write hello.go and run it")
     if err != nil {
         log.Fatal(err)
@@ -66,13 +63,12 @@ func main() {
 
 The typical SDK flow is:
 
-1. construct a provider
-2. create an agent
-3. attach tools and optional output schema
-4. create a session or fleet
-5. run work with your own lifecycle and persistence decisions
+1. Construct a model (provider).
+2. Construct a session with `session.New(...)` and the options you need.
+3. Optionally install plugins for cross-cutting behavior.
+4. Drive `Run` or `RunStream` with your own context and persistence.
 
-The focused snippets below omit package imports unless they are relevant to the example.
+The SDK owns no persistence and no transport; the caller decides how to store history (or whether to at all).
 
 ## Providers
 
@@ -80,54 +76,64 @@ Provider packages expose typed constructors and accept a free-form `Options map[
 
 ```go
 p, err := anthropic.New(anthropic.Config{
-    APIKey: "sk-...",
+    APIKey: "sk-ant-...",
     Options: map[string]any{
-        "model":      "claude-sonnet-4-5",
+        "model":      "claude-haiku-4-5",
         "max_tokens": 4096,
         "temperature": 0.2,
     },
 })
 ```
 
-If you prefer the registry path used by the server, blank-import a provider and construct it by ID:
+If you prefer the registry path the server uses, blank-import a provider and construct it by ID:
 
 ```go
-import _ "github.com/chaserensberger/wingman/provider/anthropic"
-import "github.com/chaserensberger/wingman/provider"
+import (
+    provider "github.com/chaserensberger/wingman/wingmodels/providers"
+    _ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+)
 
-p, err := provider.New("anthropic", map[string]any{
-    "model":      "claude-opus-4-6",
+m, err := provider.New("anthropic", map[string]any{
+    "model":      "claude-haiku-4-5",
     "max_tokens": 4096,
-    "api_key":    "sk-...",
+    "api_key":    "sk-ant-...",
 })
 ```
 
-## Sessions
+See [Providers](./providers).
 
-Sessions are ephemeral in the SDK. Keep a `*session.Session` alive if you want multi-turn context.
+## Session options
+
+`session.New` accepts these options:
+
+| Option | Purpose |
+|---|---|
+| `WithModel(m)` | Set the active `wingmodels.Model`. Required before `Run`. |
+| `WithSystem(s)` | System prompt sent on every turn. |
+| `WithTools(...)` | Tools the model may invoke. |
+| `WithWorkDir(dir)` | Working directory passed to tool executions. |
+| `WithPlugin(...)` | Install plugins (compaction, custom). Opt-in; nothing is installed by default. |
+| `WithBeforeStep(h)` | One-off raw `BeforeStepHook`. Composes after plugin hooks. |
+| `WithTransformContext(h)` | One-off raw `TransformContextHook`. |
+| `WithMessageSink(fn)` | Synchronous callback fired for every message added to history. |
+
+Setters (`SetModel`, `SetSystem`, `SetTools`, `SetWorkDir`) let handlers configure a session lazily. `History()`, `AddMessage`, `SetHistory`, and `Clear` manage the running transcript — useful when rehydrating from storage.
+
+## Multi-turn
 
 ```go
-s := session.New(session.WithAgent(a))
+s := session.New(session.WithModel(p))
 
-result1, _ := s.Run(ctx, "What is 2 + 2?")
-result2, _ := s.Run(ctx, "Multiply that by 10")
+r1, _ := s.Run(ctx, "What is 2 + 2?")
+r2, _ := s.Run(ctx, "Multiply that by 10")
 
-_ = result1
-_ = result2
-```
-
-You can also set a working directory for tool execution:
-
-```go
-s := session.New(
-    session.WithAgent(a),
-    session.WithWorkDir("/path/to/project"),
-)
+_ = r1
+_ = r2
 ```
 
 ## Streaming
 
-Use `RunStream` when you want incremental events rather than waiting for the final response.
+`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator.
 
 ```go
 stream, err := s.RunStream(ctx, "Tell me a story")
@@ -136,50 +142,33 @@ if err != nil {
 }
 
 for stream.Next() {
-    event := stream.Event()
-    if event.Type == core.EventTextDelta {
-        fmt.Print(event.Text)
-    }
+    ev := stream.Event()
+    fmt.Printf("%s\t%v\n", ev.Type, ev.Data)
 }
-
 if err := stream.Err(); err != nil {
     log.Fatal(err)
 }
-
 result := stream.Result()
 _ = result
 ```
 
-## Fleets
+If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./streaming).
 
-Use fleets when you want one agent template to handle many tasks concurrently.
+## Plugins
+
+Plugins are opt-in. The canonical example is `compaction.New()`:
 
 ```go
-f := fleet.New(fleet.Config{
-    Agent: a,
-    Tasks: []fleet.Task{
-        {Message: "Analyze auth module", WorkDir: "/src/auth", Data: "auth"},
-        {Message: "Analyze API module", WorkDir: "/src/api", Data: "api"},
-    },
-    MaxWorkers: 2,
-})
+import "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
 
-results, err := f.Run(ctx)
-if err != nil {
-    log.Fatal(err)
-}
-
-for _, r := range results {
-    if r.Error != nil {
-        log.Printf("task %d failed: %v", r.TaskIndex, r.Error)
-        continue
-    }
-    log.Printf("task %d: %s", r.TaskIndex, r.Result.Response)
-}
+s := session.New(
+    session.WithModel(p),
+    session.WithPlugin(compaction.New()),
+)
 ```
+
+See [Plugins](./plugins) for authoring your own.
 
 ## Tools
 
-Built-in tools are available in the SDK as constructors in `tool/`, and custom tools are supported by implementing `core.Tool`.
-
-See [Tools](./tools) for the built-in list and the custom-tool interface.
+Built-in tools live under `wingagent/tool`. Custom tools implement `tool.Tool`. See [Tools](./tools).

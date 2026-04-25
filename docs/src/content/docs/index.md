@@ -9,29 +9,42 @@ order: 1
 
 > Disclaimer: This project is under active development and not ready for production use. This documentation is also under active development and constantly changing.
 
-Wingman is a self-hostable, airgap-friendly agent runtime and orchestration engine written in Go. It gives you a small set of composable primitives for building agent systems of arbitrary complexity.
+Wingman is a self-hostable, airgap-friendly agent runtime written in Go. It gives you a small set of composable primitives for building agent systems and ships them as two products that share one repository:
+
+- **`wingmodels`** — provider-agnostic model interface, parts/messages, AI SDK v3 streaming, and built-in providers.
+- **`wingagent`** — the agentic loop, sessions, tools, lifecycle hooks, plugins, storage, and HTTP server.
 
 You can use Wingman in two ways:
 
-- **Go SDK** - run agents in-process and integrate them directly into a Go application.
-- **HTTP server** - run `wingman serve` and interact with persisted agents, sessions, fleets, and formations over JSON APIs.
+- **Go SDK** — drive sessions in-process with `session.New(...)` and integrate them directly into a Go program.
+- **HTTP server** — run `wingman serve` and operate over JSON APIs against persisted agents and sessions, with SSE for streaming.
 
 ## Core mental model
 
-Wingman is built around a small runtime model:
+Wingman is built around four primitives:
 
-- **Provider** - a model backend adapter that implements inference.
-- **Agent** - a reusable configuration bundle: instructions, tools, output schema, provider, and model.
-- **Session** - a stateful conversation loop that manages history and tool execution.
-- **Fleet** - a fan-out primitive for running one agent template across many tasks concurrently.
-- **Formation** - a declarative DAG runtime for multi-step, multi-agent workflows.
+- **Provider** — a `wingmodels.Model` implementation that performs inference for a specific backend.
+- **Session** — a stateful conversation that owns history and runs the agentic loop.
+- **Tool** — a capability the model may invoke during a session (bash, read, write, custom).
+- **Plugin** — an opt-in bundle of hooks, tools, sinks, and Part types installed into a session at construction time.
 
-These pieces are designed to compose cleanly. A provider powers an agent, a session executes that agent, fleets run many sessions in parallel, and formations orchestrate larger workflows across agents and fleets.
+The HTTP server adds two persisted concepts on top:
+
+- **Agent** — a stored configuration record (provider, model, options, instructions, tool set) that the server uses to materialize a session at request time.
+- **Storage** — a SQLite-backed `Store` that persists agents, sessions, message history, and provider credentials.
+
+## Design anchors
+
+- **Small core, opt-in extensions.** The loop has one extension point per seam. Plugins compose into those seams; nothing is installed by default.
+- **Append-only history.** Compaction never deletes — it appends a marker that a read-side hook uses to elide stale context for the model. Storage round-trips every byte.
+- **AI SDK v3 wire format.** Streaming events follow Vercel AI SDK v3 `LanguageModelV3StreamPart` shapes (with two additions: `FinishPart` carries the assembled message, and a `FinishReasonAborted` value).
+- **Capability-based design.** Plugins ship their own hooks, sinks, tools, and Part types together; the core never imports plugin packages.
 
 ## Next steps
 
 - [Architecture](./architecture) for the system design and runtime model
+- [Quickstart](./getting-started) to build and run your first session
 - [SDK](./sdk) for embedding Wingman in Go
 - [Server](./server) for running the HTTP service
-- [Agents](./agents), [Sessions](./sessions), [Fleets](./fleets), and [Formations](./formations) for the core concepts
+- [Sessions](./sessions), [Streaming](./streaming), [Plugins](./plugins) for the core concepts
 - [API](./api) for an endpoint-level reference

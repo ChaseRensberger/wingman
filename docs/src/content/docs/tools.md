@@ -7,11 +7,11 @@ order: 105
 
 # Tools
 
-Tools are capabilities that an agent can invoke while a session is running. They let the model interact with the local filesystem, shell, or external web resources.
+Tools are capabilities the model may invoke during a session. They let the agent interact with the local filesystem, shell, or external web resources.
 
 ## Built-in tools
 
-Wingman currently ships with eight built-in tools:
+Built-in tools live under `wingagent/tool`.
 
 | Tool | Name | Purpose |
 |---|---|---|
@@ -23,6 +23,33 @@ Wingman currently ships with eight built-in tools:
 | Grep | `grep` | Search file contents with regex |
 | WebFetch | `webfetch` | Fetch URL content as text or markdown |
 | Perplexity | `perplexity_search` | Search the web through Perplexity |
+
+## SDK usage
+
+Built-in tools are constructors in `wingagent/tool`.
+
+```go
+import (
+    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/wingagent/tool"
+)
+
+s := session.New(
+    session.WithModel(p),
+    session.WithTools(
+        tool.NewBashTool(),
+        tool.NewReadTool(),
+        tool.NewWriteTool(),
+        tool.NewEditTool(),
+        tool.NewGlobTool(),
+        tool.NewGrepTool(),
+        tool.NewWebFetchTool(),
+        tool.NewPerplexityTool(),
+    ),
+)
+```
+
+Tools see the session's `WorkDir` as their `workDir` parameter. Set it via `session.WithWorkDir(dir)` or `s.SetWorkDir(dir)`.
 
 ## Server usage
 
@@ -36,40 +63,44 @@ curl -sS -X POST http://localhost:2323/agents \
     "instructions": "You are a helpful coding assistant.",
     "tools": ["bash", "read", "write", "edit", "glob", "grep"],
     "provider": "anthropic",
-    "model": "claude-sonnet-4-5"
+    "model": "claude-haiku-4-5"
   }'
 ```
 
-## SDK usage
-
-In the SDK, built-in tools are created with constructors from `tool/`.
-
-```go
-agent.New("MyAgent",
-    agent.WithTools(
-        tool.NewBashTool(),
-        tool.NewReadTool(),
-        tool.NewWriteTool(),
-        tool.NewEditTool(),
-        tool.NewGlobTool(),
-        tool.NewGrepTool(),
-        tool.NewWebFetchTool(),
-        tool.NewPerplexityTool(),
-    ),
-)
-```
+The HTTP server only resolves built-in tool names. Custom tools are an SDK concern.
 
 ## Custom tools
 
-Custom tools are supported in the SDK by implementing `core.Tool`.
+Custom tools implement the `tool.Tool` interface:
 
 ```go
 type Tool interface {
     Name() string
     Description() string
-    Definition() core.ToolDefinition
+    Definition() ToolDefinition
     Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
 }
 ```
 
-The HTTP server only resolves the built-in tool names.
+`Name` must be stable and unique within the session's tool set. `Definition` returns a JSON Schema describing the parameters; the loop forwards it to the provider so the model can plan calls. `Execute` runs synchronously when invoked; the loop runs tool calls in parallel by default (one goroutine per call within a single assistant turn) and waits for all of them before the next iteration.
+
+To opt a tool into sequential execution within a turn, embed `tool.SequentialTool`:
+
+```go
+type myTool struct {
+    tool.SequentialTool
+    // ...
+}
+```
+
+The loop respects this marker and serializes calls to that tool relative to the others in the same turn.
+
+## Tool gates and rewriting
+
+Hooks let you gate, rewrite, or observe tool calls without modifying the tools themselves:
+
+- `BeforeToolCall` may rewrite arguments or return `loop.ErrSkipTool` to deny.
+- `AfterToolCall` may rewrite the result string.
+- `ToolExecutionStartEvent` / `ToolExecutionEndEvent` give read-only observability.
+
+See [Lifecycle hooks](./lifecycle).
