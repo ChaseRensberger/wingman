@@ -1,0 +1,42 @@
+---
+const { siteTitleHref } = Astro.locals.starlightRoute;
+
+const logo = [
+  "██╗    ██╗██╗███╗   ██╗ ██████╗ ███╗   ███╗ █████╗ ███╗   ██╗",
+  "██║    ██║██║████╗  ██║██╔════╝ ████╗ ████║██╔══██╗████╗  ██║",
+  "██║ █╗ ██║██║██╔██╗ ██║██║  ███╗██╔████╔██║███████║██╔██╗ ██║",
+  "██║███╗██║██║██║╚██╗██║██║   ██║██║╚██╔╝██║██╔══██║██║╚██╗██║",
+  "╚███╔███╔╝██║██║ ╚████║╚██████╔╝██║ ╚═╝ ██║██║  ██║██║ ╚████║",
+  " ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝",
+].join("\n");
+---
+
+<a href={siteTitleHref} class="site-title sl-flex" aria-label="Wingman">
+  <pre class="ascii-logo" aria-hidden="true">{logo}</pre>
+  <span class="sr-only" translate="no">Wingman</span>
+</a>
+
+<style>
+  .site-title {
+    align-items: center;
+    text-decoration: none;
+    color: oklch(0.6072 0.119 246.1);
+  }
+
+  .ascii-logo {
+    font-family: var(--sl-font-mono);
+    font-size: 4px;
+    line-height: 1;
+    margin: 0;
+    padding: 0;
+    white-space: pre;
+    color: oklch(0.6072 0.119 246.1);
+    font-weight: 700;
+  }
+
+  @media (min-width: 50rem) {
+    .ascii-logo {
+      font-size: 5px;
+    }
+  }
+</style>
