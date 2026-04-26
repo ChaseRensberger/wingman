@@ -16,7 +16,7 @@ function RouteComponent() {
 const SDK_COMMAND = "go get github.com/chaserensberger/wingman";
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
-const DOCS_URL = "https://docs.wingman.actor";
+const DOCS_URL = "https://wingman.actor/docs";
 
 function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
 	const [copied, setCopied] = useState(false);
