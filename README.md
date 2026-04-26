@@ -10,6 +10,6 @@ Wingman is a collection of tools designed to make it as easy as possible to buil
 
 | Package | Description |
 |---------|-------------|
-| **[wingagent](wingagent)** | A portable agent runtime |
-| **[wingmodels](wingmodels)** | A provider agnostic model api |
+| **[WingAgent](wingagent)** | A portable agent runtime |
+| **[WingModels](wingmodels)** | A provider agnostic model api |
 | **[WingNews](https://news.wingman.actor)** | A HackerNews client |
