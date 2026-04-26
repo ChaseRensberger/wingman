@@ -13,6 +13,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Wingman',
+			favicon: '/WingmanBlue.png',
 			expressiveCode: { themes: ['github-light', 'github-dark'] },
 			customCss: [
 				'@fontsource/roboto-mono/400.css',
