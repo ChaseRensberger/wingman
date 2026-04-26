@@ -42,8 +42,9 @@ const (
 
 // TextPart carries plain assistant or user text.
 type TextPart struct {
-	Text      string `json:"text"`
-	Signature string `json:"signature,omitempty"`
+	Text            string          `json:"text"`
+	Signature       string          `json:"signature,omitempty"`
+	ProviderOptions ProviderOptions `json:"provider_options,omitempty"`
 }
 
 func (TextPart) Type() string { return PartTypeText }
@@ -52,9 +53,10 @@ func (TextPart) isPart()      {}
 // ReasoningPart carries reasoning / chain-of-thought content. Some providers
 // emit these only when explicitly enabled (e.g. Anthropic extended thinking).
 type ReasoningPart struct {
-	Reasoning string `json:"reasoning"`
-	Signature string `json:"signature,omitempty"`
-	Redacted  bool   `json:"redacted,omitempty"`
+	Reasoning       string          `json:"reasoning"`
+	Signature       string          `json:"signature,omitempty"`
+	Redacted        bool            `json:"redacted,omitempty"`
+	ProviderOptions ProviderOptions `json:"provider_options,omitempty"`
 }
 
 func (ReasoningPart) Type() string { return PartTypeReasoning }
@@ -62,8 +64,9 @@ func (ReasoningPart) isPart()      {}
 
 // ImagePart carries inline image data.
 type ImagePart struct {
-	Data     string `json:"data"`
-	MimeType string `json:"mime_type"`
+	Data            string          `json:"data"`
+	MimeType        string          `json:"mime_type"`
+	ProviderOptions ProviderOptions `json:"provider_options,omitempty"`
 }
 
 func (ImagePart) Type() string { return PartTypeImage }
@@ -71,10 +74,11 @@ func (ImagePart) isPart()      {}
 
 // ToolCallPart is a model-emitted request to invoke a tool.
 type ToolCallPart struct {
-	CallID    string         `json:"call_id"`
-	Name      string         `json:"name"`
-	Input     map[string]any `json:"input"`
-	Signature string         `json:"signature,omitempty"`
+	CallID          string          `json:"call_id"`
+	Name            string          `json:"name"`
+	Input           map[string]any  `json:"input"`
+	Signature       string          `json:"signature,omitempty"`
+	ProviderOptions ProviderOptions `json:"provider_options,omitempty"`
 }
 
 func (ToolCallPart) Type() string { return PartTypeToolCall }
@@ -82,9 +86,10 @@ func (ToolCallPart) isPart()      {}
 
 // ToolResultPart is the outcome of executing a ToolCallPart.
 type ToolResultPart struct {
-	CallID  string `json:"call_id"`
-	Output  []Part `json:"output"`
-	IsError bool   `json:"is_error,omitempty"`
+	CallID          string          `json:"call_id"`
+	Output          []Part          `json:"output"`
+	IsError         bool            `json:"is_error,omitempty"`
+	ProviderOptions ProviderOptions `json:"provider_options,omitempty"`
 }
 
 func (ToolResultPart) Type() string { return PartTypeToolResult }
@@ -191,9 +196,10 @@ func init() {
 		// ToolResultPart contains nested Parts; decode in two phases so
 		// each child goes through the registry dispatcher.
 		var raw struct {
-			CallID  string            `json:"call_id"`
-			Output  []json.RawMessage `json:"output"`
-			IsError bool              `json:"is_error,omitempty"`
+			CallID          string            `json:"call_id"`
+			Output          []json.RawMessage `json:"output"`
+			IsError         bool              `json:"is_error,omitempty"`
+			ProviderOptions ProviderOptions   `json:"provider_options,omitempty"`
 		}
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, fmt.Errorf("decode tool_result part: %w", err)
@@ -206,7 +212,12 @@ func init() {
 			}
 			out = append(out, child)
 		}
-		return ToolResultPart{CallID: raw.CallID, Output: out, IsError: raw.IsError}, nil
+		return ToolResultPart{
+			CallID:          raw.CallID,
+			Output:          out,
+			IsError:         raw.IsError,
+			ProviderOptions: raw.ProviderOptions,
+		}, nil
 	})
 }
 
@@ -224,11 +235,17 @@ func (t ToolResultPart) MarshalJSON() ([]byte, error) {
 		out[i] = raw
 	}
 	type alias struct {
-		CallID  string            `json:"call_id"`
-		Output  []json.RawMessage `json:"output"`
-		IsError bool              `json:"is_error,omitempty"`
+		CallID          string            `json:"call_id"`
+		Output          []json.RawMessage `json:"output"`
+		IsError         bool              `json:"is_error,omitempty"`
+		ProviderOptions ProviderOptions   `json:"provider_options,omitempty"`
 	}
-	return json.Marshal(alias{CallID: t.CallID, Output: out, IsError: t.IsError})
+	return json.Marshal(alias{
+		CallID:          t.CallID,
+		Output:          out,
+		IsError:         t.IsError,
+		ProviderOptions: t.ProviderOptions,
+	})
 }
 
 // MarshalPart serializes a Part to JSON with a "type" discriminator field.

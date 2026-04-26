@@ -16,6 +16,38 @@ type Message struct {
 	Role     Role    `json:"role"`
 	Content  Content `json:"content"`
 	Metadata Meta    `json:"metadata,omitempty"`
+	// Origin records the provider/API/model that produced this message.
+	// Populated by providers on assistant messages emitted via FinishPart;
+	// nil for user/tool messages and for assistant messages loaded from
+	// older sessions. The transform layer uses Origin to detect same-model
+	// replays and skip lossy normalizations (reasoning blocks, tool-call
+	// IDs) when the next request targets the same provider+API+model.
+	Origin *MessageOrigin `json:"origin,omitempty"`
+	// FinishReason records why an assistant turn stopped. Populated by the
+	// accumulator from the terminal FinishPart; empty for user/tool messages
+	// and for assistant messages loaded from older sessions. The transform
+	// layer uses this to drop turns that ended in error/aborted state — their
+	// content is typically half-streamed (empty text blocks, tool calls with
+	// no input) and providers reject it. In-memory only in v0.1; not yet
+	// persisted to storage (parallel to Origin).
+	FinishReason FinishReason `json:"finish_reason,omitempty"`
+}
+
+// MessageOrigin identifies the model that produced an assistant message.
+// All three fields are required when set; partial origins are not allowed.
+type MessageOrigin struct {
+	Provider string `json:"provider"`
+	API      API    `json:"api"`
+	ModelID  string `json:"model_id"`
+}
+
+// SameModel reports whether two origins refer to the same provider+API+model.
+// Nil-safe: a nil receiver or argument returns false (cannot prove same).
+func (o *MessageOrigin) SameModel(other *MessageOrigin) bool {
+	if o == nil || other == nil {
+		return false
+	}
+	return o.Provider == other.Provider && o.API == other.API && o.ModelID == other.ModelID
 }
 
 // Meta carries provider-agnostic per-message metadata. Kept open-ended so

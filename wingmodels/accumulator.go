@@ -151,6 +151,14 @@ func Accumulate(stream *EventStream[StreamPart, *Message]) iter.Seq2[Snapshot, S
 					msg = p.Message
 					snap.Message = msg
 				}
+				// Stamp FinishReason onto the assembled message so
+				// downstream consumers (transform, compaction, UI) can see
+				// how the turn ended without rebuilding stream state. Only
+				// stamps assistant messages — providers don't emit Finish
+				// for user/tool turns.
+				if msg != nil && msg.Role == RoleAssistant {
+					msg.FinishReason = p.Reason
+				}
 			case ErrorPart, StreamStartPart, ToolResultPart_:
 				// no snapshot mutation
 			}

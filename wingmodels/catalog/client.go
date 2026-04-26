@@ -167,19 +167,29 @@ func (c *Client) GetModels(providerName string) (map[string]Model, bool) {
 //   - SupportsTools comes from ToolCall.
 //   - SupportsImages is true if "image" appears in input modalities.
 //   - SupportsReasoning comes from Reasoning.
+//   - Cost fields come from Cost.{Input,Output,CacheRead,CacheWrite}; these
+//     are already in USD per 1M tokens in the models.dev schema.
+//
+// API, BaseURL and Compat are NOT populated here: those are
+// provider-implementation concerns set by the provider's factory after
+// calling Get.
 func (c *Client) Get(providerName, modelID string) (wingmodels.ModelInfo, bool) {
 	m, ok := c.GetModel(providerName, modelID)
 	if !ok {
 		return wingmodels.ModelInfo{}, false
 	}
 	return wingmodels.ModelInfo{
-		Provider:          providerName,
-		ID:                modelID,
-		ContextWindow:     m.Limit.Context,
-		MaxOutput:         m.Limit.Output,
-		SupportsTools:     m.ToolCall,
-		SupportsImages:    slices.Contains(m.Modalities.Input, "image"),
-		SupportsReasoning: m.Reasoning,
+		Provider:              providerName,
+		ID:                    modelID,
+		ContextWindow:         m.Limit.Context,
+		MaxOutput:             m.Limit.Output,
+		SupportsTools:         m.ToolCall,
+		SupportsImages:        slices.Contains(m.Modalities.Input, "image"),
+		SupportsReasoning:     m.Reasoning,
+		InputCostPerMTok:      m.Cost.Input,
+		OutputCostPerMTok:     m.Cost.Output,
+		CacheReadCostPerMTok:  m.Cost.CacheRead,
+		CacheWriteCostPerMTok: m.Cost.CacheWrite,
 	}, true
 }
 
