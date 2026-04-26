@@ -17,6 +17,7 @@ const SDK_COMMAND = "go get github.com/chaserensberger/wingman";
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://wingman.actor/docs";
+const DISCORD_URL = "https://discord.gg/Sxt68YGuZu";
 
 function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
 	const [copied, setCopied] = useState(false);
@@ -84,12 +85,13 @@ function NavLink(navItem: {
 
 function Hero() {
 	return (
-		<main className="min-h-screen flex flex-col md:max-w-3xl lg:max-w-4xl mx-auto border">
+		<main className="min-h-screen flex flex-col md:max-w-4xl lg:max-w-5xl mx-auto border">
 			<nav className="sticky top-0 bg-background flex items-center justify-between px-6 py-2 w-full border-b">
 				<img src={WingmanIcon} className="w-12 h-12" />
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={DOCS_URL} />
+					<NavLink name="Discord" url={DISCORD_URL} />
 				</div>
 			</nav>
 			<section className="border-b p-12 space-y-8">
@@ -103,15 +105,15 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
-			<section className='h-80 px-12 py-4 border-b space-y-4'>
+			<section className='flex-1 px-12 py-4 border-b space-y-4'>
 				<h2 className='font-extrabold text-lg'>Products</h2>
-				<ul className="list-['[*]'] list-inside text-muted-foreground space-y-2">
-					<li><a className="hover:text-primary" href="/">{" "}Wingman - A portable agent runtime</a></li>
-					<li><a className="hover:text-primary" href="https://models.wingman.actor">{" "}WingModels - an open source database of large language model specifications</a></li>
-					<li><a className="hover:text-primary" href="https://news.wingman.actor">{" "}WingNews - a minimalist Hacker News reader client</a></li>
-				</ul >
+				<ul className="text-muted-foreground space-y-2">
+					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="/">WingAgent - A portable agent runtime</a></li>
+					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://models.wingman.actor">WingModels - A provider agnostic model api</a></li>
+					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://news.wingman.actor">WingNews - A HackerNews client</a></li>
+				</ul>
 			</section >
-			<footer className="px-6 py-2 text-center">
+			<footer className="px-6 py-4 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
 					Wingman
 				</p>
