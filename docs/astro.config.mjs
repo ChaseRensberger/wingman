@@ -34,6 +34,7 @@ export default defineConfig({
 					label: 'Overview',
 					items: [
 						{ label: 'Introduction', slug: '' },
+						{ label: 'Philosophy', slug: 'philosophy' },
 						{ label: 'Architecture', slug: 'architecture' },
 					],
 				},

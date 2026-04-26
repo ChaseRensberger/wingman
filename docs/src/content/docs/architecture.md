@@ -54,13 +54,13 @@ A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union se
 
 The loop is the agentic kernel. One call to `loop.Run` drives a sequence of turns:
 
-1. Append the user message to the running history.
+1. Run `BeforeRun` once to seed the loop's initial message history (the storage plugin uses this to load prior turns from disk).
 2. Run `BeforeStep` (may persistently rewrite history) and `TransformContext` (may rewrite the per-turn slice without persisting).
 3. Stream from the model.
 4. Append the assistant message; if it includes tool calls, execute them (parallel by default) and append tool results.
 5. Repeat until an assistant turn produces no tool calls, `MaxSteps` is reached, or context is cancelled.
 
-Hooks are a struct of optional functions: `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./lifecycle).
+Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./lifecycle).
 
 The loop emits typed events on a `Sink` (`IterationStartEvent`, `MessageEvent`, `ToolExecutionStartEvent`/`EndEvent`, `StreamPartEvent`, `ContextTransformedEvent`, `ErrorEvent`, `IterationEndEvent`). The session forwards these to whatever observers are attached.
 
@@ -80,13 +80,18 @@ See [Sessions](./sessions).
 
 ## Plugins
 
-Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools, and Part registrations behind a single `Install(*plugin.Registry) error`. The session builds a fresh `Registry` per call and folds it into a `loop.Hooks` value, a merged tool slice, and a fan-out sink. Composition is install-order: pipeline seams chain, sinks fan out, tool name collisions resolve last-wins.
+Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools, and Part registrations behind a single `Install(*plugin.Registry) error`. The session builds a fresh `Registry` per call and folds it into a `loop.Hooks` value, a merged tool slice, and a fan-out sink. Composition is install-order: pipeline seams chain, sinks fan out, tool name collisions resolve last-wins. Plugin names must be unique within a session.
 
-The canonical plugin is `wingagent/plugin/compaction`, which summarizes long histories into an inline marker. See [Plugins](./plugins).
+Two canonical plugins ship in-tree:
+
+- `wingagent/plugin/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
+- `wingagent/storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
+
+See [Plugins](./plugins).
 
 ## Storage
 
-`wingagent/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. Sessions can be persisted incrementally during a run by wiring `session.WithMessageSink(store.AppendMessage)`; the server does this automatically.
+`wingagent/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storage.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
 IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./storage).
 
@@ -94,11 +99,10 @@ IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See
 
 `wingagent/server` is a chi router with SQLite-backed persistence. It does not introduce a separate execution model: every request reconstructs the same primitives the SDK uses. For example, when a message arrives:
 
-1. Load the session and its history.
-2. Load the referenced agent definition.
-3. Build the provider from `provider`/`model`/`options`, injecting stored credentials.
-4. Construct a `*session.Session` with `WithMessageSink` wired to incremental storage.
-5. Drive `Run` or `RunStream`; stream events over SSE if requested.
-6. The session adopts the loop's final history; storage already has each message appended.
+1. Load the agent definition and the session record.
+2. Build the provider from `provider`/`model`/`options`, injecting stored credentials.
+3. Construct a `*session.Session` with `session.WithPlugin(storage.NewPlugin(store, sess.ID))`. The plugin's `BeforeRun` rehydrates history; its sink appends new messages as they land.
+4. Drive `Run` or `RunStream`; stream events over SSE if requested.
+5. Return the response. Storage already has each message appended.
 
 See [Server](./server) and [API](./api).

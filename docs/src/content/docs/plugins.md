@@ -13,6 +13,8 @@ A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Pa
 
 The loop's `Hooks` struct allows exactly one function per seam (single call site, no surprise ordering). When multiple capabilities want the same seam — say, compaction wants `BeforeStep` and a budget enforcer also wants `BeforeStep` — wiring them by hand into both the loop config and the tool slice is mechanical and error-prone. A plugin is the aggregating abstraction: one `session.WithPlugin(...)` call installs everything the plugin contributes, and the registry composes contributions in install order.
 
+The flip side: the loop core knows nothing about any specific plugin. Storage, compaction, gates, redaction — they all live outside `wingagent/loop` and hook in through the same registry as user-authored plugins. The loop stays minimal; capabilities ship as additive modules.
+
 ## Opt-in by default
 
 Nothing is installed unless you ask for it. A bare `session.New()` runs the loop with no hooks, no extra tools, and no extra sinks.
@@ -37,9 +39,12 @@ type Plugin interface {
 
 `Name` is a stable identifier used in error messages (and, later, observability). `Install` registers the plugin's contributions with the registry. It is called exactly once per `session.Run` invocation; an error fails the call.
 
+`Name()` must be unique within a session. Installing two plugins that return the same name fails the run with `plugin %q already installed in this session`. This catches misconfigurations like wiring two storage plugins (which would fight over initial history) before they corrupt anything.
+
 ## The `Registry`
 
 ```go
+r.RegisterBeforeRun(h)         // BeforeRun hook (initial history)
 r.RegisterBeforeStep(h)        // BeforeStep hook
 r.RegisterTransformContext(h)  // TransformContext hook
 r.RegisterBeforeToolCall(h)    // BeforeToolCall hook (returning ErrSkipTool short-circuits)
@@ -51,10 +56,19 @@ r.RegisterPart(typeName, fn)   // registers a Part decoder with wingmodels (proc
 
 `Build` folds everything into a `Built{Hooks, Tools, Sink}` value the session feeds to `loop.Run`. Composition rules:
 
-- **Pipeline seams** chain in install order. Each hook receives the previous one's output. The first error short-circuits.
+- **Pipeline seams** (`BeforeRun`, `BeforeStep`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain in install order. Each hook receives the previous one's output. The first error short-circuits.
 - **Sinks** fan out: every registered sink sees every event, in install order.
 - **Tools** merge into the session's tool slice. Plugin tools are appended after user-supplied tools, so plugins can override built-ins by name (later wins in the loop's tool registry).
 - **Parts** call `wingmodels.RegisterPart` directly. The part registry is process-global and idempotent across re-installs.
+
+## Hooks vs sinks
+
+A plugin commonly contributes both. The distinction is covered in detail on the [lifecycle](./lifecycle#hooks-vs-sinks) page; the short version:
+
+- A **hook** participates in the loop. It can change behavior, must complete before the loop continues, and chains with other plugins' hooks for the same seam.
+- A **sink** observes the loop. It receives events fan-out, can't change anything, and runs alongside other sinks.
+
+The [storage plugin](./storage) is the worked example: a `BeforeRun` hook (load history from disk) plus a sink (persist new messages as they land).
 
 ## Authoring a plugin
 
@@ -108,7 +122,7 @@ Plugins should keep their `Name()` stable across versions so observability layer
 
 ## The compaction plugin
 
-`wingagent/plugin/compaction` is the canonical worked example. It demonstrates:
+`wingagent/plugin/compaction` is the canonical hooks-only worked example. It demonstrates:
 
 - a custom **Part type** registered via `RegisterPart` and serialized through `OpaquePart`
 - a **`BeforeStep`** hook that summarizes the head of long histories and *appends* a marker (the original messages stay in the durable transcript)
@@ -140,6 +154,32 @@ s := session.New(
 The plugin calls `Model.CountTokens` against the current snapshot, which avoids two bugs in any "estimate from last turn's usage" approach: first-call blindness and lag-by-one. `CountTokens` errors fall back to a chars/4 heuristic so a flaky counter endpoint never blocks the loop.
 
 When compaction runs, the loop emits a `ContextTransformedEvent` whose head message's first part has discriminator `compaction_marker`. The session stream classifier surfaces this as a dedicated `compaction` SSE event. Decode the marker with `compaction.DecodeMarker(part)`.
+
+## The storage plugin
+
+`wingagent/storage` ships a plugin that gives a session full-cycle persistence — both load and save — through a single `session.WithPlugin` call:
+
+```go
+import (
+    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/wingagent/storage"
+)
+
+store, _ := storage.NewSQLiteStore("/path/to/wingman.db")
+sess, _ := store.GetSession(sessionID) // ensure the session row exists
+
+s := session.New(
+    session.WithModel(model),
+    session.WithPlugin(storage.NewPlugin(store, sess.ID)),
+)
+```
+
+Internally the plugin contributes:
+
+- a **`BeforeRun` hook** that calls `store.GetSession(sessionID)` and returns `sess.History` as the loop's initial messages
+- a **sink** that filters for `loop.MessageEvent` and calls `store.AppendMessage` for each completed message
+
+This is the same wiring the [HTTP server](./server) uses internally, expressed as a reusable capability rather than a hard-coded server detail. See the [storage](./storage) page for more.
 
 ## Loading model
 
