@@ -49,6 +49,7 @@ import (
 	"github.com/chaserensberger/wingman/wingmodels"
 	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	provider "github.com/chaserensberger/wingman/wingmodels/providers"
+	"github.com/chaserensberger/wingman/wingmodels/transform"
 )
 
 // Meta is the registry entry for the Anthropic provider.
@@ -174,12 +175,30 @@ func New(cfg ...Config) (*Client, error) {
 
 // Info returns the catalog ModelInfo for this client's model. If the model is
 // not in the catalog (e.g. a brand-new id), returns a minimal ModelInfo with
-// just provider+id populated.
+// just provider+id populated. The API field is always stamped to
+// APIAnthropicMessages so the transform layer can detect same-model replays.
 func (c *Client) Info() wingmodels.ModelInfo {
 	if info, ok := catalog.Get("anthropic", c.model); ok {
+		info.API = wingmodels.APIAnthropicMessages
 		return info
 	}
-	return wingmodels.ModelInfo{Provider: "anthropic", ID: c.model}
+	return wingmodels.ModelInfo{
+		Provider: "anthropic",
+		ID:       c.model,
+		API:      wingmodels.APIAnthropicMessages,
+	}
+}
+
+// origin returns the MessageOrigin stamped on every assistant message this
+// client produces. Used by the transform layer at the next request to detect
+// same-model replay and skip lossy normalizations (reasoning drop, tool-call
+// id rename).
+func (c *Client) origin() *wingmodels.MessageOrigin {
+	return &wingmodels.MessageOrigin{
+		Provider: "anthropic",
+		API:      wingmodels.APIAnthropicMessages,
+		ModelID:  c.model,
+	}
 }
 
 // CountTokens calls Anthropic's /v1/messages/count_tokens for an exact count
@@ -222,7 +241,21 @@ func (c *Client) CountTokens(ctx context.Context, msgs []wingmodels.Message) (in
 // Stream begins a streaming Messages request. Setup failures (marshal,
 // network refused) return (nil, error); after the goroutine starts, all
 // failures terminate via ErrorPart + FinishPart{reason: error|aborted}.
+//
+// Before serializing, req.Messages is normalized via transform.Apply for
+// this target (drops failed/aborted assistant turns, drops cross-model
+// reasoning blocks, downgrades images when the model lacks vision,
+// reconciles orphaned tool calls, elides empty messages). The transform is
+// pure; the caller's slice is not mutated.
 func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
+	info := c.Info()
+	req.Messages = transform.Apply(req.Messages, transform.Target{
+		Provider:       "anthropic",
+		API:            wingmodels.APIAnthropicMessages,
+		ModelID:        c.model,
+		SupportsImages: info.SupportsImages,
+	})
+
 	wireReq := c.buildRequest(req)
 	wireReq.Stream = true
 
@@ -239,14 +272,15 @@ func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodel
 	// 64-event buffer is generous; Anthropic typically emits a few events
 	// per second and the consumer drains synchronously in the agent loop.
 	out := wingmodels.NewEventStream[wingmodels.StreamPart, *wingmodels.Message](64)
-	go runStream(ctx, resp, out)
+	go runStream(ctx, resp, out, c.origin())
 	return out, nil
 }
 
 // runStream owns the http.Response and emits parsed events on out. It MUST
 // close out exactly once before returning, with either the assembled message
-// or a terminal error.
-func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) {
+// or a terminal error. origin is stamped on the assembled message so the
+// next request's transform pass can detect same-model replay.
+func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], origin *wingmodels.MessageOrigin) {
 	defer resp.Body.Close()
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -254,7 +288,7 @@ func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventSt
 	// buffer well past Anthropic's max single-event size.
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	p := newStreamParser(out)
+	p := newStreamParser(out, origin)
 
 	var eventType string
 	for scanner.Scan() {
@@ -297,6 +331,11 @@ type streamParser struct {
 	out      *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]
 	terminated bool
 
+	// origin is stamped on the assembled assistant message so downstream
+	// transform.Apply calls can detect same-model replay. Constant for the
+	// life of one stream.
+	origin *wingmodels.MessageOrigin
+
 	// Per-block bookkeeping keyed by Anthropic content block index.
 	blocks map[int]*blockState
 
@@ -328,8 +367,8 @@ type blockState struct {
 	redacted  bool
 }
 
-func newStreamParser(out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) *streamParser {
-	return &streamParser{out: out, blocks: make(map[int]*blockState)}
+func newStreamParser(out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], origin *wingmodels.MessageOrigin) *streamParser {
+	return &streamParser{out: out, blocks: make(map[int]*blockState), origin: origin}
 }
 
 // handle dispatches one parsed SSE event. Returns true when the stream is
@@ -518,9 +557,15 @@ func (p *streamParser) handle(eventType, data string) bool {
 
 func (p *streamParser) terminateNormal() {
 	p.usage.TotalTokens = p.usage.InputTokens + p.usage.OutputTokens
-	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	reason := mapStopReason(p.stopReason)
+	msg := &wingmodels.Message{
+		Role:         wingmodels.RoleAssistant,
+		Content:      p.content,
+		Origin:       p.origin,
+		FinishReason: reason,
+	}
 	p.out.Push(wingmodels.FinishPart{
-		Reason:   mapStopReason(p.stopReason),
+		Reason:   reason,
 		Usage:    p.usage,
 		Message:  msg,
 		Metadata: p.responseMeta,
@@ -553,7 +598,12 @@ func (p *streamParser) terminate(reason wingmodels.FinishReason, err error) {
 		return
 	}
 	p.usage.TotalTokens = p.usage.InputTokens + p.usage.OutputTokens
-	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	msg := &wingmodels.Message{
+		Role:         wingmodels.RoleAssistant,
+		Content:      p.content,
+		Origin:       p.origin,
+		FinishReason: reason,
+	}
 	p.out.Push(wingmodels.FinishPart{
 		Reason:   reason,
 		Usage:    p.usage,

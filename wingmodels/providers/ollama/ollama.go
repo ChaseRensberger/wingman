@@ -33,6 +33,7 @@ import (
 	"github.com/chaserensberger/wingman/wingmodels"
 	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	provider "github.com/chaserensberger/wingman/wingmodels/providers"
+	"github.com/chaserensberger/wingman/wingmodels/transform"
 )
 
 // Meta is the registry entry for the Ollama provider. No auth (Ollama runs
@@ -150,8 +151,35 @@ func (c *Client) CountTokens(_ context.Context, msgs []wingmodels.Message) (int,
 	return total / 4, nil
 }
 
-// Stream begins a streaming /api/chat request.
+// origin returns the MessageOrigin stamped on every assistant message this
+// client produces. Note: API is intentionally left empty. Per
+// wingmodels.API's contract, API constants are reserved for wire formats
+// shared across multiple providers (e.g. APIOpenAICompletions). Ollama's
+// /api/chat is provider-specific. The empty API does mean
+// MessageOrigin.SameModel will report false even for Ollama→Ollama replays
+// (Target.origin() returns nil when API is empty), so the transform layer
+// will always treat Ollama messages as cross-model. That is conservative
+// but correct: it drops reasoning blocks on replay, and Ollama models in
+// our catalog don't emit signed reasoning that would benefit from the
+// fast path anyway.
+func (c *Client) origin() *wingmodels.MessageOrigin {
+	return &wingmodels.MessageOrigin{
+		Provider: "ollama",
+		ModelID:  c.model,
+	}
+}
+
+// Stream begins a streaming /api/chat request. req.Messages is normalized
+// via transform.Apply for this target before serialization.
 func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
+	info := c.Info()
+	req.Messages = transform.Apply(req.Messages, transform.Target{
+		Provider:       "ollama",
+		ModelID:        c.model,
+		SupportsImages: info.SupportsImages,
+		// API intentionally omitted; see origin() for rationale.
+	})
+
 	wireReq := c.buildRequest(req)
 	wireReq.Stream = true
 
@@ -177,17 +205,18 @@ func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodel
 	}
 
 	out := wingmodels.NewEventStream[wingmodels.StreamPart, *wingmodels.Message](64)
-	go runStream(ctx, resp, out)
+	go runStream(ctx, resp, out, c.origin())
 	return out, nil
 }
 
 // runStream reads JSON-line responses from Ollama and emits StreamParts.
-func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) {
+// origin is stamped on the assembled assistant message.
+func runStream(ctx context.Context, resp *http.Response, out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], origin *wingmodels.MessageOrigin) {
 	defer resp.Body.Close()
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	p := newStreamParser(out)
+	p := newStreamParser(out, origin)
 	p.start()
 
 	for scanner.Scan() {
@@ -219,6 +248,10 @@ type streamParser struct {
 	out        *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]
 	terminated bool
 
+	// origin is stamped on the assembled assistant message so downstream
+	// transform.Apply calls can detect same-model replay.
+	origin *wingmodels.MessageOrigin
+
 	textID       string // current open text block id; "" if none
 	textBuf      strings.Builder
 	content      wingmodels.Content
@@ -228,8 +261,8 @@ type streamParser struct {
 	hasToolCalls bool
 }
 
-func newStreamParser(out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message]) *streamParser {
-	return &streamParser{out: out}
+func newStreamParser(out *wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], origin *wingmodels.MessageOrigin) *streamParser {
+	return &streamParser{out: out, origin: origin}
 }
 
 func (p *streamParser) start() {
@@ -328,9 +361,15 @@ func (p *streamParser) handle(line []byte) bool {
 }
 
 func (p *streamParser) terminateNormal() {
-	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	reason := p.finishReason()
+	msg := &wingmodels.Message{
+		Role:         wingmodels.RoleAssistant,
+		Content:      p.content,
+		Origin:       p.origin,
+		FinishReason: reason,
+	}
 	p.out.Push(wingmodels.FinishPart{
-		Reason:  p.finishReason(),
+		Reason:  reason,
 		Usage:   p.usage,
 		Message: msg,
 		Metadata: wingmodels.ResponseMetadata{
@@ -346,7 +385,12 @@ func (p *streamParser) terminateError(err error) {
 		return
 	}
 	p.out.Push(wingmodels.ErrorPart{Message: err.Error()})
-	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	msg := &wingmodels.Message{
+		Role:         wingmodels.RoleAssistant,
+		Content:      p.content,
+		Origin:       p.origin,
+		FinishReason: wingmodels.FinishReasonError,
+	}
 	p.out.Push(wingmodels.FinishPart{
 		Reason:  wingmodels.FinishReasonError,
 		Usage:   p.usage,
@@ -359,7 +403,12 @@ func (p *streamParser) terminateAborted() {
 	if p.terminated {
 		return
 	}
-	msg := &wingmodels.Message{Role: wingmodels.RoleAssistant, Content: p.content}
+	msg := &wingmodels.Message{
+		Role:         wingmodels.RoleAssistant,
+		Content:      p.content,
+		Origin:       p.origin,
+		FinishReason: wingmodels.FinishReasonAborted,
+	}
 	p.out.Push(wingmodels.FinishPart{
 		Reason:  wingmodels.FinishReasonAborted,
 		Usage:   p.usage,

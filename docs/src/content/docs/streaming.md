@@ -43,6 +43,7 @@ The provider MUST emit exactly one `FinishPart` as the terminator. Errors mid-st
 
 - `FinishPart` carries the assembled `*Message` so consumers can grab the final message without rebuilding it from deltas.
 - `FinishReasonAborted` exists on top of the AI SDK enum for context-cancellation semantics.
+- The assembled `*Message` is stamped with `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`). Providers set both before pushing the terminal `FinishPart`. `MessageOrigin.SameModel(other)` returns true only when both `API` and `ModelID` match; the `wingmodels/transform` package uses this to decide whether reasoning blocks survive into the next turn.
 
 ### Discriminator constants
 

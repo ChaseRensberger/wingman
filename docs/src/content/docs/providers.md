@@ -24,6 +24,17 @@ type Model interface {
 
 `StreamText` returns a `Stream` whose `Next/Part/Err` surface emits `wingmodels.StreamPart` values matching Vercel AI SDK v3 exactly. See [Streaming](./streaming).
 
+## Cross-provider context handoff
+
+Each provider call is responsible for rewriting the inbound message slice to fit the model it's about to invoke. At the top of `Stream`, the provider calls `transform.Apply(req.Messages, target)` where `target` describes the destination (`Provider`, `API`, `ModelID`, `SupportsImages`). The pure function:
+
+- Drops assistant messages with `FinishReason` `error`/`aborted` and any orphan tool calls/results that depended on them.
+- Drops reasoning blocks unless the previous assistant message's `MessageOrigin` matches the new target exactly (same `API`, same `ModelID`).
+- Replaces image parts with a text placeholder when the target model can't accept images.
+- Reconciles tool calls that have no matching tool result by injecting a synthetic error result.
+
+After the model finishes, the provider stamps `MessageOrigin` and `FinishReason` on the assembled assistant message inside `FinishPart`, so the next turn — possibly on a different provider entirely — has the metadata it needs.
+
 ## Provider and model are separate
 
 Wingman stores `provider` and `model` as separate fields. The same model family can be exposed through different providers (different auth, different limits, different capabilities), so a combined string would lose information.

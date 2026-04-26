@@ -48,7 +48,14 @@ type Model interface {
 
 A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union sealed to the `wingmodels` package; plugins extend it through an open registry by registering a discriminator string and decoder, and serializing payloads as `OpaquePart` so the union stays sealed. See [Parts](./parts).
 
-`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds two things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, and `FinishReasonAborted` exists alongside the standard reasons. See [Streaming](./streaming).
+`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds three things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, `FinishReasonAborted` exists alongside the standard reasons, and the assembled `*Message` is stamped with both `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`) so downstream code can reason about what produced each turn. See [Streaming](./streaming).
+
+## Mid-session model switching
+
+Wingman expects callers to swap the active model mid-session (different turns may run on different providers entirely). Two things make that safe:
+
+- **`MessageOrigin` on every assistant message.** Providers stamp it on the assembled message inside `FinishPart`. `MessageOrigin.SameModel` lets the next provider tell whether the prior turn came from the exact same wire API + model.
+- **`wingmodels/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them. The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
 
 ## The `wingagent/loop` package
 
