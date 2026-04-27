@@ -17,6 +17,8 @@ import (
 	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/openai"
+	_ "github.com/chaserensberger/wingman/wingmodels/providers/opencodezen"
 )
 
 var (

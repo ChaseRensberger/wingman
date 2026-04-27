@@ -250,21 +250,21 @@ func (c *Client) CountTokens(ctx context.Context, msgs []wingmodels.Message) (in
 func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
 	info := c.Info()
 	req.Messages = transform.Apply(req.Messages, transform.Target{
-		Provider:       "anthropic",
-		API:            wingmodels.APIAnthropicMessages,
-		ModelID:        c.model,
-		SupportsImages: info.SupportsImages,
+		Provider:     "anthropic",
+		API:          wingmodels.APIAnthropicMessages,
+		ModelID:      c.model,
+		Capabilities: info.Capabilities,
 	})
 
-	wireReq := c.buildRequest(req)
-	wireReq.Stream = true
+	built := c.buildRequest(req)
+	built.wire.Stream = true
 
-	body, err := json.Marshal(wireReq)
+	body, err := json.Marshal(built.wire)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: marshal request: %w", err)
 	}
 
-	resp, err := c.doStreamWithRetry(ctx, body)
+	resp, err := c.doStreamWithRetry(ctx, body, built.needsThinkingBeta)
 	if err != nil {
 		return nil, err
 	}
@@ -673,15 +673,59 @@ type toolDefinition struct {
 }
 
 type request struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	System      string             `json:"system,omitempty"`
-	Messages    []anthropicMessage `json:"messages"`
-	Tools       []toolDefinition   `json:"tools,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
+	Model      string             `json:"model"`
+	MaxTokens  int                `json:"max_tokens"`
+	System     string             `json:"system,omitempty"`
+	Messages   []anthropicMessage `json:"messages"`
+	Tools      []toolDefinition   `json:"tools,omitempty"`
+	ToolChoice *toolChoice        `json:"tool_choice,omitempty"`
+	Thinking   *thinkingConfig    `json:"thinking,omitempty"`
+	Stream     bool               `json:"stream,omitempty"`
 }
 
-func (c *Client) buildRequest(req wingmodels.Request) request {
+// toolChoice maps to Anthropic's tool_choice object.
+// type is one of "auto", "any", "none", "tool".
+// name is required when type == "tool".
+type toolChoice struct {
+	Type string `json:"type"`
+	Name string `json:"name,omitempty"`
+}
+
+// thinkingConfig enables extended thinking on the request.
+// For budget-based models: {"type":"enabled","budget_tokens":N}
+// For adaptive models:     {"type":"adaptive","display":"summarized"}
+type thinkingConfig struct {
+	Type         string `json:"type"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+	Display      string `json:"display,omitempty"`
+}
+
+// builtRequest is the internal result of buildRequest. It bundles the wire
+// struct with any extra request-level metadata (e.g. beta headers) that Stream
+// needs to inject before sending.
+type builtRequest struct {
+	wire             request
+	needsThinkingBeta bool // inject interleaved-thinking beta header
+}
+
+// supportsAdaptiveThinking returns true for Anthropic models that use the
+// new adaptive thinking API (claude-opus-4+, claude-sonnet-4-5 / sonnet-4-6).
+// Budget-based models use the older {"type":"enabled","budget_tokens":N} form.
+func supportsAdaptiveThinking(modelID string) bool {
+	adaptive := []string{
+		"claude-opus-4",
+		"claude-sonnet-4-5",
+		"claude-sonnet-4-6",
+	}
+	for _, prefix := range adaptive {
+		if strings.HasPrefix(modelID, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Client) buildRequest(req wingmodels.Request) builtRequest {
 	maxOut := req.MaxOutputTokens
 	if maxOut == 0 {
 		maxOut = c.maxTokens
@@ -692,6 +736,8 @@ func (c *Client) buildRequest(req wingmodels.Request) request {
 		System:    req.System,
 		Messages:  c.toWireMessages(req.Messages),
 	}
+
+	// Tools
 	if len(req.Tools) > 0 {
 		r.Tools = make([]toolDefinition, len(req.Tools))
 		for i, t := range req.Tools {
@@ -702,7 +748,47 @@ func (c *Client) buildRequest(req wingmodels.Request) request {
 			}
 		}
 	}
-	return r
+
+	// ToolChoice
+	if len(r.Tools) > 0 {
+		switch req.ToolChoice.Mode {
+		case wingmodels.ToolChoiceRequired:
+			r.ToolChoice = &toolChoice{Type: "any"}
+		case wingmodels.ToolChoiceNone:
+			r.ToolChoice = &toolChoice{Type: "none"}
+		case wingmodels.ToolChoiceTool:
+			if req.ToolChoice.Tool != "" {
+				r.ToolChoice = &toolChoice{Type: "tool", Name: req.ToolChoice.Tool}
+			}
+		// ToolChoiceAuto and zero-value: omit — Anthropic defaults to auto.
+		}
+	}
+
+	// Thinking (extended thinking / reasoning)
+	var needsBeta bool
+	if th := req.Capabilities.Thinking; th != nil {
+		if supportsAdaptiveThinking(c.model) {
+			// Adaptive API (claude-4+ era): effort-based or default.
+			display := "summarized"
+			r.Thinking = &thinkingConfig{Type: "adaptive", Display: display}
+			// output_config.effort not yet in this struct; add if needed.
+		} else {
+			// Budget-based API (claude-3.x era).
+			budget := th.BudgetTokens
+			if budget <= 0 {
+				budget = 1024
+			}
+			r.Thinking = &thinkingConfig{Type: "enabled", BudgetTokens: budget}
+			// Interleaved thinking requires the beta header for non-adaptive models.
+			needsBeta = true
+			// Budget-based thinking requires max_tokens > budget.
+			if r.MaxTokens <= budget {
+				r.MaxTokens = budget + 1024
+			}
+		}
+	}
+
+	return builtRequest{wire: r, needsThinkingBeta: needsBeta}
 }
 
 // toWireMessages converts wingmodels.Message to Anthropic's wire format.
@@ -811,9 +897,13 @@ func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("anthropic-version", apiVersion)
 }
 
-func (c *Client) doStreamWithRetry(ctx context.Context, body []byte) (*http.Response, error) {
+// betaInterleavedThinking is the Anthropic beta header value required when
+// extended thinking is enabled on non-adaptive (budget-based) models.
+const betaInterleavedThinking = "interleaved-thinking-2025-05-14"
+
+func (c *Client) doStreamWithRetry(ctx context.Context, body []byte, thinkingBeta bool) (*http.Response, error) {
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		resp, err := c.doRequest(ctx, body)
+		resp, err := c.doRequest(ctx, body, thinkingBeta)
 		if err != nil {
 			if shouldRetryTransport(err) && attempt < c.maxRetries {
 				if waitErr := waitForRetry(ctx, backoffDelay(attempt)); waitErr != nil {
@@ -839,12 +929,15 @@ func (c *Client) doStreamWithRetry(ctx context.Context, body []byte) (*http.Resp
 	return nil, fmt.Errorf("anthropic: retries exhausted")
 }
 
-func (c *Client) doRequest(ctx context.Context, body []byte) (*http.Response, error) {
+func (c *Client) doRequest(ctx context.Context, body []byte, thinkingBeta bool) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	c.setHeaders(req)
+	if thinkingBeta {
+		req.Header.Set("anthropic-beta", betaInterleavedThinking)
+	}
 	return c.httpClient.Do(req)
 }
 

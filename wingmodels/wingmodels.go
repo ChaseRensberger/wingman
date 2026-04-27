@@ -68,3 +68,13 @@ const (
 	// FinishReasonUnknown: provider supplied no finish reason. Should be rare.
 	FinishReasonUnknown FinishReason = "unknown"
 )
+
+// ProviderOptions is a two-level namespaced bag of provider-specific metadata
+// attached to individual message Parts. The outer key is the provider id; the
+// inner map is opaque. Used for round-trip preservation: a Part stored with
+// provider-specific metadata survives serialization and can be re-read by a
+// future provider implementation.
+//
+// This type is intentionally NOT on Request — request-level knobs use the
+// typed Capabilities and ToolChoice fields instead.
+type ProviderOptions map[string]map[string]any

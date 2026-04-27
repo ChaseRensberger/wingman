@@ -203,9 +203,11 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// deliberately unaware of any specific plugin's part types.
 
 	req := wingmodels.Request{
-		System:   system,
-		Messages: msgs,
-		Tools:    r.toolDefs,
+		System:       system,
+		Messages:     msgs,
+		Tools:        r.toolDefs,
+		ToolChoice:   r.cfg.ToolChoice,
+		Capabilities: r.cfg.Capabilities,
 	}
 
 	stream, err := r.cfg.Model.Stream(ctx, req)

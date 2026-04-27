@@ -52,10 +52,11 @@ A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union se
 
 ## Mid-session model switching
 
-Wingman expects callers to swap the active model mid-session (different turns may run on different providers entirely). Two things make that safe:
+Wingman expects callers to swap the active model mid-session (different turns may run on different providers entirely). Three things make that safe:
 
 - **`MessageOrigin` on every assistant message.** Providers stamp it on the assembled message inside `FinishPart`. `MessageOrigin.SameModel` lets the next provider tell whether the prior turn came from the exact same wire API + model.
-- **`wingmodels/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them. The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
+- **`wingmodels/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them (`Capabilities.Images == false`). The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
+- **`ModelInfo.Capabilities`.** Providers populate a `ModelCapabilities` struct (`Tools`, `Images`, `Reasoning`, `StructuredOutput`) from catalog data at construction time. The transform layer reads `Capabilities.Images`; the agent loop can inspect the others to decide which features to use.
 
 ## The `wingagent/loop` package
 

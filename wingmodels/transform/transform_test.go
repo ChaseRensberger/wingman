@@ -8,14 +8,17 @@ import (
 )
 
 // commonTarget builds a Target identifying a stable provider/api/model used
-// by most tests. SupportsImages defaults to true so image-related tests must
+// by most tests. Capabilities.Images defaults to true so image-related tests must
 // override deliberately.
 func commonTarget() Target {
 	return Target{
-		Provider:       "anthropic",
-		API:            wingmodels.APIAnthropicMessages,
-		ModelID:        "claude-sonnet-4-5",
-		SupportsImages: true,
+		Provider: "anthropic",
+		API:      wingmodels.APIAnthropicMessages,
+		ModelID:  "claude-sonnet-4-5",
+		Capabilities: wingmodels.ModelCapabilities{
+			Images: true,
+			Tools:  true,
+		},
 	}
 }
 
@@ -188,7 +191,7 @@ func TestSameModelReasoningPreserved(t *testing.T) {
 
 func TestImageDowngradeOnNonVisionTarget(t *testing.T) {
 	target := commonTarget()
-	target.SupportsImages = false
+	target.Capabilities.Images = false
 	msgs := []wingmodels.Message{
 		{
 			Role: wingmodels.RoleUser,
@@ -214,7 +217,7 @@ func TestImageDowngradeOnNonVisionTarget(t *testing.T) {
 
 func TestImageDowngradeOnToolResult(t *testing.T) {
 	target := commonTarget()
-	target.SupportsImages = false
+	target.Capabilities.Images = false
 	msgs := []wingmodels.Message{
 		wingmodels.NewUserText("show"),
 		{
@@ -247,7 +250,7 @@ func TestImageDowngradeOnToolResult(t *testing.T) {
 }
 
 func TestImagePreservedWhenSupported(t *testing.T) {
-	target := commonTarget() // SupportsImages = true
+	target := commonTarget() // Capabilities.Images = true
 	msgs := []wingmodels.Message{
 		{
 			Role: wingmodels.RoleUser,
@@ -335,7 +338,7 @@ func TestOrphanReconciliationSkipsResolvedCalls(t *testing.T) {
 
 func TestEmptyContentMessagesElided(t *testing.T) {
 	target := commonTarget()
-	target.SupportsImages = false
+	target.Capabilities.Images = false
 	msgs := []wingmodels.Message{
 		wingmodels.NewUserText("hello"),
 		{

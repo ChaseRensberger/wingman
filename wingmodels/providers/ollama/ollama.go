@@ -174,9 +174,9 @@ func (c *Client) origin() *wingmodels.MessageOrigin {
 func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
 	info := c.Info()
 	req.Messages = transform.Apply(req.Messages, transform.Target{
-		Provider:       "ollama",
-		ModelID:        c.model,
-		SupportsImages: info.SupportsImages,
+		Provider:     "ollama",
+		ModelID:      c.model,
+		Capabilities: info.Capabilities,
 		// API intentionally omitted; see origin() for rationale.
 	})
 
@@ -476,11 +476,12 @@ type modelOptions struct {
 }
 
 type request struct {
-	Model    string           `json:"model"`
-	Messages []chatMessage    `json:"messages"`
-	Tools    []toolDefinition `json:"tools,omitempty"`
-	Options  modelOptions     `json:"options"`
-	Stream   bool             `json:"stream"`
+	Model      string           `json:"model"`
+	Messages   []chatMessage    `json:"messages"`
+	Tools      []toolDefinition `json:"tools,omitempty"`
+	ToolChoice string           `json:"tool_choice,omitempty"`
+	Options    modelOptions     `json:"options"`
+	Stream     bool             `json:"stream"`
 }
 
 func (c *Client) buildRequest(req wingmodels.Request) request {
@@ -508,11 +509,28 @@ func (c *Client) buildRequest(req wingmodels.Request) request {
 	if maxOut == 0 {
 		maxOut = c.maxTokens
 	}
+
+	// Map ToolChoice to Ollama's string field.
+	// Ollama supports "auto" (default) and "none". "required" maps to "any"
+	// in Ollama's newer builds; fall back to "required" for older builds.
+	// Specific tool forcing is not supported by Ollama's API; we send "auto".
+	var toolChoice string
+	if len(tools) > 0 {
+		switch req.ToolChoice.Mode {
+		case wingmodels.ToolChoiceNone:
+			toolChoice = "none"
+		case wingmodels.ToolChoiceRequired:
+			toolChoice = "required"
+		// ToolChoiceAuto, ToolChoiceTool, and zero value: omit (Ollama defaults to auto).
+		}
+	}
+
 	return request{
-		Model:    c.model,
-		Messages: messages,
-		Tools:    tools,
-		Options:  modelOptions{NumPredict: maxOut},
+		Model:      c.model,
+		Messages:   messages,
+		Tools:      tools,
+		ToolChoice: toolChoice,
+		Options:    modelOptions{NumPredict: maxOut},
 	}
 }
 

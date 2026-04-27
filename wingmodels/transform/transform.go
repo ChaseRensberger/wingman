@@ -20,10 +20,10 @@
 //
 //	func (p *anthropicModel) Stream(ctx context.Context, req wingmodels.Request) (...) {
 //		req.Messages = transform.Apply(req.Messages, transform.Target{
-//			Provider:       "anthropic",
-//			API:            wingmodels.APIAnthropicMessages,
-//			ModelID:        p.id,
-//			SupportsImages: p.info.SupportsImages,
+//			Provider:     "anthropic",
+//			API:          wingmodels.APIAnthropicMessages,
+//			ModelID:      p.id,
+//			Capabilities: p.info.Capabilities,
 //		})
 //		// ... wire-format conversion follows
 //	}
@@ -80,10 +80,11 @@ type Target struct {
 	API      wingmodels.API
 	ModelID  string
 
-	// SupportsImages controls whether ImageParts are preserved or replaced
-	// with a text placeholder. Defaults to false (no images) — be explicit
-	// at the call site.
-	SupportsImages bool
+	// Capabilities describes what the target model can accept and produce.
+	// transform.Apply consults Capabilities.Images to decide whether to
+	// preserve or replace ImageParts. Other capability fields are reserved
+	// for future rules.
+	Capabilities wingmodels.ModelCapabilities
 
 	// NormalizeToolCallID, if non-nil, is invoked on each ToolCallPart
 	// CallID when the call's source assistant message did not originate
@@ -302,7 +303,7 @@ func rewriteMessage(
 		return out
 
 	case wingmodels.RoleUser:
-		if target.SupportsImages {
+		if target.Capabilities.Images {
 			return msg
 		}
 		newContent, changed := downgradeImages(msg.Content, placeholderUserImage)
@@ -316,7 +317,7 @@ func rewriteMessage(
 	case wingmodels.RoleTool:
 		// Tool messages may need image downgrade inside ToolResultPart.Output
 		// and/or CallID rename to match a renamed assistant tool call.
-		needsImage := !target.SupportsImages
+		needsImage := !target.Capabilities.Images
 		needsRename := len(idRenames) > 0
 		if !needsImage && !needsRename {
 			return msg

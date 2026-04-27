@@ -30,9 +30,7 @@ type Model interface {
 	CountTokens(ctx context.Context, msgs []Message) (int, error)
 }
 
-// Request is the input to a Model.Stream call. Fields are kept minimal in
-// v0.1; structured outputs, sampling controls (temperature, top_p), tool
-// choice, response format, and provider-specific options are deferred.
+// Request is the input to a Model.Stream call.
 type Request struct {
 	// System is the system prompt. Empty if not used.
 	System string
@@ -43,25 +41,68 @@ type Request struct {
 	Tools []ToolDef
 	// MaxOutputTokens caps the response. Zero means provider default.
 	MaxOutputTokens int
-	// ProviderOptions carries per-provider, request-scoped settings keyed by
-	// provider id (e.g. "anthropic", "openai"). Providers MUST ignore unknown
-	// top-level keys; this preserves forward compatibility when a request
-	// crafted for one provider is later replayed against another.
-	//
-	// Example:
-	//
-	//   ProviderOptions: ProviderOptions{
-	//       "anthropic": {"thinking": map[string]any{"budget_tokens": 1024}},
-	//       "openai":    {"reasoning_effort": "high"},
-	//   }
-	ProviderOptions ProviderOptions
+	// ToolChoice controls how the model selects tools. Zero value (empty Mode)
+	// is treated as ToolChoiceAuto by every provider.
+	ToolChoice ToolChoice
+	// Capabilities are cross-provider knobs the caller can enable.
+	// Providers silently ignore anything they don't support.
+	Capabilities Capabilities
 }
 
-// ProviderOptions is a two-level namespaced bag of provider-specific options.
-// The outer key is the provider id; the inner map is opaque to wingmodels and
-// interpreted by each provider as it sees fit. Mirrors the AI SDK v3 shape
-// (bb/ai/packages/provider/src/language-model/v3/language-model-v3-options.ts).
-type ProviderOptions map[string]map[string]any
+// ToolChoiceMode selects the model's tool-use behaviour.
+type ToolChoiceMode string
+
+const (
+	// ToolChoiceAuto lets the model decide whether to call a tool. This is
+	// the default when ToolChoice.Mode is empty.
+	ToolChoiceAuto ToolChoiceMode = "auto"
+	// ToolChoiceRequired forces the model to call at least one tool.
+	ToolChoiceRequired ToolChoiceMode = "required"
+	// ToolChoiceNone prevents the model from calling any tool even if Tools
+	// is non-empty.
+	ToolChoiceNone ToolChoiceMode = "none"
+	// ToolChoiceTool forces the model to call a specific named tool.
+	// Set ToolChoice.Tool to the target tool name.
+	ToolChoiceTool ToolChoiceMode = "tool"
+)
+
+// ToolChoice specifies how the model should use tools on a given request.
+// The zero value is equivalent to ToolChoiceAuto.
+type ToolChoice struct {
+	// Mode is the selection strategy. Empty string is treated as ToolChoiceAuto.
+	Mode ToolChoiceMode
+	// Tool is the name of the tool to force-call. Only meaningful when
+	// Mode == ToolChoiceTool.
+	Tool string
+}
+
+// Capabilities are cross-provider request-level knobs. Each provider reads
+// only the fields it supports and silently ignores the rest, so a Request
+// targeting Ollama can carry Thinking config without error — it simply has no
+// effect.
+type Capabilities struct {
+	// Thinking activates extended chain-of-thought / reasoning output.
+	// Providers that support it (Anthropic claude-3.x via budget_tokens,
+	// Anthropic claude-4+ via adaptive effort) consume it. Others ignore it.
+	// Nil means thinking is off.
+	Thinking *ThinkingConfig
+}
+
+// ThinkingConfig controls extended-thinking / reasoning activation.
+// Exactly one of BudgetTokens (claude-3.x budget-based) or Effort (claude-4+
+// adaptive) should be set; if both are set, Effort takes precedence on models
+// that support it.
+type ThinkingConfig struct {
+	// BudgetTokens is the reasoning token budget for budget-based models
+	// (claude-3.5-sonnet, claude-3.7-sonnet, etc.). Zero is treated as a
+	// sensible provider default (typically 1024).
+	BudgetTokens int
+	// Effort is the reasoning effort level for adaptive models
+	// (claude-opus-4, claude-sonnet-4-5, etc.).
+	// Accepted values: "low", "medium", "high", "max".
+	// Empty string defers to the provider's default ("medium").
+	Effort string
+}
 
 // ToolDef is a tool advertised to the model: name, description, JSON Schema
 // for arguments. Execution is the agent layer's responsibility (see
@@ -70,6 +111,22 @@ type ToolDef struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"input_schema"`
+}
+
+// ModelCapabilities describes what a model can accept and produce. All fields
+// default to false (conservative); providers set them from catalog data or
+// live probes at construction time.
+type ModelCapabilities struct {
+	// Tools is true if the model handles function/tool calls natively.
+	Tools bool
+	// Images is true if the model accepts ImagePart inputs (vision).
+	Images bool
+	// Reasoning is true if the model emits ReasoningPart content
+	// (Anthropic extended thinking, OpenAI o1/o3, DeepSeek R1).
+	Reasoning bool
+	// StructuredOutput is true if the model supports native JSON schema
+	// enforcement (OpenAI json_schema response_format, Ollama format field).
+	StructuredOutput bool
 }
 
 // ModelInfo is static metadata about a Model. Most fields come from the
@@ -93,13 +150,8 @@ type ModelInfo struct {
 	ContextWindow int
 	// MaxOutput is the model's hard cap on output tokens. Zero if unknown.
 	MaxOutput int
-	// SupportsTools is true if the model handles tool calls natively.
-	SupportsTools bool
-	// SupportsImages is true if the model accepts ImagePart inputs.
-	SupportsImages bool
-	// SupportsReasoning is true if the model emits ReasoningPart content
-	// (Anthropic extended thinking, OpenAI o1/o3, DeepSeek R1).
-	SupportsReasoning bool
+	// Capabilities describes what this model can accept and produce.
+	Capabilities ModelCapabilities
 	// InputCostPerMTok is USD per 1M input tokens. Zero if unknown.
 	InputCostPerMTok float64
 	// OutputCostPerMTok is USD per 1M output tokens. Zero if unknown.

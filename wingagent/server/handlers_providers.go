@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	"github.com/chaserensberger/wingman/wingmodels/providers"
 )
 
@@ -122,6 +123,38 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// ModelDTO is the API response shape for a single model. It exposes the
+// normalized wingmodels.ModelInfo fields rather than the raw catalog schema,
+// which changes frequently and contains internal pricing/limit details that
+// are not part of the public API contract.
+type ModelDTO struct {
+	Provider          string  `json:"provider"`
+	ID                string  `json:"id"`
+	ContextWindow     int     `json:"context_window,omitempty"`
+	MaxOutput         int     `json:"max_output,omitempty"`
+	Tools             bool    `json:"tools"`
+	Images            bool    `json:"images"`
+	Reasoning         bool    `json:"reasoning"`
+	StructuredOutput  bool    `json:"structured_output"`
+	InputCostPerMTok  float64 `json:"input_cost_per_mtok,omitempty"`
+	OutputCostPerMTok float64 `json:"output_cost_per_mtok,omitempty"`
+}
+
+func modelToDTO(info wingmodels.ModelInfo) ModelDTO {
+	return ModelDTO{
+		Provider:          info.Provider,
+		ID:                info.ID,
+		ContextWindow:     info.ContextWindow,
+		MaxOutput:         info.MaxOutput,
+		Tools:             info.Capabilities.Tools,
+		Images:            info.Capabilities.Images,
+		Reasoning:         info.Capabilities.Reasoning,
+		StructuredOutput:  info.Capabilities.StructuredOutput,
+		InputCostPerMTok:  info.InputCostPerMTok,
+		OutputCostPerMTok: info.OutputCostPerMTok,
+	}
+}
+
 func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
@@ -130,13 +163,20 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	models, ok := catalog.GetModels(name)
+	rawModels, ok := catalog.GetModels(name)
 	if !ok {
 		writeError(w, http.StatusNotFound, "no models for provider: "+name)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, models)
+	dtos := make(map[string]ModelDTO, len(rawModels))
+	for id := range rawModels {
+		if info, ok := catalog.Get(name, id); ok {
+			dtos[id] = modelToDTO(info)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, dtos)
 }
 
 func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) {
@@ -148,11 +188,11 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	model, ok := catalog.GetModel(name, modelID)
+	info, ok := catalog.Get(name, modelID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, model)
+	writeJSON(w, http.StatusOK, modelToDTO(info))
 }

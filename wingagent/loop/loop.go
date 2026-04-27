@@ -89,6 +89,18 @@ type Config struct {
 	// process working directory at execution time.
 	WorkDir string
 
+	// ToolChoice controls how the model selects tools on every turn.
+	// Zero value is treated as ToolChoiceAuto by all providers.
+	// Typical use: force ToolChoiceRequired when structured output is needed,
+	// or ToolChoiceNone to prevent tool use on a specific session.
+	ToolChoice wingmodels.ToolChoice
+
+	// Capabilities are request-level knobs forwarded to the model on every
+	// turn. Providers silently ignore fields they don't support.
+	// Example: set Capabilities.Thinking to enable extended reasoning on
+	// Anthropic models.
+	Capabilities wingmodels.Capabilities
+
 	// MaxSteps caps the number of assistant turns. Zero means unlimited
 	// (the loop terminates only when the model produces a turn with no
 	// tool calls, or when a tool batch all returns terminate=true).
