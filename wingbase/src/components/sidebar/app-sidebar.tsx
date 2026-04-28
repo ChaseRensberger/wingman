@@ -1,24 +1,29 @@
+import { useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import {
   House,
   HardDrives,
   ChatTeardropText,
+  Robot,
   Gear,
   type Icon,
 } from '@phosphor-icons/react'
 import clsx from 'clsx'
 import { Link } from '../primitives/link'
 import wingmanLogo from '../../assets/wingman-blue.png'
+import { SettingsDialog } from '../settings/settings-dialog'
 
 const navigation: { name: string; href: string; icon: Icon }[] = [
   { name: 'Dashboard', href: '/', icon: House },
   { name: 'Providers', href: '/providers', icon: HardDrives },
+  { name: 'Agents', href: '/agents', icon: Robot },
   { name: 'Sessions', href: '/sessions', icon: ChatTeardropText },
 ]
 
 export function AppSidebar() {
   const router = useRouterState()
   const pathname = router.location.pathname
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
     <div className="flex grow flex-col items-center overflow-y-auto border-r border-zinc-200 bg-white pb-4 dark:border-white/10 dark:bg-zinc-900">
@@ -56,17 +61,20 @@ export function AppSidebar() {
           })}
 
           <li className="mt-auto">
-            <Link
-              href="/settings"
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
               title="Settings"
-              className="group flex size-10 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
+              className="group flex size-10 cursor-pointer items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
             >
               <span className="sr-only">Settings</span>
               <Gear aria-hidden="true" className="size-5 shrink-0" />
-            </Link>
+            </button>
           </li>
         </ul>
       </nav>
+
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }
