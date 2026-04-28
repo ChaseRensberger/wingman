@@ -7,7 +7,12 @@ order: 1
 
 # Wingman
 
-> Disclaimer: This project is under active development and not ready for production use. This documentation is also under active development and constantly changing.
+Wingman is a collection of tools designed to make it as easy as possible to build llm enabled products and features. I built it because I wanted an agent harness that was performant, portable, and client agnostic.
+
+## Products
+
+**WingModels** - A provider agnostic (llm) model api
+**WingAgent** - An agent harness
 
 Wingman is a self-hostable, airgap-friendly agent runtime written in Go. It gives you a small set of composable primitives for building agent systems and ships them as two products that share one repository:
 
