@@ -45,7 +45,11 @@ export function AppSidebar() {
                   )}
                 >
                   <span className="sr-only">{item.name}</span>
-                  <item.icon aria-hidden="true" className="size-5 shrink-0" weight={current ? 'fill' : 'regular'} />
+                  <item.icon
+                    aria-hidden="true"
+                    className="size-5 shrink-0"
+                    weight={current ? 'fill' : 'regular'}
+                  />
                 </Link>
               </li>
             )
