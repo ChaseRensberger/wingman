@@ -21,13 +21,14 @@ export function AppSidebar() {
   const pathname = router.location.pathname
 
   return (
-    <div className="flex grow flex-col items-center gap-y-5 overflow-y-auto border-r border-zinc-200 bg-white pb-4 dark:border-white/10 dark:bg-zinc-900">
-      {/* Logo — same h-16 as top header so it aligns with the page title */}
-      <div className="flex h-16 shrink-0 items-center justify-center">
+    <div className="flex grow flex-col items-center overflow-y-auto border-r border-zinc-200 bg-white pb-4 dark:border-white/10 dark:bg-zinc-900">
+      {/* Logo — h-16 + border-b matches the top header so both underlines align */}
+      {/* TODO: swap PNG for an SVG to shrink bundle size and get crisp scaling */}
+      <div className="flex h-16 w-full shrink-0 items-center justify-center border-b border-zinc-200 dark:border-white/10">
         <img src={wingmanLogo} alt="Wingman" className="size-8" />
       </div>
 
-      <nav className="flex flex-1 flex-col">
+      <nav className="mt-5 flex flex-1 flex-col">
         <ul role="list" className="flex flex-1 flex-col items-center gap-y-1">
           {navigation.map((item) => {
             const current = pathname === item.href
