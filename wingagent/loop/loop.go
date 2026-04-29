@@ -101,6 +101,19 @@ type Config struct {
 	// Anthropic models.
 	Capabilities wingmodels.Capabilities
 
+	// OutputSchema, when non-nil, constrains the assistant's final reply
+	// to a JSON document conforming to the schema. The loop applies it
+	// only on iterations where no tool calls are expected (the final turn
+	// when the model decides it is done). Intermediate tool-calling turns
+	// receive the request without OutputSchema so providers that disallow
+	// structured outputs alongside tools (or that would force-shape the
+	// tool args turn into JSON) are unaffected.
+	//
+	// Providers that lack native structured-output support silently ignore
+	// this field; consult Model.Info().Capabilities.StructuredOutput for
+	// reliable detection.
+	OutputSchema *wingmodels.OutputSchema
+
 	// MaxSteps caps the number of assistant turns. Zero means unlimited
 	// (the loop terminates only when the model produces a turn with no
 	// tool calls, or when a tool batch all returns terminate=true).
@@ -350,6 +363,12 @@ type Result struct {
 	// the new messages take Messages[len(input):].
 	Messages []wingmodels.Message
 
+	// Turns is every completed turn in execution order. Each Turn
+	// includes the assistant message and tool results in source order
+	// (the order the assistant emitted the tool calls in). Empty if
+	// the loop terminated before completing any turn.
+	Turns []Turn
+
 	// Usage is the cumulative token usage across every turn.
 	Usage wingmodels.Usage
 
@@ -382,8 +401,10 @@ const (
 	StopReasonError StopReason = "error"
 )
 
-// Sink receives loop lifecycle events. The loop emits events from a
-// single goroutine, so implementations need not be concurrent-safe.
+// Sink receives loop lifecycle events. The loop serializes all
+// emissions through a single internal goroutine before delivering them
+// to OnEvent, so implementations need not be concurrent-safe even when
+// tools execute in parallel.
 //
 // The loop does not consult Sink's return value (events are
 // fire-and-forget); to halt the loop, hooks should return errors.
@@ -430,8 +451,11 @@ type ToolExecutionStartEvent struct {
 }
 
 // ToolExecutionEndEvent fires after Tool.Execute returns or after the
-// skip/error path produces a synthetic result. Order is completion order
-// when running in parallel (so it is NOT necessarily source order).
+// skip/error path produces a synthetic result. Events are delivered
+// serially via the sink goroutine; for parallel batches the delivery
+// order is the completion order, not source order. Consumers that need
+// source order should read Turn.Results from IterationEndEvent or
+// Result.Turns instead.
 type ToolExecutionEndEvent struct {
 	Result ToolResult
 }

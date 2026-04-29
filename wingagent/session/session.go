@@ -64,6 +64,11 @@ type Session struct {
 	// for incremental persistence.
 	messageSink func(wingmodels.Message)
 
+	// outputSchema, if non-nil, constrains the assistant's reply on every
+	// loop turn to a JSON document conforming to the schema. See
+	// WithOutputSchema for details.
+	outputSchema *wingmodels.OutputSchema
+
 	history []wingmodels.Message
 	mu      sync.RWMutex
 }
@@ -151,6 +156,33 @@ func WithMessageSink(fn func(wingmodels.Message)) Option {
 	return func(s *Session) { s.messageSink = fn }
 }
 
+// WithOutputSchema constrains the assistant's reply on every loop turn
+// to a JSON document conforming to the supplied schema. Providers that
+// do not support native structured output silently ignore this; consult
+// Model.Info().Capabilities.StructuredOutput to detect support.
+//
+// When the session has tools configured, the schema is sent on every
+// turn including tool-calling turns. Providers that disallow tools and
+// structured output simultaneously will surface an error from the
+// underlying model.
+func WithOutputSchema(schema *wingmodels.OutputSchema) Option {
+	return func(s *Session) { s.outputSchema = schema }
+}
+
+// SetOutputSchema swaps the active output schema. Pass nil to clear.
+func (s *Session) SetOutputSchema(schema *wingmodels.OutputSchema) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.outputSchema = schema
+}
+
+// OutputSchema returns the currently configured output schema, or nil.
+func (s *Session) OutputSchema() *wingmodels.OutputSchema {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.outputSchema
+}
+
 // ID returns the session identifier.
 func (s *Session) ID() string { return s.id }
 
@@ -231,7 +263,9 @@ type Result struct {
 	Response string
 
 	// ToolCalls is the per-call summary of every tool invocation across
-	// every turn of this Run, in execution-completion order.
+	// every turn of this Run, in source order (the order the assistant
+	// emitted the tool calls in within each turn, with turns in
+	// execution order).
 	ToolCalls []ToolCallResult
 
 	// Usage is the cumulative token usage reported by the provider.
@@ -298,6 +332,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	rawTransformContext := s.transformContext
 	plugins := append([]plugin.Plugin(nil), s.plugins...)
 	messageSink := s.messageSink
+	outputSchema := s.outputSchema
 	s.mu.Unlock()
 
 	// Build the plugin registry. Done per-Run so plugins close over
@@ -340,17 +375,11 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// wins on name collision via the loop's registry).
 	tools = append(tools, built.Tools...)
 
-	// Collect tool results in execution order via the sink.
-	collected := []ToolCallResult{}
+	// Sink fan-out: forward MessageEvents to the messageSink and
+	// every event to plugin and extra sinks. Tool results are
+	// collected from res.Turns after the loop returns (source order,
+	// no shared mutable state across goroutines).
 	internal := loop.SinkFunc(func(e loop.Event) {
-		if end, ok := e.(loop.ToolExecutionEndEvent); ok {
-			collected = append(collected, ToolCallResult{
-				ToolName: end.Result.Name,
-				Input:    end.Result.Args,
-				Output:   end.Result.Output,
-				Error:    errStringIf(end.Result.IsError, end.Result.Output),
-			})
-		}
 		if messageSink != nil {
 			if me, ok := e.(loop.MessageEvent); ok {
 				messageSink(me.Message)
@@ -365,11 +394,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	})
 
 	cfg := loop.Config{
-		Model:   model,
-		System:  system,
-		Tools:   tools,
-		WorkDir: workDir,
-		Sink:    internal,
+		Model:        model,
+		System:       system,
+		Tools:        tools,
+		WorkDir:      workDir,
+		Sink:         internal,
+		OutputSchema: outputSchema,
 		Hooks: loop.Hooks{
 			BeforeRun:        built.Hooks.BeforeRun,
 			BeforeStep:       beforeStep,
@@ -391,8 +421,26 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	}
 	s.mu.Unlock()
 
+	// Collect tool calls from res.Turns in source order. Each Turn's
+	// Results is already in source order; turns themselves are in
+	// execution order. This replaces the old sink-based collection,
+	// which was a data race under parallel tool execution.
+	var toolCalls []ToolCallResult
+	if res != nil {
+		for _, t := range res.Turns {
+			for _, tr := range t.Results {
+				toolCalls = append(toolCalls, ToolCallResult{
+					ToolName: tr.Name,
+					Input:    tr.Args,
+					Output:   tr.Output,
+					Error:    errStringIf(tr.IsError, tr.Output),
+				})
+			}
+		}
+	}
+
 	out := &Result{
-		ToolCalls: collected,
+		ToolCalls: toolCalls,
 	}
 	if res != nil {
 		out.Usage = res.Usage

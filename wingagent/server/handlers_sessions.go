@@ -365,6 +365,13 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
+	if len(stored.OutputSchema) > 0 {
+		opts = append(opts, session.WithOutputSchema(&wingmodels.OutputSchema{
+			Name:   stored.ID,
+			Schema: stored.OutputSchema,
+			Strict: true,
+		}))
+	}
 
 	return session.New(opts...), nil
 }

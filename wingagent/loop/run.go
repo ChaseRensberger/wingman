@@ -49,6 +49,26 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		registry: buildRegistry(cfg.Tools),
 		toolDefs: buildToolDefs(cfg.Tools),
 	}
+
+	// Serialize sink emission through a single drain goroutine. Tool
+	// execution may run in parallel and emit events from worker
+	// goroutines; the channel funnels them so Sink.OnEvent is always
+	// called from one goroutine, preserving the documented contract.
+	r.eventCh = make(chan Event, 64)
+	r.eventWG.Add(1)
+	go func() {
+		defer r.eventWG.Done()
+		for ev := range r.eventCh {
+			if cfg.Sink != nil {
+				cfg.Sink.OnEvent(ev)
+			}
+		}
+	}()
+	defer func() {
+		close(r.eventCh)
+		r.eventWG.Wait()
+	}()
+
 	return r.run(ctx)
 }
 
@@ -58,9 +78,16 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 type runner struct {
 	cfg      Config
 	messages []wingmodels.Message
+	turns    []Turn
 	registry *tool.Registry
 	toolDefs []wingmodels.ToolDef
 	usage    wingmodels.Usage
+
+	// eventCh funnels every Sink event through a single drain
+	// goroutine (started in Run). Workers can emit concurrently
+	// during parallel tool execution; the drain serializes them.
+	eventCh chan Event
+	eventWG sync.WaitGroup
 }
 
 // run is the main loop body.
@@ -135,6 +162,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return r.finalize(step, StopReasonError), err
 		}
 
+		r.turns = append(r.turns, turn)
 		r.emit(IterationEndEvent{Step: step, Turn: turn})
 
 		if r.cfg.Hooks.AfterIteration != nil {
@@ -208,6 +236,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		Tools:        r.toolDefs,
 		ToolChoice:   r.cfg.ToolChoice,
 		Capabilities: r.cfg.Capabilities,
+		OutputSchema: r.cfg.OutputSchema,
 	}
 
 	stream, err := r.cfg.Model.Stream(ctx, req)
@@ -438,12 +467,11 @@ func (r *runner) runAfterToolCall(ctx context.Context, call ToolCall, res ToolRe
 	return res
 }
 
-// emit forwards an event to the sink, if any. nil sink discards.
+// emit forwards an event to the sink via the drain goroutine. Safe to
+// call from any goroutine; ordering across concurrent callers is
+// determined by channel send order.
 func (r *runner) emit(e Event) {
-	if r.cfg.Sink == nil {
-		return
-	}
-	r.cfg.Sink.OnEvent(e)
+	r.eventCh <- e
 }
 
 // emitError emits an ErrorEvent. Convenience over emit so the call sites
@@ -457,6 +485,7 @@ func (r *runner) emitError(err error) {
 func (r *runner) finalize(step int, reason StopReason) *Result {
 	return &Result{
 		Messages:   r.messages,
+		Turns:      r.turns,
 		Usage:      r.usage,
 		Steps:      step,
 		StopReason: reason,
