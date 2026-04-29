@@ -68,29 +68,29 @@ function AgentsPage() {
       {agentsQuery.isLoading ? (
         <Text>Loading agents...</Text>
       ) : agentsQuery.isError ? (
-        <Text className="text-red-600">Error: {agentsQuery.error?.message}</Text>
+        <Text className="text-destructive">Error: {agentsQuery.error?.message}</Text>
       ) : agentsQuery.data && agentsQuery.data.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {agentsQuery.data.map((agent) => (
             <div
               key={agent.id}
-              className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-zinc-900"
+              className="rounded-xl border border-border bg-background p-4 dark:border-border dark:bg-card"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <Robot className="size-4 text-zinc-500" />
-                    <span className="truncate font-semibold text-zinc-950 dark:text-white">
+                    <Robot className="size-4 text-muted-foreground" />
+                    <span className="truncate font-semibold text-foreground dark:text-foreground">
                       {agent.name}
                     </span>
                   </div>
-                  <div className="mt-1 font-mono text-xs text-zinc-400">{agent.id}</div>
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">{agent.id}</div>
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     onClick={() => setEditing(agent)}
-                    className="cursor-pointer rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-white"
+                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground dark:hover:bg-background/10 dark:hover:text-foreground"
                   >
                     <PencilSimple className="size-3.5" />
                   </button>
@@ -101,7 +101,7 @@ function AgentsPage() {
                         deleteMutation.mutate(agent.id)
                       }
                     }}
-                    className="cursor-pointer rounded p-1.5 text-zinc-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/20"
+                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-red-100 hover:text-destructive dark:hover:bg-red-500/20"
                   >
                     <Trash className="size-3.5" />
                   </button>
@@ -109,7 +109,7 @@ function AgentsPage() {
               </div>
 
               {agent.instructions && (
-                <p className="mt-3 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">
+                <p className="mt-3 line-clamp-3 text-sm text-muted-foreground dark:text-muted-foreground">
                   {agent.instructions}
                 </p>
               )}
@@ -125,8 +125,8 @@ function AgentsPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-zinc-300 p-12 text-center dark:border-white/10">
-          <Robot className="mx-auto size-10 text-zinc-300 dark:text-white/20" />
+        <div className="rounded-xl border border-dashed border-border p-12 text-center dark:border-border">
+          <Robot className="mx-auto size-10 text-muted-foreground dark:text-foreground/20" />
           <Text className="mt-2">No agents yet. Create one to start chatting.</Text>
         </div>
       )}
@@ -277,7 +277,7 @@ function AgentDialog({ agent, onClose }: { agent: Agent | null; onClose: () => v
           </Field>
 
           {saveMutation.isError && (
-            <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+            <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-destructive">
               {saveMutation.error?.message}
             </div>
           )}

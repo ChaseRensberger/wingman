@@ -73,7 +73,7 @@ export function PaginationPage({
       className={clsx(
         className,
         'min-w-9 before:absolute before:-inset-px before:rounded-lg',
-        current && 'before:bg-zinc-950/5 dark:before:bg-white/10'
+        current && 'before:bg-foreground/5 dark:before:bg-background/10'
       )}
     >
       <span className="-mx-0.5">{children}</span>
@@ -90,7 +90,7 @@ export function PaginationGap({
     <span
       aria-hidden="true"
       {...props}
-      className={clsx(className, 'w-9 text-center text-sm/6 font-semibold text-zinc-950 select-none dark:text-white')}
+      className={clsx(className, 'w-9 text-center text-sm/6 font-semibold text-foreground select-none dark:text-foreground')}
     >
       {children}
     </span>

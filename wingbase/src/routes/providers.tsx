@@ -40,7 +40,7 @@ function ProvidersPage() {
       {providersQuery.isLoading || authQuery.isLoading ? (
         <Text>Loading providers...</Text>
       ) : providersQuery.isError ? (
-        <Text className="text-red-600">Error: {providersQuery.error?.message}</Text>
+        <Text className="text-destructive">Error: {providersQuery.error?.message}</Text>
       ) : (
         <div className="space-y-4">
           {providersQuery.data?.map((provider) => (
@@ -66,13 +66,13 @@ function ProviderCard({
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-zinc-900">
+    <div className="rounded-xl border border-border bg-background p-4 dark:border-border dark:bg-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <HardDrives className="size-5 text-zinc-500" />
+          <HardDrives className="size-5 text-muted-foreground" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-zinc-950 dark:text-white">{provider.name}</span>
+              <span className="font-semibold text-foreground dark:text-foreground">{provider.name}</span>
               <Badge color="zinc">{provider.id}</Badge>
             </div>
             <div className="mt-1 flex items-center gap-2 text-sm">
@@ -81,12 +81,12 @@ function ProviderCard({
                   <CheckCircle className="size-4" /> Configured
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-zinc-500">
+                <span className="flex items-center gap-1 text-muted-foreground">
                   <XCircle className="size-4" /> Not configured
                 </span>
               )}
-              <span className="text-zinc-400">·</span>
-              <span className="text-zinc-500">{auth?.type || 'api_key'}</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">{auth?.type || 'api_key'}</span>
             </div>
           </div>
         </div>
@@ -108,7 +108,7 @@ function ProviderModels({ providerId }: { providerId: string }) {
   })
 
   if (modelsQuery.isLoading) return <Text className="mt-4">Loading models...</Text>
-  if (modelsQuery.isError) return <Text className="mt-4 text-red-600">Failed to load models</Text>
+  if (modelsQuery.isError) return <Text className="mt-4 text-destructive">Failed to load models</Text>
 
   const models = Object.values(modelsQuery.data || {})
   if (models.length === 0) return <Text className="mt-4">No models available</Text>
@@ -130,7 +130,7 @@ function ProviderModels({ providerId }: { providerId: string }) {
           {models.map((m) => (
             <TableRow key={m.id}>
               <TableCell>
-                <span className="font-medium text-zinc-950 dark:text-white">{m.id}</span>
+                <span className="font-medium text-foreground dark:text-foreground">{m.id}</span>
               </TableCell>
               <TableCell>{m.context_window?.toLocaleString() ?? '—'}</TableCell>
               <TableCell>{m.max_output?.toLocaleString() ?? '—'}</TableCell>

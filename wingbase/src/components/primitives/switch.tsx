@@ -45,8 +45,8 @@ export function SwitchField({
 
 const colors = {
   'dark/zinc': [
-    '[--switch-bg-ring:var(--color-zinc-950)]/90 [--switch-bg:var(--color-zinc-900)] dark:[--switch-bg-ring:transparent] dark:[--switch-bg:var(--color-white)]/25',
-    '[--switch-ring:var(--color-zinc-950)]/90 [--switch-shadow:var(--color-black)]/10 [--switch:white] dark:[--switch-ring:var(--color-zinc-700)]/90',
+    '[--switch-bg-ring:var(--color-primary)]/90 [--switch-bg:var(--color-primary)] dark:[--switch-bg-ring:transparent] dark:[--switch-bg:var(--color-primary)]/25',
+    '[--switch-ring:var(--color-primary)]/90 [--switch-shadow:var(--color-foreground)]/10 [--switch:var(--color-primary-foreground)] dark:[--switch-ring:var(--color-primary)]/90',
   ],
   'dark/white': [
     '[--switch-bg-ring:var(--color-zinc-950)]/90 [--switch-bg:var(--color-zinc-900)] dark:[--switch-bg-ring:transparent] dark:[--switch-bg:var(--color-white)]',
@@ -157,17 +157,17 @@ export function Switch({
         // Outline and background color in forced-colors mode so switch is still visible
         'forced-colors:outline forced-colors:[--switch-bg:Highlight] dark:forced-colors:[--switch-bg:Highlight]',
         // Unchecked
-        'bg-zinc-200 ring-1 ring-black/5 ring-inset dark:bg-white/5 dark:ring-white/15',
+        'bg-muted ring-1 ring-border ring-inset dark:bg-background/5 dark:ring-border',
         // Checked
         'data-checked:bg-(--switch-bg) data-checked:ring-(--switch-bg-ring) dark:data-checked:bg-(--switch-bg) dark:data-checked:ring-(--switch-bg-ring)',
         // Focus
-        'focus:not-data-focus:outline-hidden data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-blue-500',
+        'focus:not-data-focus:outline-hidden data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-primary',
         // Hover
-        'data-hover:ring-black/15 data-hover:data-checked:ring-(--switch-bg-ring)',
+        'data-hover:ring-border data-hover:data-checked:ring-(--switch-bg-ring)',
         'dark:data-hover:ring-white/25 dark:data-hover:data-checked:ring-(--switch-bg-ring)',
         // Disabled
-        'data-disabled:bg-zinc-200 data-disabled:opacity-50 data-disabled:data-checked:bg-zinc-200 data-disabled:data-checked:ring-black/5',
-        'dark:data-disabled:bg-white/15 dark:data-disabled:data-checked:bg-white/15 dark:data-disabled:data-checked:ring-white/15',
+        'data-disabled:bg-muted data-disabled:opacity-50 data-disabled:data-checked:bg-muted data-disabled:data-checked:ring-border',
+        'dark:data-disabled:bg-background/15 dark:data-disabled:data-checked:bg-background/15 dark:data-disabled:data-checked:ring-border',
         // Color specific styles
         colors[color]
       )}
@@ -182,12 +182,12 @@ export function Switch({
           // Invisible border so the switch is still visible in forced-colors mode
           'border border-transparent',
           // Unchecked
-          'bg-white shadow-sm ring-1 ring-black/5',
+          'bg-background shadow-sm ring-1 ring-border',
           // Checked
           'group-data-checked:bg-(--switch) group-data-checked:shadow-(--switch-shadow) group-data-checked:ring-(--switch-ring)',
           'group-data-checked:translate-x-4 sm:group-data-checked:translate-x-3',
           // Disabled
-          'group-data-checked:group-data-disabled:bg-white group-data-checked:group-data-disabled:shadow-sm group-data-checked:group-data-disabled:ring-black/5'
+          'group-data-checked:group-data-disabled:bg-background group-data-checked:group-data-disabled:shadow-sm group-data-checked:group-data-disabled:ring-border'
         )}
       />
     </Headless.Switch>

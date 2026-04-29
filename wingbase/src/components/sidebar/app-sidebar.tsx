@@ -26,10 +26,10 @@ export function AppSidebar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
-    <div className="flex grow flex-col items-center overflow-y-auto border-r border-zinc-200 bg-white pb-4 dark:border-white/10 dark:bg-zinc-900">
+    <div className="flex grow flex-col items-center overflow-y-auto border-r border-border bg-background pb-4 dark:border-border dark:bg-card">
       {/* Logo — h-16 + border-b matches the top header so both underlines align */}
       {/* TODO: swap PNG for an SVG to shrink bundle size and get crisp scaling */}
-      <div className="flex h-16 w-full shrink-0 items-center justify-center border-b border-zinc-200 dark:border-white/10">
+      <div className="flex h-16 w-full shrink-0 items-center justify-center border-b border-border dark:border-border">
         <img src={wingmanLogo} alt="Wingman" className="size-8" />
       </div>
 
@@ -44,8 +44,8 @@ export function AppSidebar() {
                   title={item.name}
                   className={clsx(
                     current
-                      ? 'bg-zinc-100 text-zinc-950 dark:bg-white/10 dark:text-white'
-                      : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white',
+                      ? 'bg-muted text-foreground dark:bg-background/10 dark:text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground dark:text-muted-foreground dark:hover:bg-background/5 dark:hover:text-foreground',
                     'group flex size-10 items-center justify-center rounded-md'
                   )}
                 >
@@ -65,7 +65,7 @@ export function AppSidebar() {
               type="button"
               onClick={() => setSettingsOpen(true)}
               title="Settings"
-              className="group flex size-10 cursor-pointer items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
+              className="group flex size-10 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground dark:text-muted-foreground dark:hover:bg-background/5 dark:hover:text-foreground"
             >
               <span className="sr-only">Settings</span>
               <Gear aria-hidden="true" className="size-5 shrink-0" />

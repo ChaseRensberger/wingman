@@ -22,9 +22,9 @@ export function SidebarShell({ children }: React.PropsWithChildren) {
 
       <div className="pl-14">
         {/* Top header */}
-        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-zinc-200 bg-white px-4 sm:gap-x-6 sm:px-6 lg:px-8 dark:border-white/10 dark:bg-zinc-900">
+        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-border bg-background px-4 sm:gap-x-6 sm:px-6 lg:px-8 dark:border-border dark:bg-card">
           <div className="flex flex-1 items-center justify-between self-stretch">
-            <h1 className="text-base font-semibold text-zinc-950 dark:text-white">{title}</h1>
+            <h1 className="text-base font-semibold text-foreground dark:text-foreground">{title}</h1>
           </div>
         </div>
 

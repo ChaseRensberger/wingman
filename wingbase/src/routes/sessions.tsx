@@ -49,8 +49,8 @@ function SessionsPage() {
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
-      <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-white/10">
+      <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-background dark:border-border dark:bg-card">
+        <div className="flex items-center justify-between border-b border-border p-3 dark:border-border">
           <Heading level={2} className="!text-base">Sessions</Heading>
           <Button onClick={() => createMutation.mutate(undefined)} disabled={createMutation.isPending}>
             <Plus className="size-4" /> New
@@ -60,22 +60,22 @@ function SessionsPage() {
           {sessionsQuery.isLoading ? (
             <div className="p-3"><Text>Loading...</Text></div>
           ) : sessionsQuery.data && sessionsQuery.data.length > 0 ? (
-            <ul className="divide-y divide-zinc-100 dark:divide-white/5">
+            <ul className="divide-y divide-border dark:divide-white/5">
               {sessionsQuery.data.map((sess) => (
                 <li key={sess.id}>
                   <button
                     type="button"
                     onClick={() => setSelectedId(sess.id)}
                     className={clsx(
-                      'group flex w-full cursor-pointer items-start justify-between gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-white/5',
-                      selectedId === sess.id && 'bg-zinc-100 dark:bg-white/10'
+                      'group flex w-full cursor-pointer items-start justify-between gap-2 px-3 py-2.5 text-left hover:bg-accent dark:hover:bg-background/5',
+                      selectedId === sess.id && 'bg-muted dark:bg-background/10'
                     )}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-mono text-xs text-zinc-950 dark:text-white">
+                      <div className="truncate font-mono text-xs text-foreground dark:text-foreground">
                         {sess.id.slice(0, 12)}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground dark:text-muted-foreground">
                         {sess.history?.length ?? 0} messages
                       </div>
                     </div>
@@ -85,7 +85,7 @@ function SessionsPage() {
                         e.stopPropagation()
                         deleteMutation.mutate(sess.id)
                       }}
-                      className="invisible cursor-pointer rounded p-1 text-zinc-400 hover:bg-red-100 hover:text-red-600 group-hover:visible dark:hover:bg-red-500/20"
+                      className="invisible cursor-pointer rounded p-1 text-muted-foreground hover:bg-red-100 hover:text-destructive group-hover:visible dark:hover:bg-red-500/20"
                     >
                       <Trash className="size-3.5" />
                     </button>
@@ -95,20 +95,20 @@ function SessionsPage() {
             </ul>
           ) : (
             <div className="p-6 text-center">
-              <ChatCircle className="mx-auto size-8 text-zinc-300 dark:text-white/20" />
+              <ChatCircle className="mx-auto size-8 text-muted-foreground dark:text-foreground/20" />
               <Text className="mt-2">No sessions yet</Text>
             </div>
           )}
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col rounded-xl border border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-900">
+      <main className="flex flex-1 flex-col rounded-xl border border-border bg-background dark:border-border dark:bg-card">
         {selectedId ? (
           <SessionDetail sessionId={selectedId} />
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <div className="text-center">
-              <ChatCircle className="mx-auto size-12 text-zinc-300 dark:text-white/20" />
+              <ChatCircle className="mx-auto size-12 text-muted-foreground dark:text-foreground/20" />
               <Text className="mt-2">Select a session or create a new one</Text>
             </div>
           </div>
@@ -165,18 +165,18 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
   }
 
   if (sessionQuery.isLoading) return <div className="p-4"><Text>Loading session...</Text></div>
-  if (sessionQuery.isError) return <div className="p-4"><Text className="text-red-600">Failed to load session</Text></div>
+  if (sessionQuery.isError) return <div className="p-4"><Text className="text-destructive">Failed to load session</Text></div>
 
   const session = sessionQuery.data!
   const messages = session.history ?? []
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-white/10">
+      <div className="flex items-center justify-between border-b border-border p-3 dark:border-border">
         <div>
-          <div className="font-mono text-xs text-zinc-500 dark:text-zinc-400">{session.id}</div>
+          <div className="font-mono text-xs text-muted-foreground dark:text-muted-foreground">{session.id}</div>
           {session.work_dir && (
-            <div className="mt-0.5 font-mono text-xs text-zinc-400">{session.work_dir}</div>
+            <div className="mt-0.5 font-mono text-xs text-muted-foreground">{session.work_dir}</div>
           )}
         </div>
         <div className="w-56">
@@ -199,19 +199,19 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
         )}
         {sendMutation.isPending && (
           <div className="flex justify-start">
-            <div className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
+            <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground dark:bg-background/5 dark:text-muted-foreground">
               Thinking...
             </div>
           </div>
         )}
         {sendMutation.isError && (
-          <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-destructive">
             {sendMutation.error?.message}
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSend} className="border-t border-zinc-200 p-3 dark:border-white/10">
+      <form onSubmit={handleSend} className="border-t border-border p-3 dark:border-border">
         <div className="flex gap-2">
           <Input
             type="text"
@@ -239,9 +239,9 @@ function MessageBubble({ message }: { message: Message }) {
         className={clsx(
           'max-w-[80%] rounded-lg px-3 py-2 text-sm',
           isUser
-            ? 'bg-blue-600 text-white'
+            ? 'bg-primary text-primary-foreground'
             : isAssistant
-              ? 'bg-zinc-100 text-zinc-950 dark:bg-white/5 dark:text-white'
+              ? 'bg-muted text-foreground dark:bg-background/5 dark:text-foreground'
               : 'bg-amber-50 text-amber-900 dark:bg-amber-500/10 dark:text-amber-300'
         )}
       >
@@ -267,7 +267,7 @@ function PartView({ part }: { part: Part }) {
       return <div className="whitespace-pre-wrap break-words">{String(part.text ?? '')}</div>
     case 'tool_call':
       return (
-        <div className="mt-1 rounded border border-current/20 bg-black/5 p-2 font-mono text-xs dark:bg-white/5">
+        <div className="mt-1 rounded border border-current/20 bg-black/5 p-2 font-mono text-xs dark:bg-background/5">
           <div className="font-semibold">→ {String(part.name ?? 'tool')}</div>
           {part.input != null && (
             <pre className="mt-1 overflow-x-auto whitespace-pre-wrap">
@@ -278,7 +278,7 @@ function PartView({ part }: { part: Part }) {
       )
     case 'tool_result':
       return (
-        <div className="mt-1 rounded border border-current/20 bg-black/5 p-2 font-mono text-xs dark:bg-white/5">
+        <div className="mt-1 rounded border border-current/20 bg-black/5 p-2 font-mono text-xs dark:bg-background/5">
           <div className="font-semibold">← result</div>
           <pre className="mt-1 overflow-x-auto whitespace-pre-wrap">
             {typeof part.output === 'string' ? part.output : JSON.stringify(part.output, null, 2)}

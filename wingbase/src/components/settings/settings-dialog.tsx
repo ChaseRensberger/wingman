@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogTitle, DialogDescription, DialogBody, DialogActions } from '../primitives/dialog'
 import { Button } from '../primitives/button'
 import { Input } from '../primitives/input'
-import { Switch, SwitchField } from '../primitives/switch'
+import { Select } from '../primitives/select'
 import { Field, Label, Description } from '../primitives/fieldset'
 import { getStoredBaseURL, setBaseURL, clearBaseURL } from '../../lib/api'
+import { useTheme } from '../../hooks/use-theme'
 
 interface SettingsDialogProps {
   open: boolean
@@ -15,7 +16,7 @@ const DEFAULT_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:2323'
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [url, setUrl] = useState('')
-  const [darkMode, setDarkMode] = useState(false)
+  const { theme, setTheme } = useTheme()
 
   useEffect(() => {
     if (open) {
@@ -50,11 +51,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           />
         </Field>
 
-        <SwitchField>
-          <Label>Dark mode</Label>
-          <Description>Switch between light and dark themes (coming soon).</Description>
-          <Switch checked={darkMode} onChange={setDarkMode} disabled />
-        </SwitchField>
+        <Field>
+          <Label>Theme</Label>
+          <Description>Choose your preferred appearance.</Description>
+          <Select
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as 'light' | 'dark' | 'system')}
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </Select>
+        </Field>
       </DialogBody>
 
       <DialogActions>

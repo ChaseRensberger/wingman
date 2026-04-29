@@ -49,16 +49,16 @@ const base = [
   // Basic layout
   'relative isolate flex size-4.75 shrink-0 rounded-full sm:size-4.25',
   // Background color + shadow applied to inset pseudo element, so shadow blends with border in light mode
-  'before:absolute before:inset-0 before:-z-10 before:rounded-full before:bg-white before:shadow-sm',
+  'before:absolute before:inset-0 before:-z-10 before:rounded-full before:bg-background before:shadow-sm',
   // Background color when checked
   'group-data-checked:before:bg-(--radio-checked-bg)',
   // Background color is moved to control and shadow is removed in dark mode so hide `before` pseudo
   'dark:before:hidden',
   // Background color applied to control in dark mode
-  'dark:bg-white/5 dark:group-data-checked:bg-(--radio-checked-bg)',
+  'dark:bg-background/5 dark:group-data-checked:bg-(--radio-checked-bg)',
   // Border
-  'border border-zinc-950/15 group-data-checked:border-transparent group-data-hover:group-data-checked:border-transparent group-data-hover:border-zinc-950/30 group-data-checked:bg-(--radio-checked-border)',
-  'dark:border-white/15 dark:group-data-checked:border-white/5 dark:group-data-hover:group-data-checked:border-white/5 dark:group-data-hover:border-white/30',
+  'border border-border group-data-checked:border-transparent group-data-hover:group-data-checked:border-transparent group-data-hover:border-border group-data-checked:bg-(--radio-checked-border)',
+  'dark:border-border dark:group-data-checked:border-white/5 dark:group-data-hover:group-data-checked:border-white/5 dark:group-data-hover:border-white/30',
   // Inner highlight shadow
   'after:absolute after:inset-0 after:rounded-full after:shadow-[inset_0_1px_--theme(--color-white/15%)]',
   'dark:after:-inset-px dark:after:hidden dark:after:rounded-full dark:group-data-checked:after:block',
@@ -67,17 +67,17 @@ const base = [
   // Indicator color (dark mode)
   'dark:group-data-hover:group-data-checked:[--radio-indicator:var(--radio-checked-indicator)] dark:group-data-hover:[--radio-indicator:var(--color-zinc-700)]',
   // Focus ring
-  'group-data-focus:outline group-data-focus:outline-2 group-data-focus:outline-offset-2 group-data-focus:outline-blue-500',
+  'group-data-focus:outline group-data-focus:outline-2 group-data-focus:outline-offset-2 group-data-focus:outline-primary',
   // Disabled state
   'group-data-disabled:opacity-50',
-  'group-data-disabled:border-zinc-950/25 group-data-disabled:bg-zinc-950/5 group-data-disabled:[--radio-checked-indicator:var(--color-zinc-950)]/50 group-data-disabled:before:bg-transparent',
-  'dark:group-data-disabled:border-white/20 dark:group-data-disabled:bg-white/2.5 dark:group-data-disabled:[--radio-checked-indicator:var(--color-white)]/50 dark:group-data-checked:group-data-disabled:after:hidden',
+  'group-data-disabled:border-border group-data-disabled:bg-foreground/5 group-data-disabled:[--radio-checked-indicator:var(--color-foreground)]/50 group-data-disabled:before:bg-transparent',
+  'dark:group-data-disabled:border-white/20 dark:group-data-disabled:bg-background/2.5 dark:group-data-disabled:[--radio-checked-indicator:var(--color-foreground)]/50 dark:group-data-checked:group-data-disabled:after:hidden',
 ]
 
 const colors = {
   'dark/zinc': [
-    '[--radio-checked-bg:var(--color-zinc-900)] [--radio-checked-border:var(--color-zinc-950)]/90 [--radio-checked-indicator:var(--color-white)]',
-    'dark:[--radio-checked-bg:var(--color-zinc-600)]',
+    '[--radio-checked-bg:var(--color-primary)] [--radio-checked-border:var(--color-primary)]/90 [--radio-checked-indicator:var(--color-primary-foreground)]',
+    'dark:[--radio-checked-bg:var(--color-primary)]',
   ],
   'dark/white': [
     '[--radio-checked-bg:var(--color-zinc-900)] [--radio-checked-border:var(--color-zinc-950)]/90 [--radio-checked-indicator:var(--color-white)]',
