@@ -34,17 +34,17 @@ export const Textarea = forwardRef(function Textarea(
           // Basic layout
           'relative block h-full w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]',
           // Typography
-          'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6 dark:text-foreground',
+          'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6',
           // Border
-          'border border-border data-hover:border-border dark:border-border dark:data-hover:border-border',
+          'border border-border data-hover:border-border',
           // Background color
-          'bg-transparent dark:bg-background/5',
+          'bg-transparent',
           // Hide default focus styles
           'focus:outline-hidden',
           // Invalid state
-          'data-invalid:border-destructive data-invalid:data-hover:border-destructive dark:data-invalid:border-destructive dark:data-invalid:data-hover:border-destructive',
+          'data-invalid:border-destructive data-invalid:data-hover:border-destructive',
           // Disabled state
-          'disabled:border-border dark:disabled:border-white/15 dark:disabled:bg-background/2.5 dark:data-hover:disabled:border-white/15',
+          'disabled:border-border',
           // Resizable
           resizable ? 'resize-y' : 'resize-none',
         ])}

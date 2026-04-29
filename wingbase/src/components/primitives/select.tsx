@@ -37,23 +37,23 @@ export const Select = forwardRef(function Select(
           // Options (multi-select)
           '[&_optgroup]:font-semibold',
           // Typography
-          'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6 dark:text-foreground dark:*:text-foreground',
+            'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6 *:text-foreground',
           // Border
-          'border border-border data-hover:border-border dark:border-border dark:data-hover:border-border',
+            'border border-border data-hover:border-border',
           // Background color
-          'bg-transparent dark:bg-background/5 dark:*:bg-card',
+            'bg-transparent *:bg-card',
           // Hide default focus styles
           'focus:outline-hidden',
           // Invalid state
-          'data-invalid:border-destructive data-invalid:data-hover:border-destructive dark:data-invalid:border-destructive dark:data-invalid:data-hover:border-destructive',
+            'data-invalid:border-destructive data-invalid:data-hover:border-destructive',
           // Disabled state
-          'data-disabled:border-border data-disabled:opacity-100 dark:data-disabled:border-white/15 dark:data-disabled:bg-background/2.5 dark:data-hover:data-disabled:border-white/15',
+            'data-disabled:border-border data-disabled:opacity-100',
         ])}
       />
       {!multiple && (
         <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
           <svg
-            className="size-5 stroke-muted-foreground group-has-data-disabled:stroke-muted-foreground sm:size-4 dark:stroke-muted-foreground forced-colors:stroke-[CanvasText]"
+            className="size-5 stroke-muted-foreground group-has-data-disabled:stroke-muted-foreground sm:size-4 forced-colors:stroke-[CanvasText]"
             viewBox="0 0 16 16"
             aria-hidden="true"
             fill="none"

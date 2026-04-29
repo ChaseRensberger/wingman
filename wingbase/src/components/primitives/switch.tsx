@@ -155,19 +155,17 @@ export function Switch({
         // Transitions
         'transition duration-0 ease-in-out data-changing:duration-200',
         // Outline and background color in forced-colors mode so switch is still visible
-        'forced-colors:outline forced-colors:[--switch-bg:Highlight] dark:forced-colors:[--switch-bg:Highlight]',
+        'forced-colors:outline forced-colors:[--switch-bg:Highlight]',
         // Unchecked
-        'bg-muted ring-1 ring-border ring-inset dark:bg-background/5 dark:ring-border',
+        'bg-muted ring-1 ring-border ring-inset',
         // Checked
-        'data-checked:bg-(--switch-bg) data-checked:ring-(--switch-bg-ring) dark:data-checked:bg-(--switch-bg) dark:data-checked:ring-(--switch-bg-ring)',
+        'data-checked:bg-(--switch-bg) data-checked:ring-(--switch-bg-ring)',
         // Focus
         'focus:not-data-focus:outline-hidden data-focus:outline-2 data-focus:outline-offset-2 data-focus:outline-primary',
         // Hover
         'data-hover:ring-border data-hover:data-checked:ring-(--switch-bg-ring)',
-        'dark:data-hover:ring-white/25 dark:data-hover:data-checked:ring-(--switch-bg-ring)',
         // Disabled
         'data-disabled:bg-muted data-disabled:opacity-50 data-disabled:data-checked:bg-muted data-disabled:data-checked:ring-border',
-        'dark:data-disabled:bg-background/15 dark:data-disabled:data-checked:bg-background/15 dark:data-disabled:data-checked:ring-border',
         // Color specific styles
         colors[color]
       )}

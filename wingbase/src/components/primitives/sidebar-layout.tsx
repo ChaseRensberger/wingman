@@ -31,7 +31,7 @@ function MobileSidebar({ open, close, children }: React.PropsWithChildren<{ open
         transition
         className="fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full"
       >
-        <div className="flex h-full flex-col rounded-lg bg-background shadow-xs ring-1 ring-border dark:bg-card dark:ring-border">
+        <div className="flex h-full flex-col rounded-lg bg-card shadow-xs ring-1 ring-border">
           <div className="-mb-3 px-4 pt-3">
             <Headless.CloseButton as={NavbarItem} aria-label="Close navigation">
               <CloseMenuIcon />
@@ -52,7 +52,7 @@ export function SidebarLayout({
   const [showSidebar, setShowSidebar] = useState(false)
 
   return (
-    <div className="relative isolate flex min-h-svh w-full bg-background max-lg:flex-col lg:bg-muted dark:bg-card dark:lg:bg-background">
+    <div className="relative isolate flex min-h-svh w-full max-lg:flex-col lg:bg-muted bg-card">
       {/* Sidebar on desktop */}
       <div className="fixed inset-y-0 left-0 w-64 max-lg:hidden">{sidebar}</div>
 
@@ -73,7 +73,7 @@ export function SidebarLayout({
 
       {/* Content */}
       <main className="flex flex-1 flex-col pb-2 lg:min-w-0 lg:pt-2 lg:pr-2 lg:pl-64">
-        <div className="grow p-6 lg:rounded-lg lg:bg-background lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-border dark:lg:bg-card dark:lg:ring-border">
+        <div className="grow p-6 lg:rounded-lg lg:bg-card lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-border">
           <div className="mx-auto max-w-6xl">{children}</div>
         </div>
       </main>

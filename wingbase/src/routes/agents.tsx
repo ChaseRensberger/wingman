@@ -74,13 +74,13 @@ function AgentsPage() {
           {agentsQuery.data.map((agent) => (
             <div
               key={agent.id}
-              className="rounded-xl border border-border bg-background p-4 dark:border-border dark:bg-card"
+              className="rounded-xl border border-border bg-card p-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Robot className="size-4 text-muted-foreground" />
-                    <span className="truncate font-semibold text-foreground dark:text-foreground">
+                    <span className="truncate font-semibold text-foreground">
                       {agent.name}
                     </span>
                   </div>
@@ -90,7 +90,7 @@ function AgentsPage() {
                   <button
                     type="button"
                     onClick={() => setEditing(agent)}
-                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground dark:hover:bg-background/10 dark:hover:text-foreground"
+                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
                     <PencilSimple className="size-3.5" />
                   </button>
@@ -101,7 +101,7 @@ function AgentsPage() {
                         deleteMutation.mutate(agent.id)
                       }
                     }}
-                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-red-100 hover:text-destructive dark:hover:bg-red-500/20"
+                    className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash className="size-3.5" />
                   </button>
@@ -109,7 +109,7 @@ function AgentsPage() {
               </div>
 
               {agent.instructions && (
-                <p className="mt-3 line-clamp-3 text-sm text-muted-foreground dark:text-muted-foreground">
+                <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
                   {agent.instructions}
                 </p>
               )}
@@ -125,8 +125,8 @@ function AgentsPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center dark:border-border">
-          <Robot className="mx-auto size-10 text-muted-foreground dark:text-foreground/20" />
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
+          <Robot className="mx-auto size-10 text-subtle-foreground" />
           <Text className="mt-2">No agents yet. Create one to start chatting.</Text>
         </div>
       )}
@@ -277,7 +277,7 @@ function AgentDialog({ agent, onClose }: { agent: Agent | null; onClose: () => v
           </Field>
 
           {saveMutation.isError && (
-            <div className="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-destructive">
+            <div className="rounded-lg bg-destructive/10 p-2 text-sm text-destructive">
               {saveMutation.error?.message}
             </div>
           )}

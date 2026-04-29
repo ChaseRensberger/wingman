@@ -11,7 +11,7 @@ export function InputGroup({ children }: React.ComponentPropsWithoutRef<'span'>)
         'has-[[data-slot=icon]:first-child]:[&_input]:pl-10 has-[[data-slot=icon]:last-child]:[&_input]:pr-10 sm:has-[[data-slot=icon]:first-child]:[&_input]:pl-8 sm:has-[[data-slot=icon]:last-child]:[&_input]:pr-8',
         '*:data-[slot=icon]:pointer-events-none *:data-[slot=icon]:absolute *:data-[slot=icon]:top-3 *:data-[slot=icon]:z-10 *:data-[slot=icon]:size-5 sm:*:data-[slot=icon]:top-2.5 sm:*:data-[slot=icon]:size-4',
         '[&>[data-slot=icon]:first-child]:left-3 sm:[&>[data-slot=icon]:first-child]:left-2.5 [&>[data-slot=icon]:last-child]:right-3 sm:[&>[data-slot=icon]:last-child]:right-2.5',
-        '*:data-[slot=icon]:text-muted-foreground dark:*:data-[slot=icon]:text-muted-foreground'
+        '*:data-[slot=icon]:text-muted-foreground'
       )}
     >
       {children}
@@ -72,19 +72,19 @@ export const Input = forwardRef(function Input(
           // Basic layout
           'relative block w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]',
           // Typography
-          'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6 dark:text-foreground',
+          'text-base/6 text-foreground placeholder:text-muted-foreground sm:text-sm/6',
           // Border
-          'border border-border data-hover:border-border dark:border-border dark:data-hover:border-border',
+          'border border-border data-hover:border-border',
           // Background color
-          'bg-transparent dark:bg-background/5',
+          'bg-transparent',
           // Hide default focus styles
           'focus:outline-hidden',
           // Invalid state
-          'data-invalid:border-destructive data-invalid:data-hover:border-destructive dark:data-invalid:border-destructive dark:data-invalid:data-hover:border-destructive',
+          'data-invalid:border-destructive data-invalid:data-hover:border-destructive',
           // Disabled state
-          'data-disabled:border-border dark:data-disabled:border-white/15 dark:data-disabled:bg-background/2.5 dark:data-hover:data-disabled:border-white/15',
+          'data-disabled:border-border',
           // System icons
-          'dark:scheme-dark',
+          'scheme-dark',
         ])}
       />
     </span>

@@ -42,49 +42,39 @@ const styles = {
   ],
   outline: [
     // Base
-    'border-border text-foreground data-active:bg-foreground/2.5 data-hover:bg-foreground/2.5',
-    // Dark mode
-    'dark:border-border dark:text-foreground dark:[--btn-bg:transparent] dark:data-active:bg-background/5 dark:data-hover:bg-background/5',
+    'border-border text-foreground data-active:bg-overlay data-hover:bg-overlay',
     // Icon
     '[--btn-icon:var(--color-muted-foreground)] data-active:[--btn-icon:var(--color-foreground)] data-hover:[--btn-icon:var(--color-foreground)]',
   ],
   plain: [
     // Base
-    'border-transparent text-foreground data-active:bg-foreground/5 data-hover:bg-foreground/5',
-    // Dark mode
-    'dark:text-foreground dark:data-active:bg-background/10 dark:data-hover:bg-background/10',
+    'border-transparent text-foreground data-active:bg-overlay data-hover:bg-overlay',
     // Icon
     '[--btn-icon:var(--color-muted-foreground)] data-active:[--btn-icon:var(--color-foreground)] data-hover:[--btn-icon:var(--color-foreground)]',
   ],
   colors: {
     'dark/zinc': [
-      'text-primary-foreground [--btn-bg:var(--color-primary)] [--btn-border:var(--color-primary)]/90 [--btn-hover-overlay:var(--color-primary-foreground)]/10',
-      'dark:text-primary-foreground dark:[--btn-bg:var(--color-primary)] dark:[--btn-hover-overlay:var(--color-primary-foreground)]/5',
+      'text-primary-foreground [--btn-bg:var(--color-primary)] [--btn-border:var(--color-primary)]/90 [--btn-hover-overlay:var(--color-primary-foreground)]/5',
       '[--btn-icon:var(--color-primary-foreground)]/60 data-active:[--btn-icon:var(--color-primary-foreground)]/80 data-hover:[--btn-icon:var(--color-primary-foreground)]/80',
     ],
     light: [
-      'text-foreground [--btn-bg:var(--color-background)] [--btn-border:var(--color-border)]/90 [--btn-hover-overlay:var(--color-foreground)]/5 data-active:[--btn-border:var(--color-border)] data-hover:[--btn-border:var(--color-border)]',
-      'dark:text-foreground dark:[--btn-hover-overlay:var(--color-foreground)]/5 dark:[--btn-bg:var(--color-card)]',
+      'text-foreground [--btn-bg:var(--color-card)] [--btn-border:var(--color-border)]/90 [--btn-hover-overlay:var(--color-foreground)]/5 data-active:[--btn-border:var(--color-border)] data-hover:[--btn-border:var(--color-border)]',
       '[--btn-icon:var(--color-muted-foreground)] data-active:[--btn-icon:var(--color-foreground)] data-hover:[--btn-icon:var(--color-foreground)]',
     ],
     'dark/white': [
-      'text-primary-foreground [--btn-bg:var(--color-primary)] [--btn-border:var(--color-primary)]/90 [--btn-hover-overlay:var(--color-primary-foreground)]/10',
-      'dark:text-primary-foreground dark:[--btn-bg:var(--color-primary)] dark:[--btn-hover-overlay:var(--color-primary-foreground)]/5',
+      'text-primary-foreground [--btn-bg:var(--color-primary)] [--btn-border:var(--color-primary)]/90 [--btn-hover-overlay:var(--color-primary-foreground)]/5',
       '[--btn-icon:var(--color-primary-foreground)]/60 data-active:[--btn-icon:var(--color-primary-foreground)]/80 data-hover:[--btn-icon:var(--color-primary-foreground)]/80',
     ],
     dark: [
-      'text-white [--btn-bg:var(--color-zinc-900)] [--btn-border:var(--color-zinc-950)]/90 [--btn-hover-overlay:var(--color-white)]/10',
-      'dark:[--btn-hover-overlay:var(--color-white)]/5 dark:[--btn-bg:var(--color-zinc-800)]',
+      'text-white [--btn-bg:var(--color-zinc-800)] [--btn-border:var(--color-zinc-950)]/90 [--btn-hover-overlay:var(--color-white)]/5',
       '[--btn-icon:var(--color-zinc-400)] data-active:[--btn-icon:var(--color-zinc-300)] data-hover:[--btn-icon:var(--color-zinc-300)]',
     ],
     white: [
-      'text-foreground [--btn-bg:var(--color-background)] [--btn-border:var(--color-zinc-950)]/10 [--btn-hover-overlay:var(--color-zinc-950)]/2.5 data-active:[--btn-border:var(--color-zinc-950)]/15 data-hover:[--btn-border:var(--color-zinc-950)]/15',
-      'dark:[--btn-hover-overlay:var(--color-zinc-950)]/5',
+      'text-foreground [--btn-bg:var(--color-background)] [--btn-border:var(--color-zinc-950)]/10 [--btn-hover-overlay:var(--color-zinc-950)]/5 data-active:[--btn-border:var(--color-zinc-950)]/15 data-hover:[--btn-border:var(--color-zinc-950)]/15',
       '[--btn-icon:var(--color-zinc-400)] data-active:[--btn-icon:var(--color-zinc-500)] data-hover:[--btn-icon:var(--color-zinc-500)]',
     ],
     zinc: [
-      'text-white [--btn-hover-overlay:var(--color-white)]/10 [--btn-bg:var(--color-zinc-600)] [--btn-border:var(--color-zinc-700)]/90',
-      'dark:[--btn-hover-overlay:var(--color-white)]/5',
+      'text-white [--btn-hover-overlay:var(--color-white)]/5 [--btn-bg:var(--color-zinc-600)] [--btn-border:var(--color-zinc-700)]/90',
       '[--btn-icon:var(--color-zinc-400)] data-active:[--btn-icon:var(--color-zinc-300)] data-hover:[--btn-icon:var(--color-zinc-300)]',
     ],
     indigo: [

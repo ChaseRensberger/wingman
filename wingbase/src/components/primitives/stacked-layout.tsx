@@ -31,7 +31,7 @@ function MobileSidebar({ open, close, children }: React.PropsWithChildren<{ open
         transition
         className="fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full"
       >
-        <div className="flex h-full flex-col rounded-lg bg-background shadow-xs ring-1 ring-border dark:bg-card dark:ring-border">
+        <div className="flex h-full flex-col rounded-lg bg-card shadow-xs ring-1 ring-border">
           <div className="-mb-3 px-4 pt-3">
             <Headless.CloseButton as={NavbarItem} aria-label="Close navigation">
               <CloseMenuIcon />
@@ -52,7 +52,7 @@ export function StackedLayout({
   const [showSidebar, setShowSidebar] = useState(false)
 
   return (
-    <div className="relative isolate flex min-h-svh w-full flex-col bg-background lg:bg-muted dark:bg-card dark:lg:bg-background">
+    <div className="relative isolate flex min-h-svh w-full flex-col lg:bg-muted bg-card">
       {/* Sidebar on mobile */}
       <MobileSidebar open={showSidebar} close={() => setShowSidebar(false)}>
         {sidebar}
@@ -70,7 +70,7 @@ export function StackedLayout({
 
       {/* Content */}
       <main className="flex flex-1 flex-col pb-2 lg:px-2">
-        <div className="grow p-6 lg:rounded-lg lg:bg-background lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-border dark:lg:bg-card dark:lg:ring-border">
+        <div className="grow p-6 lg:rounded-lg lg:bg-card lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-border">
           <div className="mx-auto max-w-6xl">{children}</div>
         </div>
       </main>

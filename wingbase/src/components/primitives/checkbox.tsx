@@ -53,10 +53,9 @@ const base = [
   // Background color is moved to control and shadow is removed in dark mode so hide `before` pseudo
   'dark:before:hidden',
   // Background color applied to control in dark mode
-  'dark:bg-background/5 dark:group-data-checked:bg-(--checkbox-checked-bg)',
+  'bg-overlay group-data-checked:bg-(--checkbox-checked-bg)',
   // Border
   'border border-border group-data-checked:border-transparent group-data-hover:group-data-checked:border-transparent group-data-hover:border-border group-data-checked:bg-(--checkbox-checked-border)',
-  'dark:border-border dark:group-data-checked:border-white/5 dark:group-data-hover:group-data-checked:border-white/5 dark:group-data-hover:border-white/30',
   // Inner highlight shadow
   'after:absolute after:inset-0 after:rounded-[calc(0.3125rem-1px)] after:shadow-[inset_0_1px_--theme(--color-white/15%)]',
   'dark:after:-inset-px dark:after:hidden dark:after:rounded-[0.3125rem] dark:group-data-checked:after:block',
@@ -64,17 +63,14 @@ const base = [
   'group-data-focus:outline-2 group-data-focus:outline-offset-2 group-data-focus:outline-primary',
   // Disabled state
   'group-data-disabled:opacity-50',
-  'group-data-disabled:border-border group-data-disabled:bg-foreground/5 group-data-disabled:[--checkbox-check:var(--color-foreground)]/50 group-data-disabled:before:bg-transparent',
-  'dark:group-data-disabled:border-white/20 dark:group-data-disabled:bg-background/2.5 dark:group-data-disabled:[--checkbox-check:var(--color-foreground)]/50 dark:group-data-checked:group-data-disabled:after:hidden',
+  'group-data-disabled:border-border group-data-disabled:bg-overlay group-data-disabled:[--checkbox-check:var(--color-foreground)]/50 group-data-disabled:before:bg-transparent group-data-checked:group-data-disabled:after:hidden',
   // Forced colors mode
   'forced-colors:[--checkbox-check:HighlightText] forced-colors:[--checkbox-checked-bg:Highlight] forced-colors:group-data-disabled:[--checkbox-check:Highlight]',
-  'dark:forced-colors:[--checkbox-check:HighlightText] dark:forced-colors:[--checkbox-checked-bg:Highlight] dark:forced-colors:group-data-disabled:[--checkbox-check:Highlight]',
 ]
 
 const colors = {
   'dark/zinc': [
     '[--checkbox-check:var(--color-primary-foreground)] [--checkbox-checked-bg:var(--color-primary)] [--checkbox-checked-border:var(--color-primary)]/90',
-    'dark:[--checkbox-checked-bg:var(--color-primary)]',
   ],
   'dark/white': [
     '[--checkbox-check:var(--color-white)] [--checkbox-checked-bg:var(--color-zinc-900)] [--checkbox-checked-border:var(--color-zinc-950)]/90',

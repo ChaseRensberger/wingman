@@ -66,18 +66,18 @@ function ProviderCard({
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="rounded-xl border border-border bg-background p-4 dark:border-border dark:bg-card">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <HardDrives className="size-5 text-muted-foreground" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground dark:text-foreground">{provider.name}</span>
+              <span className="font-semibold text-foreground">{provider.name}</span>
               <Badge color="zinc">{provider.id}</Badge>
             </div>
             <div className="mt-1 flex items-center gap-2 text-sm">
               {auth?.configured ? (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                <span className="flex items-center gap-1 text-green-500">
                   <CheckCircle className="size-4" /> Configured
                 </span>
               ) : (
@@ -130,7 +130,7 @@ function ProviderModels({ providerId }: { providerId: string }) {
           {models.map((m) => (
             <TableRow key={m.id}>
               <TableCell>
-                <span className="font-medium text-foreground dark:text-foreground">{m.id}</span>
+                <span className="font-medium text-foreground">{m.id}</span>
               </TableCell>
               <TableCell>{m.context_window?.toLocaleString() ?? '—'}</TableCell>
               <TableCell>{m.max_output?.toLocaleString() ?? '—'}</TableCell>
