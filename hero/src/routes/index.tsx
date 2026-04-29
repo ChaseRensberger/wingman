@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check } from "@phosphor-icons/react";
 import { Button } from "@/components/primitives/button";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from '../components/ascii-logo';
@@ -35,15 +35,15 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 				{children}
 			</code>
 			<Button
-				variant="ghost"
+				plain
 				onClick={handleCopy}
-				className="text-muted-foreground hover:text-foreground transition-colors p-1 -m-1 shrink-0"
+				className="p-1 -m-1 shrink-0"
 				aria-label="Copy install command"
 			>
 				{copied ? (
-					<Check className="h-4 w-4 text-green-500" />
+					<Check className="size-4 text-green-500" weight="bold" />
 				) : (
-					<Copy className="h-4 w-4" />
+					<Copy className="size-4" />
 				)}
 			</Button>
 		</div>

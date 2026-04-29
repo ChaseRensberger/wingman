@@ -1,8 +1,7 @@
 @import "tailwindcss";
-@import "tw-animate-css";
+@import "@fontsource/fira-mono";
 
 @source "../components/**/*.tsx";
-@import "@fontsource/fira-mono";
 
 @plugin "@tailwindcss/typography";
 
