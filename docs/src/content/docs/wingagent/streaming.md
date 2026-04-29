@@ -1,53 +1,13 @@
 ---
 title: "Streaming"
-group: "Concepts"
+group: "WingAgent"
 draft: false
 order: 104
 ---
 
 # Streaming
 
-Wingman has two layers of streaming, both visible to clients:
-
-- **Provider stream parts** — `wingmodels.StreamPart`, mirroring Vercel AI SDK v3 `LanguageModelV3StreamPart`. Emitted by the provider as it generates a single assistant turn.
-- **Loop lifecycle events** — `loop.Event` variants emitted by `wingagent/loop` around iterations, messages, and tool calls.
-
-Both flow through the same `session.SessionStream` and the same SSE wire format on the HTTP server.
-
-## Provider stream parts
-
-`StreamPart` is the wire-level event emitted by the provider during one assistant turn. It is a discriminated union; `Kind()` returns the discriminator string.
-
-A turn proceeds:
-
-```
-stream-start (warnings)?
-(text-* | reasoning-* | tool-input-* | tool-call)*
-response-metadata?
-error*
-finish (usage, reason, message)
-```
-
-Tool calls follow a three-phase flow:
-
-```
-tool-input-start (id, name)
-tool-input-delta (id, delta) ...
-tool-input-end   (id)
-tool-call        (id, name, parsed input)
-```
-
-The provider MUST emit exactly one `FinishPart` as the terminator. Errors mid-stream are surfaced as `ErrorPart` events; the `FinishPart` that follows carries `FinishReasonError` or `FinishReasonAborted`.
-
-### Wingman additions over AI SDK v3
-
-- `FinishPart` carries the assembled `*Message` so consumers can grab the final message without rebuilding it from deltas.
-- `FinishReasonAborted` exists on top of the AI SDK enum for context-cancellation semantics.
-- The assembled `*Message` is stamped with `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`). Providers set both before pushing the terminal `FinishPart`. `MessageOrigin.SameModel(other)` returns true only when both `API` and `ModelID` match; the `wingmodels/transform` package uses this to decide whether reasoning blocks survive into the next turn.
-
-### Discriminator constants
-
-`wingmodels` exports stable constants (`KindStreamStart`, `KindTextDelta`, `KindToolCall`, `KindFinish`, …) — see `wingmodels/event.go`. Wire payloads use the hyphenated form (`text-delta`, `tool-call`, …).
+Wingman has two layers of streaming. This page covers the upper layer — loop lifecycle events, SDK consumption, and the SSE wire format. For the provider stream parts that make up a single assistant turn, see [Streaming](../wingmodels/streaming).
 
 ## Loop lifecycle events
 

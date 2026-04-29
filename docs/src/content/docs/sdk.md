@@ -100,7 +100,7 @@ m, err := provider.New("anthropic", map[string]any{
 })
 ```
 
-See [Providers](./providers).
+See [Providers](./wingmodels/providers).
 
 ## Session options
 
@@ -152,7 +152,7 @@ result := stream.Result()
 _ = result
 ```
 
-If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./streaming).
+If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./wingagent/streaming).
 
 ## Plugins
 
@@ -167,8 +167,8 @@ s := session.New(
 )
 ```
 
-See [Plugins](./plugins) for authoring your own.
+See [Plugins](./wingagent/plugins) for authoring your own.
 
 ## Tools
 
-Built-in tools live under `wingagent/tool`. Custom tools implement `tool.Tool`. See [Tools](./tools).
+Built-in tools live under `wingagent/tool`. Custom tools implement `tool.Tool`. See [Tools](./wingagent/tools).

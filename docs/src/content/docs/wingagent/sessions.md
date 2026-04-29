@@ -73,7 +73,7 @@ type Result struct {
 
 ## Streaming
 
-`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See [Streaming](./streaming).
+`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See [Streaming](../wingagent/streaming).
 
 ```go
 stream, err := s.RunStream(ctx, "Write a Go HTTP server")
@@ -113,7 +113,7 @@ POST   /sessions/{id}/message/stream
 POST   /sessions/{id}/abort
 ```
 
-`PUT /sessions/{id}` is metadata-only (work dir, updated timestamp); it does not touch history.
+`PUT /sessions/{id}` is metadata-only (title, work dir, updated timestamp); it does not touch history.
 
 ### Send a message
 

@@ -46,9 +46,9 @@ type Model interface {
 }
 ```
 
-A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union sealed to the `wingmodels` package; plugins extend it through an open registry by registering a discriminator string and decoder, and serializing payloads as `OpaquePart` so the union stays sealed. See [Parts](./parts).
+A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union sealed to the `wingmodels` package; plugins extend it through an open registry by registering a discriminator string and decoder, and serializing payloads as `OpaquePart` so the union stays sealed. See [Parts](./wingmodels/parts).
 
-`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds three things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, `FinishReasonAborted` exists alongside the standard reasons, and the assembled `*Message` is stamped with both `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`) so downstream code can reason about what produced each turn. See [Streaming](./streaming).
+`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds three things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, `FinishReasonAborted` exists alongside the standard reasons, and the assembled `*Message` is stamped with both `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`) so downstream code can reason about what produced each turn. See [Streaming](./wingmodels/streaming).
 
 ## Mid-session model switching
 
@@ -68,7 +68,7 @@ The loop is the agentic kernel. One call to `loop.Run` drives a sequence of turn
 4. Append the assistant message; if it includes tool calls, execute them (parallel by default) and append tool results.
 5. Repeat until an assistant turn produces no tool calls, `MaxSteps` is reached, or context is cancelled.
 
-Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./lifecycle).
+Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./wingagent/lifecycle).
 
 The loop emits typed events on a `Sink` (`IterationStartEvent`, `MessageEvent`, `ToolExecutionStartEvent`/`EndEvent`, `StreamPartEvent`, `ContextTransformedEvent`, `ErrorEvent`, `IterationEndEvent`). The session forwards these to whatever observers are attached.
 
@@ -84,7 +84,7 @@ A `*session.Session` is a thin stateful wrapper around the loop. It owns:
 
 `Run` and `RunStream` snapshot inputs, build the plugin registry per-call, and drive `loop.Run`. After the loop returns, the session adopts the loop's terminal message slice wholesale — so plugin mutations (e.g. compaction markers) end up in history. The session exposes only `History()`, `AddMessage`, `SetHistory`, `Clear`, plus setters for model/system/tools/work-dir.
 
-See [Sessions](./sessions).
+See [Sessions](./wingagent/sessions).
 
 ## Plugins
 
@@ -95,13 +95,13 @@ Two canonical plugins ship in-tree:
 - `wingagent/plugin/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
 - `wingagent/storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
 
-See [Plugins](./plugins).
+See [Plugins](./wingagent/plugins).
 
 ## Storage
 
 `wingagent/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storage.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
-IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./storage).
+IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./wingagent/storage).
 
 ## HTTP server
 

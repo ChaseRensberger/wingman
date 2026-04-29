@@ -97,7 +97,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `POST` | `/sessions` | Create session |
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
-| `PUT` | `/sessions/{id}` | Update session metadata (work_dir) |
+| `PUT` | `/sessions/{id}` | Update session metadata (title, work_dir) |
 | `DELETE` | `/sessions/{id}` | Delete session |
 | `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
 | `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
@@ -150,7 +150,7 @@ event: done
 data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
 ```
 
-See [Streaming](./streaming) for the envelope reference and the per-type `data` shapes.
+See [Streaming](./wingagent/streaming) for the envelope reference and the per-type `data` shapes.
 
 ### Abort response
 

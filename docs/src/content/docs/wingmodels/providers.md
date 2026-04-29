@@ -22,7 +22,7 @@ type Model interface {
 
 `Info()` returns a `ModelInfo` with provider id, model id, and (when available) catalog metadata such as context window and pricing. `CountTokens` is exact for providers that expose a counting endpoint and falls back to a chars/4 estimate otherwise — plugins like compaction call it directly.
 
-`StreamText` returns a `Stream` whose `Next/Part/Err` surface emits `wingmodels.StreamPart` values matching Vercel AI SDK v3 exactly. See [Streaming](./streaming).
+`StreamText` returns a `Stream` whose `Next/Part/Err` surface emits `wingmodels.StreamPart` values matching Vercel AI SDK v3 exactly. See [Streaming](../wingmodels/streaming).
 
 ## Cross-provider context handoff
 

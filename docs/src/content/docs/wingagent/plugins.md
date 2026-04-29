@@ -7,7 +7,7 @@ order: 107
 
 # Plugins
 
-A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Part type](./parts) registrations packaged behind a single `Install` call.
+A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Part type](../wingmodels/parts) registrations packaged behind a single `Install` call.
 
 ## Why plugins
 
@@ -179,7 +179,7 @@ Internally the plugin contributes:
 - a **`BeforeRun` hook** that calls `store.GetSession(sessionID)` and returns `sess.History` as the loop's initial messages
 - a **sink** that filters for `loop.MessageEvent` and calls `store.AppendMessage` for each completed message
 
-This is the same wiring the [HTTP server](./server) uses internally, expressed as a reusable capability rather than a hard-coded server detail. See the [storage](./storage) page for more.
+This is the same wiring the [HTTP server](../server) uses internally, expressed as a reusable capability rather than a hard-coded server detail. See the [storage](./storage) page for more.
 
 ## Loading model
 

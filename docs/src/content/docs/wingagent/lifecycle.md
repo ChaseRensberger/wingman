@@ -1,11 +1,11 @@
 ---
-title: "Lifecycle hooks"
+title: "Lifecycle"
 group: "Concepts"
 draft: false
 order: 106
 ---
 
-# Lifecycle hooks
+# Lifecycle
 
 The loop exposes a small set of extension seams. Each seam allows exactly one function — there is one `Hooks` struct per `loop.Run` call, one call site per seam, and no surprise ordering at the loop level. When multiple plugins want the same seam, the [plugin registry](./plugins) composes them in install order.
 

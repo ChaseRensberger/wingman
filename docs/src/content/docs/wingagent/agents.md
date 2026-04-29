@@ -57,7 +57,7 @@ curl -sS -X POST http://localhost:2323/agents \
 | `name` | string | Required display name |
 | `provider` | string | Provider id such as `anthropic` |
 | `model` | string | Model id such as `claude-haiku-4-5` |
-| `options` | object | Provider-specific inference settings (see [Providers](./providers)) |
+| `options` | object | Provider-specific inference settings (see [Providers](../wingmodels/providers)) |
 | `instructions` | string | System prompt sent on every inference call |
 | `tools` | string[] | Built-in tool names ([Tools](./tools)) |
 | `output_schema` | object | Optional JSON Schema for structured output |
@@ -79,7 +79,7 @@ curl -sS -X PUT http://localhost:2323/agents/agt_... \
 
 ## Use in a session
 
-A session by itself only carries `work_dir` and history. The agent id is supplied per message:
+A session by itself only carries `title`, `work_dir`, and history. The agent id is supplied per message:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
@@ -90,7 +90,7 @@ curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
   }'
 ```
 
-The server loads the agent record, builds the provider via the registry (injecting credentials from the auth store), constructs a `*session.Session` with the agent's instructions and tool set, replays stored history into it, wires `WithMessageSink` to incremental storage, and runs the loop. See [Server](./server) for the full request flow.
+The server loads the agent record, builds the provider via the registry (injecting credentials from the auth store), constructs a `*session.Session` with the agent's instructions and tool set, replays stored history into it, wires `WithMessageSink` to incremental storage, and runs the loop. See [Server](../server) for the full request flow.
 
 ## SDK equivalent
 

@@ -51,25 +51,25 @@ curl -sS -X PUT http://localhost:2323/provider/auth \
 The server persists definitions and history, then reconstructs live runtime objects on demand.
 
 - **Agents** are stored as configuration records (provider, model, options, instructions, tool names, optional output schema).
-- **Sessions** persist `work_dir` and message history (one row per message, with parts as separate rows).
+- **Sessions** persist `title`, `work_dir`, and message history (one row per message, with parts as separate rows).
 
 When you post a message, the server:
 
 1. loads the stored agent record and session record
 2. constructs the provider via the registry, injecting stored credentials
-3. builds a `*session.Session` with the [storage plugin](./storage#the-storage-plugin) installed via `session.WithPlugin(storage.NewPlugin(store, sess.ID))`
+3. builds a `*session.Session` with the [storage plugin](./wingagent/storage#the-storage-plugin) installed via `session.WithPlugin(storage.NewPlugin(store, sess.ID))`
 4. runs `Run` or `RunStream`
 5. returns the response (or streams events) to the client
 
 Steps 1–4 happen inside `buildSession`. The storage plugin handles both sides of persistence: its `BeforeRun` hook loads the session's prior history from SQLite into the loop, and its sink calls `store.AppendMessage` for each new message as the loop emits it. The server itself doesn't talk to the storage layer during a run — that's the plugin's job.
 
-See [Storage](./storage) for the schema and [Sessions](./sessions) for what `Run` actually does.
+See [Storage](./wingagent/storage) for the schema and [Sessions](./wingagent/sessions) for what `Run` actually does.
 
 ## Streaming behavior
 
 `POST /sessions/{id}/message/stream` returns `text/event-stream`. Each event is `event: <type>\ndata: <json>\n\n`. The standard 60-second request timeout is bypassed for this path. The server tracks in-flight streams in a `WaitGroup` and waits for them during graceful shutdown (subject to the shutdown context's deadline).
 
-The full envelope schema is in [Streaming](./streaming).
+The full envelope schema is in [Streaming](./wingagent/streaming).
 
 ## Aborting a session
 
@@ -98,7 +98,7 @@ curl -sS -X POST http://localhost:2323/agents \
 # 3. Create a session
 curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
-  -d '{"work_dir": "/tmp"}'
+  -d '{"title": "demo", "work_dir": "/tmp"}'
 
 # 4. Send a message
 curl -sS -X POST http://localhost:2323/sessions/ses_.../message \

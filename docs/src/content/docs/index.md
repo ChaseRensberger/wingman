@@ -51,5 +51,5 @@ The HTTP server adds two persisted concepts on top:
 - [Quickstart](./getting-started) to build and run your first session
 - [SDK](./sdk) for embedding Wingman in Go
 - [Server](./server) for running the HTTP service
-- [Sessions](./sessions), [Streaming](./streaming), [Plugins](./plugins) for the core concepts
+- [Sessions](./wingagent/sessions), [Streaming](./wingagent/streaming), [Plugins](./wingagent/plugins) for the core concepts
 - [API](./api) for an endpoint-level reference

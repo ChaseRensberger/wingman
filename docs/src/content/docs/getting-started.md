@@ -104,7 +104,7 @@ result := stream.Result()
 _ = result
 ```
 
-See [Streaming](./streaming) for the event taxonomy.
+See [Streaming](./wingagent/streaming) for the event taxonomy.
 
 ## Run the server
 
@@ -135,7 +135,7 @@ curl -sS -X POST http://localhost:2323/agents \
 # 3. Create a session
 curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
-  -d '{"work_dir": "/tmp"}'
+  -d '{"title": "demo", "work_dir": "/tmp"}'
 
 # 4. Send a message
 curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
@@ -148,6 +148,6 @@ See [Server](./server) for full request/response details.
 ## Next
 
 - [SDK](./sdk) — full SDK surface
-- [Sessions](./sessions) — what `Run` actually does
-- [Plugins](./plugins) — opt-in extensions like compaction
+- [Sessions](./wingagent/sessions) — what `Run` actually does
+- [Plugins](./wingagent/plugins) — opt-in extensions like compaction
 - [API](./api) — endpoint reference

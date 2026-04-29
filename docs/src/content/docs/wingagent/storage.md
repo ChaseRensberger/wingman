@@ -36,7 +36,7 @@ type Store interface {
 
 Notes:
 
-- **`UpdateSession` is metadata-only.** It persists `work_dir` and `updated_at`. It does NOT touch message history.
+- **`UpdateSession` is metadata-only.** It persists `title`, `work_dir`, and `updated_at`. It does NOT touch message history.
 - **`AppendMessage`** appends a single message (and its parts) at the next index. This is the routine path for incremental persistence — wire it via the storage plugin (recommended) or `WithMessageSink` (low-level).
 - **`ReplaceMessages`** atomically clears history and writes `msgs` in order. Reserved for power users (rehydration tools, history editors); routine traffic uses `AppendMessage`.
 
@@ -109,6 +109,7 @@ type Agent struct {
 
 type Session struct {
     ID        string
+    Title     string
     WorkDir   string
     History   []wingmodels.Message
     CreatedAt string
@@ -170,7 +171,7 @@ defer store.Close()
 
 ## Plugin parts in storage
 
-Custom Part types ([Parts](./parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
+Custom Part types ([Parts](../wingmodels/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
 
 ## Stored types
 
@@ -190,6 +191,7 @@ type Agent struct {
 
 type Session struct {
     ID        string
+    Title     string
     WorkDir   string
     History   []wingmodels.Message
     CreatedAt string
@@ -251,4 +253,4 @@ defer store.Close()
 
 ## Plugin parts in storage
 
-Custom Part types ([Parts](./parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
+Custom Part types ([Parts](../wingmodels/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
