@@ -19,8 +19,15 @@ import (
 )
 
 type CreateSessionRequest struct {
+	Title   string `json:"title,omitempty"`
 	WorkDir string `json:"work_dir,omitempty"`
 }
+
+// defaultSessionTitle is the placeholder applied when a session is
+// created without an explicit title. The frontend treats this string
+// as the canonical "untitled" label so users see the same value
+// whether the title is empty or this default.
+const defaultSessionTitle = "New session"
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var req CreateSessionRequest
@@ -29,7 +36,13 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	title := req.Title
+	if title == "" {
+		title = defaultSessionTitle
+	}
+
 	sess := &storage.Session{
+		Title:   title,
 		WorkDir: req.WorkDir,
 		History: []wingmodels.Message{},
 	}
@@ -67,6 +80,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateSessionRequest struct {
+	Title   *string `json:"title,omitempty"`
 	WorkDir *string `json:"work_dir,omitempty"`
 }
 
@@ -85,6 +99,9 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Title != nil {
+		sess.Title = *req.Title
+	}
 	if req.WorkDir != nil {
 		sess.WorkDir = *req.WorkDir
 	}

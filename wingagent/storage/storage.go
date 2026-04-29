@@ -12,7 +12,7 @@ type Store interface {
 	CreateSession(session *Session) error
 	GetSession(id string) (*Session, error)
 	ListSessions() ([]*Session, error)
-	// UpdateSession persists metadata-only fields (work_dir,
+	// UpdateSession persists metadata-only fields (title, work_dir,
 	// updated_at). It does NOT touch the message history; use
 	// AppendMessage for incremental appends or ReplaceMessages for
 	// full rewrites.

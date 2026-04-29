@@ -306,6 +306,7 @@ func TestSessionsCRUD(t *testing.T) {
 
 	t.Run("create session", func(t *testing.T) {
 		body := mustJSON(t, map[string]any{
+			"title":    "my session",
 			"work_dir": "/tmp/test",
 		})
 
@@ -323,6 +324,9 @@ func TestSessionsCRUD(t *testing.T) {
 
 		if sess.ID == "" {
 			t.Fatal("expected session ID to be set")
+		}
+		if sess.Title != "my session" {
+			t.Errorf("expected title 'my session', got %q", sess.Title)
 		}
 		if sess.WorkDir != "/tmp/test" {
 			t.Errorf("expected work_dir '/tmp/test', got %q", sess.WorkDir)
@@ -349,6 +353,11 @@ func TestSessionsCRUD(t *testing.T) {
 
 		if sess.ID == "" {
 			t.Fatal("expected session ID")
+		}
+		// Empty title in the request should populate the default
+		// placeholder so the UI never shows a blank label.
+		if sess.Title != "New session" {
+			t.Errorf("expected default title 'New session', got %q", sess.Title)
 		}
 	})
 
@@ -402,7 +411,9 @@ func TestSessionsCRUD(t *testing.T) {
 
 	t.Run("update session", func(t *testing.T) {
 		newDir := "/tmp/updated"
+		newTitle := "renamed session"
 		body := mustJSON(t, map[string]any{
+			"title":    newTitle,
 			"work_dir": newDir,
 		})
 
@@ -420,8 +431,34 @@ func TestSessionsCRUD(t *testing.T) {
 		var sess storage.Session
 		decodeJSON(t, resp, &sess)
 
+		if sess.Title != newTitle {
+			t.Errorf("expected title %q, got %q", newTitle, sess.Title)
+		}
 		if sess.WorkDir != newDir {
 			t.Errorf("expected work_dir %q, got %q", newDir, sess.WorkDir)
+		}
+	})
+
+	t.Run("update session title only", func(t *testing.T) {
+		// Verify that omitting work_dir doesn't clobber it — pointer
+		// fields in UpdateSessionRequest are how partial updates work.
+		body := mustJSON(t, map[string]any{"title": "title only"})
+
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/sessions/"+sessionID, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		var sess storage.Session
+		decodeJSON(t, resp, &sess)
+
+		if sess.Title != "title only" {
+			t.Errorf("expected title 'title only', got %q", sess.Title)
+		}
+		if sess.WorkDir != "/tmp/updated" {
+			t.Errorf("expected work_dir to be preserved, got %q", sess.WorkDir)
 		}
 	})
 
