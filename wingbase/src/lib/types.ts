@@ -51,6 +51,7 @@ export interface Message {
 
 export interface Session {
   id: string
+  title?: string
   work_dir?: string
   history: Message[]
   created_at: string

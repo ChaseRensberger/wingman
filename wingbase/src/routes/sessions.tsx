@@ -1,8 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Trash, PaperPlaneRight, ChatCircle } from '@phosphor-icons/react'
-import { apiGet, apiPost, apiDelete } from '../lib/api'
+import { Plus, Trash, PaperPlaneRight, ChatCircle, PencilSimple, Check, X } from '@phosphor-icons/react'
+import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api'
+
+// The backend stores an empty string when no title was supplied; we
+// also default-fill with this constant on create. Centralized so the
+// list/detail views can render a consistent placeholder for legacy
+// rows that predate the title column (default '' from the migration).
+const UNTITLED_SESSION = 'Untitled session'
+
+function displayTitle(sess: Pick<Session, 'title' | 'id'>): string {
+  return sess.title?.trim() ? sess.title : UNTITLED_SESSION
+}
 import type {
   Session,
   Agent,
@@ -32,7 +42,11 @@ function SessionsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (workDir?: string) => apiPost<Session>('/sessions', { work_dir: workDir }),
+    // Title is optional in the API; the server fills "New session" when
+    // omitted. We send `undefined` here and let users rename via the
+    // inline editor in the detail header — that keeps the "+ New"
+    // affordance one-click while still surfacing titles everywhere.
+    mutationFn: () => apiPost<Session>('/sessions', {}),
     onSuccess: (sess) => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       setSelectedId(sess.id)
@@ -52,7 +66,7 @@ function SessionsPage() {
       <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-background dark:border-border dark:bg-card">
         <div className="flex items-center justify-between border-b border-border p-3 dark:border-border">
           <Heading level={2} className="!text-base">Sessions</Heading>
-          <Button onClick={() => createMutation.mutate(undefined)} disabled={createMutation.isPending}>
+          <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
             <Plus className="size-4" /> New
           </Button>
         </div>
@@ -72,11 +86,11 @@ function SessionsPage() {
                     )}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-mono text-xs text-foreground dark:text-foreground">
-                        {sess.id.slice(0, 12)}
+                      <div className="truncate text-sm font-medium text-foreground dark:text-foreground">
+                        {displayTitle(sess)}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground dark:text-muted-foreground">
-                        {sess.history?.length ?? 0} messages
+                      <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground dark:text-muted-foreground">
+                        {sess.id.slice(0, 12)} · {sess.history?.length ?? 0} msg
                       </div>
                     </div>
                     <button
@@ -124,6 +138,11 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
   const [agentId, setAgentId] = useState<string>('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // Inline-rename state lives here rather than in the header
+  // component so React Query refetches don't reset the editor mid-typing.
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+
   const sessionQuery = useQuery({
     queryKey: ['session', sessionId],
     queryFn: () => apiGet<Session>(`/sessions/${sessionId}`),
@@ -134,11 +153,30 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
     queryFn: () => apiGet<Agent[]>('/agents'),
   })
 
+  const renameMutation = useMutation({
+    mutationFn: (title: string) =>
+      apiPut<Session>(`/sessions/${sessionId}`, { title }),
+    onSuccess: () => {
+      // Invalidate both the detail and the list so the sidebar label
+      // reflects the new title without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      setEditingTitle(false)
+    },
+  })
+
   useEffect(() => {
     if (!agentId && agentsQuery.data && agentsQuery.data.length > 0) {
       setAgentId(agentsQuery.data[0].id)
     }
   }, [agentId, agentsQuery.data])
+
+  // Reset rename state whenever we switch sessions; otherwise the
+  // editor would stay open with stale text from the previous session.
+  useEffect(() => {
+    setEditingTitle(false)
+    setTitleDraft('')
+  }, [sessionId])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -170,16 +208,77 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
   const session = sessionQuery.data!
   const messages = session.history ?? []
 
+  const startRename = () => {
+    setTitleDraft(session.title ?? '')
+    setEditingTitle(true)
+  }
+
+  const commitRename = () => {
+    const next = titleDraft.trim()
+    // No-op if unchanged; avoids a wasted PUT and the resulting
+    // updated_at bump that would re-sort the sidebar for nothing.
+    if (next === (session.title ?? '')) {
+      setEditingTitle(false)
+      return
+    }
+    renameMutation.mutate(next)
+  }
+
   return (
     <>
-      <div className="flex items-center justify-between border-b border-border p-3 dark:border-border">
-        <div>
-          <div className="font-mono text-xs text-muted-foreground dark:text-muted-foreground">{session.id}</div>
-          {session.work_dir && (
-            <div className="mt-0.5 font-mono text-xs text-muted-foreground">{session.work_dir}</div>
+      <div className="flex items-center justify-between gap-3 border-b border-border p-3 dark:border-border">
+        <div className="min-w-0 flex-1">
+          {editingTitle ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                commitRename()
+              }}
+              className="flex items-center gap-1"
+            >
+              <Input
+                autoFocus
+                type="text"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setEditingTitle(false)
+                }}
+                disabled={renameMutation.isPending}
+                placeholder={UNTITLED_SESSION}
+              />
+              <Button type="submit" disabled={renameMutation.isPending}>
+                <Check className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setEditingTitle(false)}
+                disabled={renameMutation.isPending}
+              >
+                <X className="size-4" />
+              </Button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Heading level={2} className="!text-base !truncate">
+                {displayTitle(session)}
+              </Heading>
+              <button
+                type="button"
+                onClick={startRename}
+                className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground dark:hover:bg-background/5"
+                aria-label="Rename session"
+              >
+                <PencilSimple className="size-3.5" />
+              </button>
+            </div>
           )}
+          <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground dark:text-muted-foreground">
+            {session.id}
+            {session.work_dir ? ` · ${session.work_dir}` : ''}
+          </div>
         </div>
-        <div className="w-56">
+        <div className="w-56 shrink-0">
           <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
             <option value="">Select agent...</option>
             {agentsQuery.data?.map((a) => (
