@@ -47,6 +47,34 @@ type Request struct {
 	// Capabilities are cross-provider knobs the caller can enable.
 	// Providers silently ignore anything they don't support.
 	Capabilities Capabilities
+	// OutputSchema, when non-nil, instructs the provider to constrain the
+	// model's response to the given JSON schema. Providers that do not
+	// support native structured output silently ignore this field; callers
+	// that need a guarantee should consult ModelInfo.Capabilities.StructuredOutput.
+	//
+	// When OutputSchema is set, the assistant's text content is guaranteed
+	// (by the provider) to be a single JSON document conforming to the
+	// schema. Tool calls and structured outputs may not be supported
+	// simultaneously by every provider; callers requiring both should
+	// reserve OutputSchema for the final no-tool turn.
+	OutputSchema *OutputSchema
+}
+
+// OutputSchema describes a JSON schema the model's response must conform to.
+// Maps onto OpenAI Responses text.format=json_schema, OpenAI Chat Completions
+// response_format=json_schema, Anthropic output_config.format=json_schema, and
+// Ollama format=<schema>.
+type OutputSchema struct {
+	// Name identifies the schema. Required by OpenAI; Anthropic and Ollama
+	// ignore it. Use a short snake_case identifier.
+	Name string
+	// Schema is the raw JSON Schema document. Must be a JSON object whose
+	// top-level "type" is "object" for maximum cross-provider compatibility.
+	Schema map[string]any
+	// Strict requests strict schema validation on providers that support a
+	// strict mode (OpenAI). Anthropic and Ollama always validate strictly
+	// and ignore this field.
+	Strict bool
 }
 
 // ToolChoiceMode selects the model's tool-use behaviour.

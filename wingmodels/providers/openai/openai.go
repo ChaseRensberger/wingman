@@ -273,15 +273,29 @@ func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodel
 type inputItem = map[string]any
 
 type responsesRequest struct {
-	Model          string      `json:"model"`
-	Input          []inputItem `json:"input"`
-	Stream         bool        `json:"stream"`
-	Store          bool        `json:"store"` // always false
-	MaxOutputTokens int        `json:"max_output_tokens,omitempty"`
-	Tools          []rTool     `json:"tools,omitempty"`
-	ToolChoice     any         `json:"tool_choice,omitempty"`
-	Reasoning      *rReasoning `json:"reasoning,omitempty"`
-	Include        []string    `json:"include,omitempty"`
+	Model           string      `json:"model"`
+	Input           []inputItem `json:"input"`
+	Stream          bool        `json:"stream"`
+	Store           bool        `json:"store"` // always false
+	MaxOutputTokens int         `json:"max_output_tokens,omitempty"`
+	Tools           []rTool     `json:"tools,omitempty"`
+	ToolChoice      any         `json:"tool_choice,omitempty"`
+	Reasoning       *rReasoning `json:"reasoning,omitempty"`
+	Include         []string    `json:"include,omitempty"`
+	Text            *rText      `json:"text,omitempty"`
+}
+
+// rText carries Responses-API text-output configuration, including
+// structured-output schema (text.format=json_schema).
+type rText struct {
+	Format *rTextFormat `json:"format,omitempty"`
+}
+
+type rTextFormat struct {
+	Type   string         `json:"type"`             // "json_schema"
+	Name   string         `json:"name"`             // schema name
+	Schema map[string]any `json:"schema"`           // JSON schema document
+	Strict bool           `json:"strict,omitempty"` // strict mode
 }
 
 type rTool struct {
@@ -338,6 +352,22 @@ func (c *Client) buildRequest(req wingmodels.Request, caps wingmodels.ModelCapab
 				}
 			}
 		// ToolChoiceAuto and zero-value: omit — Responses default is "auto".
+		}
+	}
+
+	// Structured output (text.format=json_schema)
+	if req.OutputSchema != nil {
+		name := req.OutputSchema.Name
+		if name == "" {
+			name = "response"
+		}
+		r.Text = &rText{
+			Format: &rTextFormat{
+				Type:   "json_schema",
+				Name:   name,
+				Schema: req.OutputSchema.Schema,
+				Strict: req.OutputSchema.Strict,
+			},
 		}
 	}
 

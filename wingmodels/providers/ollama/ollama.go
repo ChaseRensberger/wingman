@@ -480,6 +480,7 @@ type request struct {
 	Messages   []chatMessage    `json:"messages"`
 	Tools      []toolDefinition `json:"tools,omitempty"`
 	ToolChoice string           `json:"tool_choice,omitempty"`
+	Format     map[string]any   `json:"format,omitempty"`
 	Options    modelOptions     `json:"options"`
 	Stream     bool             `json:"stream"`
 }
@@ -530,8 +531,18 @@ func (c *Client) buildRequest(req wingmodels.Request) request {
 		Messages:   messages,
 		Tools:      tools,
 		ToolChoice: toolChoice,
+		Format:     outputFormat(req.OutputSchema),
 		Options:    modelOptions{NumPredict: maxOut},
 	}
+}
+
+// outputFormat returns the Ollama format= payload for a wingmodels.OutputSchema.
+// Ollama's /api/chat accepts the raw JSON schema object as the format field.
+func outputFormat(s *wingmodels.OutputSchema) map[string]any {
+	if s == nil {
+		return nil
+	}
+	return s.Schema
 }
 
 // toWireMessages converts a wingmodels.Message into one or more Ollama chat

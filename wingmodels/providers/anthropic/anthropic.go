@@ -673,14 +673,26 @@ type toolDefinition struct {
 }
 
 type request struct {
-	Model      string             `json:"model"`
-	MaxTokens  int                `json:"max_tokens"`
-	System     string             `json:"system,omitempty"`
-	Messages   []anthropicMessage `json:"messages"`
-	Tools      []toolDefinition   `json:"tools,omitempty"`
-	ToolChoice *toolChoice        `json:"tool_choice,omitempty"`
-	Thinking   *thinkingConfig    `json:"thinking,omitempty"`
-	Stream     bool               `json:"stream,omitempty"`
+	Model        string             `json:"model"`
+	MaxTokens    int                `json:"max_tokens"`
+	System       string             `json:"system,omitempty"`
+	Messages     []anthropicMessage `json:"messages"`
+	Tools        []toolDefinition   `json:"tools,omitempty"`
+	ToolChoice   *toolChoice        `json:"tool_choice,omitempty"`
+	Thinking     *thinkingConfig    `json:"thinking,omitempty"`
+	Stream       bool               `json:"stream,omitempty"`
+	OutputConfig *outputConfig      `json:"output_config,omitempty"`
+}
+
+// outputConfig carries Anthropic's structured-output request configuration.
+// Maps onto output_config.format = {type: "json_schema", schema: {...}}.
+type outputConfig struct {
+	Format *outputFormat `json:"format,omitempty"`
+}
+
+type outputFormat struct {
+	Type   string         `json:"type"` // "json_schema"
+	Schema map[string]any `json:"schema"`
 }
 
 // toolChoice maps to Anthropic's tool_choice object.
@@ -750,6 +762,9 @@ func (c *Client) buildRequest(req wingmodels.Request) builtRequest {
 	}
 
 	// ToolChoice
+	// NOTE: disable_parallel_tool_use is not supported by the wingmodels
+	// abstraction; we omit it and let Anthropic default to allowing parallel
+	// tool calls.
 	if len(r.Tools) > 0 {
 		switch req.ToolChoice.Mode {
 		case wingmodels.ToolChoiceRequired:
@@ -785,6 +800,16 @@ func (c *Client) buildRequest(req wingmodels.Request) builtRequest {
 			if r.MaxTokens <= budget {
 				r.MaxTokens = budget + 1024
 			}
+		}
+	}
+
+	// Structured output (output_config.format = json_schema)
+	if req.OutputSchema != nil {
+		r.OutputConfig = &outputConfig{
+			Format: &outputFormat{
+				Type:   "json_schema",
+				Schema: req.OutputSchema.Schema,
+			},
 		}
 	}
 

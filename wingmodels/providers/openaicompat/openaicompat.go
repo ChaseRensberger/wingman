@@ -37,6 +37,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -237,12 +238,25 @@ func (c *Client) Stream(ctx context.Context, req wingmodels.Request) (*wingmodel
 // ---- request building ------------------------------------------------------
 
 type chatRequest struct {
-	Model       string         `json:"model"`
-	Messages    []chatMessage  `json:"messages"`
-	Stream      bool           `json:"stream"`
-	MaxTokens   int            `json:"max_tokens,omitempty"`
-	Tools       []chatTool     `json:"tools,omitempty"`
-	ToolChoice  any            `json:"tool_choice,omitempty"`
+	Model          string              `json:"model"`
+	Messages       []chatMessage       `json:"messages"`
+	Stream         bool                `json:"stream"`
+	MaxTokens      int                 `json:"max_tokens,omitempty"`
+	Tools          []chatTool          `json:"tools,omitempty"`
+	ToolChoice     any                 `json:"tool_choice,omitempty"`
+	ResponseFormat *chatResponseFormat `json:"response_format,omitempty"`
+}
+
+// chatResponseFormat carries OpenAI Chat Completions structured-output config.
+type chatResponseFormat struct {
+	Type       string              `json:"type"` // "json_schema"
+	JSONSchema *chatJSONSchemaSpec `json:"json_schema,omitempty"`
+}
+
+type chatJSONSchemaSpec struct {
+	Name   string         `json:"name"`
+	Schema map[string]any `json:"schema"`
+	Strict bool           `json:"strict,omitempty"`
 }
 
 type chatMessage struct {
@@ -321,6 +335,22 @@ func (c *Client) buildRequest(req wingmodels.Request) chatRequest {
 		case wingmodels.ToolChoiceAuto:
 			r.ToolChoice = "auto"
 		// zero-value: omit; provider default is "auto"
+		}
+	}
+
+	// Structured output (response_format=json_schema)
+	if req.OutputSchema != nil {
+		name := req.OutputSchema.Name
+		if name == "" {
+			name = "response"
+		}
+		r.ResponseFormat = &chatResponseFormat{
+			Type: "json_schema",
+			JSONSchema: &chatJSONSchemaSpec{
+				Name:   name,
+				Schema: req.OutputSchema.Schema,
+				Strict: req.OutputSchema.Strict,
+			},
 		}
 	}
 
@@ -636,12 +666,17 @@ func (p *streamParser) flush() {
 		p.out.Push(wingmodels.TextEndPart{ID: p.textID})
 		p.textStarted = false
 	}
-	// Tool calls: emit end + assembled ToolCallPart in index order
-	for i := 0; i < len(p.toolCalls); i++ {
-		call, ok := p.toolCalls[i]
-		if !ok {
-			continue
-		}
+	// Tool calls: emit end + assembled ToolCallPart in index order.
+	// Iterate sorted keys rather than 0..len because providers may send
+	// non-contiguous indices (e.g., 0 and 2 with no 1); using len(map) as
+	// the upper bound would silently drop trailing calls.
+	keys := make([]int, 0, len(p.toolCalls))
+	for k := range p.toolCalls {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	for _, i := range keys {
+		call := p.toolCalls[i]
 		var input map[string]any
 		if call.jsonBuf.Len() > 0 {
 			if err := json.Unmarshal([]byte(call.jsonBuf.String()), &input); err != nil {
