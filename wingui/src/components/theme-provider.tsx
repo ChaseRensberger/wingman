@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import { loadOverrides, clearAllOverrides } from "@/components/theme-customizer"
 
 type Theme = "dark" | "light" | "system"
 
@@ -50,9 +51,14 @@ export function ThemeProvider({
 
 	const value = {
 		theme,
-		setTheme: (theme: Theme) => {
-			localStorage.setItem(storageKey, theme)
-			setTheme(theme)
+		setTheme: (newTheme: Theme) => {
+			// Clear all theme overrides when switching light/dark/system
+			const overrides = loadOverrides()
+			clearAllOverrides(overrides)
+			localStorage.removeItem("wingui-theme-overrides")
+
+			localStorage.setItem(storageKey, newTheme)
+			setTheme(newTheme)
 		},
 	}
 
