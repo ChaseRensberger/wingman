@@ -37,7 +37,7 @@ type Request struct {
 	// Messages is the conversation history. May not be empty.
 	Messages []Message
 	// Tools are available for the model to call. Schema only; execution lives
-	// in wingagent. Empty if no tools are offered.
+	// in wingharness. Empty if no tools are offered.
 	Tools []ToolDef
 	// MaxOutputTokens caps the response. Zero means provider default.
 	MaxOutputTokens int
@@ -133,8 +133,8 @@ type ThinkingConfig struct {
 }
 
 // ToolDef is a tool advertised to the model: name, description, JSON Schema
-// for arguments. Execution is the agent layer's responsibility (see
-// wingagent.Tool).
+// for arguments. Execution is the harness layer's responsibility (see
+// wingharness.Tool).
 type ToolDef struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`

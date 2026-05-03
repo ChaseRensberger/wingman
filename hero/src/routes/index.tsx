@@ -108,7 +108,7 @@ function Hero() {
 			<section className='flex-1 px-12 py-4 border-b space-y-4'>
 				<h2 className='font-extrabold text-lg'>Products</h2>
 				<ul className="text-muted-foreground space-y-2">
-					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="/">WingAgent - A portable agent runtime</a></li>
+					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="/">WingHarness - The agent harness</a></li>
 					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://models.wingman.actor">WingModels - A provider agnostic model api</a></li>
 					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://news.wingman.actor">WingNews - A HackerNews client</a></li>
 				</ul>

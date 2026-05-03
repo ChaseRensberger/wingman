@@ -28,8 +28,8 @@ import (
 
     "github.com/joho/godotenv"
 
-    "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/tool"
+    "github.com/chaserensberger/wingman/wingharness/session"
+    "github.com/chaserensberger/wingman/wingharness/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 
@@ -152,14 +152,14 @@ result := stream.Result()
 _ = result
 ```
 
-If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./wingagent/streaming).
+If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./wingharness/streaming).
 
 ## Plugins
 
 Plugins are opt-in. The canonical example is `compaction.New()`:
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+import "github.com/chaserensberger/wingman/wingharness/plugin/compaction"
 
 s := session.New(
     session.WithModel(p),
@@ -167,8 +167,8 @@ s := session.New(
 )
 ```
 
-See [Plugins](./wingagent/plugins) for authoring your own.
+See [Plugins](./wingharness/plugins) for authoring your own.
 
 ## Tools
 
-Built-in tools live under `wingagent/tool`. Custom tools implement `tool.Tool`. See [Tools](./wingagent/tools).
+Built-in tools live under `wingharness/tool`. Custom tools implement `tool.Tool`. See [Tools](./wingharness/tools).

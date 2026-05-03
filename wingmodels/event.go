@@ -24,7 +24,7 @@ import (
 //	tool-call        (id, name, parsed input)
 //
 // Then optionally tool-result for provider-executed tools (not used in v0.1
-// since wingagent executes tools client-side; the part type is reserved for
+// since wingharness executes tools client-side; the part type is reserved for
 // future MCP integration).
 //
 // Stream lifecycle:
@@ -145,7 +145,7 @@ func (ToolInputStartPart) Kind() string { return KindToolInputStart }
 func (ToolInputStartPart) streamPart()  {}
 
 // ToolInputDeltaPart appends raw JSON text to the open tool-input block.
-// Providers stream tool arguments as JSON fragments; the agent shows partial
+// Providers stream tool arguments as JSON fragments; the client shows partial
 // args to the UI but does not parse until ToolInputEndPart.
 type ToolInputDeltaPart struct {
 	ID    string `json:"id"`
@@ -182,7 +182,7 @@ func (ToolCallPart_) streamPart()  {}
 
 // ToolResultPart_ is reserved for provider-executed tools (e.g. MCP-server
 // tools the provider runs without round-tripping to the agent). Not used in
-// v0.1 since wingagent executes tools client-side; reserved so providers can
+// v0.1 since wingharness executes tools client-side; reserved so providers can
 // emit it later without a wire-format break.
 type ToolResultPart_ struct {
 	ID       string `json:"id"`

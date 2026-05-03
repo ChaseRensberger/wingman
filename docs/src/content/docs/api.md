@@ -150,7 +150,7 @@ event: done
 data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
 ```
 
-See [Streaming](./wingagent/streaming) for the envelope reference and the per-type `data` shapes.
+See [Streaming](./wingharness/streaming) for the envelope reference and the per-type `data` shapes.
 
 ### Abort response
 

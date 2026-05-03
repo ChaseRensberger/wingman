@@ -7,7 +7,7 @@ order: 104
 
 # Streaming
 
-Wingman has two layers of streaming. This page covers the lower layer — provider stream parts. For the loop lifecycle events and SSE wire format, see [Streaming](../wingagent/streaming).
+Wingman has two layers of streaming. This page covers the lower layer — provider stream parts. For the loop lifecycle events and SSE wire format, see [Streaming](../wingharness/streaming).
 
 ## Provider stream parts
 
