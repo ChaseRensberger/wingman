@@ -8,8 +8,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--font-family-sans, ui-sans-serif, system-ui, sans-serif);
-  --font-mono: var(--font-family-mono, "Fira Mono", ui-monospace, monospace);
+  --font-mono: "Fira Mono", ui-monospace, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -101,6 +100,6 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-mono;
   }
 }

@@ -46,76 +46,8 @@ const COLOR_VARS: ColorVar[] = [
 ]
 
 const STORAGE_KEY = "wingui-theme-overrides"
-const FONT_LINK_ID = "wingui-google-font"
 
-// ─── Font Utils ───────────────────────────────────────────────────────────────
-
-/**
- * Parses a Google Fonts URL (v1 or v2) and returns:
- * - `linkHref`: the URL to inject as a <link> stylesheet
- * - `familyName`: the CSS font-family name (e.g. "Inter")
- *
- * Supports:
- *   v1: https://fonts.googleapis.com/css?family=Roboto:300,400,500
- *   v2: https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap
- */
-function parseGoogleFontUrl(url: string): { linkHref: string; familyName: string } | null {
-	try {
-		const parsed = new URL(url.trim())
-
-		// Handle specimen/preview page URLs: fonts.google.com/specimen/Golos+Text
-		if (parsed.hostname === "fonts.google.com") {
-			const match = parsed.pathname.match(/\/specimen\/([^/]+)/)
-			if (!match) return null
-			const familyName = decodeURIComponent(match[1]).replace(/\+/g, " ").trim()
-			const apiFamily = familyName.replace(/ /g, "+")
-			const linkHref = `https://fonts.googleapis.com/css2?family=${apiFamily}:wght@400;500;700&display=swap`
-			return { linkHref, familyName }
-		}
-
-		// Handle embed URLs: fonts.googleapis.com/css or /css2
-		if (parsed.hostname === "fonts.googleapis.com") {
-			const family = parsed.searchParams.get("family")
-			if (!family) return null
-
-			// Family name is the part before ":" or "|" (v1 can have multiple families)
-			const familyName = family.split("|")[0].split(":")[0].replace(/\+/g, " ").trim()
-			if (!familyName) return null
-
-			// Ensure display=swap is present for better perf
-			if (!parsed.searchParams.has("display")) {
-				parsed.searchParams.set("display", "swap")
-			}
-
-			return { linkHref: parsed.toString(), familyName }
-		}
-
-		return null
-	} catch {
-		return null
-	}
-}
-
-function injectFontLink(href: string, familyName: string) {
-	removeFontLink()
-	const link = document.createElement("link")
-	link.id = FONT_LINK_ID
-	link.rel = "stylesheet"
-	link.href = href
-	document.head.appendChild(link)
-
-	const style = document.createElement("style")
-	style.id = FONT_LINK_ID + "-override"
-	style.textContent = `* { font-family: "${familyName}", sans-serif !important; }`
-	document.head.appendChild(style)
-}
-
-function removeFontLink() {
-	document.getElementById(FONT_LINK_ID)?.remove()
-	document.getElementById(FONT_LINK_ID + "-override")?.remove()
-}
-
-// ─── Color Utils ──────────────────────────────────────────────────────────────
+// ─── Utils ────────────────────────────────────────────────────────────────────
 
 function oklchStringToHex(value: string): string {
 	try {
@@ -140,8 +72,6 @@ function hexToOklchString(hex: string): string {
 	}
 }
 
-// ─── Override Persistence ─────────────────────────────────────────────────────
-
 export function loadOverrides(): OverrideMap {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY)
@@ -156,28 +86,13 @@ export function saveOverrides(overrides: OverrideMap) {
 
 export function applyOverrides(overrides: OverrideMap) {
 	for (const [name, value] of Object.entries(overrides)) {
-		if (name === "--google-font-url") {
-			const result = parseGoogleFontUrl(value)
-			if (result) {
-				injectFontLink(result.linkHref, result.familyName)
-				document.documentElement.style.setProperty("--font-family-sans", `"${result.familyName}", ui-sans-serif, system-ui, sans-serif`)
-				document.documentElement.style.setProperty("--font-family-mono", `"${result.familyName}", ui-monospace, monospace`)
-			}
-		} else {
-			document.documentElement.style.setProperty(name, value)
-		}
+		document.documentElement.style.setProperty(name, value)
 	}
 }
 
 export function clearAllOverrides(overrides: OverrideMap) {
 	for (const name of Object.keys(overrides)) {
-		if (name === "--google-font-url") {
-			removeFontLink()
-			document.documentElement.style.removeProperty("--font-family-sans")
-			document.documentElement.style.removeProperty("--font-family-mono")
-		} else {
-			document.documentElement.style.removeProperty(name)
-		}
+		document.documentElement.style.removeProperty(name)
 	}
 	window.dispatchEvent(new CustomEvent("wingui-overrides-cleared"))
 }
@@ -220,92 +135,6 @@ function ColorRow({ variable, overrides, onColorChange }: ColorRowProps) {
 	)
 }
 
-// ─── Font Input ───────────────────────────────────────────────────────────────
-
-type FontInputProps = {
-	label: string
-	description: string
-	storageKey: string
-	currentUrl: string
-	onApply: (url: string, familyName: string, cssVar: string) => void
-	onClear: () => void
-	isActive: boolean
-	activeFamilyName: string
-}
-
-function FontInput({ label, description, storageKey: _sk, currentUrl, onApply, onClear, isActive, activeFamilyName }: FontInputProps) {
-	const [inputValue, setInputValue] = React.useState(currentUrl)
-	const [error, setError] = React.useState<string | null>(null)
-
-	React.useEffect(() => {
-		setInputValue(currentUrl)
-	}, [currentUrl])
-
-	function handleApply() {
-		if (!inputValue.trim()) {
-			onClear()
-			setError(null)
-			return
-		}
-		const result = parseGoogleFontUrl(inputValue)
-		if (!result) {
-			setError("Invalid Google Fonts URL")
-			return
-		}
-		setError(null)
-		const cssVar = label === "Mono Font" ? "--font-family-mono" : "--font-family-sans"
-		onApply(inputValue.trim(), result.familyName, cssVar)
-	}
-
-	function handleKeyDown(e: React.KeyboardEvent) {
-		if (e.key === "Enter") handleApply()
-		if (e.key === "Escape") {
-			setInputValue(currentUrl)
-			setError(null)
-		}
-	}
-
-	return (
-		<div className="space-y-1.5">
-			<div className="flex items-center justify-between">
-				<span className={cn("text-xs", isActive ? "text-primary font-medium" : "text-muted-foreground")}>
-					{label}
-					{isActive && <span className="ml-1.5 text-xs font-normal normal-case">({activeFamilyName})</span>}
-				</span>
-				{isActive && (
-					<button
-						onClick={onClear}
-						className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-					>
-						clear
-					</button>
-				)}
-			</div>
-			<p className="text-xs text-muted-foreground/70">{description}</p>
-			<div className="flex gap-1.5">
-				<input
-					type="url"
-					value={inputValue}
-					onChange={(e) => { setInputValue(e.target.value); setError(null) }}
-					onKeyDown={handleKeyDown}
-					placeholder="https://fonts.google.com/specimen/Inter"
-					className={cn(
-						"flex-1 min-w-0 text-xs px-2 py-1.5 rounded border bg-background text-foreground placeholder:text-muted-foreground/50 outline-none transition-colors",
-						error ? "border-destructive focus:border-destructive" : "border-border focus:border-primary"
-					)}
-				/>
-				<button
-					onClick={handleApply}
-					className="shrink-0 text-xs px-2.5 py-1.5 rounded border border-border hover:border-primary hover:text-primary transition-colors"
-				>
-					Apply
-				</button>
-			</div>
-			{error && <p className="text-xs text-destructive">{error}</p>}
-		</div>
-	)
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function ThemeCustomizer() {
@@ -320,22 +149,12 @@ export function ThemeCustomizer() {
 
 	// Sync state when overrides are cleared externally (e.g. theme switch)
 	React.useEffect(() => {
-		function handleStorage(e: StorageEvent) {
-			if (e.key === STORAGE_KEY && e.newValue === null) {
-				setOverrides({})
-				setRadius("")
-			}
-		}
 		function handleCleared() {
 			setOverrides({})
 			setRadius("")
 		}
-		window.addEventListener("storage", handleStorage)
 		window.addEventListener("wingui-overrides-cleared", handleCleared)
-		return () => {
-			window.removeEventListener("storage", handleStorage)
-			window.removeEventListener("wingui-overrides-cleared", handleCleared)
-		}
+		return () => window.removeEventListener("wingui-overrides-cleared", handleCleared)
 	}, [])
 
 	const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
@@ -357,25 +176,6 @@ export function ThemeCustomizer() {
 		document.documentElement.style.setProperty("--radius", rem)
 	}
 
-	function handleFontApply(storageUrlKey: string, url: string, familyName: string) {
-		injectFontLink(url, familyName)
-		document.documentElement.style.setProperty("--font-family-sans", `"${familyName}", ui-sans-serif, system-ui, sans-serif`)
-		document.documentElement.style.setProperty("--font-family-mono", `"${familyName}", ui-monospace, monospace`)
-		const next = { ...overrides, [storageUrlKey]: url }
-		setOverrides(next)
-		saveOverrides(next)
-	}
-
-	function handleFontClear(storageUrlKey: string) {
-		removeFontLink()
-		document.documentElement.style.removeProperty("--font-family-sans")
-		document.documentElement.style.removeProperty("--font-family-mono")
-		const next = { ...overrides }
-		delete next[storageUrlKey]
-		setOverrides(next)
-		saveOverrides(next)
-	}
-
 	function handleReset() {
 		clearAllOverrides(overrides)
 		setOverrides({})
@@ -385,9 +185,6 @@ export function ThemeCustomizer() {
 
 	const currentRadius = radius || getComputedVar("--radius") || "0.625rem"
 	const radiusNum = parseFloat(currentRadius)
-
-	const sansFontUrl = overrides["--google-font-url"] ?? ""
-	const sansFamilyName = sansFontUrl ? (parseGoogleFontUrl(sansFontUrl)?.familyName ?? "") : ""
 
 	return (
 		<Sheet>
@@ -439,33 +236,6 @@ export function ThemeCustomizer() {
 								</button>
 							))}
 						</div>
-					</section>
-
-					{/* Fonts */}
-					<section>
-						<h3 className="text-xs font-semibold uppercase tracking-wide mb-3">Fonts</h3>
-						<p className="text-xs text-muted-foreground mb-3">
-							Paste a{" "}
-							<a
-								href="https://fonts.google.com"
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-primary underline underline-offset-2"
-							>
-								Google Fonts
-							</a>
-							{" "}URL — specimen page or embed link both work.
-						</p>
-								<FontInput
-							label="Font"
-							description="Applied to all text across the site."
-							storageKey="--google-font-url"
-							currentUrl={sansFontUrl}
-							isActive={!!sansFontUrl}
-							activeFamilyName={sansFamilyName}
-							onApply={(url, familyName) => handleFontApply("--google-font-url", url, familyName)}
-							onClear={() => handleFontClear("--google-font-url")}
-						/>
 					</section>
 
 					{/* Colors */}
