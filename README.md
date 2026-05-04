@@ -4,12 +4,10 @@
 
 # Wingman
 
-Wingman is a collection of tools designed to make it as easy as possible to build llm enabled products and features.
-
 ## Projects
 
 | Package | Description |
 |---------|-------------|
 | **[WingHarness](wingharness)** | A portable agent harness |
-| **[WingModels](wingmodels)** | A provider agnostic model api |
+| **[WingModels](wingmodels)** | Provider-agnostic model SDK |
 | **[WingNews](https://news.wingman.actor)** | A HackerNews client |
