@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/storage"
 )
 
 func newStore(t *testing.T) storage.Store {

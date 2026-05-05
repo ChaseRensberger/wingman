@@ -7,7 +7,7 @@ order: 108
 
 # Storage
 
-The HTTP server persists state in SQLite via the `wingagent/storage.Store` interface. Persistence is exposed to sessions through the **storage plugin**, which packages both load (rehydrate prior history) and save (append new messages) behind a single `session.WithPlugin` call. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
+The HTTP server persists state in SQLite via the `storage.Store` interface. Persistence is exposed to sessions through the **storage plugin**, which packages both load (rehydrate prior history) and save (append new messages) behind a single `session.WithPlugin` call. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
 
 ## The `Store` interface
 
@@ -42,18 +42,19 @@ Notes:
 
 ## The storage plugin
 
-`storage.NewPlugin(store, sessionID)` returns a [Plugin](./plugins) that wires both sides of persistence to `store` and `sessionID`:
+`storageplugin.NewPlugin(store, sessionID)` returns a [Plugin](./plugins) that wires both sides of persistence to `store` and `sessionID`:
 
 - A **`BeforeRun`** hook calls `store.GetSession(sessionID)` and returns `sess.History` as the loop's initial messages — so a session resumed across processes (or just across HTTP requests) starts with the same context the prior run ended with.
 - A **sink** filters for `loop.MessageEvent` and calls `store.AppendMessage` for each completed message — so every turn (and any plugin-injected message such as a compaction marker) lands in storage as it happens.
 
 ```go
 import (
+    "github.com/chaserensberger/wingman/plugins/storage"
     "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/storage"
+    wstorage "github.com/chaserensberger/wingman/storage"
 )
 
-store, err := storage.NewSQLiteStore("/path/to/wingman.db")
+store, err := wstorage.NewSQLiteStore("/path/to/wingman.db")
 if err != nil {
     log.Fatal(err)
 }
@@ -68,7 +69,7 @@ if err != nil {
 
 s := session.New(
     session.WithModel(model),
-    session.WithPlugin(storage.NewPlugin(store, sess.ID)),
+    session.WithPlugin(storageplugin.NewPlugin(store, sess.ID)),
 )
 ```
 
@@ -145,7 +146,7 @@ IDs are KSUIDs (27 base62 chars after the prefix). KSUID over ULID: smaller wire
 
 ## Schema
 
-The migration in `wingagent/storage/migrations/0001_init.sql` defines:
+The migration in `storage/migrations/0001_init.sql` defines:
 
 - `agents` — agent records, with `output_schema_json` as a separate column
 - `sessions` — session metadata
@@ -158,7 +159,7 @@ Parts are stored individually (not as JSON arrays inside messages) so partial re
 ## Opening a store
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/storage"
+import "github.com/chaserensberger/wingman/storage"
 
 store, err := storage.NewSQLiteStore("/path/to/wingman.db")
 if err != nil {
@@ -227,7 +228,7 @@ IDs are KSUIDs (27 base62 chars after the prefix). KSUID over ULID: smaller wire
 
 ## Schema
 
-The migration in `wingagent/storage/migrations/0001_init.sql` defines:
+The migration in `storage/migrations/0001_init.sql` defines:
 
 - `agents` — agent records, with `output_schema_json` as a separate column
 - `sessions` — session metadata
@@ -240,7 +241,7 @@ Parts are stored individually (not as JSON arrays inside messages) so partial re
 ## Opening a store
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/storage"
+import "github.com/chaserensberger/wingman/storage"
 
 store, err := storage.NewSQLiteStore("/path/to/wingman.db")
 if err != nil {

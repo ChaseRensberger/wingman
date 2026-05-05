@@ -30,7 +30,7 @@ When you call `Run` or `RunStream`, the session:
 ```go
 import (
     "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/tool"
+    "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 

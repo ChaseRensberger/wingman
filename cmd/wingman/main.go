@@ -12,8 +12,8 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/chaserensberger/wingman/wingagent/server"
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/server"
+	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"

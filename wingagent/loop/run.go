@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

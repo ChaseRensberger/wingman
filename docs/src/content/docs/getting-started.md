@@ -35,9 +35,9 @@ import (
 
     "github.com/joho/godotenv"
 
-    "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+    "github.com/chaserensberger/wingman/plugins/compaction"
     "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/tool"
+    "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
 

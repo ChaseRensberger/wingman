@@ -37,7 +37,7 @@ type OpaquePart struct {
 `OpaquePart` satisfies `Part` (its `isPart` marker lives in `wingmodels`) and round-trips its raw bytes verbatim. Plugins ship a typed accessor so consumers don't deal with raw JSON. The compaction plugin's `MarkerPart` is the canonical example:
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+import "github.com/chaserensberger/wingman/plugins/compaction"
 
 for _, p := range msg.Content {
     if marker, ok := compaction.DecodeMarker(p); ok {

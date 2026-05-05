@@ -8,9 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/plugins/storage"
 	"github.com/chaserensberger/wingman/wingagent/session"
-	"github.com/chaserensberger/wingman/wingagent/storage"
-	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 	"github.com/chaserensberger/wingman/wingmodels/providers"
 
@@ -360,7 +361,7 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 		// replay + WithMessageSink wiring with a single plugin call
 		// removes the chance of one side being installed without the
 		// other, and keeps storage out of the SDK and loop core.
-		session.WithPlugin(storage.NewPlugin(s.store, sess.ID)),
+		session.WithPlugin(storageplugin.NewPlugin(s.store, sess.ID)),
 	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))

@@ -52,10 +52,10 @@ export default defineConfig({
 					items: [
 						{ label: 'Agents', slug: 'wingagent/agents' },
 						{ label: 'Sessions', slug: 'wingagent/sessions' },
-						{ label: 'Tools', slug: 'wingagent/tools' },
+						{ label: 'Tools', slug: 'tools' },
 						{ label: 'Lifecycle hooks', slug: 'wingagent/lifecycle' },
 						{ label: 'Plugins', slug: 'wingagent/plugins' },
-						{ label: 'Storage', slug: 'wingagent/storage' },
+						{ label: 'Storage', slug: 'storage' },
 						{ label: 'Streaming', slug: 'wingagent/streaming' },
 					],
 				},

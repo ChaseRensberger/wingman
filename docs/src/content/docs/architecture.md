@@ -16,17 +16,17 @@ The repository is a single Go module split into two products:
 - **`wingmodels/`** is the model layer. It defines `Model`, `Message`, `Part`, `StreamPart`, and `Usage`, and ships built-in providers under `wingmodels/providers/{anthropic,ollama}` plus a small `provider.Registry`.
 - **`wingagent/`** is the agent layer. It contains the `loop`, `session`, `tool`, `plugin`, `storage`, and `server` packages. Everything in `wingagent` is built on top of `wingmodels` and never the reverse.
 
-The HTTP server (`wingagent/server`) is a thin transport layer over the same primitives the SDK exposes.
+The HTTP server (`server`) is a thin transport layer over the same primitives the SDK exposes.
 
 ## Layered design
 
 ```
-+--------------------+     wingagent/server (HTTP + SSE)
-+--------------------+     wingagent/storage (SQLite)
++--------------------+     server (HTTP + SSE)
++--------------------+     storage (SQLite)
 +--------------------+     wingagent/session  (state + sinks)
 +--------------------+     wingagent/loop     (inference loop, hooks, events)
 +--------------------+     wingagent/plugin   (Plugin / Registry)
-+--------------------+     wingagent/tool     (built-ins + Tool interface)
++--------------------+     tool     (built-ins + Tool interface)
 +--------------------+     wingmodels/providers (Anthropic, Ollama, Registry)
 +--------------------+     wingmodels         (Model, Message, Part, StreamPart)
 ```
@@ -92,24 +92,24 @@ Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools
 
 Two canonical plugins ship in-tree:
 
-- `wingagent/plugin/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
-- `wingagent/storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
+- `plugins/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
+- `storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
 
 See [Plugins](./wingagent/plugins).
 
 ## Storage
 
-`wingagent/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storage.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
+`storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storageplugin.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
-IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./wingagent/storage).
+IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./storage).
 
 ## HTTP server
 
-`wingagent/server` is a chi router with SQLite-backed persistence. It does not introduce a separate execution model: every request reconstructs the same primitives the SDK uses. For example, when a message arrives:
+`server` is a chi router with SQLite-backed persistence. It does not introduce a separate execution model: every request reconstructs the same primitives the SDK uses. For example, when a message arrives:
 
 1. Load the agent definition and the session record.
 2. Build the provider from `provider`/`model`/`options`, injecting stored credentials.
-3. Construct a `*session.Session` with `session.WithPlugin(storage.NewPlugin(store, sess.ID))`. The plugin's `BeforeRun` rehydrates history; its sink appends new messages as they land.
+3. Construct a `*session.Session` with `session.WithPlugin(storageplugin.NewPlugin(store, sess.ID))`. The plugin's `BeforeRun` rehydrates history; its sink appends new messages as they land.
 4. Drive `Run` or `RunStream`; stream events over SSE if requested.
 5. Return the response. Storage already has each message appended.
 

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/storage"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
 )

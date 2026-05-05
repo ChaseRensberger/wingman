@@ -20,7 +20,7 @@ The flip side: the loop core knows nothing about any specific plugin. Storage, c
 Nothing is installed unless you ask for it. A bare `session.New()` runs the loop with no hooks, no extra tools, and no extra sinks.
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+import "github.com/chaserensberger/wingman/plugins/compaction"
 
 s := session.New(
     session.WithModel(p),
@@ -122,7 +122,7 @@ Plugins should keep their `Name()` stable across versions so observability layer
 
 ## The compaction plugin
 
-`wingagent/plugin/compaction` is the canonical hooks-only worked example. It demonstrates:
+`plugins/compaction` is the canonical hooks-only worked example. It demonstrates:
 
 - a custom **Part type** registered via `RegisterPart` and serialized through `OpaquePart`
 - a **`BeforeStep`** hook that summarizes the head of long histories and *appends* a marker (the original messages stay in the durable transcript)
@@ -131,7 +131,7 @@ Plugins should keep their `Name()` stable across versions so observability layer
 This two-seam design is intentional: single-seam approaches (truncate-and-replace in `BeforeStep`) lose history irrecoverably and prevent UIs from rendering the pre-compaction transcript. Splitting write (append marker) from read (filter) keeps every byte addressable.
 
 ```go
-import "github.com/chaserensberger/wingman/wingagent/plugin/compaction"
+import "github.com/chaserensberger/wingman/plugins/compaction"
 
 s := session.New(
     session.WithModel(p),
@@ -157,20 +157,21 @@ When compaction runs, the loop emits a `ContextTransformedEvent` whose head mess
 
 ## The storage plugin
 
-`wingagent/storage` ships a plugin that gives a session full-cycle persistence — both load and save — through a single `session.WithPlugin` call:
+`storage` ships a plugin that gives a session full-cycle persistence — both load and save — through a single `session.WithPlugin` call:
 
 ```go
 import (
+    "github.com/chaserensberger/wingman/plugins/storage"
     "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/storage"
+    wstorage "github.com/chaserensberger/wingman/storage"
 )
 
-store, _ := storage.NewSQLiteStore("/path/to/wingman.db")
+store, _ := wstorage.NewSQLiteStore("/path/to/wingman.db")
 sess, _ := store.GetSession(sessionID) // ensure the session row exists
 
 s := session.New(
     session.WithModel(model),
-    session.WithPlugin(storage.NewPlugin(store, sess.ID)),
+    session.WithPlugin(storageplugin.NewPlugin(store, sess.ID)),
 )
 ```
 

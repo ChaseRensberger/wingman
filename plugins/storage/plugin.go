@@ -1,4 +1,4 @@
-// Package storage's Plugin: persistence as a session capability.
+// Package storageplugin wires the storage data layer into a session as a Plugin.
 //
 // The plugin packages two contributions behind a single Install call:
 //
@@ -26,7 +26,7 @@
 //	sess, _ := store.GetSession(sessionID) // ensure the session exists
 //	s := session.New(
 //	    session.WithModel(model),
-//	    session.WithPlugin(storage.NewPlugin(store, sess.ID)),
+//	    session.WithPlugin(storageplugin.NewPlugin(store, sess.ID)),
 //	)
 //
 // Errors from Store.AppendMessage are logged and swallowed: a single
@@ -34,13 +34,14 @@
 // Store.GetSession during BeforeRun do fail the run cleanly, since
 // proceeding without a known starting state would silently desynchronize
 // the in-memory and on-disk transcripts.
-package storage
+package storageplugin
 
 import (
 	"context"
 	"fmt"
 	"log"
 
+	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/wingagent/loop"
 	"github.com/chaserensberger/wingman/wingagent/plugin"
 	"github.com/chaserensberger/wingman/wingmodels"
@@ -57,12 +58,12 @@ const PluginName = "storage"
 // The Plugin is bound to a single sessionID; reuse across sessions is
 // not supported (and would conflate transcripts). Construct a fresh
 // Plugin per session activation, which is what the HTTP server does.
-func NewPlugin(store Store, sessionID string) plugin.Plugin {
+func NewPlugin(store storage.Store, sessionID string) plugin.Plugin {
 	return &storagePlugin{store: store, sessionID: sessionID}
 }
 
 type storagePlugin struct {
-	store     Store
+	store     storage.Store
 	sessionID string
 }
 

@@ -54,7 +54,7 @@ import (
 	"fmt"
 
 	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

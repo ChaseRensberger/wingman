@@ -11,7 +11,7 @@ Tools are capabilities the model may invoke during a session. They let the agent
 
 ## Built-in tools
 
-Built-in tools live under `wingagent/tool`.
+Built-in tools live under `tool`.
 
 | Tool | Name | Purpose |
 |---|---|---|
@@ -26,12 +26,12 @@ Built-in tools live under `wingagent/tool`.
 
 ## SDK usage
 
-Built-in tools are constructors in `wingagent/tool`.
+Built-in tools are constructors in `tool`.
 
 ```go
 import (
     "github.com/chaserensberger/wingman/wingagent/session"
-    "github.com/chaserensberger/wingman/wingagent/tool"
+    "github.com/chaserensberger/wingman/tool"
 )
 
 s := session.New(

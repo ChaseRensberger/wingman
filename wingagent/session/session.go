@@ -21,7 +21,7 @@
 // the plugin bundle.
 //
 // Session is deliberately minimal: it owns no persistence and no
-// transport. The caller (typically wingagent/server) wires those in by
+// transport. The caller (typically server) wires those in by
 // reading History() after Run returns or by attaching its own sink via
 // a plugin.
 package session
@@ -34,8 +34,8 @@ import (
 
 	"github.com/chaserensberger/wingman/wingagent/loop"
 	"github.com/chaserensberger/wingman/wingagent/plugin"
-	"github.com/chaserensberger/wingman/wingagent/storage"
-	"github.com/chaserensberger/wingman/wingagent/tool"
+	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

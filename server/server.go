@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/storage"
 )
 
 type Server struct {

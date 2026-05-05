@@ -11,9 +11,10 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/chaserensberger/wingman/plugins/storage"
 	"github.com/chaserensberger/wingman/wingagent/loop/looptest"
 	"github.com/chaserensberger/wingman/wingagent/session"
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 
@@ -448,7 +449,7 @@ func TestStoragePluginLoadsHistoryAndPersistsNewMessages(t *testing.T) {
 
 	sess := session.New(
 		session.WithModel(model),
-		session.WithPlugin(storage.NewPlugin(store, sessionID)),
+		session.WithPlugin(storageplugin.NewPlugin(store, sessionID)),
 	)
 
 	ctx := context.Background()

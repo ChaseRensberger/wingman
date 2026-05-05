@@ -57,13 +57,13 @@ When you post a message, the server:
 
 1. loads the stored agent record and session record
 2. constructs the provider via the registry, injecting stored credentials
-3. builds a `*session.Session` with the [storage plugin](./wingagent/storage#the-storage-plugin) installed via `session.WithPlugin(storage.NewPlugin(store, sess.ID))`
+3. builds a `*session.Session` with the [storage plugin](./storage#the-storage-plugin) installed via `session.WithPlugin(storageplugin.NewPlugin(store, sess.ID))`
 4. runs `Run` or `RunStream`
 5. returns the response (or streams events) to the client
 
 Steps 1–4 happen inside `buildSession`. The storage plugin handles both sides of persistence: its `BeforeRun` hook loads the session's prior history from SQLite into the loop, and its sink calls `store.AppendMessage` for each new message as the loop emits it. The server itself doesn't talk to the storage layer during a run — that's the plugin's job.
 
-See [Storage](./wingagent/storage) for the schema and [Sessions](./wingagent/sessions) for what `Run` actually does.
+See [Storage](./storage) for the schema and [Sessions](./wingagent/sessions) for what `Run` actually does.
 
 ## Streaming behavior
 

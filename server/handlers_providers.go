@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/wingagent/storage"
+	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/wingmodels"
 	"github.com/chaserensberger/wingman/wingmodels/catalog"
 	"github.com/chaserensberger/wingman/wingmodels/providers"
