@@ -17,7 +17,7 @@ Wingman is a collection of tools designed to make it as easy as possible to buil
 Wingman is a self-hostable, airgap-friendly agent runtime written in Go. It gives you a small set of composable primitives for building agent systems and ships them as two products that share one repository:
 
 - **`wingmodels`** — provider-agnostic model interface, parts/messages, AI SDK v3 streaming, and built-in providers.
-- **`wingharness`** — the inference loop, sessions, tools, lifecycle hooks, plugins, storage, and HTTP server.
+- **`wingagent`** — the inference loop, sessions, tools, lifecycle hooks, plugins, storage, and HTTP server.
 
 You can use Wingman in two ways:
 
@@ -51,5 +51,5 @@ The HTTP server adds two persisted concepts on top:
 - [Quickstart](./getting-started) to build and run your first session
 - [SDK](./sdk) for embedding Wingman in Go
 - [Server](./server) for running the HTTP service
-- [Sessions](./wingharness/sessions), [Streaming](./wingharness/streaming), [Plugins](./wingharness/plugins) for the core concepts
+- [Sessions](./wingagent/sessions), [Streaming](./wingagent/streaming), [Plugins](./wingagent/plugins) for the core concepts
 - [API](./api) for an endpoint-level reference

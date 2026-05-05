@@ -14,19 +14,19 @@ Wingman is intentionally built from a small number of packages that can be used 
 The repository is a single Go module split into two products:
 
 - **`wingmodels/`** is the model layer. It defines `Model`, `Message`, `Part`, `StreamPart`, and `Usage`, and ships built-in providers under `wingmodels/providers/{anthropic,ollama}` plus a small `provider.Registry`.
-- **`wingharness/`** is the agent layer. It contains the `loop`, `session`, `tool`, `plugin`, `storage`, and `server` packages. Everything in `wingharness` is built on top of `wingmodels` and never the reverse.
+- **`wingagent/`** is the agent layer. It contains the `loop`, `session`, `tool`, `plugin`, `storage`, and `server` packages. Everything in `wingagent` is built on top of `wingmodels` and never the reverse.
 
-The HTTP server (`wingharness/server`) is a thin transport layer over the same primitives the SDK exposes.
+The HTTP server (`wingagent/server`) is a thin transport layer over the same primitives the SDK exposes.
 
 ## Layered design
 
 ```
-+--------------------+     wingharness/server (HTTP + SSE)
-+--------------------+     wingharness/storage (SQLite)
-+--------------------+     wingharness/session  (state + sinks)
-+--------------------+     wingharness/loop     (inference loop, hooks, events)
-+--------------------+     wingharness/plugin   (Plugin / Registry)
-+--------------------+     wingharness/tool     (built-ins + Tool interface)
++--------------------+     wingagent/server (HTTP + SSE)
++--------------------+     wingagent/storage (SQLite)
++--------------------+     wingagent/session  (state + sinks)
++--------------------+     wingagent/loop     (inference loop, hooks, events)
++--------------------+     wingagent/plugin   (Plugin / Registry)
++--------------------+     wingagent/tool     (built-ins + Tool interface)
 +--------------------+     wingmodels/providers (Anthropic, Ollama, Registry)
 +--------------------+     wingmodels         (Model, Message, Part, StreamPart)
 ```
@@ -58,7 +58,7 @@ Wingman expects callers to swap the active model mid-session (different turns ma
 - **`wingmodels/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them (`Capabilities.Images == false`). The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
 - **`ModelInfo.Capabilities`.** Providers populate a `ModelCapabilities` struct (`Tools`, `Images`, `Reasoning`, `StructuredOutput`) from catalog data at construction time. The transform layer reads `Capabilities.Images`; the agent loop can inspect the others to decide which features to use.
 
-## The `wingharness/loop` package
+## The `wingagent/loop` package
 
 The loop is the agentic kernel. One call to `loop.Run` drives a sequence of turns:
 
@@ -68,7 +68,7 @@ The loop is the agentic kernel. One call to `loop.Run` drives a sequence of turn
 4. Append the assistant message; if it includes tool calls, execute them (parallel by default) and append tool results.
 5. Repeat until an assistant turn produces no tool calls, `MaxSteps` is reached, or context is cancelled.
 
-Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./wingharness/lifecycle).
+Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./wingagent/lifecycle).
 
 The loop emits typed events on a `Sink` (`IterationStartEvent`, `MessageEvent`, `ToolExecutionStartEvent`/`EndEvent`, `StreamPartEvent`, `ContextTransformedEvent`, `ErrorEvent`, `IterationEndEvent`). The session forwards these to whatever observers are attached.
 
@@ -84,7 +84,7 @@ A `*session.Session` is a thin stateful wrapper around the loop. It owns:
 
 `Run` and `RunStream` snapshot inputs, build the plugin registry per-call, and drive `loop.Run`. After the loop returns, the session adopts the loop's terminal message slice wholesale — so plugin mutations (e.g. compaction markers) end up in history. The session exposes only `History()`, `AddMessage`, `SetHistory`, `Clear`, plus setters for model/system/tools/work-dir.
 
-See [Sessions](./wingharness/sessions).
+See [Sessions](./wingagent/sessions).
 
 ## Plugins
 
@@ -92,20 +92,20 @@ Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools
 
 Two canonical plugins ship in-tree:
 
-- `wingharness/plugin/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
-- `wingharness/storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
+- `wingagent/plugin/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
+- `wingagent/storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
 
-See [Plugins](./wingharness/plugins).
+See [Plugins](./wingagent/plugins).
 
 ## Storage
 
-`wingharness/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storage.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
+`wingagent/storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storage.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
-IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./wingharness/storage).
+IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./wingagent/storage).
 
 ## HTTP server
 
-`wingharness/server` is a chi router with SQLite-backed persistence. It does not introduce a separate execution model: every request reconstructs the same primitives the SDK uses. For example, when a message arrives:
+`wingagent/server` is a chi router with SQLite-backed persistence. It does not introduce a separate execution model: every request reconstructs the same primitives the SDK uses. For example, when a message arrives:
 
 1. Load the agent definition and the session record.
 2. Build the provider from `provider`/`model`/`options`, injecting stored credentials.
