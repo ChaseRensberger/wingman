@@ -4,6 +4,8 @@
 
 # Wingman
 
+An open-source agent harness.
+
 ## Projects
 
 | Package | Description |
