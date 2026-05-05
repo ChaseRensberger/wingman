@@ -8,6 +8,6 @@
 
 | Package | Description |
 |---------|-------------|
-| **[WingHarness](wingagent)** | Core agent loop/lifecycle |
+| **[WingAgent](wingagent)** | Core agent runtime |
 | **[WingModels](wingmodels)** | Provider-agnostic model SDK |
 | **[WingNews](https://news.wingman.actor)** | A HackerNews client |
