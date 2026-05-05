@@ -7,7 +7,14 @@ order: 1
 
 # Wingman
 
-Wingman is a collection of tools designed to make it as easy as possible to build llm enabled products and features. I built it because I wanted an agent harness that was performant, portable, and client agnostic.
+Wingman is an open-source client-agnostic agent harness with a minimalist scaffolding. It is design to be extreamly portable (compiled to a binary with zero external dependencies) and performant (spawn fleets of agents as go routines).
+
+I built Wingman because I wanted a performant agentic loop that was also not tied to any specific kind of application (like a coding tui or deep research engine). The goal is that you can use wing
+
+## Next Steps
+
+- [Quick Start]()
+- [Build a client]
 
 ## Products
 
