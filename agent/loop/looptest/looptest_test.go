@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/chaserensberger/wingman/agent/loop"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 func TestRecordingModelAndSink(t *testing.T) {
@@ -17,7 +17,7 @@ func TestRecordingModelAndSink(t *testing.T) {
 	cfg := loop.Config{
 		Model:    m,
 		Sink:     sink,
-		Messages: []wingmodels.Message{wingmodels.NewUserText("start")},
+		Messages: []models.Message{models.NewUserText("start")},
 	}
 
 	// First run consumes the "hi" reply.

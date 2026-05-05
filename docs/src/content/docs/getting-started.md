@@ -38,7 +38,7 @@ import (
     "github.com/chaserensberger/wingman/plugins/compaction"
     "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
-    "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+    "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 func main() {

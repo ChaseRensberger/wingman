@@ -6,10 +6,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/storage"
-	"github.com/chaserensberger/wingman/wingmodels"
-	"github.com/chaserensberger/wingman/wingmodels/catalog"
-	"github.com/chaserensberger/wingman/wingmodels/providers"
+	"github.com/chaserensberger/wingman/store"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/models/catalog"
+	"github.com/chaserensberger/wingman/models/providers"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +62,7 @@ func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 }
 
 type SetProvidersAuthRequest struct {
-	Providers map[string]storage.AuthCredential `json:"providers"`
+	Providers map[string]store.AuthCredential `json:"providers"`
 }
 
 func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +124,7 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 }
 
 // ModelDTO is the API response shape for a single model. It exposes the
-// normalized wingmodels.ModelInfo fields rather than the raw catalog schema,
+// normalized models.ModelInfo fields rather than the raw catalog schema,
 // which changes frequently and contains internal pricing/limit details that
 // are not part of the public API contract.
 type ModelDTO struct {
@@ -140,7 +140,7 @@ type ModelDTO struct {
 	OutputCostPerMTok float64 `json:"output_cost_per_mtok,omitempty"`
 }
 
-func modelToDTO(info wingmodels.ModelInfo) ModelDTO {
+func modelToDTO(info models.ModelInfo) ModelDTO {
 	return ModelDTO{
 		Provider:          info.Provider,
 		ID:                info.ID,

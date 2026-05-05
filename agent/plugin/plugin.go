@@ -21,7 +21,7 @@
 //   - Sink subscribers run independently: every registered sink sees
 //     every event.
 //   - Tool registrations merge into the session's tool slice.
-//   - Part registrations call wingmodels.RegisterPart directly (the
+//   - Part registrations call models.RegisterPart directly (the
 //     part registry is process-global; idempotent across re-installs).
 //
 // # Loading model
@@ -55,7 +55,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // Plugin is the aggregating abstraction. Implementations bundle hook
@@ -158,13 +158,13 @@ func (r *Registry) RegisterTool(t tool.Tool) {
 }
 
 // RegisterPart registers a Part discriminator + decoder with the
-// process-global wingmodels part registry. Plugins typically call this
+// process-global models part registry. Plugins typically call this
 // from Install so loaded sessions decode their custom parts correctly.
 //
 // Re-registering an existing name overwrites; safe to call across
 // re-installs of the same plugin.
-func (r *Registry) RegisterPart(typeName string, fn wingmodels.PartUnmarshaler) {
-	wingmodels.RegisterPart(typeName, fn)
+func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) {
+	models.RegisterPart(typeName, fn)
 }
 
 // Built bundles the composed hooks, merged tool slice, and aggregated
@@ -240,7 +240,7 @@ func (r *Registry) Build() Built {
 // accumulated history. nil returns leave the accumulator unchanged.
 // Errors short-circuit the chain.
 func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
-	return func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
+	return func(ctx context.Context, current []models.Message) ([]models.Message, error) {
 		acc := current
 		for i, h := range hooks {
 			out, err := h(ctx, acc)
@@ -258,7 +258,7 @@ func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
 // composeBeforeStep chains BeforeStep hooks: each one's output messages
 // become the next one's input. Errors short-circuit the chain.
 func composeBeforeStep(hooks []loop.BeforeStepHook) loop.BeforeStepHook {
-	return func(ctx context.Context, info loop.BeforeStepInfo) ([]wingmodels.Message, error) {
+	return func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
 		msgs := info.Messages
 		for i, h := range hooks {
 			next := info
@@ -277,7 +277,7 @@ func composeBeforeStep(hooks []loop.BeforeStepHook) loop.BeforeStepHook {
 
 // composeTransformContext chains TransformContext hooks similarly.
 func composeTransformContext(hooks []loop.TransformContextHook) loop.TransformContextHook {
-	return func(ctx context.Context, info loop.TransformContextInfo) ([]wingmodels.Message, error) {
+	return func(ctx context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
 		msgs := info.Messages
 		for i, h := range hooks {
 			next := info

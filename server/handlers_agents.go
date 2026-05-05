@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/store"
 )
 
 type CreateAgentRequest struct {
@@ -31,7 +31,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a := &storage.Agent{
+	a := &store.Agent{
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
@@ -56,7 +56,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if agents == nil {
-		agents = []*storage.Agent{}
+		agents = []*store.Agent{}
 	}
 	writeJSON(w, http.StatusOK, agents)
 }

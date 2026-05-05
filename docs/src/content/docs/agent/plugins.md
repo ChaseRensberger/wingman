@@ -7,7 +7,7 @@ order: 107
 
 # Plugins
 
-A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Part type](../wingmodels/parts) registrations packaged behind a single `Install` call.
+A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Part type](../models/parts) registrations packaged behind a single `Install` call.
 
 ## Why plugins
 
@@ -51,7 +51,7 @@ r.RegisterBeforeToolCall(h)    // BeforeToolCall hook (returning ErrSkipTool sho
 r.RegisterAfterToolCall(h)     // AfterToolCall hook
 r.RegisterSink(s)              // event observer (fan-out)
 r.RegisterTool(t)              // adds to session's tool slice
-r.RegisterPart(typeName, fn)   // registers a Part decoder with wingmodels (process-global, idempotent)
+r.RegisterPart(typeName, fn)   // registers a Part decoder with models (process-global, idempotent)
 ```
 
 `Build` folds everything into a `Built{Hooks, Tools, Sink}` value the session feeds to `loop.Run`. Composition rules:
@@ -59,7 +59,7 @@ r.RegisterPart(typeName, fn)   // registers a Part decoder with wingmodels (proc
 - **Pipeline seams** (`BeforeRun`, `BeforeStep`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain in install order. Each hook receives the previous one's output. The first error short-circuits.
 - **Sinks** fan out: every registered sink sees every event, in install order.
 - **Tools** merge into the session's tool slice. Plugin tools are appended after user-supplied tools, so plugins can override built-ins by name (later wins in the loop's tool registry).
-- **Parts** call `wingmodels.RegisterPart` directly. The part registry is process-global and idempotent across re-installs.
+- **Parts** call `models.RegisterPart` directly. The part registry is process-global and idempotent across re-installs.
 
 ## Hooks vs sinks
 
@@ -163,7 +163,7 @@ When compaction runs, the loop emits a `ContextTransformedEvent` whose head mess
 import (
     "github.com/chaserensberger/wingman/plugins/storage"
     "github.com/chaserensberger/wingman/agent/session"
-    wstorage "github.com/chaserensberger/wingman/storage"
+    wstorage "github.com/chaserensberger/wingman/store"
 )
 
 store, _ := wstorage.NewSQLiteStore("/path/to/wingman.db")

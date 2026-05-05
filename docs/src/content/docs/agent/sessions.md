@@ -31,7 +31,7 @@ When you call `Run` or `RunStream`, the session:
 import (
     "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
-    "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+    "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 p, _ := anthropic.New(anthropic.Config{})
@@ -63,7 +63,7 @@ History grows across turns. Use `History()` to snapshot it (returned as a copy),
 type Result struct {
     Response   string
     ToolCalls  []ToolCallResult
-    Usage      wingmodels.Usage
+    Usage      models.Usage
     Steps      int
     StopReason loop.StopReason
 }

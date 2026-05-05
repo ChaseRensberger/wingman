@@ -99,8 +99,13 @@ function Hero() {
 				<div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-sm text-center rounded-sm px-4 py-2 font-medium">
 					This project is under active development and not ready for production use.
 				</div>
-				<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">
-					<ASCIILOGO />
+				<div className="space-y-2">
+					<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">
+						<ASCIILOGO />
+					</div>
+					<p className="text-center text-muted-foreground font-medium">
+						The open-source client-agnostic agent harness
+					</p>
 				</div>
 				<div className="space-y-4">
 					<InstallSection />

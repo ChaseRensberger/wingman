@@ -3,7 +3,7 @@
 // A Session owns:
 //   - an identifier (ULID)
 //   - a working directory passed to tool executions
-//   - a wingmodels.Model + system prompt + tool registry
+//   - a models.Model + system prompt + tool registry
 //   - the running message history
 //   - optional lifecycle hooks (BeforeStep / TransformContext)
 //
@@ -34,16 +34,16 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
-	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // Session is a single conversation. Construct with New.
 type Session struct {
 	id      string
 	workDir string
-	model   wingmodels.Model
+	model   models.Model
 	system  string
 	tools   []tool.Tool
 
@@ -60,16 +60,16 @@ type Session struct {
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
 	// (including plugin-injected messages such as compaction markers
-	// emitted via info.Sink). Servers wire this to storage.AppendMessage
+	// emitted via info.Sink). Servers wire this to store.AppendMessage
 	// for incremental persistence.
-	messageSink func(wingmodels.Message)
+	messageSink func(models.Message)
 
 	// outputSchema, if non-nil, constrains the assistant's reply on every
 	// loop turn to a JSON document conforming to the schema. See
 	// WithOutputSchema for details.
-	outputSchema *wingmodels.OutputSchema
+	outputSchema *models.OutputSchema
 
-	history []wingmodels.Message
+	history []models.Message
 	mu      sync.RWMutex
 }
 
@@ -86,8 +86,8 @@ type Option func(*Session)
 // behavior bundles such as compaction.New().
 func New(opts ...Option) *Session {
 	s := &Session{
-		id:      storage.NewID(storage.PrefixSession),
-		history: []wingmodels.Message{},
+		id:      store.NewID(store.PrefixSession),
+		history: []models.Message{},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -100,8 +100,8 @@ func WithWorkDir(dir string) Option {
 	return func(s *Session) { s.workDir = dir }
 }
 
-// WithModel sets the wingmodels.Model used for inference.
-func WithModel(m wingmodels.Model) Option {
+// WithModel sets the models.Model used for inference.
+func WithModel(m models.Model) Option {
 	return func(s *Session) { s.model = m }
 }
 
@@ -152,7 +152,7 @@ func WithPlugin(plugins ...plugin.Plugin) Option {
 // incrementally as they're produced rather than batching at end of
 // turn. Calls are synchronous on the loop goroutine; the callback
 // must not block.
-func WithMessageSink(fn func(wingmodels.Message)) Option {
+func WithMessageSink(fn func(models.Message)) Option {
 	return func(s *Session) { s.messageSink = fn }
 }
 
@@ -165,19 +165,19 @@ func WithMessageSink(fn func(wingmodels.Message)) Option {
 // turn including tool-calling turns. Providers that disallow tools and
 // structured output simultaneously will surface an error from the
 // underlying model.
-func WithOutputSchema(schema *wingmodels.OutputSchema) Option {
+func WithOutputSchema(schema *models.OutputSchema) Option {
 	return func(s *Session) { s.outputSchema = schema }
 }
 
 // SetOutputSchema swaps the active output schema. Pass nil to clear.
-func (s *Session) SetOutputSchema(schema *wingmodels.OutputSchema) {
+func (s *Session) SetOutputSchema(schema *models.OutputSchema) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.outputSchema = schema
 }
 
 // OutputSchema returns the currently configured output schema, or nil.
-func (s *Session) OutputSchema() *wingmodels.OutputSchema {
+func (s *Session) OutputSchema() *models.OutputSchema {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.outputSchema
@@ -202,7 +202,7 @@ func (s *Session) SetWorkDir(dir string) {
 
 // SetModel swaps the active model. Useful for handlers that build the
 // model lazily after constructing the session.
-func (s *Session) SetModel(m wingmodels.Model) {
+func (s *Session) SetModel(m models.Model) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.model = m
@@ -223,10 +223,10 @@ func (s *Session) SetTools(tools []tool.Tool) {
 }
 
 // History returns a snapshot copy of the running message history.
-func (s *Session) History() []wingmodels.Message {
+func (s *Session) History() []models.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]wingmodels.Message, len(s.history))
+	out := make([]models.Message, len(s.history))
 	copy(out, s.history)
 	return out
 }
@@ -234,7 +234,7 @@ func (s *Session) History() []wingmodels.Message {
 // AddMessage appends a message to the history without invoking the
 // model. Handlers use this to rehydrate a session from persistent
 // storage before calling Run.
-func (s *Session) AddMessage(msg wingmodels.Message) {
+func (s *Session) AddMessage(msg models.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = append(s.history, msg)
@@ -242,17 +242,17 @@ func (s *Session) AddMessage(msg wingmodels.Message) {
 
 // SetHistory replaces the entire history. The slice is copied; later
 // mutations of msgs do not affect the session.
-func (s *Session) SetHistory(msgs []wingmodels.Message) {
+func (s *Session) SetHistory(msgs []models.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.history = append([]wingmodels.Message(nil), msgs...)
+	s.history = append([]models.Message(nil), msgs...)
 }
 
 // Clear empties the history.
 func (s *Session) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.history = []wingmodels.Message{}
+	s.history = []models.Message{}
 }
 
 // Result is the terminal value of a Run / RunStream invocation.
@@ -269,7 +269,7 @@ type Result struct {
 	ToolCalls []ToolCallResult
 
 	// Usage is the cumulative token usage reported by the provider.
-	Usage wingmodels.Usage
+	Usage models.Usage
 
 	// Steps is the number of assistant turns the loop ran.
 	Steps int
@@ -318,12 +318,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	}
 	// Append the user message before starting the loop so it ends up in
 	// history even if the loop fails immediately.
-	s.history = append(s.history, wingmodels.Message{
-		Role:    wingmodels.RoleUser,
-		Content: wingmodels.Content{wingmodels.TextPart{Text: message}},
+	s.history = append(s.history, models.Message{
+		Role:    models.RoleUser,
+		Content: models.Content{models.TextPart{Text: message}},
 	})
 	// Snapshot inputs.
-	historySnap := append([]wingmodels.Message(nil), s.history...)
+	historySnap := append([]models.Message(nil), s.history...)
 	model := s.model
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
@@ -361,7 +361,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// preserving the existing AddMessage / SetHistory / Run-then-
 	// Run-again semantics for SDK consumers who don't use a storage
 	// plugin.
-	reg.RegisterBeforeRun(func(_ context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
+	reg.RegisterBeforeRun(func(_ context.Context, current []models.Message) ([]models.Message, error) {
 		return append(current, historySnap...), nil
 	})
 	built := reg.Build()
@@ -417,7 +417,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// loop.Run guarantees res != nil, even on error.
 	s.mu.Lock()
 	if res != nil {
-		s.history = append([]wingmodels.Message(nil), res.Messages...)
+		s.history = append([]models.Message(nil), res.Messages...)
 	}
 	s.mu.Unlock()
 
@@ -468,9 +468,9 @@ func errStringIf(isError bool, msg string) string {
 
 // lastAssistant returns a pointer to the last RoleAssistant message in
 // msgs, or nil if there is none. Used to extract Result.Response.
-func lastAssistant(msgs []wingmodels.Message) *wingmodels.Message {
+func lastAssistant(msgs []models.Message) *models.Message {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == wingmodels.RoleAssistant {
+		if msgs[i].Role == models.RoleAssistant {
 			return &msgs[i]
 		}
 	}
@@ -480,10 +480,10 @@ func lastAssistant(msgs []wingmodels.Message) *wingmodels.Message {
 // textOf concatenates every TextPart in a message in source order.
 // Reasoning parts and tool calls are excluded; callers that need the
 // full content walk msg.Content directly.
-func textOf(msg wingmodels.Message) string {
+func textOf(msg models.Message) string {
 	var out string
 	for _, p := range msg.Content {
-		if t, ok := p.(wingmodels.TextPart); ok {
+		if t, ok := p.(models.TextPart); ok {
 			out += t.Text
 		}
 	}
@@ -502,7 +502,7 @@ func composeBeforeStep(pluginHook, userHook loop.BeforeStepHook) loop.BeforeStep
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.BeforeStepInfo) ([]wingmodels.Message, error) {
+	return func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err
@@ -526,7 +526,7 @@ func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loo
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.TransformContextInfo) ([]wingmodels.Message, error) {
+	return func(ctx context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err

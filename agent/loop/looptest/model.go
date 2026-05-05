@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // ScriptedReply describes one pre-canned model response.
@@ -17,7 +17,7 @@ type ScriptedReply struct {
 	text      string
 	toolCalls []scriptedToolCall
 	err       error
-	usage     wingmodels.Usage
+	usage     models.Usage
 }
 
 type scriptedToolCall struct {
@@ -54,7 +54,7 @@ func ReplyWithToolCalls(calls ...ToolCall) ScriptedReply {
 // Stream setup.
 func ReplyError(err error) ScriptedReply { return ScriptedReply{err: err} }
 
-// RecordingModel implements wingmodels.Model by replaying a script of
+// RecordingModel implements models.Model by replaying a script of
 // pre-canned replies. It records every incoming request for later inspection.
 type RecordingModel struct {
 	mu       sync.Mutex
@@ -69,11 +69,11 @@ func NewRecordingModel(script ...ScriptedReply) *RecordingModel { return &Record
 // RecordedRequest captures the arguments to a single Stream call.
 type RecordedRequest struct {
 	System          string
-	Messages        []wingmodels.Message
-	Tools           []wingmodels.ToolDef
-	ToolChoice      wingmodels.ToolChoice
-	Capabilities    wingmodels.Capabilities
-	OutputSchema    *wingmodels.OutputSchema
+	Messages        []models.Message
+	Tools           []models.ToolDef
+	ToolChoice      models.ToolChoice
+	Capabilities    models.Capabilities
+	OutputSchema    *models.OutputSchema
 	MaxOutputTokens int
 }
 
@@ -85,13 +85,13 @@ func (m *RecordingModel) Requests() []RecordedRequest {
 }
 
 // Info returns static metadata about the model.
-func (m *RecordingModel) Info() wingmodels.ModelInfo {
-	return wingmodels.ModelInfo{Provider: "looptest", ID: "recording-model",
-		Capabilities: wingmodels.ModelCapabilities{Tools: true}}
+func (m *RecordingModel) Info() models.ModelInfo {
+	return models.ModelInfo{Provider: "looptest", ID: "recording-model",
+		Capabilities: models.ModelCapabilities{Tools: true}}
 }
 
 // Stream replays the next scripted reply as a synthetic event stream.
-func (m *RecordingModel) Stream(ctx context.Context, req wingmodels.Request) (*wingmodels.EventStream[wingmodels.StreamPart, *wingmodels.Message], error) {
+func (m *RecordingModel) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.requests = append(m.requests, RecordedRequest{
@@ -107,39 +107,39 @@ func (m *RecordingModel) Stream(ctx context.Context, req wingmodels.Request) (*w
 	if reply.err != nil {
 		return nil, reply.err
 	}
-	stream := wingmodels.NewEventStream[wingmodels.StreamPart, *wingmodels.Message](64)
+	stream := models.NewEventStream[models.StreamPart, *models.Message](64)
 	go func() {
 		msg := assembleMessage(reply)
 		defer stream.Close(msg, nil)
-		stream.Push(wingmodels.StreamStartPart{})
+		stream.Push(models.StreamStartPart{})
 		if reply.text != "" {
-			stream.Push(wingmodels.TextStartPart{ID: "t0"})
-			stream.Push(wingmodels.TextDeltaPart{ID: "t0", Delta: reply.text})
-			stream.Push(wingmodels.TextEndPart{ID: "t0"})
+			stream.Push(models.TextStartPart{ID: "t0"})
+			stream.Push(models.TextDeltaPart{ID: "t0", Delta: reply.text})
+			stream.Push(models.TextEndPart{ID: "t0"})
 		}
 		for i, tc := range reply.toolCalls {
 			id := fmt.Sprintf("c%d", i)
 			b, _ := json.Marshal(tc.args)
-			stream.Push(wingmodels.ToolInputStartPart{ID: id, ToolName: tc.name})
-			stream.Push(wingmodels.ToolInputDeltaPart{ID: id, Delta: string(b)})
-			stream.Push(wingmodels.ToolInputEndPart{ID: id})
-			stream.Push(wingmodels.ToolCallPart_{ID: id, ToolName: tc.name, Input: tc.args})
+			stream.Push(models.ToolInputStartPart{ID: id, ToolName: tc.name})
+			stream.Push(models.ToolInputDeltaPart{ID: id, Delta: string(b)})
+			stream.Push(models.ToolInputEndPart{ID: id})
+			stream.Push(models.ToolCallPart_{ID: id, ToolName: tc.name, Input: tc.args})
 		}
-		reason := wingmodels.FinishReasonStop
+		reason := models.FinishReasonStop
 		if len(reply.toolCalls) > 0 {
-			reason = wingmodels.FinishReasonToolCalls
+			reason = models.FinishReasonToolCalls
 		}
-		stream.Push(wingmodels.FinishPart{Reason: reason, Usage: reply.usage, Message: msg})
+		stream.Push(models.FinishPart{Reason: reason, Usage: reply.usage, Message: msg})
 	}()
 	return stream, nil
 }
 
 // CountTokens returns a dummy token count.
-func (m *RecordingModel) CountTokens(ctx context.Context, msgs []wingmodels.Message) (int, error) {
+func (m *RecordingModel) CountTokens(ctx context.Context, msgs []models.Message) (int, error) {
 	total := 0
 	for _, msg := range msgs {
 		for _, p := range msg.Content {
-			if t, ok := p.(wingmodels.TextPart); ok {
+			if t, ok := p.(models.TextPart); ok {
 				total += len(t.Text)
 			}
 		}
@@ -147,21 +147,21 @@ func (m *RecordingModel) CountTokens(ctx context.Context, msgs []wingmodels.Mess
 	return total / 4, nil
 }
 
-func assembleMessage(reply ScriptedReply) *wingmodels.Message {
-	var content wingmodels.Content
+func assembleMessage(reply ScriptedReply) *models.Message {
+	var content models.Content
 	if reply.text != "" {
-		content = append(content, wingmodels.TextPart{Text: reply.text})
+		content = append(content, models.TextPart{Text: reply.text})
 	}
 	for i, tc := range reply.toolCalls {
-		content = append(content, wingmodels.ToolCallPart{CallID: fmt.Sprintf("c%d", i), Name: tc.name, Input: tc.args})
+		content = append(content, models.ToolCallPart{CallID: fmt.Sprintf("c%d", i), Name: tc.name, Input: tc.args})
 	}
-	reason := wingmodels.FinishReasonStop
+	reason := models.FinishReasonStop
 	if len(reply.toolCalls) > 0 {
-		reason = wingmodels.FinishReasonToolCalls
+		reason = models.FinishReasonToolCalls
 	}
-	return &wingmodels.Message{
-		Role: wingmodels.RoleAssistant, Content: content, FinishReason: reason,
-		Origin: &wingmodels.MessageOrigin{Provider: "looptest", API: wingmodels.APIOpenAICompletions, ModelID: "recording-model"},
+	return &models.Message{
+		Role: models.RoleAssistant, Content: content, FinishReason: reason,
+		Origin: &models.MessageOrigin{Provider: "looptest", API: models.APIOpenAICompletions, ModelID: "recording-model"},
 	}
 }
 

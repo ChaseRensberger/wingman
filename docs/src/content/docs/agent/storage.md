@@ -7,7 +7,7 @@ order: 108
 
 # Storage
 
-The HTTP server persists state in SQLite via the `storage.Store` interface. Persistence is exposed to sessions through the **storage plugin**, which packages both load (rehydrate prior history) and save (append new messages) behind a single `session.WithPlugin` call. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
+The HTTP server persists state in SQLite via the `store.Store` interface. Persistence is exposed to sessions through the **storage plugin**, which packages both load (rehydrate prior history) and save (append new messages) behind a single `session.WithPlugin` call. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
 
 ## The `Store` interface
 
@@ -23,8 +23,8 @@ type Store interface {
     GetSession(id string) (*Session, error)
     ListSessions() ([]*Session, error)
     UpdateSession(session *Session) error
-    AppendMessage(sessionID string, msg wingmodels.Message) error
-    ReplaceMessages(sessionID string, msgs []wingmodels.Message) error
+    AppendMessage(sessionID string, msg models.Message) error
+    ReplaceMessages(sessionID string, msgs []models.Message) error
     DeleteSession(id string) error
 
     GetAuth() (*Auth, error)
@@ -51,7 +51,7 @@ Notes:
 import (
     "github.com/chaserensberger/wingman/plugins/storage"
     "github.com/chaserensberger/wingman/agent/session"
-    wstorage "github.com/chaserensberger/wingman/storage"
+    wstorage "github.com/chaserensberger/wingman/store"
 )
 
 store, err := wstorage.NewSQLiteStore("/path/to/wingman.db")
@@ -84,7 +84,7 @@ Sink-side errors (an `AppendMessage` failure) are logged and swallowed: a single
 ```go
 s := session.New(
     session.WithModel(model),
-    session.WithMessageSink(func(m wingmodels.Message) {
+    session.WithMessageSink(func(m models.Message) {
         log.Printf("turn: %s (%d parts)", m.Role, len(m.Content))
     }),
 )
@@ -112,7 +112,7 @@ type Session struct {
     ID        string
     Title     string
     WorkDir   string
-    History   []wingmodels.Message
+    History   []models.Message
     CreatedAt string
     UpdatedAt string
 }
@@ -142,11 +142,11 @@ Every persisted entity carries a stable prefix so IDs are self-describing in log
 
 IDs are KSUIDs (27 base62 chars after the prefix). KSUID over ULID: smaller wire size, time-resolution sortable without monotonic-entropy state, valid through year 2150.
 
-`storage.NewID(prefix)` mints a new ID. `storage.ParseID(id)` validates a known prefix and splits `(prefix, body)` — useful at API boundaries to catch a session id where an agent id was expected.
+`store.NewID(prefix)` mints a new ID. `store.ParseID(id)` validates a known prefix and splits `(prefix, body)` — useful at API boundaries to catch a session id where an agent id was expected.
 
 ## Schema
 
-The migration in `storage/migrations/0001_init.sql` defines:
+The migration in `store/migrations/0001_init.sql` defines:
 
 - `agents` — agent records, with `output_schema_json` as a separate column
 - `sessions` — session metadata
@@ -159,20 +159,20 @@ Parts are stored individually (not as JSON arrays inside messages) so partial re
 ## Opening a store
 
 ```go
-import "github.com/chaserensberger/wingman/storage"
+import "github.com/chaserensberger/wingman/store"
 
-store, err := storage.NewSQLiteStore("/path/to/wingman.db")
+store, err := store.NewSQLiteStore("/path/to/wingman.db")
 if err != nil {
     log.Fatal(err)
 }
 defer store.Close()
 ```
 
-`storage.DefaultDBPath()` returns the server's default location (`~/.local/share/wingman/wingman.db`).
+`store.DefaultDBPath()` returns the server's default location (`~/.local/share/wingman/wingman.db`).
 
 ## Plugin parts in storage
 
-Custom Part types ([Parts](../wingmodels/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
+Custom Part types ([Parts](../models/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
 
 ## Stored types
 
@@ -194,7 +194,7 @@ type Session struct {
     ID        string
     Title     string
     WorkDir   string
-    History   []wingmodels.Message
+    History   []models.Message
     CreatedAt string
     UpdatedAt string
 }
@@ -224,11 +224,11 @@ Every persisted entity carries a stable prefix so IDs are self-describing in log
 
 IDs are KSUIDs (27 base62 chars after the prefix). KSUID over ULID: smaller wire size, time-resolution sortable without monotonic-entropy state, valid through year 2150.
 
-`storage.NewID(prefix)` mints a new ID. `storage.ParseID(id)` validates a known prefix and splits `(prefix, body)` — useful at API boundaries to catch a session id where an agent id was expected.
+`store.NewID(prefix)` mints a new ID. `store.ParseID(id)` validates a known prefix and splits `(prefix, body)` — useful at API boundaries to catch a session id where an agent id was expected.
 
 ## Schema
 
-The migration in `storage/migrations/0001_init.sql` defines:
+The migration in `store/migrations/0001_init.sql` defines:
 
 - `agents` — agent records, with `output_schema_json` as a separate column
 - `sessions` — session metadata
@@ -241,17 +241,17 @@ Parts are stored individually (not as JSON arrays inside messages) so partial re
 ## Opening a store
 
 ```go
-import "github.com/chaserensberger/wingman/storage"
+import "github.com/chaserensberger/wingman/store"
 
-store, err := storage.NewSQLiteStore("/path/to/wingman.db")
+store, err := store.NewSQLiteStore("/path/to/wingman.db")
 if err != nil {
     log.Fatal(err)
 }
 defer store.Close()
 ```
 
-`storage.DefaultDBPath()` returns the server's default location (`~/.local/share/wingman/wingman.db`).
+`store.DefaultDBPath()` returns the server's default location (`~/.local/share/wingman/wingman.db`).
 
 ## Plugin parts in storage
 
-Custom Part types ([Parts](../wingmodels/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.
+Custom Part types ([Parts](../models/parts)) round-trip losslessly. Even when the originating plugin is uninstalled, the parts come back as `OpaquePart` values preserving the original bytes — UIs may render a placeholder or skip them, and re-marshaling reproduces the original payload.

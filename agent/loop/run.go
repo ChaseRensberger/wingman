@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // Run executes the loop with the given config until one of the
@@ -32,7 +32,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		return nil, errors.New("loop.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
 	}
 
-	initial := append([]wingmodels.Message{}, cfg.Messages...)
+	initial := append([]models.Message{}, cfg.Messages...)
 	if cfg.Hooks.BeforeRun != nil {
 		out, err := cfg.Hooks.BeforeRun(ctx, initial)
 		if err != nil {
@@ -77,11 +77,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 // transformed snapshots, never the live runner state.
 type runner struct {
 	cfg      Config
-	messages []wingmodels.Message
+	messages []models.Message
 	turns    []Turn
 	registry *tool.Registry
-	toolDefs []wingmodels.ToolDef
-	usage    wingmodels.Usage
+	toolDefs []models.ToolDef
+	usage    models.Usage
 
 	// eventCh funnels every Sink event through a single drain
 	// goroutine (started in Run). Workers can emit concurrently
@@ -126,7 +126,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			if newMsgs != nil && len(newMsgs) != len(r.messages) {
 				orig := len(r.messages)
 				r.messages = newMsgs
-				var head *wingmodels.Message
+				var head *models.Message
 				if len(newMsgs) > 0 {
 					h := newMsgs[0]
 					head = &h
@@ -199,7 +199,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	if r.cfg.Hooks.TransformContext != nil {
 		info := TransformContextInfo{
 			Step:     step,
-			Messages: append([]wingmodels.Message(nil), msgs...),
+			Messages: append([]models.Message(nil), msgs...),
 			Model:    r.cfg.Model,
 		}
 		m, err := r.cfg.Hooks.TransformContext(ctx, info)
@@ -207,7 +207,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			return Turn{}, fmt.Errorf("hook TransformContext: %w", err)
 		}
 		if m != nil && len(m) != len(msgs) {
-			var head *wingmodels.Message
+			var head *models.Message
 			if len(m) > 0 {
 				h := m[0]
 				head = &h
@@ -230,7 +230,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// TransformContextHook (the read-side seam). The loop is
 	// deliberately unaware of any specific plugin's part types.
 
-	req := wingmodels.Request{
+	req := models.Request{
 		System:       system,
 		Messages:     msgs,
 		Tools:        r.toolDefs,
@@ -248,9 +248,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// terminal FinishPart carries the assembled assistant message via
 	// stream.Final(); we also snapshot per-turn usage from FinishPart
 	// here since stream.Final() only returns the message.
-	var turnUsage wingmodels.Usage
+	var turnUsage models.Usage
 	for part := range stream.Iter() {
-		if fp, ok := part.(wingmodels.FinishPart); ok {
+		if fp, ok := part.(models.FinishPart); ok {
 			turnUsage = fp.Usage
 		}
 		r.emit(StreamPartEvent{Step: step, Part: part})
@@ -505,11 +505,11 @@ func buildRegistry(ts []tool.Tool) *tool.Registry {
 
 // buildToolDefs converts the configured tools' typed Definitions to the
 // open-ended ToolDef shape providers expect.
-func buildToolDefs(ts []tool.Tool) []wingmodels.ToolDef {
+func buildToolDefs(ts []tool.Tool) []models.ToolDef {
 	if len(ts) == 0 {
 		return nil
 	}
-	out := make([]wingmodels.ToolDef, len(ts))
+	out := make([]models.ToolDef, len(ts))
 	for i, t := range ts {
 		out[i] = t.Definition().AsModelToolDef()
 	}
@@ -518,10 +518,10 @@ func buildToolDefs(ts []tool.Tool) []wingmodels.ToolDef {
 
 // extractToolCalls pulls every ToolCallPart out of an assistant message
 // in source order.
-func extractToolCalls(msg wingmodels.Message) []wingmodels.ToolCallPart {
-	var calls []wingmodels.ToolCallPart
+func extractToolCalls(msg models.Message) []models.ToolCallPart {
+	var calls []models.ToolCallPart
 	for _, p := range msg.Content {
-		if c, ok := p.(wingmodels.ToolCallPart); ok {
+		if c, ok := p.(models.ToolCallPart); ok {
 			calls = append(calls, c)
 		}
 	}
@@ -543,23 +543,23 @@ func anySequential(calls []ToolCall) bool {
 	return false
 }
 
-// buildToolResultMessage constructs the wingmodels.Message that bundles
+// buildToolResultMessage constructs the models.Message that bundles
 // all tool results from a batch. It uses RoleTool and one ToolResultPart
 // per result. Providers (Anthropic, Ollama) translate this into their
 // native tool-result shape on the wire.
 //
 // The output of each tool is wrapped in a single TextPart since v0.1
 // tools return strings. Multimodal tool outputs are deferred.
-func buildToolResultMessage(results []ToolResult) wingmodels.Message {
-	content := make(wingmodels.Content, 0, len(results))
+func buildToolResultMessage(results []ToolResult) models.Message {
+	content := make(models.Content, 0, len(results))
 	for _, r := range results {
-		content = append(content, wingmodels.ToolResultPart{
+		content = append(content, models.ToolResultPart{
 			CallID:  r.CallID,
-			Output:  []wingmodels.Part{wingmodels.TextPart{Text: r.Output}},
+			Output:  []models.Part{models.TextPart{Text: r.Output}},
 			IsError: r.IsError,
 		})
 	}
-	return wingmodels.Message{Role: wingmodels.RoleTool, Content: content}
+	return models.Message{Role: models.RoleTool, Content: content}
 }
 
 // CoerceArgs turns an arbitrary value (typically the model's parsed tool

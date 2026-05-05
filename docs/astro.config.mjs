@@ -42,9 +42,9 @@ export default defineConfig({
 				{
 					label: 'WingModels',
 					items: [
-						{ label: 'Providers', slug: 'wingmodels/providers' },
-						{ label: 'Parts', slug: 'wingmodels/parts' },
-						{ label: 'Streaming', slug: 'wingmodels/streaming' },
+						{ label: 'Providers', slug: 'models/providers' },
+						{ label: 'Parts', slug: 'models/parts' },
+						{ label: 'Streaming', slug: 'models/streaming' },
 					],
 				},
 				{

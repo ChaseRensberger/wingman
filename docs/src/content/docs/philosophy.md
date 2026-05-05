@@ -48,7 +48,7 @@ Similarly, "reasoning" not "thinking," because that's what the wire format calls
 
 ## KSUIDs over ULIDs
 
-IDs are KSUIDs (27 base62 characters after a stable prefix) for three reasons: smaller wire size than ULIDs, time-resolution-sortable without monotonic-entropy state, and valid through year 2150. The prefix (`agt_`, `ses_`, `msg_`, `prt_`, `tlu_`) makes IDs self-describing in logs and URLs, and `storage.ParseID` validates them at API boundaries so a session id passed where an agent id was expected fails fast with a clear message.
+IDs are KSUIDs (27 base62 characters after a stable prefix) for three reasons: smaller wire size than ULIDs, time-resolution-sortable without monotonic-entropy state, and valid through year 2150. The prefix (`agt_`, `ses_`, `msg_`, `prt_`, `tlu_`) makes IDs self-describing in logs and URLs, and `store.ParseID` validates them at API boundaries so a session id passed where an agent id was expected fails fast with a clear message.
 
 ## Reference points
 

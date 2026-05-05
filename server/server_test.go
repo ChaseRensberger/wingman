@@ -9,16 +9,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/chaserensberger/wingman/storage"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
+	"github.com/chaserensberger/wingman/store"
+	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 )
 
-func setupTestServer(t *testing.T) (*httptest.Server, storage.Store) {
+func setupTestServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	store, err := storage.NewSQLiteStore(dbPath)
+	store, err := store.NewSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create test store: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestAgentsCRUD(t *testing.T) {
 			t.Fatalf("expected 201, got %d", resp.StatusCode)
 		}
 
-		var agent storage.Agent
+		var agent store.Agent
 		decodeJSON(t, resp, &agent)
 
 		if agent.Name != "test-agent" {
@@ -150,7 +150,7 @@ func TestAgentsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var agents []*storage.Agent
+		var agents []*store.Agent
 		decodeJSON(t, resp, &agents)
 
 		if len(agents) != 1 {
@@ -171,7 +171,7 @@ func TestAgentsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var agent storage.Agent
+		var agent store.Agent
 		decodeJSON(t, resp, &agent)
 
 		if agent.ID != agentID {
@@ -208,7 +208,7 @@ func TestAgentsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var agent storage.Agent
+		var agent store.Agent
 		decodeJSON(t, resp, &agent)
 
 		if agent.Name != "updated-agent" {
@@ -288,7 +288,7 @@ func TestAgentWithoutProvider(t *testing.T) {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 
-	var agent storage.Agent
+	var agent store.Agent
 	decodeJSON(t, resp, &agent)
 
 	if agent.Model != "" {
@@ -319,7 +319,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("expected 201, got %d", resp.StatusCode)
 		}
 
-		var sess storage.Session
+		var sess store.Session
 		decodeJSON(t, resp, &sess)
 
 		if sess.ID == "" {
@@ -348,7 +348,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("expected 201, got %d", resp.StatusCode)
 		}
 
-		var sess storage.Session
+		var sess store.Session
 		decodeJSON(t, resp, &sess)
 
 		if sess.ID == "" {
@@ -371,7 +371,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var sessions []*storage.Session
+		var sessions []*store.Session
 		decodeJSON(t, resp, &sessions)
 
 		if len(sessions) != 2 {
@@ -389,7 +389,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var sess storage.Session
+		var sess store.Session
 		decodeJSON(t, resp, &sess)
 
 		if sess.ID != sessionID {
@@ -428,7 +428,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("expected 200, got %d", resp.StatusCode)
 		}
 
-		var sess storage.Session
+		var sess store.Session
 		decodeJSON(t, resp, &sess)
 
 		if sess.Title != newTitle {
@@ -451,7 +451,7 @@ func TestSessionsCRUD(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 
-		var sess storage.Session
+		var sess store.Session
 		decodeJSON(t, resp, &sess)
 
 		if sess.Title != "title only" {
@@ -507,7 +507,7 @@ func TestMessageSessionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	var sess storage.Session
+	var sess store.Session
 	decodeJSON(t, resp, &sess)
 
 	t.Run("missing message", func(t *testing.T) {
@@ -577,7 +577,7 @@ func TestAbortSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session failed: %v", err)
 	}
-	var sess storage.Session
+	var sess store.Session
 	decodeJSON(t, resp, &sess)
 
 	t.Run("idempotent on idle session", func(t *testing.T) {
@@ -890,14 +890,14 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	var created storage.Agent
+	var created store.Agent
 	decodeJSON(t, resp, &created)
 
 	resp, err = http.Get(ts.URL + "/agents/" + created.ID)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	var fetched storage.Agent
+	var fetched store.Agent
 	decodeJSON(t, resp, &fetched)
 
 	if fetched.Provider != "anthropic" {

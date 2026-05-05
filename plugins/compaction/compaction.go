@@ -63,7 +63,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // PartType is the discriminator string MarkerPart serializes with.
@@ -90,27 +90,27 @@ type MarkerPart struct {
 func (MarkerPart) Type() string { return PartType }
 
 // MarshalJSON / UnmarshalJSON: defaults via field tags are sufficient.
-// The wingmodels.Part interface's unexported isPart marker means
-// MarkerPart cannot satisfy Part by name from outside wingmodels. We
-// route through wingmodels.OpaquePart at the registry seam: the part
+// The models.Part interface's unexported isPart marker means
+// MarkerPart cannot satisfy Part by name from outside models. We
+// route through models.OpaquePart at the registry seam: the part
 // type is registered with a decoder that returns a *typed* part wrapped
 // in an adapter, but the adapter still needs to satisfy Part.
 //
 // Workaround: the Plugin's RegisterPart decoder returns a
-// wingmodels.OpaquePart whose Raw is the marker's JSON. Read-side
+// models.OpaquePart whose Raw is the marker's JSON. Read-side
 // callers that want typed access call DecodeMarker(part) which extracts
-// MarkerPart from the OpaquePart's bytes. This keeps wingmodels' Part
+// MarkerPart from the OpaquePart's bytes. This keeps models' Part
 // union sealed (no external types satisfy it directly) while letting
 // plugins ship "logical" Part types over the OpaquePart carrier.
 
-// DecodeMarker extracts a MarkerPart from a wingmodels.Part if it
+// DecodeMarker extracts a MarkerPart from a models.Part if it
 // represents a compaction marker. Returns ok=false for any other
 // part. Safe to call on every part during a content walk.
-func DecodeMarker(p wingmodels.Part) (MarkerPart, bool) {
+func DecodeMarker(p models.Part) (MarkerPart, bool) {
 	if p == nil || p.Type() != PartType {
 		return MarkerPart{}, false
 	}
-	op, ok := p.(wingmodels.OpaquePart)
+	op, ok := p.(models.OpaquePart)
 	if !ok {
 		return MarkerPart{}, false
 	}
@@ -121,10 +121,10 @@ func DecodeMarker(p wingmodels.Part) (MarkerPart, bool) {
 	return m, true
 }
 
-// newMarkerPart constructs a wingmodels.Part carrying a MarkerPart's
-// payload. Implemented as an OpaquePart so it satisfies wingmodels.Part
+// newMarkerPart constructs a models.Part carrying a MarkerPart's
+// payload. Implemented as an OpaquePart so it satisfies models.Part
 // without breaking the sealed-union invariant.
-func newMarkerPart(m MarkerPart) (wingmodels.Part, error) {
+func newMarkerPart(m MarkerPart) (models.Part, error) {
 	body, err := json.Marshal(struct {
 		Type          string `json:"type"`
 		Summary       string `json:"summary"`
@@ -134,7 +134,7 @@ func newMarkerPart(m MarkerPart) (wingmodels.Part, error) {
 	if err != nil {
 		return nil, err
 	}
-	return wingmodels.OpaquePart{TypeName: PartType, Raw: body}, nil
+	return models.OpaquePart{TypeName: PartType, Raw: body}, nil
 }
 
 // Option configures a Plugin.
@@ -146,7 +146,7 @@ type Plugin struct {
 	keepTail      int
 	minMessages   int
 	summaryPrompt string
-	model         wingmodels.Model
+	model         models.Model
 }
 
 // New constructs a compaction plugin with the supplied options applied
@@ -183,7 +183,7 @@ func WithSummaryPrompt(s string) Option { return func(p *Plugin) { p.summaryProm
 // Default: use the loop's model at invocation time. Useful when
 // summarization should run on a cheaper / faster / longer-context
 // model than the main conversation.
-func WithModel(m wingmodels.Model) Option { return func(p *Plugin) { p.model = m } }
+func WithModel(m models.Model) Option { return func(p *Plugin) { p.model = m } }
 
 // Name implements plugin.Plugin.
 func (p *Plugin) Name() string { return "compaction" }
@@ -194,12 +194,12 @@ func (p *Plugin) Name() string { return "compaction" }
 func (p *Plugin) Install(r *plugin.Registry) error {
 	// Part decoder: return an OpaquePart preserving the bytes. The
 	// payload is small and DecodeMarker re-parses on demand; storing
-	// raw bytes avoids needing a wingmodels.Part-satisfying typed
-	// wrapper (the Part union is sealed to wingmodels).
-	r.RegisterPart(PartType, func(data []byte) (wingmodels.Part, error) {
+	// raw bytes avoids needing a models.Part-satisfying typed
+	// wrapper (the Part union is sealed to models).
+	r.RegisterPart(PartType, func(data []byte) (models.Part, error) {
 		raw := make([]byte, len(data))
 		copy(raw, data)
-		return wingmodels.OpaquePart{TypeName: PartType, Raw: raw}, nil
+		return models.OpaquePart{TypeName: PartType, Raw: raw}, nil
 	})
 
 	r.RegisterBeforeStep(p.beforeStep)
@@ -212,7 +212,7 @@ func (p *Plugin) Install(r *plugin.Registry) error {
 // from the start, if none) up to the keepTail boundary, then append a
 // new marker. The pre-compaction messages are kept in history so the
 // transcript remains addressable on disk and via History().
-func (p *Plugin) beforeStep(ctx context.Context, info loop.BeforeStepInfo) ([]wingmodels.Message, error) {
+func (p *Plugin) beforeStep(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
 	model := p.model
 	if model == nil {
 		model = info.Model
@@ -268,14 +268,14 @@ func (p *Plugin) beforeStep(ctx context.Context, info loop.BeforeStepInfo) ([]wi
 		return nil, fmt.Errorf("build marker: %w", err)
 	}
 
-	markerMsg := wingmodels.Message{
-		Role:    wingmodels.RoleUser,
-		Content: wingmodels.Content{markerPart},
+	markerMsg := models.Message{
+		Role:    models.RoleUser,
+		Content: models.Content{markerPart},
 	}
 
 	// Append marker between head and tail. Result:
 	//   [...preserved..., latestMarker?, ...head..., NEW MARKER, ...tail...]
-	out := make([]wingmodels.Message, 0, len(info.Messages)+1)
+	out := make([]models.Message, 0, len(info.Messages)+1)
 	out = append(out, info.Messages[:tailStart]...)
 	out = append(out, markerMsg)
 	out = append(out, info.Messages[tailStart:]...)
@@ -297,7 +297,7 @@ func (p *Plugin) beforeStep(ctx context.Context, info loop.BeforeStepInfo) ([]wi
 // message synthesizing all marker summaries; keep everything after.
 //
 // If no marker is present, return the messages unchanged.
-func (p *Plugin) transformContext(_ context.Context, info loop.TransformContextInfo) ([]wingmodels.Message, error) {
+func (p *Plugin) transformContext(_ context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
 	latest := findLatestMarker(info.Messages)
 	if latest < 0 {
 		return info.Messages, nil
@@ -322,17 +322,17 @@ func (p *Plugin) transformContext(_ context.Context, info loop.TransformContextI
 		return info.Messages, nil
 	}
 
-	synth := wingmodels.Message{
-		Role: wingmodels.RoleUser,
-		Content: wingmodels.Content{
-			wingmodels.TextPart{
+	synth := models.Message{
+		Role: models.RoleUser,
+		Content: models.Content{
+			models.TextPart{
 				Text: "[Prior conversation summary]\n\n" + strings.Join(summaries, "\n\n"),
 			},
 		},
 	}
 
 	tail := info.Messages[latest+1:]
-	out := make([]wingmodels.Message, 0, 1+len(tail))
+	out := make([]models.Message, 0, 1+len(tail))
 	out = append(out, synth)
 	out = append(out, tail...)
 	return out, nil
@@ -340,7 +340,7 @@ func (p *Plugin) transformContext(_ context.Context, info loop.TransformContextI
 
 // findLatestMarker returns the index of the last message whose first
 // part (or any part) is a compaction marker. -1 if none.
-func findLatestMarker(msgs []wingmodels.Message) int {
+func findLatestMarker(msgs []models.Message) int {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		for _, p := range msgs[i].Content {
 			if p.Type() == PartType {
@@ -352,23 +352,23 @@ func findLatestMarker(msgs []wingmodels.Message) int {
 }
 
 // summarize runs a single non-tool LLM call to produce a compact
-// summary. Uses wingmodels.Run for sync drainage; we only want the
+// summary. Uses models.Run for sync drainage; we only want the
 // final assembled text.
-func summarize(ctx context.Context, model wingmodels.Model, prompt string, msgs []wingmodels.Message) (string, error) {
+func summarize(ctx context.Context, model models.Model, prompt string, msgs []models.Message) (string, error) {
 	if prompt == "" {
 		prompt = defaultSummaryPrompt
 	}
-	req := wingmodels.Request{
+	req := models.Request{
 		System:   prompt,
 		Messages: stripForSummarization(msgs),
 	}
-	out, err := wingmodels.Run(ctx, model, req)
+	out, err := models.Run(ctx, model, req)
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
 	for _, p := range out.Content {
-		if tp, ok := p.(wingmodels.TextPart); ok {
+		if tp, ok := p.(models.TextPart); ok {
 			b.WriteString(tp.Text)
 		}
 	}
@@ -384,24 +384,24 @@ func summarize(ctx context.Context, model wingmodels.Model, prompt string, msgs 
 // user-role with inline markers; tool calls / results / reasoning
 // become bracketed text; existing markers are inlined; non-text parts
 // (images, etc.) are described by type.
-func stripForSummarization(msgs []wingmodels.Message) []wingmodels.Message {
-	out := make([]wingmodels.Message, 0, len(msgs))
+func stripForSummarization(msgs []models.Message) []models.Message {
+	out := make([]models.Message, 0, len(msgs))
 	for _, m := range msgs {
 		role := m.Role
-		if role == wingmodels.RoleTool {
-			role = wingmodels.RoleUser
+		if role == models.RoleTool {
+			role = models.RoleUser
 		}
 		var b strings.Builder
 		for _, p := range m.Content {
 			switch v := p.(type) {
-			case wingmodels.TextPart:
+			case models.TextPart:
 				b.WriteString(v.Text)
-			case wingmodels.ReasoningPart:
+			case models.ReasoningPart:
 				b.WriteString("[reasoning] ")
 				b.WriteString(truncate(v.Reasoning, 500))
-			case wingmodels.ToolCallPart:
+			case models.ToolCallPart:
 				b.WriteString(fmt.Sprintf("[tool_call %s(%s)]", v.Name, summarizeArgs(v.Input)))
-			case wingmodels.ToolResultPart:
+			case models.ToolResultPart:
 				b.WriteString(fmt.Sprintf("[tool_result %s] %s", flagError(v.IsError), truncate(extractText(v.Output), 500)))
 			default:
 				if mk, ok := DecodeMarker(p); ok {
@@ -417,9 +417,9 @@ func stripForSummarization(msgs []wingmodels.Message) []wingmodels.Message {
 		if text == "" {
 			continue
 		}
-		out = append(out, wingmodels.Message{
+		out = append(out, models.Message{
 			Role:    role,
-			Content: wingmodels.Content{wingmodels.TextPart{Text: text}},
+			Content: models.Content{models.TextPart{Text: text}},
 		})
 	}
 	return out
@@ -436,14 +436,14 @@ func summarizeArgs(args map[string]any) string {
 	return strings.Join(keys, ",")
 }
 
-func extractText(parts []wingmodels.Part) string {
+func extractText(parts []models.Part) string {
 	var b strings.Builder
 	for i, p := range parts {
 		if i > 0 {
 			b.WriteString(" ")
 		}
 		switch v := p.(type) {
-		case wingmodels.TextPart:
+		case models.TextPart:
 			b.WriteString(v.Text)
 		default:
 			b.WriteString("[" + p.Type() + "]")
@@ -468,23 +468,23 @@ func truncate(s string, n int) string {
 
 // approxTokens estimates token count from raw text via the chars/4
 // heuristic. Used only when Model.CountTokens errors.
-func approxTokens(msgs []wingmodels.Message) int {
+func approxTokens(msgs []models.Message) int {
 	chars := 0
 	for _, m := range msgs {
 		for _, p := range m.Content {
 			switch v := p.(type) {
-			case wingmodels.TextPart:
+			case models.TextPart:
 				chars += len(v.Text)
-			case wingmodels.ReasoningPart:
+			case models.ReasoningPart:
 				chars += len(v.Reasoning)
-			case wingmodels.ToolCallPart:
+			case models.ToolCallPart:
 				chars += len(v.Name)
 				for k, val := range v.Input {
 					chars += len(k) + len(fmt.Sprintf("%v", val))
 				}
-			case wingmodels.ToolResultPart:
+			case models.ToolResultPart:
 				for _, op := range v.Output {
-					if t, ok := op.(wingmodels.TextPart); ok {
+					if t, ok := op.(models.TextPart); ok {
 						chars += len(t.Text)
 					}
 				}

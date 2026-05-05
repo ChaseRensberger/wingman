@@ -8,7 +8,7 @@
 //     completed message via Store.AppendMessage as it lands.
 //
 // Together these give a session full-cycle persistence (load + save)
-// without the SDK or loop core ever importing storage. The same code
+// without the SDK or loop core ever importing store. The same code
 // powers the HTTP server's session handlers.
 //
 // # Why a plugin
@@ -22,7 +22,7 @@
 //
 // # Usage
 //
-//	store, _ := storage.NewSQLiteStore("/path/to/wingman.db")
+//	store, _ := store.NewSQLiteStore("/path/to/wingman.db")
 //	sess, _ := store.GetSession(sessionID) // ensure the session exists
 //	s := session.New(
 //	    session.WithModel(model),
@@ -41,10 +41,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // PluginName is the stable identifier returned by Plugin.Name. Exposed
@@ -58,12 +58,12 @@ const PluginName = "storage"
 // The Plugin is bound to a single sessionID; reuse across sessions is
 // not supported (and would conflate transcripts). Construct a fresh
 // Plugin per session activation, which is what the HTTP server does.
-func NewPlugin(store storage.Store, sessionID string) plugin.Plugin {
+func NewPlugin(store store.Store, sessionID string) plugin.Plugin {
 	return &storagePlugin{store: store, sessionID: sessionID}
 }
 
 type storagePlugin struct {
-	store     storage.Store
+	store     store.Store
 	sessionID string
 }
 
@@ -80,7 +80,7 @@ func (p *storagePlugin) Install(r *plugin.Registry) error {
 		return fmt.Errorf("storage plugin: empty sessionID")
 	}
 
-	r.RegisterBeforeRun(func(_ context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
+	r.RegisterBeforeRun(func(_ context.Context, current []models.Message) ([]models.Message, error) {
 		sess, err := p.store.GetSession(p.sessionID)
 		if err != nil {
 			return nil, fmt.Errorf("storage plugin: load session %s: %w", p.sessionID, err)
@@ -89,7 +89,7 @@ func (p *storagePlugin) Install(r *plugin.Registry) error {
 		// expected case is current == empty (storage is the first
 		// BeforeRun installed), but composing under a header-injection
 		// plugin should still work cleanly.
-		return append(append([]wingmodels.Message(nil), current...), sess.History...), nil
+		return append(append([]models.Message(nil), current...), sess.History...), nil
 	})
 
 	r.RegisterSink(loop.SinkFunc(func(e loop.Event) {

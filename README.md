@@ -11,5 +11,5 @@ An open-source agent harness.
 | Package | Description |
 |---------|-------------|
 | **[WingAgent](agent)** | Core agent runtime |
-| **[WingModels](wingmodels)** | Provider-agnostic model SDK |
+| **[WingModels](models)** | Provider-agnostic model SDK |
 | **[WingNews](https://news.wingman.actor)** | A HackerNews client |

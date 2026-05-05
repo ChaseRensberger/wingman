@@ -13,8 +13,8 @@ Wingman is intentionally built from a small number of packages that can be used 
 
 The repository is a single Go module split into two products:
 
-- **`wingmodels/`** is the model layer. It defines `Model`, `Message`, `Part`, `StreamPart`, and `Usage`, and ships built-in providers under `wingmodels/providers/{anthropic,ollama}` plus a small `provider.Registry`.
-- **`agent/`** is the agent layer. It contains the `loop`, `session`, `tool`, `plugin`, `storage`, and `server` packages. Everything in `agent` is built on top of `wingmodels` and never the reverse.
+- **`models/`** is the model layer. It defines `Model`, `Message`, `Part`, `StreamPart`, and `Usage`, and ships built-in providers under `models/providers/{anthropic,ollama}` plus a small `provider.Registry`.
+- **`agent/`** is the agent layer. It contains the `loop`, `session`, `tool`, `plugin`, `storage`, and `server` packages. Everything in `agent` is built on top of `models` and never the reverse.
 
 The HTTP server (`server`) is a thin transport layer over the same primitives the SDK exposes.
 
@@ -27,15 +27,15 @@ The HTTP server (`server`) is a thin transport layer over the same primitives th
 +--------------------+     agent/loop     (inference loop, hooks, events)
 +--------------------+     agent/plugin   (Plugin / Registry)
 +--------------------+     tool     (built-ins + Tool interface)
-+--------------------+     wingmodels/providers (Anthropic, Ollama, Registry)
-+--------------------+     wingmodels         (Model, Message, Part, StreamPart)
++--------------------+     models/providers (Anthropic, Ollama, Registry)
++--------------------+     models         (Model, Message, Part, StreamPart)
 ```
 
 Lower layers never import higher ones.
 
-## The `wingmodels` package
+## The `models` package
 
-`wingmodels` is the shared contract. The `Model` interface is small:
+`models` is the shared contract. The `Model` interface is small:
 
 ```go
 type Model interface {
@@ -46,16 +46,16 @@ type Model interface {
 }
 ```
 
-A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union sealed to the `wingmodels` package; plugins extend it through an open registry by registering a discriminator string and decoder, and serializing payloads as `OpaquePart` so the union stays sealed. See [Parts](./wingmodels/parts).
+A `Message` is a role plus a list of `Part`s. `Part` is a discriminated union sealed to the `models` package; plugins extend it through an open registry by registering a discriminator string and decoder, and serializing payloads as `OpaquePart` so the union stays sealed. See [Parts](./models/parts).
 
-`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds three things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, `FinishReasonAborted` exists alongside the standard reasons, and the assembled `*Message` is stamped with both `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`) so downstream code can reason about what produced each turn. See [Streaming](./wingmodels/streaming).
+`StreamPart` mirrors Vercel AI SDK v3 `LanguageModelV3StreamPart` exactly. Wingman adds three things on top of the AI SDK enum: `FinishPart` carries the assembled `*Message`, `FinishReasonAborted` exists alongside the standard reasons, and the assembled `*Message` is stamped with both `FinishReason` and a `MessageOrigin` (`Provider`, `API`, `ModelID`) so downstream code can reason about what produced each turn. See [Streaming](./models/streaming).
 
 ## Mid-session model switching
 
 Wingman expects callers to swap the active model mid-session (different turns may run on different providers entirely). Three things make that safe:
 
 - **`MessageOrigin` on every assistant message.** Providers stamp it on the assembled message inside `FinishPart`. `MessageOrigin.SameModel` lets the next provider tell whether the prior turn came from the exact same wire API + model.
-- **`wingmodels/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them (`Capabilities.Images == false`). The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
+- **`models/transform`.** Each provider calls `transform.Apply(messages, target)` at the top of its `Stream` implementation. The pure function drops failed-turn assistant messages (`FinishReason` `error`/`aborted`) and their orphan tool calls, drops reasoning blocks unless the next call is `SameModel`, and downgrades image parts to a text placeholder when the target model can't accept them (`Capabilities.Images == false`). The loop and the session never see this rewriting — it lives entirely inside the provider boundary.
 - **`ModelInfo.Capabilities`.** Providers populate a `ModelCapabilities` struct (`Tools`, `Images`, `Reasoning`, `StructuredOutput`) from catalog data at construction time. The transform layer reads `Capabilities.Images`; the agent loop can inspect the others to decide which features to use.
 
 ## The `agent/loop` package
@@ -93,13 +93,13 @@ Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools
 Two canonical plugins ship in-tree:
 
 - `plugins/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
-- `storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing storage.
+- `storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing store.
 
 See [Plugins](./agent/plugins).
 
 ## Storage
 
-`storage.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storageplugin.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
+`store.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storageplugin.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
 IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./storage).
 

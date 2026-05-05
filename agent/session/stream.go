@@ -43,7 +43,7 @@ type SessionStream struct {
 //   - "message":             Data is loop.MessageEvent
 //   - "tool_start":          Data is loop.ToolExecutionStartEvent
 //   - "tool_end":            Data is loop.ToolExecutionEndEvent
-//   - "stream_part":         Data is loop.StreamPartEvent (carries wingmodels.StreamPart)
+//   - "stream_part":         Data is loop.StreamPartEvent (carries models.StreamPart)
 //   - "compaction":          Data is loop.ContextTransformedEvent (head Part type "compaction_marker")
 //   - "context_transformed": Data is loop.ContextTransformedEvent (other transforms)
 //   - "error":               Data is loop.ErrorEvent

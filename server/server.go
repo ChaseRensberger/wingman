@@ -14,11 +14,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/store"
 )
 
 type Server struct {
-	store  storage.Store
+	store  store.Store
 	router *chi.Mux
 	aborts *abortRegistry
 
@@ -37,7 +37,7 @@ type Server struct {
 }
 
 type Config struct {
-	Store storage.Store
+	Store store.Store
 }
 
 func New(cfg Config) *Server {

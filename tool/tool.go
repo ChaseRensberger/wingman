@@ -1,17 +1,17 @@
 // Package tool defines the executor-bearing tool contract used by the
 // agent loop and the built-in tool implementations.
 //
-// The loop and storage layer also reference wingmodels.ToolDef, which is
+// The loop and storage layer also reference models.ToolDef, which is
 // the wire-format schema (description + JSON Schema) sent to the model
 // provider. The split is intentional:
 //
-//   - wingmodels.ToolDef is data that travels to the LLM. It has no
+//   - models.ToolDef is data that travels to the LLM. It has no
 //     execute method and no idea how to run.
 //   - tool.Tool is the runtime contract the loop uses to actually execute
 //     a call. It owns the executor function, work-dir context, and any
 //     tool-specific state.
 //
-// A Tool produces a wingmodels.ToolDef via Definition(). The loop
+// A Tool produces a models.ToolDef via Definition(). The loop
 // translates [Definition] to ToolDef when building each provider request.
 package tool
 
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // Tool is the executor contract every agent tool implements. The loop
@@ -50,10 +50,10 @@ type SequentialTool interface {
 }
 
 // Definition is the JSON-Schema shaped declaration the loop sends to the
-// model. It mirrors wingmodels.ToolDef but uses a typed schema struct so
+// model. It mirrors models.ToolDef but uses a typed schema struct so
 // builtin tools can write definitions without wrestling with map[string]any.
 //
-// The loop converts Definition into wingmodels.ToolDef by reflating the
+// The loop converts Definition into models.ToolDef by reflating the
 // nested schema into the open-ended map shape providers consume.
 type Definition struct {
 	Name        string      `json:"name"`
@@ -82,7 +82,7 @@ type Property struct {
 // AsModelToolDef converts a Definition into the open-ended ToolDef the
 // model layer expects. Centralizing the conversion here keeps providers
 // from having to know about the typed schema shape.
-func (d Definition) AsModelToolDef() wingmodels.ToolDef {
+func (d Definition) AsModelToolDef() models.ToolDef {
 	props := make(map[string]any, len(d.InputSchema.Properties))
 	for name, p := range d.InputSchema.Properties {
 		obj := map[string]any{"type": p.Type}
@@ -101,7 +101,7 @@ func (d Definition) AsModelToolDef() wingmodels.ToolDef {
 	if len(d.InputSchema.Required) > 0 {
 		schema["required"] = d.InputSchema.Required
 	}
-	return wingmodels.ToolDef{
+	return models.ToolDef{
 		Name:        d.Name,
 		Description: d.Description,
 		InputSchema: schema,

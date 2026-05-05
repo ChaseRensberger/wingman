@@ -7,7 +7,7 @@ order: 104
 
 # Streaming
 
-Wingman has two layers of streaming. This page covers the upper layer — loop lifecycle events, SDK consumption, and the SSE wire format. For the provider stream parts that make up a single assistant turn, see [Streaming](../wingmodels/streaming).
+Wingman has two layers of streaming. This page covers the upper layer — loop lifecycle events, SDK consumption, and the SSE wire format. For the provider stream parts that make up a single assistant turn, see [Streaming](../models/streaming).
 
 ## Loop lifecycle events
 
@@ -41,7 +41,7 @@ for stream.Next() {
     switch ev.Type {
     case "stream_part":
         if part, ok := ev.Data.(loop.StreamPartEvent); ok {
-            // part.Part is a wingmodels.StreamPart
+            // part.Part is a models.StreamPart
             _ = part
         }
     case "tool_start":
@@ -86,7 +86,7 @@ data: <json>
 | `message` | `loop.MessageEvent` |
 | `tool_start` | `loop.ToolExecutionStartEvent` |
 | `tool_end` | `loop.ToolExecutionEndEvent` |
-| `stream_part` | `loop.StreamPartEvent` (carries a `wingmodels.StreamPart`) |
+| `stream_part` | `loop.StreamPartEvent` (carries a `models.StreamPart`) |
 | `compaction` | `loop.ContextTransformedEvent` (head Part type `compaction_marker`) |
 | `context_transformed` | `loop.ContextTransformedEvent` (other transforms) |
 | `error` | `{"error": "..."}` |

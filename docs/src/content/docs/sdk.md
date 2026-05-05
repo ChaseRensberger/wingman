@@ -30,7 +30,7 @@ import (
 
     "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
-    "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+    "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 func main() {
@@ -89,8 +89,8 @@ If you prefer the registry path the server uses, blank-import a provider and con
 
 ```go
 import (
-    provider "github.com/chaserensberger/wingman/wingmodels/providers"
-    _ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+    provider "github.com/chaserensberger/wingman/models/providers"
+    _ "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 m, err := provider.New("anthropic", map[string]any{
@@ -100,7 +100,7 @@ m, err := provider.New("anthropic", map[string]any{
 })
 ```
 
-See [Providers](./wingmodels/providers).
+See [Providers](./models/providers).
 
 ## Session options
 
@@ -108,7 +108,7 @@ See [Providers](./wingmodels/providers).
 
 | Option | Purpose |
 |---|---|
-| `WithModel(m)` | Set the active `wingmodels.Model`. Required before `Run`. |
+| `WithModel(m)` | Set the active `models.Model`. Required before `Run`. |
 | `WithSystem(s)` | System prompt sent on every turn. |
 | `WithTools(...)` | Tools the model may invoke. |
 | `WithWorkDir(dir)` | Working directory passed to tool executions. |
@@ -117,7 +117,7 @@ See [Providers](./wingmodels/providers).
 | `WithTransformContext(h)` | One-off raw `TransformContextHook`. |
 | `WithMessageSink(fn)` | Synchronous callback fired for every message added to history. |
 
-Setters (`SetModel`, `SetSystem`, `SetTools`, `SetWorkDir`) let handlers configure a session lazily. `History()`, `AddMessage`, `SetHistory`, and `Clear` manage the running transcript — useful when rehydrating from storage.
+Setters (`SetModel`, `SetSystem`, `SetTools`, `SetWorkDir`) let handlers configure a session lazily. `History()`, `AddMessage`, `SetHistory`, and `Clear` manage the running transcript — useful when rehydrating from store.
 
 ## Multi-turn
 

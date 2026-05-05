@@ -10,13 +10,13 @@ import (
 
 	"github.com/chaserensberger/wingman/plugins/storage"
 	"github.com/chaserensberger/wingman/agent/session"
-	"github.com/chaserensberger/wingman/storage"
+	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
-	"github.com/chaserensberger/wingman/wingmodels/providers"
+	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/models/providers"
 
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
+	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 )
 
 type CreateSessionRequest struct {
@@ -42,10 +42,10 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		title = defaultSessionTitle
 	}
 
-	sess := &storage.Session{
+	sess := &store.Session{
 		Title:   title,
 		WorkDir: req.WorkDir,
-		History: []wingmodels.Message{},
+		History: []models.Message{},
 	}
 
 	if err := s.store.CreateSession(sess); err != nil {
@@ -63,7 +63,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sessions == nil {
-		sessions = []*storage.Session{}
+		sessions = []*store.Session{}
 	}
 	writeJSON(w, http.StatusOK, sessions)
 }
@@ -134,7 +134,7 @@ type MessageSessionRequest struct {
 type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
 	ToolCalls []session.ToolCallResult `json:"tool_calls"`
-	Usage     wingmodels.Usage         `json:"usage"`
+	Usage     models.Usage         `json:"usage"`
 	Steps     int                      `json:"steps"`
 }
 
@@ -340,7 +340,7 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 // registry, resolves the tool registry, and installs the storage plugin
 // so the session loads its history from disk on Run and persists every
 // new message back as it lands.
-func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*session.Session, error) {
+func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
 	if stored.Provider == "" || stored.Model == "" {
 		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
 	}
@@ -367,7 +367,7 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 		opts = append(opts, session.WithTools(tools...))
 	}
 	if len(stored.OutputSchema) > 0 {
-		opts = append(opts, session.WithOutputSchema(&wingmodels.OutputSchema{
+		opts = append(opts, session.WithOutputSchema(&models.OutputSchema{
 			Name:   stored.ID,
 			Schema: stored.OutputSchema,
 			Strict: true,
@@ -377,10 +377,10 @@ func (s *Server) buildSession(stored *storage.Agent, sess *storage.Session) (*se
 	return session.New(opts...), nil
 }
 
-// buildModel instantiates a wingmodels.Model from the providers registry.
+// buildModel instantiates a models.Model from the providers registry.
 // It merges the stored options with the model name and any API key from
 // the auth store.
-func (s *Server) buildModel(providerID, model string, opts map[string]any) (wingmodels.Model, error) {
+func (s *Server) buildModel(providerID, model string, opts map[string]any) (models.Model, error) {
 	merged := make(map[string]any, len(opts)+2)
 	for k, v := range opts {
 		merged[k] = v

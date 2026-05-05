@@ -9,7 +9,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/loop/looptest"
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // TestLoopRespectsMaxSteps answers: Does the loop terminate at Config.MaxSteps even when the model would keep emitting tool calls forever?
@@ -57,14 +57,14 @@ func TestBeforeRunSeedsInitialMessages(t *testing.T) {
 	model := looptest.NewRecordingModel(looptest.Reply("ack"))
 	sink := looptest.NewRecordingSink()
 
-	seeded := []wingmodels.Message{
-		wingmodels.NewUserText("seed-user"),
-		wingmodels.NewAssistantText("seed-assistant"),
+	seeded := []models.Message{
+		models.NewUserText("seed-user"),
+		models.NewAssistantText("seed-assistant"),
 	}
 
 	hooks := loop.Hooks{
-		BeforeRun: func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
-			return append([]wingmodels.Message(nil), seeded...), nil
+		BeforeRun: func(ctx context.Context, current []models.Message) ([]models.Message, error) {
+			return append([]models.Message(nil), seeded...), nil
 		},
 	}
 
@@ -83,10 +83,10 @@ func TestBeforeRunSeedsInitialMessages(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages in first request, got %d", len(msgs))
 	}
-	if msgs[0].Role != wingmodels.RoleUser || !hasText(msgs[0], "seed-user") {
+	if msgs[0].Role != models.RoleUser || !hasText(msgs[0], "seed-user") {
 		t.Errorf("first message mismatch: role=%q", msgs[0].Role)
 	}
-	if msgs[1].Role != wingmodels.RoleAssistant || !hasText(msgs[1], "seed-assistant") {
+	if msgs[1].Role != models.RoleAssistant || !hasText(msgs[1], "seed-assistant") {
 		t.Errorf("second message mismatch: role=%q", msgs[1].Role)
 	}
 }
@@ -100,13 +100,13 @@ func TestBeforeRunAndConfigMessagesMutuallyExclusive(t *testing.T) {
 	sink := looptest.NewRecordingSink()
 
 	hooks := loop.Hooks{
-		BeforeRun: func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error) {
-			return []wingmodels.Message{wingmodels.NewUserText("x")}, nil
+		BeforeRun: func(ctx context.Context, current []models.Message) ([]models.Message, error) {
+			return []models.Message{models.NewUserText("x")}, nil
 		},
 	}
 
 	cfg := newConfig(t, model, sink, hooks)
-	cfg.Messages = []wingmodels.Message{wingmodels.NewUserText("existing")}
+	cfg.Messages = []models.Message{models.NewUserText("existing")}
 
 	_, err := loop.Run(ctx, cfg)
 	if err == nil {
@@ -133,12 +133,12 @@ func TestBeforeStepMutationPersistsAcrossTurns(t *testing.T) {
 	)
 	sink := looptest.NewRecordingSink()
 
-	marker := wingmodels.NewUserText("synthetic-marker")
+	marker := models.NewUserText("synthetic-marker")
 
 	hooks := loop.Hooks{
-		BeforeStep: func(ctx context.Context, info loop.BeforeStepInfo) ([]wingmodels.Message, error) {
+		BeforeStep: func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
 			if info.Step == 1 {
-				out := make([]wingmodels.Message, 0, len(info.Messages)+1)
+				out := make([]models.Message, 0, len(info.Messages)+1)
 				out = append(out, marker)
 				out = append(out, info.Messages...)
 				return out, nil
@@ -188,12 +188,12 @@ func TestTransformContextDoesNotPersist(t *testing.T) {
 	)
 	sink := looptest.NewRecordingSink()
 
-	marker := wingmodels.NewUserText("transform-marker")
+	marker := models.NewUserText("transform-marker")
 
 	hooks := loop.Hooks{
-		TransformContext: func(ctx context.Context, info loop.TransformContextInfo) ([]wingmodels.Message, error) {
+		TransformContext: func(ctx context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
 			if info.Step == 1 {
-				out := make([]wingmodels.Message, 0, len(info.Messages)+1)
+				out := make([]models.Message, 0, len(info.Messages)+1)
 				out = append(out, marker)
 				out = append(out, info.Messages...)
 				return out, nil
@@ -277,11 +277,11 @@ func TestBeforeToolCallSkipSynthesizesResult(t *testing.T) {
 
 	var found bool
 	for _, m := range reqs[1].Messages {
-		if m.Role != wingmodels.RoleTool {
+		if m.Role != models.RoleTool {
 			continue
 		}
 		for _, p := range m.Content {
-			trp, ok := p.(wingmodels.ToolResultPart)
+			trp, ok := p.(models.ToolResultPart)
 			if !ok {
 				continue
 			}
@@ -290,7 +290,7 @@ func TestBeforeToolCallSkipSynthesizesResult(t *testing.T) {
 				t.Errorf("expected 1 output part, got %d", len(trp.Output))
 				continue
 			}
-			tp, ok := trp.Output[0].(wingmodels.TextPart)
+			tp, ok := trp.Output[0].(models.TextPart)
 			if !ok {
 				t.Errorf("expected TextPart, got %T", trp.Output[0])
 				continue
@@ -351,11 +351,11 @@ func TestAfterToolCallRewriteEchoedToModel(t *testing.T) {
 
 	var found bool
 	for _, m := range reqs[1].Messages {
-		if m.Role != wingmodels.RoleTool {
+		if m.Role != models.RoleTool {
 			continue
 		}
 		for _, p := range m.Content {
-			trp, ok := p.(wingmodels.ToolResultPart)
+			trp, ok := p.(models.ToolResultPart)
 			if !ok {
 				continue
 			}
@@ -364,7 +364,7 @@ func TestAfterToolCallRewriteEchoedToModel(t *testing.T) {
 				t.Errorf("expected 1 output part, got %d", len(trp.Output))
 				continue
 			}
-			tp, ok := trp.Output[0].(wingmodels.TextPart)
+			tp, ok := trp.Output[0].(models.TextPart)
 			if !ok {
 				t.Errorf("expected TextPart, got %T", trp.Output[0])
 				continue

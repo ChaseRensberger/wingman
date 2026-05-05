@@ -13,12 +13,12 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/chaserensberger/wingman/server"
-	"github.com/chaserensberger/wingman/storage"
-	"github.com/chaserensberger/wingman/wingmodels/catalog"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/ollama"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/openai"
-	_ "github.com/chaserensberger/wingman/wingmodels/providers/opencodezen"
+	"github.com/chaserensberger/wingman/store"
+	"github.com/chaserensberger/wingman/models/catalog"
+	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/models/providers/ollama"
+	_ "github.com/chaserensberger/wingman/models/providers/openai"
+	_ "github.com/chaserensberger/wingman/models/providers/opencodezen"
 )
 
 var (
@@ -73,13 +73,13 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	dbPath := cmd.String("db")
 	if dbPath == "" {
 		var err error
-		dbPath, err = storage.DefaultDBPath()
+		dbPath, err = store.DefaultDBPath()
 		if err != nil {
 			return fmt.Errorf("failed to get default database path: %w", err)
 		}
 	}
 
-	store, err := storage.NewSQLiteStore(dbPath)
+	store, err := store.NewSQLiteStore(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}

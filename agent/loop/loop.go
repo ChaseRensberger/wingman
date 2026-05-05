@@ -1,4 +1,4 @@
-// Package loop is the agent inference loop. It drives a wingmodels.Model
+// Package loop is the agent inference loop. It drives a models.Model
 // across multiple turns, dispatches tool calls between turns, and emits
 // lifecycle events to a sink.
 //
@@ -42,7 +42,7 @@
 //
 // The loop emits two layers of events to the Sink:
 //
-//   - Raw wingmodels.StreamPart values from the active provider stream,
+//   - Raw models.StreamPart values from the active provider stream,
 //     wrapped as a StreamPartEvent. Consumers that want to forward
 //     provider streaming verbatim (e.g., the SSE handler) can do so.
 //   - High-level lifecycle events: IterationStartEvent, IterationEndEvent,
@@ -60,20 +60,20 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 // Config carries everything the loop needs to run. All fields except
 // Model and Messages have sensible zero-value defaults.
 type Config struct {
-	// Model is the wingmodels.Model the loop streams against. Required.
-	Model wingmodels.Model
+	// Model is the models.Model the loop streams against. Required.
+	Model models.Model
 
 	// Messages is the conversation history the loop appends to. The loop
 	// mutates this slice in place: assistant messages from each turn and
 	// tool result messages from each batch are appended. Callers that
 	// need the snapshot use Result.Messages instead.
-	Messages []wingmodels.Message
+	Messages []models.Message
 
 	// System is the system prompt sent to the model. Empty string is
 	// treated as "no system prompt".
@@ -93,13 +93,13 @@ type Config struct {
 	// Zero value is treated as ToolChoiceAuto by all providers.
 	// Typical use: force ToolChoiceRequired when structured output is needed,
 	// or ToolChoiceNone to prevent tool use on a specific session.
-	ToolChoice wingmodels.ToolChoice
+	ToolChoice models.ToolChoice
 
 	// Capabilities are request-level knobs forwarded to the model on every
 	// turn. Providers silently ignore fields they don't support.
 	// Example: set Capabilities.Thinking to enable extended reasoning on
 	// Anthropic models.
-	Capabilities wingmodels.Capabilities
+	Capabilities models.Capabilities
 
 	// OutputSchema, when non-nil, constrains the assistant's final reply
 	// to a JSON document conforming to the schema. The loop applies it
@@ -112,7 +112,7 @@ type Config struct {
 	// Providers that lack native structured-output support silently ignore
 	// this field; consult Model.Info().Capabilities.StructuredOutput for
 	// reliable detection.
-	OutputSchema *wingmodels.OutputSchema
+	OutputSchema *models.OutputSchema
 
 	// MaxSteps caps the number of assistant turns. Zero means unlimited
 	// (the loop terminates only when the model produces a turn with no
@@ -266,21 +266,21 @@ type Hooks struct {
 // same channel as loop-produced messages.
 type BeforeStepInfo struct {
 	Step     int
-	Messages []wingmodels.Message
-	Usage    wingmodels.Usage
-	Model    wingmodels.Model
+	Messages []models.Message
+	Usage    models.Usage
+	Model    models.Model
 	Sink     Sink
 }
 
 // BeforeStepHook is the signature for Hooks.BeforeStep. See its docs.
-type BeforeStepHook func(ctx context.Context, info BeforeStepInfo) ([]wingmodels.Message, error)
+type BeforeStepHook func(ctx context.Context, info BeforeStepInfo) ([]models.Message, error)
 
 // BeforeRunHook is the signature for Hooks.BeforeRun. It returns the
 // initial message history for the run. Composed across plugins by the
 // registry: each hook receives the accumulated history from prior hooks
 // and returns the new accumulated history. Returning nil is a no-op
 // (chain continues with the accumulator unchanged).
-type BeforeRunHook func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error)
+type BeforeRunHook func(ctx context.Context, current []models.Message) ([]models.Message, error)
 
 // TransformContextInfo is the input to a TransformContextHook. Step is
 // 1-indexed and reflects the current iteration. Messages is the slice
@@ -288,13 +288,13 @@ type BeforeRunHook func(ctx context.Context, current []wingmodels.Message) ([]wi
 // hooks can introspect (e.g. context window) for budget decisions.
 type TransformContextInfo struct {
 	Step     int
-	Messages []wingmodels.Message
-	Model    wingmodels.Model
+	Messages []models.Message
+	Model    models.Model
 }
 
 // TransformContextHook is the signature for Hooks.TransformContext. See
 // its docs.
-type TransformContextHook func(ctx context.Context, info TransformContextInfo) ([]wingmodels.Message, error)
+type TransformContextHook func(ctx context.Context, info TransformContextInfo) ([]models.Message, error)
 
 // BeforeToolCallFunc is the signature for Hooks.BeforeToolCall. See
 // the field docs for semantics. Named so plugin composition layers can
@@ -348,12 +348,12 @@ type ToolResult struct {
 // results produced by executing its tool calls.
 type Turn struct {
 	Step      int
-	Assistant wingmodels.Message
+	Assistant models.Message
 	// Results is in source order (the order the assistant emitted the
 	// tool calls in), regardless of execution mode. Empty if the
 	// assistant produced no tool calls.
 	Results []ToolResult
-	Usage   wingmodels.Usage
+	Usage   models.Usage
 }
 
 // Result is the loop's terminal value, returned from Run.
@@ -361,7 +361,7 @@ type Result struct {
 	// Messages is the full conversation after the loop. This includes
 	// the input messages the caller passed in. Callers that want only
 	// the new messages take Messages[len(input):].
-	Messages []wingmodels.Message
+	Messages []models.Message
 
 	// Turns is every completed turn in execution order. Each Turn
 	// includes the assistant message and tool results in source order
@@ -370,7 +370,7 @@ type Result struct {
 	Turns []Turn
 
 	// Usage is the cumulative token usage across every turn.
-	Usage wingmodels.Usage
+	Usage models.Usage
 
 	// Steps is the number of turns the loop ran (1-indexed; 1 means one
 	// assistant turn).
@@ -441,7 +441,7 @@ type IterationEndEvent struct {
 // running history. This includes the assistant message at the end of
 // each turn and any tool result messages produced by tool execution.
 type MessageEvent struct {
-	Message wingmodels.Message
+	Message models.Message
 }
 
 // ToolExecutionStartEvent fires immediately before Tool.Execute is
@@ -465,7 +465,7 @@ type ToolExecutionEndEvent struct {
 // Consumers that only want lifecycle events ignore them.
 type StreamPartEvent struct {
 	Step int
-	Part wingmodels.StreamPart
+	Part models.StreamPart
 }
 
 // ErrorEvent fires when the loop is about to terminate with an error.
@@ -490,7 +490,7 @@ type ContextTransformedEvent struct {
 	Phase         string // "before_step" | "transform_context"
 	OriginalCount int
 	NewCount      int
-	Head          *wingmodels.Message
+	Head          *models.Message
 }
 
 func (IterationStartEvent) isEvent()      {}

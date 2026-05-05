@@ -57,7 +57,7 @@ curl -sS -X POST http://localhost:2323/agents \
 | `name` | string | Required display name |
 | `provider` | string | Provider id such as `anthropic` |
 | `model` | string | Model id such as `claude-haiku-4-5` |
-| `options` | object | Provider-specific inference settings (see [Providers](../wingmodels/providers)) |
+| `options` | object | Provider-specific inference settings (see [Providers](../models/providers)) |
 | `instructions` | string | System prompt sent on every inference call |
 | `tools` | string[] | Built-in tool names ([Tools](./tools)) |
 | `output_schema` | object | Optional JSON Schema for structured output |
@@ -100,7 +100,7 @@ There is no `agent.New` in the SDK. The same agent expressed in Go:
 import (
     "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
-    "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
+    "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 p, _ := anthropic.New(anthropic.Config{

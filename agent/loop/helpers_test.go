@@ -5,7 +5,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/loop/looptest"
-	"github.com/chaserensberger/wingman/wingmodels"
+	"github.com/chaserensberger/wingman/models"
 )
 
 func newConfig(t *testing.T, model *looptest.RecordingModel, sink *looptest.RecordingSink, hooks loop.Hooks) loop.Config {
@@ -18,16 +18,16 @@ func newConfig(t *testing.T, model *looptest.RecordingModel, sink *looptest.Reco
 	}
 }
 
-func hasText(msg wingmodels.Message, text string) bool {
+func hasText(msg models.Message, text string) bool {
 	for _, p := range msg.Content {
-		if tp, ok := p.(wingmodels.TextPart); ok && tp.Text == text {
+		if tp, ok := p.(models.TextPart); ok && tp.Text == text {
 			return true
 		}
 	}
 	return false
 }
 
-func containsMessageWithText(msgs []wingmodels.Message, text string) bool {
+func containsMessageWithText(msgs []models.Message, text string) bool {
 	for _, m := range msgs {
 		if hasText(m, text) {
 			return true

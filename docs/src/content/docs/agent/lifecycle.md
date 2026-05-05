@@ -55,7 +55,7 @@ Order:
 ## `BeforeRun` — initial history
 
 ```go
-type BeforeRunHook func(ctx context.Context, current []wingmodels.Message) ([]wingmodels.Message, error)
+type BeforeRunHook func(ctx context.Context, current []models.Message) ([]models.Message, error)
 ```
 
 `BeforeRun` runs once, before the first iteration, and is the canonical place to seed the loop's history. The classic user is the storage plugin, which loads the session's prior turns from disk; another plugin might prepend a system-context preamble or inject resumption markers.
@@ -76,9 +76,9 @@ If a hook returns a slice with a different length, the loop emits a `ContextTran
 ```go
 type BeforeStepInfo struct {
     Step     int
-    Messages []wingmodels.Message
-    Usage    wingmodels.Usage
-    Model    wingmodels.Model
+    Messages []models.Message
+    Usage    models.Usage
+    Model    models.Model
     Sink     loop.Sink
 }
 ```
