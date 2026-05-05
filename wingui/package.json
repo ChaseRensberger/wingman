@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
-    "@fontsource/fira-mono": "^5.2.7",
+    "@fontsource-variable/fira-code": "^5.2.7",
     "@headlessui/react": "^2.2.10",
     "@heroicons/react": "^2.2.0",
     "@phosphor-icons/react": "^2.1.10",

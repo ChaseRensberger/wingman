@@ -1,14 +1,12 @@
 @import "tailwindcss";
-@import "@fontsource/fira-mono/400.css";
-@import "@fontsource/fira-mono/500.css";
-@import "@fontsource/fira-mono/700.css";
+@import "@fontsource-variable/fira-code";
 
 @plugin "tailwindcss-animate";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-mono: "Fira Mono", ui-monospace, monospace;
+  --font-mono: "Fira Code Variable", ui-monospace, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
