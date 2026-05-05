@@ -1,7 +1,7 @@
 ---
 title: "Philosophy"
 group: "Overview"
-draft: false
+draft: true
 order: 1
 ---
 

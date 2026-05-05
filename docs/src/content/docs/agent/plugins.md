@@ -1,7 +1,7 @@
 ---
 title: "Plugins"
 group: "Concepts"
-draft: false
+draft: true
 order: 107
 ---
 

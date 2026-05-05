@@ -32,33 +32,6 @@ export default defineConfig({
 			],
 			sidebar: [
 				{ label: 'Introduction', slug: '' },
-				{ label: 'Philosophy', slug: 'philosophy' },
-				{ label: 'Architecture', slug: 'architecture' },
-				{ label: 'Quickstart', slug: 'getting-started' },
-				{ label: 'Demos', slug: 'demos' },
-				{ label: 'SDK', slug: 'sdk' },
-				{ label: 'Server', slug: 'server' },
-				{ label: 'API', slug: 'api' },
-				{
-					label: 'WingModels',
-					items: [
-						{ label: 'Providers', slug: 'models/providers' },
-						{ label: 'Parts', slug: 'models/parts' },
-						{ label: 'Streaming', slug: 'models/streaming' },
-					],
-				},
-				{
-					label: 'Agent',
-					items: [
-						{ label: 'Agents', slug: 'agent/agents' },
-						{ label: 'Sessions', slug: 'agent/sessions' },
-						{ label: 'Tools', slug: 'agent/tools' },
-						{ label: 'Lifecycle hooks', slug: 'agent/lifecycle' },
-						{ label: 'Plugins', slug: 'agent/plugins' },
-						{ label: 'Storage', slug: 'agent/storage' },
-						{ label: 'Streaming', slug: 'agent/streaming' },
-					],
-				},
 			],
 			plugins: [
 				theme({

@@ -1,7 +1,7 @@
 ---
 title: "Architecture"
 group: "Overview"
-draft: false
+draft: true
 order: 2
 ---
 

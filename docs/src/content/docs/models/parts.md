@@ -1,7 +1,7 @@
 ---
 title: "Parts"
 group: "Concepts"
-draft: false
+draft: true
 order: 103
 ---
 
