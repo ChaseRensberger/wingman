@@ -6,7 +6,7 @@
       "name": "wingman-hero",
       "dependencies": {
         "@base-ui/react": "^1.4.1",
-        "@fontsource/fira-mono": "^5.2.7",
+        "@fontsource-variable/fira-code": "^5.2.7",
         "@phosphor-icons/react": "^2.1.10",
         "@tailwindcss/vite": "^4.2.4",
         "@tanstack/react-router": "^1.158.4",
@@ -121,7 +121,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
-    "@fontsource/fira-mono": ["@fontsource/fira-mono@5.2.7", "", {}, "sha512-wYrAn6i3nH6luqQBZxtWUpl4UTUvs9AEbEeZxksPMwIqyjRRaxHTNW3c2VfM50gabS2IS7pT8lVWS2USB4ukYA=="],
+    "@fontsource-variable/fira-code": ["@fontsource-variable/fira-code@5.2.7", "", {}, "sha512-J2bxN7fz5rd8WpQYyau4o19WqTzxoTqaNj9jhsv4p21GSu1Rf34tbqsxqjyDCR+wDMHM3SajyFqtq+5uvRUQ7w=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.2", "", { "dependencies": { "@humanfs/types": "^0.15.0" } }, "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="],
 
