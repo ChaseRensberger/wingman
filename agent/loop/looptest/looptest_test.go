@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

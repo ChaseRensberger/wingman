@@ -30,7 +30,7 @@ Built-in tools are constructors in `tool`.
 
 ```go
 import (
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
 )
 

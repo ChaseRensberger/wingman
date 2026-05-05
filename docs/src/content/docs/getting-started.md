@@ -36,7 +36,7 @@ import (
     "github.com/joho/godotenv"
 
     "github.com/chaserensberger/wingman/plugins/compaction"
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
@@ -104,7 +104,7 @@ result := stream.Result()
 _ = result
 ```
 
-See [Streaming](./wingagent/streaming) for the event taxonomy.
+See [Streaming](./agent/streaming) for the event taxonomy.
 
 ## Run the server
 
@@ -148,6 +148,6 @@ See [Server](./server) for full request/response details.
 ## Next
 
 - [SDK](./sdk) — full SDK surface
-- [Sessions](./wingagent/sessions) — what `Run` actually does
-- [Plugins](./wingagent/plugins) — opt-in extensions like compaction
+- [Sessions](./agent/sessions) — what `Run` actually does
+- [Plugins](./agent/plugins) — opt-in extensions like compaction
 - [API](./api) — endpoint reference

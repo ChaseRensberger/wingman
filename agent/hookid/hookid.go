@@ -1,9 +1,9 @@
 // Package hookid provides stable string identifiers for the hooks defined in
-// wingagent/loop.
+// agent/loop.
 //
 // These IDs are used for Tier 2 wire vocabulary, observability span/trace event
 // names, and documentation anchors. They are explicitly NOT used for in-process
-// dispatch — that is handled by the Go types in wingagent/loop directly.
+// dispatch — that is handled by the Go types in agent/loop directly.
 //
 // For rationale see spec.md §6.2.
 package hookid

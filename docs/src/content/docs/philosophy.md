@@ -11,7 +11,7 @@ Wingman is opinionated about a few things. These are the principles that drive t
 
 ## As complicated as it needs to be, as simple as it can be
 
-The inference loop in `wingagent/loop` is roughly the size of [pi-mono](https://github.com/anthropics/pi-mono) — well under a thousand lines. That's not an accident; it's a budget. Anytime a feature could be implemented either inside the loop or outside of it as a plugin, the default answer is "outside, as a plugin." Compaction lives outside. Storage lives outside. Anything you'd think of as a "capability" rather than "the loop itself" lives outside.
+The inference loop in `agent/loop` is roughly the size of [pi-mono](https://github.com/anthropics/pi-mono) — well under a thousand lines. That's not an accident; it's a budget. Anytime a feature could be implemented either inside the loop or outside of it as a plugin, the default answer is "outside, as a plugin." Compaction lives outside. Storage lives outside. Anything you'd think of as a "capability" rather than "the loop itself" lives outside.
 
 The flip side: where the loop *does* need to do something, it does it directly. There's no plugin runtime, no event bus, no pub/sub abstraction layered between the loop and its hooks. A hook is a function field on a struct. The loop calls it. If you can't read the entire control flow of `loop.Run` in one sitting, the design has failed.
 

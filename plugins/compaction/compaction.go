@@ -1,4 +1,4 @@
-// Package compaction is the canonical wingagent plugin: it summarizes
+// Package compaction is the canonical agent plugin: it summarizes
 // the head of a long message history into a single inline marker so
 // long-running sessions stay under the model's context window without
 // losing ground-truth on disk.
@@ -61,8 +61,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/plugin"
+	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

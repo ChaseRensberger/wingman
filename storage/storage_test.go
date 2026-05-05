@@ -12,8 +12,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/chaserensberger/wingman/plugins/storage"
-	"github.com/chaserensberger/wingman/wingagent/loop/looptest"
-	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/agent/loop/looptest"
+	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/wingmodels"
 )

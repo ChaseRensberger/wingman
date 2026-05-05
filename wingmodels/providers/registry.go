@@ -2,7 +2,7 @@
 // "anthropic", "ollama") to a factory that constructs a wingmodels.Model.
 //
 // Providers register themselves at init via Register; cmd/wingman blank-
-// imports each provider package to trigger registration. The wingagent
+// imports each provider package to trigger registration. The agent
 // session/server layers then look up providers by id and call New(opts) to
 // build a Model bound to a specific model id.
 package provider

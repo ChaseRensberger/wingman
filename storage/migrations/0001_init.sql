@@ -1,4 +1,4 @@
--- 0001_init.sql: initial schema for wingagent storage.
+-- 0001_init.sql: initial schema for agent storage.
 --
 -- Design notes:
 --   * IDs are KSUID strings prefixed with a typed tag (agt_, ses_, msg_,

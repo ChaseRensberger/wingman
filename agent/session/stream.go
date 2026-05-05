@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/agent/loop"
 )
 
 // SessionStream is the streaming counterpart to Session.Run. It exposes

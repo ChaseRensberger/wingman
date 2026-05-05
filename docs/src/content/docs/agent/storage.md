@@ -50,7 +50,7 @@ Notes:
 ```go
 import (
     "github.com/chaserensberger/wingman/plugins/storage"
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     wstorage "github.com/chaserensberger/wingman/storage"
 )
 

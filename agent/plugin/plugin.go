@@ -1,4 +1,4 @@
-// Package plugin defines the wingagent plugin model: a Plugin is a
+// Package plugin defines the agent plugin model: a Plugin is a
 // bundle of hook installations, custom tools, and custom Part type
 // registrations, packaged behind a single Install call.
 //
@@ -53,7 +53,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )

@@ -98,7 +98,7 @@ There is no `agent.New` in the SDK. The same agent expressed in Go:
 
 ```go
 import (
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )

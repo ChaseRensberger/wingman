@@ -42,8 +42,8 @@ import (
 	"log"
 
 	"github.com/chaserensberger/wingman/storage"
-	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/plugin"
+	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

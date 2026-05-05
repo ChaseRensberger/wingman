@@ -1,5 +1,5 @@
 // Package tool defines the executor-bearing tool contract used by the
-// wingagent loop and the built-in tool implementations.
+// agent loop and the built-in tool implementations.
 //
 // The loop and storage layer also reference wingmodels.ToolDef, which is
 // the wire-format schema (description + JSON Schema) sent to the model
@@ -23,7 +23,7 @@ import (
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 
-// Tool is the executor contract every wingagent tool implements. The loop
+// Tool is the executor contract every agent tool implements. The loop
 // dispatches tool calls by looking up Tool instances in a Registry.
 //
 // Sequential is consulted per tool: if any tool in a batch returns true,

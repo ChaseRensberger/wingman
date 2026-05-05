@@ -1,4 +1,4 @@
-// Package session is a thin stateful wrapper over wingagent/loop.
+// Package session is a thin stateful wrapper over agent/loop.
 //
 // A Session owns:
 //   - an identifier (ULID)
@@ -12,7 +12,7 @@
 // message and any new assistant/tool messages produced by the loop into
 // the session's running history.
 //
-// Plugins (wingagent/plugin) are opt-in: nothing is installed by
+// Plugins (agent/plugin) are opt-in: nothing is installed by
 // default. Pass WithPlugin(compaction.New()) to enable summarization;
 // pass any other plugin to extend behavior at the BeforeStep,
 // TransformContext, BeforeToolCall, AfterToolCall, Sink, Tool, or
@@ -32,8 +32,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/plugin"
+	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"

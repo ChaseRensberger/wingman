@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/plugins/storage"
-	"github.com/chaserensberger/wingman/wingagent/session"
+	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/storage"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"

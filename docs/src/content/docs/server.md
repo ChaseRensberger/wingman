@@ -63,13 +63,13 @@ When you post a message, the server:
 
 Steps 1–4 happen inside `buildSession`. The storage plugin handles both sides of persistence: its `BeforeRun` hook loads the session's prior history from SQLite into the loop, and its sink calls `store.AppendMessage` for each new message as the loop emits it. The server itself doesn't talk to the storage layer during a run — that's the plugin's job.
 
-See [Storage](./storage) for the schema and [Sessions](./wingagent/sessions) for what `Run` actually does.
+See [Storage](./storage) for the schema and [Sessions](./agent/sessions) for what `Run` actually does.
 
 ## Streaming behavior
 
 `POST /sessions/{id}/message/stream` returns `text/event-stream`. Each event is `event: <type>\ndata: <json>\n\n`. The standard 60-second request timeout is bypassed for this path. The server tracks in-flight streams in a `WaitGroup` and waits for them during graceful shutdown (subject to the shutdown context's deadline).
 
-The full envelope schema is in [Streaming](./wingagent/streaming).
+The full envelope schema is in [Streaming](./agent/streaming).
 
 ## Aborting a session
 

@@ -13,7 +13,7 @@ A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Pa
 
 The loop's `Hooks` struct allows exactly one function per seam (single call site, no surprise ordering). When multiple capabilities want the same seam — say, compaction wants `BeforeStep` and a budget enforcer also wants `BeforeStep` — wiring them by hand into both the loop config and the tool slice is mechanical and error-prone. A plugin is the aggregating abstraction: one `session.WithPlugin(...)` call installs everything the plugin contributes, and the registry composes contributions in install order.
 
-The flip side: the loop core knows nothing about any specific plugin. Storage, compaction, gates, redaction — they all live outside `wingagent/loop` and hook in through the same registry as user-authored plugins. The loop stays minimal; capabilities ship as additive modules.
+The flip side: the loop core knows nothing about any specific plugin. Storage, compaction, gates, redaction — they all live outside `agent/loop` and hook in through the same registry as user-authored plugins. The loop stays minimal; capabilities ship as additive modules.
 
 ## Opt-in by default
 
@@ -80,8 +80,8 @@ import (
     "fmt"
     "strings"
 
-    "github.com/chaserensberger/wingman/wingagent/loop"
-    "github.com/chaserensberger/wingman/wingagent/plugin"
+    "github.com/chaserensberger/wingman/agent/loop"
+    "github.com/chaserensberger/wingman/agent/plugin"
 )
 
 type Plugin struct {
@@ -162,7 +162,7 @@ When compaction runs, the loop emits a `ContextTransformedEvent` whose head mess
 ```go
 import (
     "github.com/chaserensberger/wingman/plugins/storage"
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     wstorage "github.com/chaserensberger/wingman/storage"
 )
 

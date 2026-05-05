@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/agent/loop"
 )
 
 func TestRegistryMatchesLoopHook(t *testing.T) {

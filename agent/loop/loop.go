@@ -1,4 +1,4 @@
-// Package loop is the wingagent inference loop. It drives a wingmodels.Model
+// Package loop is the agent inference loop. It drives a wingmodels.Model
 // across multiple turns, dispatches tool calls between turns, and emits
 // lifecycle events to a sink.
 //
@@ -26,14 +26,14 @@
 // assistant message has been streamed and any tool calls have been
 // executed". This package does NOT own:
 //
-//   - Persistence. The caller (typically wingagent/session) hooks into
+//   - Persistence. The caller (typically agent/session) hooks into
 //     the event sink to write to storage as turns complete.
 //   - HTTP/SSE transport. Caller drains the sink to whatever wire format
 //     it needs.
 //
 // Compaction does not live in this package. Loop only offers a
 // BeforeStep hook seam (see Hooks.BeforeStep) plus per-turn cumulative
-// usage tracking; the wingagent/hook package ships a default compaction
+// usage tracking; the agent/hook package ships a default compaction
 // implementation that plugs into BeforeStep, and consumers can install
 // their own hook for any other between-step transformation (budgeting,
 // tool-result trimming, redaction, etc.).

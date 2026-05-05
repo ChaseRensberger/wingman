@@ -1,4 +1,4 @@
-// Package looptest provides deterministic test helpers for wingagent/loop.
+// Package looptest provides deterministic test helpers for agent/loop.
 // RecordingModel scripts pre-canned responses; RecordingSink captures emitted
 // events. Intended for use only in tests.
 package looptest

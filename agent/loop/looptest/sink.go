@@ -3,7 +3,7 @@ package looptest
 import (
 	"sync"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
+	"github.com/chaserensberger/wingman/agent/loop"
 )
 
 // RecordingSink implements loop.Sink and stores all events for later

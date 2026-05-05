@@ -109,7 +109,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		// (and the per-turn hooks operate on) any persisted mutation
 		// the BeforeStep returned. step+1 reflects the upcoming turn.
 		// Compaction is the canonical user of this seam (shipped in
-		// wingagent/hook).
+		// agent/hook).
 		if r.cfg.Hooks.BeforeStep != nil {
 			info := BeforeStepInfo{
 				Step:     step + 1,

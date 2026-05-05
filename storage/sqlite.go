@@ -1,4 +1,4 @@
-// Package storage owns wingagent's SQLite-backed persistence: agents,
+// Package storage owns agent's SQLite-backed persistence: agents,
 // sessions, message history, and provider auth credentials.
 //
 // Schema lives in ./migrations as numbered .sql files; runMigrations

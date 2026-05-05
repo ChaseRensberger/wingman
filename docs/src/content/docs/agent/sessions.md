@@ -9,7 +9,7 @@ order: 102
 
 A session is the stateful execution context for a Wingman agent. It owns conversation history, the active model, system prompt, tool registry, working directory, installed plugins, and an optional message sink.
 
-`*session.Session` is a thin wrapper over `wingagent/loop`. It holds state; the loop does the work.
+`*session.Session` is a thin wrapper over `agent/loop`. It holds state; the loop does the work.
 
 ## What `Run` actually does
 
@@ -29,7 +29,7 @@ When you call `Run` or `RunStream`, the session:
 
 ```go
 import (
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
@@ -73,7 +73,7 @@ type Result struct {
 
 ## Streaming
 
-`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See [Streaming](../wingagent/streaming).
+`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See [Streaming](../agent/streaming).
 
 ```go
 stream, err := s.RunStream(ctx, "Write a Go HTTP server")

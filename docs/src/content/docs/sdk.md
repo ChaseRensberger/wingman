@@ -28,7 +28,7 @@ import (
 
     "github.com/joho/godotenv"
 
-    "github.com/chaserensberger/wingman/wingagent/session"
+    "github.com/chaserensberger/wingman/agent/session"
     "github.com/chaserensberger/wingman/tool"
     "github.com/chaserensberger/wingman/wingmodels/providers/anthropic"
 )
@@ -152,7 +152,7 @@ result := stream.Result()
 _ = result
 ```
 
-If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./wingagent/streaming).
+If the consumer stops calling `Next`, the loop blocks on the event channel. Cancel the context to abort. See [Streaming](./agent/streaming).
 
 ## Plugins
 
@@ -167,7 +167,7 @@ s := session.New(
 )
 ```
 
-See [Plugins](./wingagent/plugins) for authoring your own.
+See [Plugins](./agent/plugins) for authoring your own.
 
 ## Tools
 

@@ -3,8 +3,8 @@ package loop_test
 import (
 	"testing"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/loop/looptest"
+	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/loop/looptest"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
 

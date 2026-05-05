@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chaserensberger/wingman/wingagent/loop"
-	"github.com/chaserensberger/wingman/wingagent/loop/looptest"
+	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/loop/looptest"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/wingmodels"
 )
