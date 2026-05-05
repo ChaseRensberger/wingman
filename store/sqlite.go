@@ -240,10 +240,14 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	}
 	defer tx.Rollback()
 
+	var workDirPtr *string
+	if session.WorkDir != "" {
+		workDirPtr = &session.WorkDir
+	}
 	if _, err := tx.Exec(`
 		INSERT INTO sessions (id, title, work_dir, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, session.ID, session.Title, session.WorkDir, session.CreatedAt, session.UpdatedAt); err != nil {
+	`, session.ID, session.Title, workDirPtr, session.CreatedAt, session.UpdatedAt); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
@@ -256,15 +260,17 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 // GetSession returns the session with all of its messages and parts.
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var session Session
+	var workDir sql.NullString
 	err := s.db.QueryRow(`
 		SELECT id, title, work_dir, created_at, updated_at FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.Title, &session.WorkDir, &session.CreatedAt, &session.UpdatedAt)
+	`, id).Scan(&session.ID, &session.Title, &workDir, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
 	if err != nil {
 		return nil, err
 	}
+	session.WorkDir = workDir.String
 
 	msgs, err := readMessages(s.db, id)
 	if err != nil {
@@ -290,9 +296,11 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	var out []*Session
 	for rows.Next() {
 		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.Title, &sess.WorkDir, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		var workDir sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
+		sess.WorkDir = workDir.String
 		out = append(out, &sess)
 	}
 	if err := rows.Err(); err != nil {
@@ -312,9 +320,10 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	return out, nil
 }
 
-// UpdateSession overwrites the session's mutable metadata (title,
-// work_dir, and updated_at). It does NOT touch the message history —
-// use AppendMessage for incremental appends or ReplaceMessages for
+// UpdateSession overwrites the session's mutable metadata (title and
+// updated_at). work_dir is intentionally omitted — it is immutable once
+// set at session creation. It does NOT touch the message history; use
+// AppendMessage for incremental appends or ReplaceMessages for
 // full rewrites. This split prevents the wasteful "delete+rewrite the
 // whole transcript on every turn" pattern the original implementation
 // forced.
@@ -322,8 +331,8 @@ func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
 
 	res, err := s.db.Exec(`
-		UPDATE sessions SET title = ?, work_dir = ?, updated_at = ? WHERE id = ?
-	`, session.Title, session.WorkDir, session.UpdatedAt, session.ID)
+		UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?
+	`, session.Title, session.UpdatedAt, session.ID)
 	if err != nil {
 		return err
 	}

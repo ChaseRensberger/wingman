@@ -48,6 +48,8 @@ func (t *EditTool) Definition() Definition {
 	}
 }
 
+func (t *EditTool) DirectoryScoped() {}
+
 func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {

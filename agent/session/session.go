@@ -193,13 +193,6 @@ func (s *Session) WorkDir() string {
 	return s.workDir
 }
 
-// SetWorkDir updates the working directory.
-func (s *Session) SetWorkDir(dir string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.workDir = dir
-}
-
 // SetModel swaps the active model. Useful for handlers that build the
 // model lazily after constructing the session.
 func (s *Session) SetModel(m models.Model) {
@@ -316,14 +309,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		s.mu.Unlock()
 		return nil, ErrNoModel
 	}
-	// Append the user message before starting the loop so it ends up in
-	// history even if the loop fails immediately.
-	s.history = append(s.history, models.Message{
-		Role:    models.RoleUser,
-		Content: models.Content{models.TextPart{Text: message}},
-	})
 	// Snapshot inputs.
-	historySnap := append([]models.Message(nil), s.history...)
 	model := s.model
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
@@ -333,6 +319,23 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	plugins := append([]plugin.Plugin(nil), s.plugins...)
 	messageSink := s.messageSink
 	outputSchema := s.outputSchema
+
+	// If any allowed tool is directory-scoped, the session must have a
+	// working directory. Fail early before mutating history.
+	for _, t := range tools {
+		if _, ok := t.(tool.DirectoryScopedTool); ok && workDir == "" {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
+		}
+	}
+
+	// Append the user message before starting the loop so it ends up in
+	// history even if the loop fails immediately.
+	s.history = append(s.history, models.Message{
+		Role:    models.RoleUser,
+		Content: models.Content{models.TextPart{Text: message}},
+	})
+	historySnap := append([]models.Message(nil), s.history...)
 	s.mu.Unlock()
 
 	// Build the plugin registry. Done per-Run so plugins close over

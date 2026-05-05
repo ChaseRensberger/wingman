@@ -49,6 +49,14 @@ type SequentialTool interface {
 	Sequential() bool
 }
 
+// DirectoryScopedTool is a marker interface for tools that operate on the
+// local filesystem. The session start path validates that if any allowed tool
+// implements this marker, the session has a non-empty working directory.
+type DirectoryScopedTool interface {
+	Tool
+	DirectoryScoped()
+}
+
 // Definition is the JSON-Schema shaped declaration the loop sends to the
 // model. It mirrors models.ToolDef but uses a typed schema struct so
 // builtin tools can write definitions without wrestling with map[string]any.
@@ -210,13 +218,19 @@ func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir s
 // being caught at runtime by Registry.Register accepting any value
 // satisfying the (then-mutated) Tool interface.
 var (
-	_ Tool = (*BashTool)(nil)
-	_ Tool = (*EditTool)(nil)
-	_ Tool = (*GlobTool)(nil)
-	_ Tool = (*GrepTool)(nil)
-	_ Tool = (*PerplexityTool)(nil)
-	_ Tool = (*ReadTool)(nil)
-	_ Tool = (*WebFetchTool)(nil)
-	_ Tool = (*WriteTool)(nil)
-	_ Tool = (*FuncTool)(nil)
+	_ Tool              = (*BashTool)(nil)
+	_ Tool              = (*EditTool)(nil)
+	_ Tool              = (*GlobTool)(nil)
+	_ Tool              = (*GrepTool)(nil)
+	_ Tool              = (*PerplexityTool)(nil)
+	_ Tool              = (*ReadTool)(nil)
+	_ Tool              = (*WebFetchTool)(nil)
+	_ Tool              = (*WriteTool)(nil)
+	_ Tool              = (*FuncTool)(nil)
+	_ DirectoryScopedTool = (*BashTool)(nil)
+	_ DirectoryScopedTool = (*EditTool)(nil)
+	_ DirectoryScopedTool = (*GlobTool)(nil)
+	_ DirectoryScopedTool = (*GrepTool)(nil)
+	_ DirectoryScopedTool = (*ReadTool)(nil)
+	_ DirectoryScopedTool = (*WriteTool)(nil)
 )

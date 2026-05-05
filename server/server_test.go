@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -306,8 +307,8 @@ func TestSessionsCRUD(t *testing.T) {
 
 	t.Run("create session", func(t *testing.T) {
 		body := mustJSON(t, map[string]any{
-			"title":    "my session",
-			"work_dir": "/tmp/test",
+			"title":             "my session",
+			"working_directory": "/tmp",
 		})
 
 		resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
@@ -328,14 +329,48 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.Title != "my session" {
 			t.Errorf("expected title 'my session', got %q", sess.Title)
 		}
-		if sess.WorkDir != "/tmp/test" {
-			t.Errorf("expected work_dir '/tmp/test', got %q", sess.WorkDir)
+		if sess.WorkDir != "/tmp" {
+			t.Errorf("expected work_dir '/tmp', got %q", sess.WorkDir)
 		}
 		if sess.History == nil {
 			t.Error("expected history to be initialized")
 		}
 
 		sessionID = sess.ID
+	})
+
+	t.Run("create session with invalid workdir", func(t *testing.T) {
+		body := mustJSON(t, map[string]any{
+			"title":             "bad session",
+			"working_directory": "/nonexistent/path/12345",
+		})
+		resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("create session with file as workdir", func(t *testing.T) {
+		tmpFile := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(tmpFile, []byte("x"), 0644); err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+		body := mustJSON(t, map[string]any{
+			"title":             "bad session",
+			"working_directory": tmpFile,
+		})
+		resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
 	})
 
 	t.Run("create session empty body", func(t *testing.T) {
@@ -410,11 +445,9 @@ func TestSessionsCRUD(t *testing.T) {
 	})
 
 	t.Run("update session", func(t *testing.T) {
-		newDir := "/tmp/updated"
 		newTitle := "renamed session"
 		body := mustJSON(t, map[string]any{
-			"title":    newTitle,
-			"work_dir": newDir,
+			"title": newTitle,
 		})
 
 		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/sessions/"+sessionID, bytes.NewReader(body))
@@ -434,14 +467,13 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.Title != newTitle {
 			t.Errorf("expected title %q, got %q", newTitle, sess.Title)
 		}
-		if sess.WorkDir != newDir {
-			t.Errorf("expected work_dir %q, got %q", newDir, sess.WorkDir)
+		// work_dir is immutable; it should remain as set at creation.
+		if sess.WorkDir != "/tmp" {
+			t.Errorf("expected work_dir preserved from creation, got %q", sess.WorkDir)
 		}
 	})
 
 	t.Run("update session title only", func(t *testing.T) {
-		// Verify that omitting work_dir doesn't clobber it — pointer
-		// fields in UpdateSessionRequest are how partial updates work.
 		body := mustJSON(t, map[string]any{"title": "title only"})
 
 		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/sessions/"+sessionID, bytes.NewReader(body))
@@ -457,7 +489,7 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.Title != "title only" {
 			t.Errorf("expected title 'title only', got %q", sess.Title)
 		}
-		if sess.WorkDir != "/tmp/updated" {
+		if sess.WorkDir != "/tmp" {
 			t.Errorf("expected work_dir to be preserved, got %q", sess.WorkDir)
 		}
 	})
@@ -502,7 +534,7 @@ func TestSessionsCRUD(t *testing.T) {
 func TestMessageSessionValidation(t *testing.T) {
 	ts, _ := setupTestServer(t)
 
-	body := mustJSON(t, map[string]any{"work_dir": "/tmp"})
+	body := mustJSON(t, map[string]any{"working_directory": "/tmp"})
 	resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -572,7 +604,7 @@ func TestMessageSessionValidation(t *testing.T) {
 func TestAbortSession(t *testing.T) {
 	ts, _ := setupTestServer(t)
 
-	body := mustJSON(t, map[string]any{"work_dir": "/tmp"})
+	body := mustJSON(t, map[string]any{"working_directory": "/tmp"})
 	resp, err := http.Post(ts.URL+"/sessions", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("create session failed: %v", err)

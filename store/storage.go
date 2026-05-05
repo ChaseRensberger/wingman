@@ -12,10 +12,11 @@ type Store interface {
 	CreateSession(session *Session) error
 	GetSession(id string) (*Session, error)
 	ListSessions() ([]*Session, error)
-	// UpdateSession persists metadata-only fields (title, work_dir,
-	// updated_at). It does NOT touch the message history; use
-	// AppendMessage for incremental appends or ReplaceMessages for
-	// full rewrites.
+	// UpdateSession persists metadata-only fields (title and
+	// updated_at). work_dir is intentionally omitted — it is immutable
+	// once set at session creation. It does NOT touch the message
+	// history; use AppendMessage for incremental appends or
+	// ReplaceMessages for full rewrites.
 	UpdateSession(session *Session) error
 	// AppendMessage appends a single message (and its parts) to the
 	// session's history at the next index. Use this from message-sink

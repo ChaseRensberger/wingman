@@ -44,6 +44,8 @@ func (t *GlobTool) Definition() Definition {
 	}
 }
 
+func (t *GlobTool) DirectoryScoped() {}
+
 func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	pattern, ok := params["pattern"].(string)
 	if !ok || pattern == "" {

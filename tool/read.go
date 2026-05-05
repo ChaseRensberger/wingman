@@ -40,6 +40,8 @@ func (t *ReadTool) Definition() Definition {
 	}
 }
 
+func (t *ReadTool) DirectoryScoped() {}
+
 func (t *ReadTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {

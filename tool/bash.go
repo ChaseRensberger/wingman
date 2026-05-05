@@ -48,6 +48,8 @@ func (t *BashTool) Definition() Definition {
 	}
 }
 
+func (t *BashTool) DirectoryScoped() {}
+
 func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	command, ok := params["command"].(string)
 	if !ok || command == "" {

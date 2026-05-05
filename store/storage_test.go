@@ -495,6 +495,54 @@ func TestStoragePluginLoadsHistoryAndPersistsNewMessages(t *testing.T) {
 	}
 }
 
+// TestSessionWorkDirRoundTrip asks: does CreateSession faithfully store and
+// retrieve the working directory, and store NULL when it is unset?
+func TestSessionWorkDirRoundTrip(t *testing.T) {
+	t.Run("with workdir", func(t *testing.T) {
+		_, store := newStoreWithPath(t)
+		sess := &storepkg.Session{Title: "with-workdir", WorkDir: "/tmp"}
+		if err := store.CreateSession(sess); err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+		got, err := store.GetSession(sess.ID)
+		if err != nil {
+			t.Fatalf("get failed: %v", err)
+		}
+		if got.WorkDir != "/tmp" {
+			t.Errorf("expected workdir '/tmp', got %q", got.WorkDir)
+		}
+	})
+
+	t.Run("without workdir stores NULL", func(t *testing.T) {
+		dbPath, store := newStoreWithPath(t)
+		sess := &storepkg.Session{Title: "without-workdir"}
+		if err := store.CreateSession(sess); err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+		got, err := store.GetSession(sess.ID)
+		if err != nil {
+			t.Fatalf("get failed: %v", err)
+		}
+		if got.WorkDir != "" {
+			t.Errorf("expected empty workdir, got %q", got.WorkDir)
+		}
+
+		db, err := sql.Open("sqlite", dbPath)
+		if err != nil {
+			t.Fatalf("open db: %v", err)
+		}
+		defer db.Close()
+
+		var workDir sql.NullString
+		if err := db.QueryRow("SELECT work_dir FROM sessions WHERE id = ?", sess.ID).Scan(&workDir); err != nil {
+			t.Fatalf("query work_dir: %v", err)
+		}
+		if workDir.Valid {
+			t.Errorf("expected NULL work_dir in DB, got %q", workDir.String)
+		}
+	})
+}
+
 func createSessionWithHistory(t *testing.T, store storepkg.Store, history []models.Message) string {
 	t.Helper()
 	sess := &storepkg.Session{

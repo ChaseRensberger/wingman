@@ -43,6 +43,8 @@ func (t *WriteTool) Definition() Definition {
 	}
 }
 
+func (t *WriteTool) DirectoryScoped() {}
+
 func (t *WriteTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {

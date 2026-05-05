@@ -20,8 +20,8 @@ import (
 )
 
 type CreateSessionRequest struct {
-	Title   string `json:"title,omitempty"`
-	WorkDir string `json:"work_dir,omitempty"`
+	Title             string `json:"title,omitempty"`
+	WorkingDirectory  string `json:"working_directory,omitempty"`
 }
 
 // defaultSessionTitle is the placeholder applied when a session is
@@ -42,9 +42,15 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		title = defaultSessionTitle
 	}
 
+	workDir, err := session.ResolveWorkDir(req.WorkingDirectory)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	sess := &store.Session{
 		Title:   title,
-		WorkDir: req.WorkDir,
+		WorkDir: workDir,
 		History: []models.Message{},
 	}
 
@@ -81,8 +87,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateSessionRequest struct {
-	Title   *string `json:"title,omitempty"`
-	WorkDir *string `json:"work_dir,omitempty"`
+	Title *string `json:"title,omitempty"`
 }
 
 func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -102,9 +107,6 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 
 	if req.Title != nil {
 		sess.Title = *req.Title
-	}
-	if req.WorkDir != nil {
-		sess.WorkDir = *req.WorkDir
 	}
 
 	if err := s.store.UpdateSession(sess); err != nil {

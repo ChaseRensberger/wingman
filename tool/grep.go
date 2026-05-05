@@ -56,6 +56,8 @@ type grepMatch struct {
 	Content string
 }
 
+func (t *GrepTool) DirectoryScoped() {}
+
 func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
 	pattern, ok := params["pattern"].(string)
 	if !ok || pattern == "" {
