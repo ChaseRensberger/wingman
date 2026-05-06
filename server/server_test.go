@@ -904,6 +904,166 @@ func TestProviderAuth(t *testing.T) {
 	})
 }
 
+func TestClientsEndpoints(t *testing.T) {
+	ts, _ := setupTestServer(t)
+
+	t.Run("create client happy path", func(t *testing.T) {
+		body := mustJSON(t, map[string]any{"name": "wingbase"})
+		resp, err := http.Post(ts.URL+"/clients", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("expected 201, got %d", resp.StatusCode)
+		}
+
+		var client store.Client
+		decodeJSON(t, resp, &client)
+
+		if client.Name != "wingbase" {
+			t.Errorf("expected name 'wingbase', got %q", client.Name)
+		}
+		if client.ID == "" {
+			t.Fatal("expected client ID to be set")
+		}
+		if client.CreatedAt == 0 {
+			t.Error("expected created_at to be set")
+		}
+	})
+
+	t.Run("create client empty name", func(t *testing.T) {
+		body := mustJSON(t, map[string]any{"name": ""})
+		resp, err := http.Post(ts.URL+"/clients", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("list clients", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/clients")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+
+		var clients []*store.Client
+		decodeJSON(t, resp, &clients)
+
+		if len(clients) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(clients))
+		}
+		if clients[0].Name != "wingbase" {
+			t.Errorf("expected name 'wingbase', got %q", clients[0].Name)
+		}
+	})
+}
+
+func TestSessionClientHeader(t *testing.T) {
+	ts, st := setupTestServer(t)
+
+	// Pre-create a client.
+	body := mustJSON(t, map[string]any{"name": "test-client"})
+	resp, err := http.Post(ts.URL+"/clients", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("create client failed: %v", err)
+	}
+	var client store.Client
+	decodeJSON(t, resp, &client)
+
+	t.Run("POST with valid X-Wingman-Client stamps session", func(t *testing.T) {
+		body := mustJSON(t, map[string]any{})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/sessions", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Wingman-Client", client.ID)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("expected 201, got %d", resp.StatusCode)
+		}
+
+		var sess store.Session
+		decodeJSON(t, resp, &sess)
+
+		if sess.ClientID != client.ID {
+			t.Errorf("expected client_id %q, got %q", client.ID, sess.ClientID)
+		}
+	})
+
+	t.Run("POST with invalid X-Wingman-Client returns 400", func(t *testing.T) {
+		body := mustJSON(t, map[string]any{})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/sessions", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Wingman-Client", "cli_nonexistent")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("GET with X-Wingman-Client returns only that client's sessions", func(t *testing.T) {
+		// Create an unscoped session directly via store.
+		unscoped := &store.Session{Title: "unscoped"}
+		if err := st.CreateSession(unscoped); err != nil {
+			t.Fatalf("create unscoped session failed: %v", err)
+		}
+
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/sessions", nil)
+		req.Header.Set("X-Wingman-Client", client.ID)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+
+		var sessions []*store.Session
+		decodeJSON(t, resp, &sessions)
+
+		for _, s := range sessions {
+			if s.ClientID != client.ID {
+				t.Errorf("expected only sessions for client %q, got session %q with client_id %q", client.ID, s.ID, s.ClientID)
+			}
+		}
+	})
+
+	t.Run("GET without header returns all sessions", func(t *testing.T) {
+		resp, err := http.Get(ts.URL + "/sessions")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+
+		var sessions []*store.Session
+		decodeJSON(t, resp, &sessions)
+
+		if len(sessions) < 2 {
+			t.Fatalf("expected at least 2 sessions (scoped + unscoped), got %d", len(sessions))
+		}
+	})
+}
+
 func TestAgentProviderRoundtrip(t *testing.T) {
 	ts, _ := setupTestServer(t)
 

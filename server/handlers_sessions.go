@@ -54,6 +54,15 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		History: []models.Message{},
 	}
 
+	clientID := r.Header.Get("X-Wingman-Client")
+	if clientID != "" {
+		if _, err := s.store.GetClient(clientID); err != nil {
+			writeError(w, http.StatusBadRequest, "client not found: "+clientID)
+			return
+		}
+		sess.ClientID = clientID
+	}
+
 	if err := s.store.CreateSession(sess); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -63,7 +72,15 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, err := s.store.ListSessions()
+	var sessions []*store.Session
+	var err error
+
+	clientID := r.Header.Get("X-Wingman-Client")
+	if clientID != "" {
+		sessions, err = s.store.ListSessionsByClient(clientID)
+	} else {
+		sessions, err = s.store.ListSessions()
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

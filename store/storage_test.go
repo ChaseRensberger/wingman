@@ -543,6 +543,208 @@ func TestSessionWorkDirRoundTrip(t *testing.T) {
 	})
 }
 
+// TestClientCRUDRoundTrip asks: does Create → Get → List behave
+// correctly for clients?
+func TestClientCRUDRoundTrip(t *testing.T) {
+	store := newStore(t)
+
+	client, err := store.CreateClient("wingbase")
+	if err != nil {
+		t.Fatalf("create client failed: %v", err)
+	}
+	if client.ID == "" {
+		t.Fatal("expected client ID to be set")
+	}
+	if !strings.HasPrefix(client.ID, "cli_") {
+		t.Errorf("expected ID prefix 'cli_', got %q", client.ID)
+	}
+	if client.Name != "wingbase" {
+		t.Errorf("expected name 'wingbase', got %q", client.Name)
+	}
+	if client.CreatedAt == 0 {
+		t.Error("expected created_at to be set")
+	}
+
+	got, err := store.GetClient(client.ID)
+	if err != nil {
+		t.Fatalf("get client failed: %v", err)
+	}
+	if got.Name != client.Name {
+		t.Errorf("name mismatch: got %q, want %q", got.Name, client.Name)
+	}
+
+	clients, err := store.ListClients()
+	if err != nil {
+		t.Fatalf("list clients failed: %v", err)
+	}
+	found := false
+	for _, c := range clients {
+		if c.ID == client.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected client to appear in list")
+	}
+}
+
+// TestSessionCreatedWithValidClientIDRoundTripsIt asks: does a session
+// created with a valid client_id retain that value on read?
+func TestSessionCreatedWithValidClientIDRoundTripsIt(t *testing.T) {
+	store := newStore(t)
+
+	client, err := store.CreateClient("test-client")
+	if err != nil {
+		t.Fatalf("create client failed: %v", err)
+	}
+
+	sess := &storepkg.Session{Title: "scoped", ClientID: client.ID}
+	if err := store.CreateSession(sess); err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+
+	got, err := store.GetSession(sess.ID)
+	if err != nil {
+		t.Fatalf("get session failed: %v", err)
+	}
+	if got.ClientID != client.ID {
+		t.Errorf("expected client_id %q, got %q", client.ID, got.ClientID)
+	}
+}
+
+// TestSessionCreatedWithNoClientIDHasNull asks: does a session created
+// without a client_id store NULL in the database?
+func TestSessionCreatedWithNoClientIDHasNull(t *testing.T) {
+	dbPath, store := newStoreWithPath(t)
+
+	sess := &storepkg.Session{Title: "unscoped"}
+	if err := store.CreateSession(sess); err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+
+	got, err := store.GetSession(sess.ID)
+	if err != nil {
+		t.Fatalf("get session failed: %v", err)
+	}
+	if got.ClientID != "" {
+		t.Errorf("expected empty client_id, got %q", got.ClientID)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	var clientID sql.NullString
+	if err := db.QueryRow("SELECT client_id FROM sessions WHERE id = ?", sess.ID).Scan(&clientID); err != nil {
+		t.Fatalf("query client_id: %v", err)
+	}
+	if clientID.Valid {
+		t.Errorf("expected NULL client_id in DB, got %q", clientID.String)
+	}
+}
+
+// TestSessionCreatedWithNonexistentClientIDErrors asks: does CreateSession
+// reject a bogus client_id with a clear error?
+func TestSessionCreatedWithNonexistentClientIDErrors(t *testing.T) {
+	store := newStore(t)
+
+	sess := &storepkg.Session{Title: "bad", ClientID: "cli_doesnotexist"}
+	if err := store.CreateSession(sess); err == nil {
+		t.Fatal("expected error creating session with non-existent client")
+	} else if !strings.Contains(err.Error(), "client not found") {
+		t.Fatalf("expected 'client not found' error, got %v", err)
+	}
+}
+
+// TestListSessionsByClientReturnsOnlyMatchingSessions asks: does the
+// filter exclude sessions for other clients and unscoped sessions?
+func TestListSessionsByClientReturnsOnlyMatchingSessions(t *testing.T) {
+	store := newStore(t)
+
+	clientA, err := store.CreateClient("client-a")
+	if err != nil {
+		t.Fatalf("create client a failed: %v", err)
+	}
+	clientB, err := store.CreateClient("client-b")
+	if err != nil {
+		t.Fatalf("create client b failed: %v", err)
+	}
+
+	sessA := &storepkg.Session{Title: "a", ClientID: clientA.ID}
+	sessB := &storepkg.Session{Title: "b", ClientID: clientB.ID}
+	sessUnscoped := &storepkg.Session{Title: "unscoped"}
+	for _, s := range []*storepkg.Session{sessA, sessB, sessUnscoped} {
+		if err := store.CreateSession(s); err != nil {
+			t.Fatalf("create session failed: %v", err)
+		}
+	}
+
+	listA, err := store.ListSessionsByClient(clientA.ID)
+	if err != nil {
+		t.Fatalf("list by client a failed: %v", err)
+	}
+	if len(listA) != 1 {
+		t.Fatalf("expected 1 session for client A, got %d", len(listA))
+	}
+	if listA[0].ID != sessA.ID {
+		t.Errorf("expected session A, got %q", listA[0].ID)
+	}
+
+	listB, err := store.ListSessionsByClient(clientB.ID)
+	if err != nil {
+		t.Fatalf("list by client b failed: %v", err)
+	}
+	if len(listB) != 1 {
+		t.Fatalf("expected 1 session for client B, got %d", len(listB))
+	}
+
+	all, err := store.ListSessions()
+	if err != nil {
+		t.Fatalf("list all failed: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 total sessions, got %d", len(all))
+	}
+}
+
+// TestUpdateSessionDoesNotChangeClientID asks: does UpdateSession leave
+// the client_id column untouched even if the struct carries a value?
+func TestUpdateSessionDoesNotChangeClientID(t *testing.T) {
+	dbPath, store := newStoreWithPath(t)
+
+	client, err := store.CreateClient("immutable-client")
+	if err != nil {
+		t.Fatalf("create client failed: %v", err)
+	}
+
+	sess := &storepkg.Session{Title: "original", ClientID: client.ID}
+	if err := store.CreateSession(sess); err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+
+	sess.Title = "updated"
+	if err := store.UpdateSession(sess); err != nil {
+		t.Fatalf("update session failed: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	var clientID sql.NullString
+	if err := db.QueryRow("SELECT client_id FROM sessions WHERE id = ?", sess.ID).Scan(&clientID); err != nil {
+		t.Fatalf("query client_id: %v", err)
+	}
+	if !clientID.Valid || clientID.String != client.ID {
+		t.Errorf("expected client_id unchanged as %q, got %v", client.ID, clientID)
+	}
+}
+
 func createSessionWithHistory(t *testing.T, store storepkg.Store, history []models.Message) string {
 	t.Helper()
 	sess := &storepkg.Session{

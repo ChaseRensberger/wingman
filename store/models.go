@@ -18,12 +18,19 @@ type Agent struct {
 }
 
 type Session struct {
-	ID        string               `json:"id"`
-	Title     string               `json:"title,omitempty"`
-	WorkDir   string               `json:"work_dir,omitempty"`
+	ID        string           `json:"id"`
+	Title     string           `json:"title,omitempty"`
+	WorkDir   string           `json:"work_dir,omitempty"`
+	ClientID  string           `json:"client_id,omitempty"`
 	History   []models.Message `json:"history"`
-	CreatedAt string               `json:"created_at"`
-	UpdatedAt string               `json:"updated_at"`
+	CreatedAt string           `json:"created_at"`
+	UpdatedAt string           `json:"updated_at"`
+}
+
+type Client struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 // Fleet and Formation types are archived; their definitions live in

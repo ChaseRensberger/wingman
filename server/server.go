@@ -123,6 +123,12 @@ func (s *Server) setupRoutes() {
 		r.Delete("/{id}", s.handleDeleteAgent)
 	})
 
+	s.router.Route("/clients", func(r chi.Router) {
+		r.Get("/", s.handleListClients)
+		r.Post("/", s.handleCreateClient)
+		r.Get("/{id}", s.handleGetClient)
+	})
+
 	s.router.Route("/sessions", func(r chi.Router) {
 		r.Post("/", s.handleCreateSession)
 		r.Get("/", s.handleListSessions)

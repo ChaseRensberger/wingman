@@ -1,11 +1,9 @@
 // Package hookid provides stable string identifiers for the hooks defined in
 // agent/loop.
 //
-// These IDs are used for Tier 2 wire vocabulary, observability span/trace event
+// These IDs are used for wire vocabulary, observability span/trace event
 // names, and documentation anchors. They are explicitly NOT used for in-process
 // dispatch — that is handled by the Go types in agent/loop directly.
-//
-// For rationale see spec.md §6.2.
 package hookid
 
 // ID is a stable string identifier for a hook. Use the named constant values
@@ -13,22 +11,21 @@ package hookid
 type ID string
 
 const (
-	RunBefore       ID = "run.before"
-	IterationBefore ID = "iteration.before"
-	IterationAfter  ID = "iteration.after"
-	StepBefore      ID = "step.before"
-	SystemTransform ID = "system.transform"
+	RunBefore        ID = "run.before"
+	IterationBefore  ID = "iteration.before"
+	IterationAfter   ID = "iteration.after"
+	StepBefore       ID = "step.before"
+	SystemTransform  ID = "system.transform"
 	ContextTransform ID = "context.transform"
-	ToolBefore      ID = "tool.before"
-	ToolAfter       ID = "tool.after"
-	EventSink       ID = "event.sink"
+	ToolBefore       ID = "tool.before"
+	ToolAfter        ID = "tool.after"
+	EventSink        ID = "event.sink"
 )
 
-// Hook describes a single registered hook.
 type Hook struct {
 	ID          ID     // stable string identifier, e.g. "tool.before"
 	GoSymbol    string // dotted path to the Go symbol, e.g. "Hooks.BeforeToolCall" or "Sink.OnEvent"
-	Description string // one-line human description
+	Description string
 }
 
 var hooks = []Hook{

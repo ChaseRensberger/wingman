@@ -19,6 +19,7 @@ const (
 	PrefixMessage = "msg_"
 	PrefixPart    = "prt_"
 	PrefixToolUse = "tlu_"
+	PrefixClient  = "cli_"
 )
 
 // NewID returns a freshly minted KSUID prefixed with prefix. The body is
@@ -39,7 +40,7 @@ func NewID(prefix string) string {
 // Unknown prefixes are rejected to catch accidentally-typed IDs early
 // (a session ID where an agent ID was expected, etc.).
 func ParseID(id string) (prefix, body string, err error) {
-	for _, p := range []string{PrefixAgent, PrefixSession, PrefixMessage, PrefixPart, PrefixToolUse} {
+	for _, p := range []string{PrefixAgent, PrefixSession, PrefixMessage, PrefixPart, PrefixToolUse, PrefixClient} {
 		if strings.HasPrefix(id, p) {
 			return p, id[len(p):], nil
 		}

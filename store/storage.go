@@ -12,6 +12,7 @@ type Store interface {
 	CreateSession(session *Session) error
 	GetSession(id string) (*Session, error)
 	ListSessions() ([]*Session, error)
+	ListSessionsByClient(clientID string) ([]*Session, error)
 	// UpdateSession persists metadata-only fields (title and
 	// updated_at). work_dir is intentionally omitted — it is immutable
 	// once set at session creation. It does NOT touch the message
@@ -28,6 +29,10 @@ type Store interface {
 	// use AppendMessage.
 	ReplaceMessages(sessionID string, msgs []models.Message) error
 	DeleteSession(id string) error
+
+	CreateClient(name string) (*Client, error)
+	GetClient(id string) (*Client, error)
+	ListClients() ([]*Client, error)
 
 	GetAuth() (*Auth, error)
 	SetAuth(auth *Auth) error

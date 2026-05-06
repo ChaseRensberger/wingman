@@ -218,6 +218,58 @@ func (s *SQLiteStore) DeleteAgent(id string) error {
 	return nil
 }
 
+// ---- clients -------------------------------------------------------------
+
+// CreateClient inserts a new client row with a fresh KSUID and the
+// current unix timestamp.
+func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
+	client := &Client{
+		ID:        NewID(PrefixClient),
+		Name:      name,
+		CreatedAt: time.Now().Unix(),
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO clients (id, name, created_at) VALUES (?, ?, ?)
+	`, client.ID, client.Name, client.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert client: %w", err)
+	}
+	return client, nil
+}
+
+// GetClient returns the client with the given ID, or an error if not found.
+func (s *SQLiteStore) GetClient(id string) (*Client, error) {
+	var c Client
+	err := s.db.QueryRow(`
+		SELECT id, name, created_at FROM clients WHERE id = ?
+	`, id).Scan(&c.ID, &c.Name, &c.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("client not found: %s", id)
+	}
+	return &c, err
+}
+
+// ListClients returns every client, newest first by created_at.
+func (s *SQLiteStore) ListClients() ([]*Client, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, created_at FROM clients ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Client
+	for rows.Next() {
+		var c Client
+		if err := rows.Scan(&c.ID, &c.Name, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &c)
+	}
+	return out, rows.Err()
+}
+
 // ---- sessions ------------------------------------------------------------
 
 // CreateSession inserts a session row and (if non-empty) the initial
@@ -240,14 +292,28 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	}
 	defer tx.Rollback()
 
+	if session.ClientID != "" {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM clients WHERE id = ?`, session.ClientID).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("client not found: %s", session.ClientID)
+			}
+			return fmt.Errorf("verify client: %w", err)
+		}
+	}
+
 	var workDirPtr *string
 	if session.WorkDir != "" {
 		workDirPtr = &session.WorkDir
 	}
+	var clientIDPtr *string
+	if session.ClientID != "" {
+		clientIDPtr = &session.ClientID
+	}
 	if _, err := tx.Exec(`
-		INSERT INTO sessions (id, title, work_dir, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, session.ID, session.Title, workDirPtr, session.CreatedAt, session.UpdatedAt); err != nil {
+		INSERT INTO sessions (id, title, work_dir, client_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, session.ID, session.Title, workDirPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
@@ -261,9 +327,10 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var session Session
 	var workDir sql.NullString
+	var clientID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, title, work_dir, created_at, updated_at FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.Title, &workDir, &session.CreatedAt, &session.UpdatedAt)
+		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.Title, &workDir, &clientID, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -271,6 +338,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 		return nil, err
 	}
 	session.WorkDir = workDir.String
+	session.ClientID = clientID.String
 
 	msgs, err := readMessages(s.db, id)
 	if err != nil {
@@ -286,7 +354,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 // v0.1).
 func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, created_at, updated_at FROM sessions ORDER BY created_at DESC
+		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -297,10 +365,12 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	for rows.Next() {
 		var sess Session
 		var workDir sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		var clientID sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
+		sess.ClientID = clientID.String
 		out = append(out, &sess)
 	}
 	if err := rows.Err(); err != nil {
@@ -310,6 +380,43 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	// Hydrate histories. Done outside the rows loop so the read query is
 	// closed before the per-session reads run (avoids reentrant queries
 	// on the single connection).
+	for _, sess := range out {
+		msgs, err := readMessages(s.db, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		sess.History = msgs
+	}
+	return out, nil
+}
+
+// ListSessionsByClient returns every session belonging to a specific
+// client, newest first. Sessions with no client are excluded.
+func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
+	`, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Session
+	for rows.Next() {
+		var sess Session
+		var workDir sql.NullString
+		var cid sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sess.WorkDir = workDir.String
+		sess.ClientID = cid.String
+		out = append(out, &sess)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	for _, sess := range out {
 		msgs, err := readMessages(s.db, sess.ID)
 		if err != nil {
