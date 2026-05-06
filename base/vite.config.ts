@@ -15,4 +15,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      "/health": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/provider": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/agents": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/clients": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/sessions": { target: "http://127.0.0.1:2323", changeOrigin: true },
+    },
+  },
 });
