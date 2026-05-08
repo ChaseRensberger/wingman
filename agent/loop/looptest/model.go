@@ -61,6 +61,7 @@ type RecordingModel struct {
 	script   []ScriptedReply
 	index    int
 	requests []RecordedRequest
+	info     models.ModelInfo
 }
 
 // NewRecordingModel constructs a RecordingModel with the given script.
@@ -84,8 +85,20 @@ func (m *RecordingModel) Requests() []RecordedRequest {
 	return deepCopy(m.requests)
 }
 
+// SetInfo overrides the ModelInfo returned by Info.
+func (m *RecordingModel) SetInfo(info models.ModelInfo) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.info = info
+}
+
 // Info returns static metadata about the model.
 func (m *RecordingModel) Info() models.ModelInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.info.Provider != "" {
+		return m.info
+	}
 	return models.ModelInfo{Provider: "looptest", ID: "recording-model",
 		Capabilities: models.ModelCapabilities{Tools: true}}
 }

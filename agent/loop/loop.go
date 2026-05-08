@@ -378,6 +378,10 @@ type Result struct {
 	// StopReason describes why the loop terminated. See StopReason
 	// constants.
 	StopReason StopReason
+
+	// StructuredOutput is populated when the run had an active OutputSchema
+	// and the model returned a parseable, schema-valid final message.
+	StructuredOutput map[string]any
 }
 
 // StopReason explains why Run returned.
@@ -474,6 +478,15 @@ type ErrorEvent struct {
 	Err error
 }
 
+// StructuredOutputEvent fires once per run, immediately after a
+// successful parse + validation of the final assistant message. Sinks
+// can use this to surface the typed result to clients.
+type StructuredOutputEvent struct {
+	Schema  string         // OutputSchema.Name, if set
+	RawJSON string         // raw text of the final assistant message
+	Parsed  map[string]any // parsed + schema-validated JSON
+}
+
 // ContextTransformedEvent fires when a hook (TransformHistory or
 // TransformContext) replaced the message slice with one of a different
 // length. Phase is "before_step" (mutation persisted into running
@@ -500,3 +513,4 @@ func (ToolExecutionEndEvent) isEvent()    {}
 func (StreamPartEvent) isEvent()          {}
 func (ErrorEvent) isEvent()               {}
 func (ContextTransformedEvent) isEvent()  {}
+func (StructuredOutputEvent) isEvent()    {}

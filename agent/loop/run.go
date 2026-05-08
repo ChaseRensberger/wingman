@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/tool"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Run executes the loop with the given config until one of the
@@ -30,6 +31,11 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	if cfg.Hooks.BeforeRun != nil && len(cfg.Messages) > 0 {
 		return nil, errors.New("loop.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
+	}
+
+	if cfg.OutputSchema != nil && !cfg.Model.Info().Capabilities.StructuredOutput {
+		info := cfg.Model.Info()
+		return nil, fmt.Errorf("loop: model %s/%s does not support structured output", info.Provider, info.ID)
 	}
 
 	initial := append([]models.Message{}, cfg.Messages...)
@@ -82,6 +88,10 @@ type runner struct {
 	registry *tool.Registry
 	toolDefs []models.ToolDef
 	usage    models.Usage
+
+	// structuredOutput is set on the terminal turn when an active schema
+	// produced a valid JSON response.
+	structuredOutput map[string]any
 
 	// eventCh funnels every Sink event through a single drain
 	// goroutine (started in Run). Workers can emit concurrently
@@ -175,6 +185,10 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		// Termination: the assistant produced no tool calls. The model
 		// considers itself done. We're done.
 		if len(turn.Results) == 0 {
+			if err := r.handleStructuredOutput(turn); err != nil {
+				r.emitError(err)
+				return r.finalize(step, StopReasonError), err
+			}
 			return r.finalize(step, StopReasonEndTurn), nil
 		}
 	}
@@ -480,15 +494,69 @@ func (r *runner) emitError(err error) {
 	r.emit(ErrorEvent{Err: err})
 }
 
+// handleStructuredOutput parses and validates the assistant's final text
+// when an OutputSchema is active. On success it populates
+// r.structuredOutput and emits a StructuredOutputEvent.
+func (r *runner) handleStructuredOutput(turn Turn) error {
+	if r.cfg.OutputSchema == nil {
+		return nil
+	}
+	text := textOf(turn.Assistant)
+	if text == "" {
+		return fmt.Errorf("loop: structured output required but assistant returned empty text")
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		return fmt.Errorf("loop: structured output parse error: %w (raw: %s)", err, text)
+	}
+	if err := validateAgainstSchema(r.cfg.OutputSchema.Schema, parsed); err != nil {
+		return fmt.Errorf("loop: structured output validation error: %w (raw: %s)", err, text)
+	}
+	r.structuredOutput = parsed
+	r.emit(StructuredOutputEvent{
+		Schema:  r.cfg.OutputSchema.Name,
+		RawJSON: text,
+		Parsed:  parsed,
+	})
+	return nil
+}
+
+func validateAgainstSchema(schema map[string]any, value any) error {
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("schema.json", schema); err != nil {
+		return fmt.Errorf("compile schema: %w", err)
+	}
+	sch, err := c.Compile("schema.json")
+	if err != nil {
+		return fmt.Errorf("compile schema: %w", err)
+	}
+	if err := sch.Validate(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+// textOf concatenates every TextPart in a message in source order.
+func textOf(msg models.Message) string {
+	var out string
+	for _, p := range msg.Content {
+		if t, ok := p.(models.TextPart); ok {
+			out += t.Text
+		}
+	}
+	return out
+}
+
 // finalize builds the Result. Callers always get a non-nil Result so
 // they can persist partial state on errors.
 func (r *runner) finalize(step int, reason StopReason) *Result {
 	return &Result{
-		Messages:   r.messages,
-		Turns:      r.turns,
-		Usage:      r.usage,
-		Steps:      step,
-		StopReason: reason,
+		Messages:         r.messages,
+		Turns:            r.turns,
+		Usage:            r.usage,
+		Steps:            step,
+		StopReason:       reason,
+		StructuredOutput: r.structuredOutput,
 	}
 }
 

@@ -271,6 +271,10 @@ type Result struct {
 	// loop.StopReason exactly; re-exported here so callers don't import
 	// the loop package just for the constants.
 	StopReason loop.StopReason
+
+	// StructuredOutput is populated when the run had an active OutputSchema
+	// and the model returned a parseable, schema-valid final message.
+	StructuredOutput map[string]any
 }
 
 // ToolCallResult is a serialization-friendly view of one tool call.
@@ -449,6 +453,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		out.Usage = res.Usage
 		out.Steps = res.Steps
 		out.StopReason = res.StopReason
+		out.StructuredOutput = res.StructuredOutput
 		// Extract response text from the last assistant message, if any.
 		if last := lastAssistant(res.Messages); last != nil {
 			out.Response = textOf(*last)

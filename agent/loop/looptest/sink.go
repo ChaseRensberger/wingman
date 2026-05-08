@@ -56,6 +56,9 @@ func (s *RecordingSink) Errors() []loop.ErrorEvent { return filter[loop.ErrorEve
 // ContextTransforms returns every ContextTransformedEvent.
 func (s *RecordingSink) ContextTransforms() []loop.ContextTransformedEvent { return filter[loop.ContextTransformedEvent](s) }
 
+// StructuredOutputs returns every StructuredOutputEvent.
+func (s *RecordingSink) StructuredOutputs() []loop.StructuredOutputEvent { return filter[loop.StructuredOutputEvent](s) }
+
 func filter[T loop.Event](s *RecordingSink) []T {
 	s.mu.Lock()
 	defer s.mu.Unlock()
