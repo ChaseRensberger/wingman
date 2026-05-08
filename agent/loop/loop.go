@@ -32,9 +32,9 @@
 //     it needs.
 //
 // Compaction does not live in this package. Loop only offers a
-// BeforeStep hook seam (see Hooks.BeforeStep) plus per-turn cumulative
+// TransformHistory hook seam (see Hooks.TransformHistory) plus per-turn cumulative
 // usage tracking; the agent/hook package ships a default compaction
-// implementation that plugs into BeforeStep, and consumers can install
+// implementation that plugs into TransformHistory, and consumers can install
 // their own hook for any other between-step transformation (budgeting,
 // tool-result trimming, redaction, etc.).
 //
@@ -165,9 +165,9 @@ const (
 //   - TransformContext and TransformSystem return new values; the loop
 //     uses the returned slice/string going forward but does not write
 //     back into Config.Messages. This means transforms are per-turn.
-//   - BeforeStep, in contrast, mutates the loop's running history: the
+//   - TransformHistory, in contrast, mutates the loop's running history: the
 //     returned slice replaces r.messages and persists across subsequent
-//     turns. Use BeforeStep for compaction / budget enforcement /
+//     turns. Use TransformHistory for compaction / budget enforcement /
 //     anything that should outlive a single turn; use TransformContext
 //     for per-turn ephemeral edits (redaction, injection).
 //   - Hooks run synchronously on the loop goroutine. Slow hooks slow the
@@ -181,8 +181,7 @@ const (
 //  4. Define an event type (and isEvent method) if observers should see
 //     it cross the Sink boundary.
 //
-// Candidate future seams: AfterStep (per-iteration telemetry), AfterRun
-// (final cleanup).
+// Candidate future seams: AfterRun (final cleanup).
 type Hooks struct {
 	// BeforeRun fires exactly once at the start of Run, after Config
 	// validation and before the first iteration. It returns the
@@ -201,18 +200,18 @@ type Hooks struct {
 	// is a no-op (the chain continues with the accumulator unchanged).
 	BeforeRun BeforeRunHook
 
-	// BeforeIteration fires at the top of each turn, after MaxSteps is
-	// checked but before BeforeStep / TransformContext / the LLM call.
+	// OnTurnStart fires at the top of each turn, after MaxSteps is
+	// checked and after TransformHistory / TransformContext / the LLM call.
 	// step is 1-indexed.
-	BeforeIteration func(ctx context.Context, step int) error
+	OnTurnStart func(ctx context.Context, step int) error
 
-	// AfterIteration fires after a turn's assistant message and tool
+	// OnTurnEnd fires after a turn's assistant message and tool
 	// results have been appended. The Turn carries everything that
 	// happened in the turn. Errors here fail the loop.
-	AfterIteration func(ctx context.Context, step int, turn Turn) error
+	OnTurnEnd func(ctx context.Context, step int, turn Turn) error
 
-	// BeforeStep, if non-nil, is invoked at the top of each loop
-	// iteration (after MaxSteps gating, before BeforeIteration). The
+	// TransformHistory, if non-nil, is invoked at the top of each loop
+	// iteration (after MaxSteps gating, before OnTurnStart). The
 	// returned slice replaces the loop's running message history and
 	// persists across subsequent turns. Use this for compaction, budget
 	// enforcement, or any other transformation that should outlive a
@@ -222,7 +221,7 @@ type Hooks struct {
 	// emits a ContextTransformedEvent so observers can react.
 	//
 	// Errors fail the loop.
-	BeforeStep BeforeStepHook
+	TransformHistory TransformHistoryHook
 
 	// TransformSystem may rewrite the system prompt for this turn. The
 	// returned string replaces Config.System for the LLM call only;
@@ -237,7 +236,7 @@ type Hooks struct {
 	// cases: per-turn redaction, just-in-time injection, ephemeral
 	// trimming.
 	//
-	// Contrast with BeforeStep, which persists its mutations.
+	// Contrast with TransformHistory, which persists its mutations.
 	TransformContext TransformContextHook
 
 	// BeforeToolCall fires for each tool call after the assistant turn,
@@ -254,7 +253,7 @@ type Hooks struct {
 	AfterToolCall AfterToolCallFunc
 }
 
-// BeforeStepInfo is the input to a BeforeStepHook. Step is 1-indexed and
+// TransformHistoryInfo is the input to a TransformHistoryHook. Step is 1-indexed and
 // reflects the upcoming iteration. Messages is the loop's current
 // running history (the hook may inspect or copy but should treat it as
 // read-only; return a new slice to mutate). Usage is the cumulative
@@ -264,7 +263,7 @@ type Hooks struct {
 // (compaction markers, redaction notices, etc.) should emit a
 // MessageEvent for each so observers (storage, UIs) see them on the
 // same channel as loop-produced messages.
-type BeforeStepInfo struct {
+type TransformHistoryInfo struct {
 	Step     int
 	Messages []models.Message
 	Usage    models.Usage
@@ -272,8 +271,8 @@ type BeforeStepInfo struct {
 	Sink     Sink
 }
 
-// BeforeStepHook is the signature for Hooks.BeforeStep. See its docs.
-type BeforeStepHook func(ctx context.Context, info BeforeStepInfo) ([]models.Message, error)
+// TransformHistoryHook is the signature for Hooks.TransformHistory. See its docs.
+type TransformHistoryHook func(ctx context.Context, info TransformHistoryInfo) ([]models.Message, error)
 
 // BeforeRunHook is the signature for Hooks.BeforeRun. It returns the
 // initial message history for the run. Composed across plugins by the
@@ -284,7 +283,7 @@ type BeforeRunHook func(ctx context.Context, current []models.Message) ([]models
 
 // TransformContextInfo is the input to a TransformContextHook. Step is
 // 1-indexed and reflects the current iteration. Messages is the slice
-// being prepared for the model (post-BeforeStep). Model is supplied so
+// being prepared for the model (post-TransformHistory). Model is supplied so
 // hooks can introspect (e.g. context window) for budget decisions.
 type TransformContextInfo struct {
 	Step     int
@@ -424,13 +423,13 @@ type Event interface {
 	isEvent()
 }
 
-// IterationStartEvent fires at the top of a turn, after BeforeIteration
+// IterationStartEvent fires at the top of a turn, after OnTurnStart
 // hook but before the LLM call.
 type IterationStartEvent struct {
 	Step int
 }
 
-// IterationEndEvent fires after a turn completes, before AfterIteration
+// IterationEndEvent fires after a turn completes, before OnTurnEnd
 // hook. Carries the same Turn the hook receives.
 type IterationEndEvent struct {
 	Step int
@@ -475,10 +474,10 @@ type ErrorEvent struct {
 	Err error
 }
 
-// ContextTransformedEvent fires when a hook (BeforeStep or
+// ContextTransformedEvent fires when a hook (TransformHistory or
 // TransformContext) replaced the message slice with one of a different
 // length. Phase is "before_step" (mutation persisted into running
-// history) or "transform_context" (mutation ephemeral, applied only to
+// history by TransformHistory) or "transform_context" (mutation ephemeral, applied only to
 // this turn's request). Head is the first message of the post-hook
 // slice when len > 0, nil otherwise; observers wanting to discriminate
 // between hook kinds inspect Head's part type discriminators (e.g. a

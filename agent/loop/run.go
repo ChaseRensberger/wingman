@@ -105,23 +105,23 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return r.finalize(step, StopReasonMaxSteps), nil
 		}
 
-		// BeforeStep hook. Runs before BeforeIteration so the hook sees
+		// TransformHistory hook. Runs before OnTurnStart so the hook sees
 		// (and the per-turn hooks operate on) any persisted mutation
-		// the BeforeStep returned. step+1 reflects the upcoming turn.
+		// the TransformHistory returned. step+1 reflects the upcoming turn.
 		// Compaction is the canonical user of this seam (shipped in
 		// agent/hook).
-		if r.cfg.Hooks.BeforeStep != nil {
-			info := BeforeStepInfo{
+		if r.cfg.Hooks.TransformHistory != nil {
+			info := TransformHistoryInfo{
 				Step:     step + 1,
 				Messages: r.messages,
 				Usage:    r.usage,
 				Model:    r.cfg.Model,
 				Sink:     r.cfg.Sink,
 			}
-			newMsgs, err := r.cfg.Hooks.BeforeStep(ctx, info)
+			newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
 			if err != nil {
 				r.emitError(err)
-				return r.finalize(step, StopReasonError), fmt.Errorf("hook BeforeStep: %w", err)
+				return r.finalize(step, StopReasonError), fmt.Errorf("hook TransformHistory: %w", err)
 			}
 			if newMsgs != nil && len(newMsgs) != len(r.messages) {
 				orig := len(r.messages)
@@ -143,8 +143,8 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 
 		step++
 
-		if r.cfg.Hooks.BeforeIteration != nil {
-			if err := r.cfg.Hooks.BeforeIteration(ctx, step); err != nil {
+		if r.cfg.Hooks.OnTurnStart != nil {
+			if err := r.cfg.Hooks.OnTurnStart(ctx, step); err != nil {
 				r.emitError(err)
 				return r.finalize(step, StopReasonError), err
 			}
@@ -165,8 +165,8 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.turns = append(r.turns, turn)
 		r.emit(IterationEndEvent{Step: step, Turn: turn})
 
-		if r.cfg.Hooks.AfterIteration != nil {
-			if err := r.cfg.Hooks.AfterIteration(ctx, step, turn); err != nil {
+		if r.cfg.Hooks.OnTurnEnd != nil {
+			if err := r.cfg.Hooks.OnTurnEnd(ctx, step, turn); err != nil {
 				r.emitError(err)
 				return r.finalize(step, StopReasonError), err
 			}

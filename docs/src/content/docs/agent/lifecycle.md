@@ -11,8 +11,8 @@ The loop exposes a small set of extension seams. Each seam allows exactly one fu
 
 You attach hooks in two places:
 
-- **As a plugin contribution.** `Plugin.Install(*plugin.Registry)` calls `RegisterBeforeRun`, `RegisterBeforeStep`, `RegisterTransformContext`, etc. Plugin hooks for the same seam chain.
-- **As a one-off raw hook on the session.** `session.WithBeforeStep(h)` and `session.WithTransformContext(h)` install a single function. Raw hooks run *after* the plugin chain (so the user's hook sees the post-plugin slice and has the final word).
+- **As a plugin contribution.** `Plugin.Install(*plugin.Registry)` calls `RegisterBeforeRun`, `RegisterTransformHistory`, `RegisterTransformContext`, etc. Plugin hooks for the same seam chain.
+- **As a one-off raw hook on the session.** `session.WithTransformHistory(h)` and `session.WithTransformContext(h)` install a single function. Raw hooks run *after* the plugin chain (so the user's hook sees the post-plugin slice and has the final word).
 
 Hooks run synchronously on the loop goroutine. Slow hooks slow the loop.
 
@@ -30,9 +30,9 @@ The same plugin commonly contributes both — for example, the [storage plugin](
 ```go
 type Hooks struct {
     BeforeRun        BeforeRunHook
-    BeforeIteration  func(ctx context.Context, step int) error
-    AfterIteration   func(ctx context.Context, step int, turn Turn) error
-    BeforeStep       BeforeStepHook
+    OnTurnStart      func(ctx context.Context, step int) error
+    OnTurnEnd        func(ctx context.Context, step int, turn Turn) error
+    TransformHistory TransformHistoryHook
     TransformSystem  func(ctx context.Context, system string) (string, error)
     TransformContext TransformContextHook
     BeforeToolCall   BeforeToolCallFunc
@@ -44,13 +44,13 @@ Order:
 
 1. `BeforeRun(current)` — supplies the loop's *initial* message slice (once per `Run`)
 2. For each iteration:
-   1. `BeforeIteration(step)`
-   2. `BeforeStep(info)` — may rewrite running history (persistent)
+   1. `OnTurnStart(step)`
+   2. `TransformHistory(info)` — may rewrite running history (persistent)
    3. `TransformSystem(system)` — may rewrite the system prompt (per-turn)
    4. `TransformContext(info)` — may rewrite the message slice (per-turn)
    5. Provider call
    6. For each tool call: `BeforeToolCall(call)` → `Tool.Execute` → `AfterToolCall(call, result, isError)`
-   7. `AfterIteration(step, turn)`
+   7. `OnTurnEnd(step, turn)`
 
 ## `BeforeRun` — initial history
 
@@ -64,17 +64,17 @@ When multiple plugins register `BeforeRun`, they chain in install order. Each re
 
 `Config.Messages` and `BeforeRun` are mutually exclusive. If both are set, `loop.Run` returns a config error rather than guessing which one should win — the loop has exactly one source of initial history. The session always uses `BeforeRun` internally to inject its in-memory history snapshot, so SDK consumers using `session.AddMessage` / `WithMessageSink` see the same semantics they always have.
 
-## `BeforeStep` vs `TransformContext`
+## `TransformHistory` vs `TransformContext`
 
 Both hooks rewrite the message slice. They differ in *persistence*:
 
-- **`BeforeStep`** mutates the loop's running history. The returned slice replaces `r.messages` and persists across subsequent turns. Use it for compaction, budget enforcement, or anything that should outlive a single turn.
+- **`TransformHistory`** mutates the loop's running history. The returned slice replaces `r.messages` and persists across subsequent turns. Use it for compaction, budget enforcement, or anything that should outlive a single turn.
 - **`TransformContext`** is per-turn. The returned slice is sent to the model in place of the loop's running history; the running history itself is unaffected. Use it for redaction, just-in-time injection, or ephemeral trimming.
 
 If a hook returns a slice with a different length, the loop emits a `ContextTransformedEvent` so observers can react.
 
 ```go
-type BeforeStepInfo struct {
+type TransformHistoryInfo struct {
     Step     int
     Messages []models.Message
     Usage    models.Usage
@@ -113,7 +113,7 @@ func gateBash(ctx context.Context, call loop.ToolCall) (map[string]any, error) {
 
 When more than one plugin (or a plugin + a raw user hook) targets the same seam:
 
-- **Pipeline seams** (`BeforeRun`, `BeforeStep`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain. Each hook receives the previous one's output. Errors short-circuit the chain.
+- **Pipeline seams** (`BeforeRun`, `TransformHistory`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain. Each hook receives the previous one's output. Errors short-circuit the chain.
 - **Sink subscribers** run independently. Every registered sink sees every event.
 - **Tool registrations** merge into the session's tool slice; later wins on name collision via the loop's tool registry.
 

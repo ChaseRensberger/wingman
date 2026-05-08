@@ -35,7 +35,7 @@ This matters because every implicit default is a thing you have to learn about, 
 Wherever the codebase has to decide which copy of something is authoritative, the answer is unambiguous:
 
 - The loop's `Config.Messages` and `BeforeRun` are mutually exclusive. Use one or the other; if both are set, `Run` returns a config error rather than guessing.
-- After `loop.Run` returns, the session adopts the loop's terminal message slice wholesale. If a `BeforeStep` hook rewrote the slice mid-run, the session sees the rewrite — not its own pre-call snapshot.
+- After `loop.Run` returns, the session adopts the loop's terminal message slice wholesale. If a `TransformHistory` hook rewrote the slice mid-run, the session sees the rewrite — not its own pre-call snapshot.
 - Plugin `Name()` must be unique within a session. Two plugins claiming the same name fails the run. There's no "later wins" or "first wins" — there's a clear error.
 
 The pattern: when two systems could disagree, make the disagreement impossible to express. It's better to fail loudly at construction than to debug a silently desynchronized state later.
@@ -55,7 +55,7 @@ IDs are KSUIDs (27 base62 characters after a stable prefix) for three reasons: s
 When in doubt, look at:
 
 - **[pi-mono](https://github.com/anthropics/pi-mono)** for "how small can a useful agent loop be." This is the size budget.
-- **[opencode](https://github.com/opencode-ai/opencode)** for hook composition patterns. The slicing approach to composable hooks is theirs; the BeforeRun / BeforeStep / TransformContext distinction is shaped by what worked there.
+- **[opencode](https://github.com/opencode-ai/opencode)** for hook composition patterns. The slicing approach to composable hooks is theirs; the BeforeRun / TransformHistory / TransformContext distinction is shaped by what worked there.
 - **[Vercel AI SDK v3](https://sdk.vercel.ai/)** for streaming wire format. We follow their part vocabulary.
 
 ## What v0.1 does *not* try to do

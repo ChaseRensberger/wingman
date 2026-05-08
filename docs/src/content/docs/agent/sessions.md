@@ -18,7 +18,7 @@ When you call `Run` or `RunStream`, the session:
 1. Locks state and snapshots the current model, system, tools, work dir, plugins, raw hooks, and message sink.
 2. Appends the user message to history.
 3. Builds a fresh plugin `Registry` and folds it into composed `loop.Hooks`, a merged tool slice, and a fan-out `Sink`.
-4. Composes any user-supplied raw `BeforeStep` / `TransformContext` hooks after the plugin chain (last-wins for the user's seam).
+4. Composes any user-supplied raw `TransformHistory` / `TransformContext` hooks after the plugin chain (last-wins for the user's seam).
 5. Drives `loop.Run`. The loop streams from the model, executes tool calls, and emits typed events.
 6. Adopts the loop's terminal message slice wholesale — so plugin mutations (e.g. compaction markers) end up in history.
 7. Returns a `*Result` with the final text, all tool calls in completion order, cumulative usage, step count, and `StopReason`.

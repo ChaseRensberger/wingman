@@ -63,12 +63,12 @@ Wingman expects callers to swap the active model mid-session (different turns ma
 The loop is the agentic kernel. One call to `loop.Run` drives a sequence of turns:
 
 1. Run `BeforeRun` once to seed the loop's initial message history (the storage plugin uses this to load prior turns from disk).
-2. Run `BeforeStep` (may persistently rewrite history) and `TransformContext` (may rewrite the per-turn slice without persisting).
+2. Run `TransformHistory` (may persistently rewrite history) and `TransformContext` (may rewrite the per-turn slice without persisting).
 3. Stream from the model.
 4. Append the assistant message; if it includes tool calls, execute them (parallel by default) and append tool results.
 5. Repeat until an assistant turn produces no tool calls, `MaxSteps` is reached, or context is cancelled.
 
-Hooks are a struct of optional functions: `BeforeRun`, `BeforeIteration`, `AfterIteration`, `BeforeStep`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./agent/lifecycle).
+Hooks are a struct of optional functions: `BeforeRun`, `OnTurnStart`, `OnTurnEnd`, `TransformHistory`, `TransformSystem`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`. There is exactly one of each. Plugins compose into those seams via the plugin registry. See [Lifecycle hooks](./agent/lifecycle).
 
 The loop emits typed events on a `Sink` (`IterationStartEvent`, `MessageEvent`, `ToolExecutionStartEvent`/`EndEvent`, `StreamPartEvent`, `ContextTransformedEvent`, `ErrorEvent`, `IterationEndEvent`). The session forwards these to whatever observers are attached.
 
@@ -92,7 +92,7 @@ Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools
 
 Two canonical plugins ship in-tree:
 
-- `plugins/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`BeforeStep` + `TransformContext`) pattern.
+- `plugins/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`TransformHistory` + `TransformContext`) pattern.
 - `storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing store.
 
 See [Plugins](./agent/plugins).

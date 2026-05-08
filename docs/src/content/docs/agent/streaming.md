@@ -15,16 +15,16 @@ The loop emits typed Go values on a `Sink`. Every event satisfies the closed `lo
 
 | Type | Fires when |
 |---|---|
-| `IterationStartEvent` | Top of a turn, after `BeforeIteration`, before the LLM call |
+| `IterationStartEvent` | Top of a turn, after `OnTurnStart`, before the LLM call |
 | `IterationEndEvent` | After a turn (assistant + tool results) is appended |
 | `MessageEvent` | After a complete message is appended to history |
 | `ToolExecutionStartEvent` | Immediately before `Tool.Execute` |
 | `ToolExecutionEndEvent` | After execution returns; in completion order |
 | `StreamPartEvent` | Wraps a raw provider `StreamPart` |
-| `ContextTransformedEvent` | `BeforeStep` or `TransformContext` changed the slice length |
+| `ContextTransformedEvent` | `TransformHistory` or `TransformContext` changed the slice length |
 | `ErrorEvent` | The loop is about to terminate with an error |
 
-`MessageEvent` includes plugin-injected messages — when a plugin emits one through `info.Sink` from a `BeforeStep` hook, observers see it on the same channel as loop-produced messages.
+`MessageEvent` includes plugin-injected messages — when a plugin emits one through `info.Sink` from a `TransformHistory` hook, observers see it on the same channel as loop-produced messages.
 
 ## SDK consumption
 

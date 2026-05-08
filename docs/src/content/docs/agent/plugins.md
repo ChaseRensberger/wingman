@@ -11,7 +11,7 @@ A plugin is a bundle of [hook installations](./lifecycle), tools, sinks, and [Pa
 
 ## Why plugins
 
-The loop's `Hooks` struct allows exactly one function per seam (single call site, no surprise ordering). When multiple capabilities want the same seam — say, compaction wants `BeforeStep` and a budget enforcer also wants `BeforeStep` — wiring them by hand into both the loop config and the tool slice is mechanical and error-prone. A plugin is the aggregating abstraction: one `session.WithPlugin(...)` call installs everything the plugin contributes, and the registry composes contributions in install order.
+The loop's `Hooks` struct allows exactly one function per seam (single call site, no surprise ordering). When multiple capabilities want the same seam — say, compaction wants `TransformHistory` and a budget enforcer also wants `TransformHistory` — wiring them by hand into both the loop config and the tool slice is mechanical and error-prone. A plugin is the aggregating abstraction: one `session.WithPlugin(...)` call installs everything the plugin contributes, and the registry composes contributions in install order.
 
 The flip side: the loop core knows nothing about any specific plugin. Storage, compaction, gates, redaction — they all live outside `agent/loop` and hook in through the same registry as user-authored plugins. The loop stays minimal; capabilities ship as additive modules.
 
@@ -45,7 +45,7 @@ type Plugin interface {
 
 ```go
 r.RegisterBeforeRun(h)         // BeforeRun hook (initial history)
-r.RegisterBeforeStep(h)        // BeforeStep hook
+r.RegisterTransformHistory(h)  // TransformHistory hook
 r.RegisterTransformContext(h)  // TransformContext hook
 r.RegisterBeforeToolCall(h)    // BeforeToolCall hook (returning ErrSkipTool short-circuits)
 r.RegisterAfterToolCall(h)     // AfterToolCall hook
@@ -56,7 +56,7 @@ r.RegisterPart(typeName, fn)   // registers a Part decoder with models (process-
 
 `Build` folds everything into a `Built{Hooks, Tools, Sink}` value the session feeds to `loop.Run`. Composition rules:
 
-- **Pipeline seams** (`BeforeRun`, `BeforeStep`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain in install order. Each hook receives the previous one's output. The first error short-circuits.
+- **Pipeline seams** (`BeforeRun`, `TransformHistory`, `TransformContext`, `BeforeToolCall`, `AfterToolCall`) chain in install order. Each hook receives the previous one's output. The first error short-circuits.
 - **Sinks** fan out: every registered sink sees every event, in install order.
 - **Tools** merge into the session's tool slice. Plugin tools are appended after user-supplied tools, so plugins can override built-ins by name (later wins in the loop's tool registry).
 - **Parts** call `models.RegisterPart` directly. The part registry is process-global and idempotent across re-installs.
@@ -125,10 +125,10 @@ Plugins should keep their `Name()` stable across versions so observability layer
 `plugins/compaction` is the canonical hooks-only worked example. It demonstrates:
 
 - a custom **Part type** registered via `RegisterPart` and serialized through `OpaquePart`
-- a **`BeforeStep`** hook that summarizes the head of long histories and *appends* a marker (the original messages stay in the durable transcript)
+- a **`TransformHistory`** hook that summarizes the head of long histories and *appends* a marker (the original messages stay in the durable transcript)
 - a **`TransformContext`** hook that walks the per-turn slice, finds the latest marker, and builds the model-facing view as `[summary text] + [messages after marker]`
 
-This two-seam design is intentional: single-seam approaches (truncate-and-replace in `BeforeStep`) lose history irrecoverably and prevent UIs from rendering the pre-compaction transcript. Splitting write (append marker) from read (filter) keeps every byte addressable.
+This two-seam design is intentional: single-seam approaches (truncate-and-replace in `TransformHistory`) lose history irrecoverably and prevent UIs from rendering the pre-compaction transcript. Splitting write (append marker) from read (filter) keeps every byte addressable.
 
 ```go
 import "github.com/chaserensberger/wingman/plugins/compaction"

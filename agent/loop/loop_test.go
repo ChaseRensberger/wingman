@@ -122,8 +122,8 @@ func TestBeforeRunAndConfigMessagesMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestBeforeStepMutationPersistsAcrossTurns answers: Does a mutation made by Hooks.BeforeStep persist to the next turn's running history?
-func TestBeforeStepMutationPersistsAcrossTurns(t *testing.T) {
+// TestTransformHistoryMutationPersistsAcrossTurns answers: Does a mutation made by Hooks.TransformHistory persist to the next turn's running history?
+func TestTransformHistoryMutationPersistsAcrossTurns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -136,7 +136,7 @@ func TestBeforeStepMutationPersistsAcrossTurns(t *testing.T) {
 	marker := models.NewUserText("synthetic-marker")
 
 	hooks := loop.Hooks{
-		BeforeStep: func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
+		TransformHistory: func(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
 			if info.Step == 1 {
 				out := make([]models.Message, 0, len(info.Messages)+1)
 				out = append(out, marker)

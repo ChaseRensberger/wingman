@@ -5,7 +5,7 @@
 //   - a working directory passed to tool executions
 //   - a models.Model + system prompt + tool registry
 //   - the running message history
-//   - optional lifecycle hooks (BeforeStep / TransformContext)
+// - optional lifecycle hooks (TransformHistory / TransformContext)
 //
 // Session itself is concurrency-safe (mu-guarded). Run and RunStream
 // drive a single inference loop turn batch and append both the user
@@ -14,9 +14,9 @@
 //
 // Plugins (agent/plugin) are opt-in: nothing is installed by
 // default. Pass WithPlugin(compaction.New()) to enable summarization;
-// pass any other plugin to extend behavior at the BeforeStep,
+// pass any other plugin to extend behavior at the TransformHistory,
 // TransformContext, BeforeToolCall, AfterToolCall, Sink, Tool, or
-// Part-registry seams. WithBeforeStep / WithTransformContext remain
+// Part-registry seams. WithTransformHistory / WithTransformContext remain
 // available for power users who want to install one-off hooks without
 // the plugin bundle.
 //
@@ -52,10 +52,10 @@ type Session struct {
 	// (model can change via SetModel between turns).
 	plugins []plugin.Plugin
 
-	// Raw hook overrides installed via WithBeforeStep / WithTransformContext.
+	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
 	// pipelines), so a user-supplied hook always has the final word.
-	beforeStep       loop.BeforeStepHook
+	transformHistory loop.TransformHistoryHook
 	transformContext loop.TransformContextHook
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
@@ -115,13 +115,13 @@ func WithTools(tools ...tool.Tool) Option {
 	return func(s *Session) { s.tools = append(s.tools, tools...) }
 }
 
-// WithBeforeStep installs a raw hook that runs before each loop step
+// WithTransformHistory installs a raw hook that runs before each loop step
 // and may persistently mutate the message slice (compaction-shaped).
-// Composed *after* any plugin-contributed BeforeStep hooks; receives
+// Composed *after* any plugin-contributed TransformHistory hooks; receives
 // the post-plugin slice. Prefer WithPlugin for reusable behavior;
 // reserve this for one-off ad-hoc hooks.
-func WithBeforeStep(h loop.BeforeStepHook) Option {
-	return func(s *Session) { s.beforeStep = h }
+func WithTransformHistory(h loop.TransformHistoryHook) Option {
+	return func(s *Session) { s.transformHistory = h }
 }
 
 // WithTransformContext installs a raw ephemeral per-turn hook that may
@@ -314,7 +314,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
 	workDir := s.workDir
-	rawBeforeStep := s.beforeStep
+	rawTransformHistory := s.transformHistory
 	rawTransformContext := s.transformContext
 	plugins := append([]plugin.Plugin(nil), s.plugins...)
 	messageSink := s.messageSink
@@ -371,7 +371,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 
 	// Hook composition: plugin-contributed hooks run first; user-
 	// supplied raw hooks run last and see the post-plugin slice.
-	beforeStep := composeBeforeStep(built.Hooks.BeforeStep, rawBeforeStep)
+	transformHistory := composeTransformHistory(built.Hooks.TransformHistory, rawTransformHistory)
 	transformContext := composeTransformContext(built.Hooks.TransformContext, rawTransformContext)
 
 	// Tool composition: session tools first, then plugin tools (later
@@ -405,7 +405,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		OutputSchema: outputSchema,
 		Hooks: loop.Hooks{
 			BeforeRun:        built.Hooks.BeforeRun,
-			BeforeStep:       beforeStep,
+			TransformHistory: transformHistory,
 			TransformContext: transformContext,
 			BeforeToolCall:   built.Hooks.BeforeToolCall,
 			AfterToolCall:    built.Hooks.AfterToolCall,
@@ -416,7 +416,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 
 	// Adopt the loop's terminal message slice wholesale. This handles
 	// both the simple case (loop appended turns to historySnap) and
-	// the plugin-mutation case (a BeforeStep hook rewrote the slice).
+	// the plugin-mutation case (a TransformHistory hook rewrote the slice).
 	// loop.Run guarantees res != nil, even on error.
 	s.mu.Lock()
 	if res != nil {
@@ -493,10 +493,10 @@ func textOf(msg models.Message) string {
 	return out
 }
 
-// composeBeforeStep returns the composition of plugin and user
-// BeforeStep hooks. If only one (or neither) is non-nil, returns it
+// composeTransformHistory returns the composition of plugin and user
+// TransformHistory hooks. If only one (or neither) is non-nil, returns it
 // directly to keep the call path obvious.
-func composeBeforeStep(pluginHook, userHook loop.BeforeStepHook) loop.BeforeStepHook {
+func composeTransformHistory(pluginHook, userHook loop.TransformHistoryHook) loop.TransformHistoryHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -505,7 +505,7 @@ func composeBeforeStep(pluginHook, userHook loop.BeforeStepHook) loop.BeforeStep
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
+	return func(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err
@@ -518,7 +518,7 @@ func composeBeforeStep(pluginHook, userHook loop.BeforeStepHook) loop.BeforeStep
 	}
 }
 
-// composeTransformContext mirrors composeBeforeStep for the per-turn
+// composeTransformContext mirrors composeTransformHistory for the per-turn
 // transform seam.
 func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loop.TransformContextHook {
 	switch {

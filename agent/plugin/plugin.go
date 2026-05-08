@@ -16,7 +16,7 @@
 // call site, no surprise ordering). When multiple plugins want the same
 // seam, the registry composes them in install order:
 //
-//   - Pipeline seams (BeforeStep, TransformContext, BeforeToolCall,
+//   - Pipeline seams (TransformHistory, TransformContext, BeforeToolCall,
 //     AfterToolCall) chain: each hook receives the previous one's output.
 //   - Sink subscribers run independently: every registered sink sees
 //     every event.
@@ -40,7 +40,7 @@
 //	func (p *MyPlugin) Name() string { return "my-plugin" }
 //
 //	func (p *MyPlugin) Install(r *plugin.Registry) error {
-//	    r.RegisterBeforeStep(p.beforeStep)
+//	    r.RegisterTransformHistory(p.transformHistory)
 //	    r.RegisterTool(p.someTool)
 //	    return nil
 //	}
@@ -81,7 +81,7 @@ type Plugin interface {
 // activation.
 type Registry struct {
 	beforeRun        []loop.BeforeRunHook
-	beforeStep       []loop.BeforeStepHook
+	transformHistory []loop.TransformHistoryHook
 	transformContext []loop.TransformContextHook
 	beforeToolCall   []loop.BeforeToolCallFunc
 	afterToolCall    []loop.AfterToolCallFunc
@@ -104,12 +104,12 @@ func (r *Registry) RegisterBeforeRun(h loop.BeforeRunHook) {
 	}
 }
 
-// RegisterBeforeStep adds a BeforeStep hook to the pipeline. Hooks run
+// RegisterTransformHistory adds a TransformHistory hook to the pipeline. Hooks run
 // in install order; each receives the previous hook's output as
 // info.Messages.
-func (r *Registry) RegisterBeforeStep(h loop.BeforeStepHook) {
+func (r *Registry) RegisterTransformHistory(h loop.TransformHistoryHook) {
 	if h != nil {
-		r.beforeStep = append(r.beforeStep, h)
+		r.transformHistory = append(r.transformHistory, h)
 	}
 }
 
@@ -192,13 +192,13 @@ func (r *Registry) Build() Built {
 		hooks.BeforeRun = composeBeforeRun(r.beforeRun)
 	}
 
-	switch len(r.beforeStep) {
+	switch len(r.transformHistory) {
 	case 0:
 		// no-op
 	case 1:
-		hooks.BeforeStep = r.beforeStep[0]
+		hooks.TransformHistory = r.transformHistory[0]
 	default:
-		hooks.BeforeStep = composeBeforeStep(r.beforeStep)
+		hooks.TransformHistory = composeTransformHistory(r.transformHistory)
 	}
 
 	switch len(r.transformContext) {
@@ -255,17 +255,17 @@ func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
 	}
 }
 
-// composeBeforeStep chains BeforeStep hooks: each one's output messages
+// composeTransformHistory chains TransformHistory hooks: each one's output messages
 // become the next one's input. Errors short-circuit the chain.
-func composeBeforeStep(hooks []loop.BeforeStepHook) loop.BeforeStepHook {
-	return func(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
+func composeTransformHistory(hooks []loop.TransformHistoryHook) loop.TransformHistoryHook {
+	return func(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
 		msgs := info.Messages
 		for i, h := range hooks {
 			next := info
 			next.Messages = msgs
 			out, err := h(ctx, next)
 			if err != nil {
-				return nil, fmt.Errorf("before_step[%d]: %w", i, err)
+				return nil, fmt.Errorf("transform_history[%d]: %w", i, err)
 			}
 			if out != nil {
 				msgs = out

@@ -12,9 +12,9 @@ type ID string
 
 const (
 	RunBefore        ID = "run.before"
-	IterationBefore  ID = "iteration.before"
-	IterationAfter   ID = "iteration.after"
-	StepBefore       ID = "step.before"
+	TurnStart        ID = "turn.start"
+	TurnEnd          ID = "turn.end"
+	HistoryTransform ID = "history.transform"
 	SystemTransform  ID = "system.transform"
 	ContextTransform ID = "context.transform"
 	ToolBefore       ID = "tool.before"
@@ -35,19 +35,19 @@ var hooks = []Hook{
 		Description: "Fires exactly once at the start of Run, after validation and before the first iteration.",
 	},
 	{
-		ID:          IterationBefore,
-		GoSymbol:    "Hooks.BeforeIteration",
-		Description: "Fires at the top of each turn, after MaxSteps check but before BeforeStep / TransformContext / the LLM call.",
+		ID:          TurnStart,
+		GoSymbol:    "Hooks.OnTurnStart",
+		Description: "Fires at the top of each turn, after MaxSteps check and after TransformHistory; observation only.",
 	},
 	{
-		ID:          IterationAfter,
-		GoSymbol:    "Hooks.AfterIteration",
-		Description: "Fires after a turn's assistant message and tool results have been appended.",
+		ID:          TurnEnd,
+		GoSymbol:    "Hooks.OnTurnEnd",
+		Description: "Fires after a turn's assistant message and tool results have been appended; observation only.",
 	},
 	{
-		ID:          StepBefore,
-		GoSymbol:    "Hooks.BeforeStep",
-		Description: "Fires at the top of each loop iteration, before BeforeIteration; may persist mutations into running history.",
+		ID:          HistoryTransform,
+		GoSymbol:    "Hooks.TransformHistory",
+		Description: "Fires at the top of each loop iteration, before OnTurnStart; may persist mutations into running history (e.g. compaction, budget enforcement).",
 	},
 	{
 		ID:          SystemTransform,

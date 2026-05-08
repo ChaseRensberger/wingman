@@ -113,7 +113,7 @@ See [Providers](./models/providers).
 | `WithTools(...)` | Tools the model may invoke. |
 | `WithWorkDir(dir)` | Working directory passed to tool executions. |
 | `WithPlugin(...)` | Install plugins (compaction, custom). Opt-in; nothing is installed by default. |
-| `WithBeforeStep(h)` | One-off raw `BeforeStepHook`. Composes after plugin hooks. |
+| `WithTransformHistory(h)` | One-off raw `TransformHistoryHook`. Composes after plugin hooks. |
 | `WithTransformContext(h)` | One-off raw `TransformContextHook`. |
 | `WithMessageSink(fn)` | Synchronous callback fired for every message added to history. |
 

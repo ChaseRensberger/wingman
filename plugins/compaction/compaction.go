@@ -7,7 +7,7 @@
 //
 // Compaction has two halves:
 //
-//   - Write-side (BeforeStep): when input tokens approach the model's
+//   - Write-side (TransformHistory): when input tokens approach the model's
 //     context window, summarize every message between the previous
 //     marker (if any) and the keep-tail boundary, then *append* a
 //     MarkerPart message into the running history. The original
@@ -24,7 +24,7 @@
 //
 // # Why two seams
 //
-// Single-seam approaches (truncate-and-replace in BeforeStep) lose
+// Single-seam approaches (truncate-and-replace in TransformHistory) lose
 // history irrecoverably and prevent UIs from showing what was
 // compacted. Splitting write (append marker) from read (filter) keeps
 // every byte addressable and lets observability surfaces render the
@@ -73,7 +73,7 @@ import (
 const PartType = "compaction_marker"
 
 // MarkerPart records that a span of conversation history was
-// summarized. Inserted by the plugin's BeforeStep hook in append
+// summarized. Inserted by the plugin's TransformHistory hook in append
 // position; the read-side TransformContext hook turns it into a
 // TextPart for the model and drops everything before it.
 type MarkerPart struct {
@@ -189,7 +189,7 @@ func WithModel(m models.Model) Option { return func(p *Plugin) { p.model = m } }
 func (p *Plugin) Name() string { return "compaction" }
 
 // Install implements plugin.Plugin. Registers the marker Part decoder,
-// the BeforeStep write-side hook, and the TransformContext read-side
+// the TransformHistory write-side hook, and the TransformContext read-side
 // filter.
 func (p *Plugin) Install(r *plugin.Registry) error {
 	// Part decoder: return an OpaquePart preserving the bytes. The
@@ -202,17 +202,17 @@ func (p *Plugin) Install(r *plugin.Registry) error {
 		return models.OpaquePart{TypeName: PartType, Raw: raw}, nil
 	})
 
-	r.RegisterBeforeStep(p.beforeStep)
+	r.RegisterTransformHistory(p.transformHistory)
 	r.RegisterTransformContext(p.transformContext)
 	return nil
 }
 
-// beforeStep is the write-side seam. When token usage crosses the
+// transformHistory is the write-side seam. When token usage crosses the
 // threshold, summarize every message after the most recent marker (or
 // from the start, if none) up to the keepTail boundary, then append a
 // new marker. The pre-compaction messages are kept in history so the
 // transcript remains addressable on disk and via History().
-func (p *Plugin) beforeStep(ctx context.Context, info loop.BeforeStepInfo) ([]models.Message, error) {
+func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
 	model := p.model
 	if model == nil {
 		model = info.Model
