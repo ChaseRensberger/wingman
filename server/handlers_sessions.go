@@ -145,9 +145,15 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+type messageOutputSchema struct {
+	Name   string         `json:"name,omitempty"`
+	Schema map[string]any `json:"schema"`
+}
+
 type MessageSessionRequest struct {
-	AgentID string `json:"agent_id"`
-	Message string `json:"message"`
+	AgentID      string               `json:"agent_id"`
+	Message      string               `json:"message"`
+	OutputSchema *messageOutputSchema `json:"output_schema,omitempty"`
 }
 
 type MessageSessionResponse struct {
@@ -191,6 +197,13 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	if req.OutputSchema != nil {
+		runSession.SetOutputSchema(&models.OutputSchema{
+			Name:   req.OutputSchema.Name,
+			Schema: req.OutputSchema.Schema,
+		})
 	}
 
 	// Register for abort. Aborting the session via POST /abort cancels
@@ -254,6 +267,13 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	if req.OutputSchema != nil {
+		runSession.SetOutputSchema(&models.OutputSchema{
+			Name:   req.OutputSchema.Name,
+			Schema: req.OutputSchema.Schema,
+		})
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")

@@ -47,6 +47,7 @@ type SessionStream struct {
 //   - "compaction":          Data is loop.ContextTransformedEvent (head Part type "compaction_marker")
 //   - "context_transformed": Data is loop.ContextTransformedEvent (other transforms)
 //   - "error":               Data is loop.ErrorEvent
+//   - "structured_output":   Data is loop.StructuredOutputEvent
 //
 // Consumers that want the loop's typed events simply type-assert on Data.
 type StreamEvent struct {
@@ -158,6 +159,12 @@ func classify(e loop.Event) (string, any) {
 		return "context_transformed", v
 	case loop.ErrorEvent:
 		return "error", map[string]string{"error": fmt.Sprint(v.Err)}
+	case loop.StructuredOutputEvent:
+		return "structured_output", map[string]any{
+			"schema":   v.Schema,
+			"raw_json": v.RawJSON,
+			"parsed":   v.Parsed,
+		}
 	default:
 		return "unknown", v
 	}

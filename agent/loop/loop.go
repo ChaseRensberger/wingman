@@ -101,13 +101,10 @@ type Config struct {
 	// Anthropic models.
 	Capabilities models.Capabilities
 
-	// OutputSchema, when non-nil, constrains the assistant's final reply
-	// to a JSON document conforming to the schema. The loop applies it
-	// only on iterations where no tool calls are expected (the final turn
-	// when the model decides it is done). Intermediate tool-calling turns
-	// receive the request without OutputSchema so providers that disallow
-	// structured outputs alongside tools (or that would force-shape the
-	// tool args turn into JSON) are unaffected.
+	// OutputSchema, when set, is passed to the model on every iteration.
+	// It only constrains text blocks (not tool-use blocks), so tool-calling
+	// turns are unaffected; the constraint takes effect on the terminal
+	// text-only turn.
 	//
 	// Providers that lack native structured-output support silently ignore
 	// this field; consult Model.Info().Capabilities.StructuredOutput for
