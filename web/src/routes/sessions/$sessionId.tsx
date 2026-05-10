@@ -214,7 +214,7 @@ function SessionDetailPage() {
         headers.set("X-Wingman-Client", clientId);
       }
 
-      const res = await fetch(`/sessions/${sessionId}/message/stream`, {
+		const res = await fetch(`/sessions/${sessionId}/message/stream`, {
         method: "POST",
         headers,
         body: JSON.stringify({ agent_id: selectedAgent, message: outboundText }),
