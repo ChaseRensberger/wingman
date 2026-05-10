@@ -24,7 +24,7 @@ export async function ensureClient(): Promise<string> {
   const res = await fetch("/clients", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "wingbase" }),
+    body: JSON.stringify({ name: "web" }),
   });
   if (!res.ok) {
     const text = await res.text();

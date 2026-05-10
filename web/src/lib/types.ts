@@ -11,6 +11,30 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface Provider {
+  id: string;
+  name: string;
+  auth_types: string[];
+}
+
+export interface ProviderModel {
+  provider: string;
+  id: string;
+  context_window?: number;
+  max_output?: number;
+  tools: boolean;
+  images: boolean;
+  reasoning: boolean;
+  structured_output: boolean;
+  input_cost_per_mtok?: number;
+  output_cost_per_mtok?: number;
+}
+
+export interface ProviderAuthResponse {
+  providers: Record<string, { type: string; configured: boolean }>;
+  updated_at?: string;
+}
+
 export interface Session {
   id: string;
   title?: string;

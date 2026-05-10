@@ -12,13 +12,13 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/chaserensberger/wingman/server"
-	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/models/catalog"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/opencodezen"
+	"github.com/chaserensberger/wingman/server"
+	"github.com/chaserensberger/wingman/store"
 )
 
 var (
@@ -49,6 +49,10 @@ func main() {
 					&cli.StringFlag{
 						Name:  "db",
 						Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
+					},
+					&cli.StringFlag{
+						Name:  "ui-dev",
+						Usage: "Proxy /ui to a Vite dev server URL",
 					},
 				},
 				Action: runServe,
@@ -86,7 +90,8 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	defer store.Close()
 
 	srv := server.New(server.Config{
-		Store: store,
+		Store:     store,
+		WebDevURL: cmd.String("ui-dev"),
 	})
 
 	host := cmd.String("host")

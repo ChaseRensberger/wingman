@@ -4,12 +4,8 @@
 
 # Wingman
 
-An open-source agent harness.
+The open-source client-agnostic agent harness
 
-## Projects
+## Also I made a HN Client:
 
-| Package | Description |
-|---------|-------------|
-| **[WingAgent](agent)** | Core agent runtime |
-| **[WingModels](models)** | Provider-agnostic model SDK |
-| **[WingNews](https://news.wingman.actor)** | A HackerNews client |
+[WingNews](https://news.wingman.actor)

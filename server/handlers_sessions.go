@@ -9,18 +9,18 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/agent/session"
-	"github.com/chaserensberger/wingman/store"
-	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/providers"
+	"github.com/chaserensberger/wingman/store"
+	"github.com/chaserensberger/wingman/tool"
 
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 )
 
 type CreateSessionRequest struct {
-	Title             string `json:"title,omitempty"`
-	WorkingDirectory  string `json:"working_directory,omitempty"`
+	Title            string `json:"title,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
 }
 
 // defaultSessionTitle is the placeholder applied when a session is
@@ -207,7 +207,7 @@ type MessageSessionRequest struct {
 type MessageSessionResponse struct {
 	Response  string                   `json:"response"`
 	ToolCalls []session.ToolCallResult `json:"tool_calls"`
-	Usage     models.Usage         `json:"usage"`
+	Usage     models.Usage             `json:"usage"`
 	Steps     int                      `json:"steps"`
 }
 

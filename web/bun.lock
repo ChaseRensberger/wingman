@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "wingbase",
+      "name": "web",
       "dependencies": {
         "@base-ui/react": "^1.4.1",
         "@fontsource-variable/fira-code": "^5.2.7",

@@ -1,5 +1,8 @@
-import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import App from "@/App";
+import AgentsPage from "@/routes/agents";
+import HomePage from "@/routes/home";
+import ProvidersPage from "@/routes/providers";
 import SessionsPage from "@/routes/sessions";
 import SessionDetailPage from "@/routes/session-detail";
 
@@ -10,13 +13,25 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: () => <Navigate to="/sessions" />,
+  component: HomePage,
 });
 
 const sessionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions",
   component: SessionsPage,
+});
+
+const agentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agents",
+  component: AgentsPage,
+});
+
+const providersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/providers",
+  component: ProvidersPage,
 });
 
 const sessionDetailRoute = createRoute({
@@ -27,11 +42,13 @@ const sessionDetailRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  agentsRoute,
+  providersRoute,
   sessionsRoute,
   sessionDetailRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({ routeTree, basepath: "/ui" });
 
 declare module "@tanstack/react-router" {
   interface Register {

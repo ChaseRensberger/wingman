@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -15,12 +19,14 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/chaserensberger/wingman/store"
+	webui "github.com/chaserensberger/wingman/web"
 )
 
 type Server struct {
-	store  store.Store
-	router *chi.Mux
-	aborts *abortRegistry
+	store     store.Store
+	router    *chi.Mux
+	aborts    *abortRegistry
+	webDevURL string
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -37,7 +43,8 @@ type Server struct {
 }
 
 type Config struct {
-	Store store.Store
+	Store     store.Store
+	WebDevURL string
 }
 
 func New(cfg Config) *Server {
@@ -46,6 +53,7 @@ func New(cfg Config) *Server {
 		store:          cfg.Store,
 		router:         chi.NewRouter(),
 		aborts:         newAbortRegistry(),
+		webDevURL:      cfg.WebDevURL,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
@@ -60,7 +68,7 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type"},
+		AllowedHeaders:   []string{"Content-Type", "X-Wingman-Client"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -97,6 +105,10 @@ func shouldBypassTimeout(r *http.Request) bool {
 
 func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/ui") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		next.ServeHTTP(w, r)
 	})
@@ -104,6 +116,7 @@ func jsonContentType(next http.Handler) http.Handler {
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
+	s.mountWebUI()
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)
@@ -139,6 +152,42 @@ func (s *Server) setupRoutes() {
 		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 		r.Post("/{id}/abort", s.handleAbortSession)
 	})
+}
+
+func (s *Server) mountWebUI() {
+	if s.webDevURL != "" {
+		devURL, err := url.Parse(s.webDevURL)
+		if err != nil {
+			log.Printf("invalid web dev url %q: %v", s.webDevURL, err)
+			return
+		}
+		proxy := httputil.NewSingleHostReverseProxy(devURL)
+		s.router.Handle("/ui", proxy)
+		s.router.Handle("/ui/*", proxy)
+		return
+	}
+
+	dist, err := fs.Sub(webui.Dist, "dist")
+	if err != nil {
+		log.Printf("web UI unavailable: %v", err)
+		return
+	}
+	files := http.FileServer(http.FS(dist))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		servePath := strings.TrimPrefix(r.URL.Path, "/ui")
+		if servePath == "" || servePath == "/" {
+			servePath = "/index.html"
+		}
+		name := strings.TrimPrefix(path.Clean(servePath), "/")
+		if stat, err := fs.Stat(dist, name); err != nil || stat.IsDir() {
+			servePath = "/index.html"
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = servePath
+		files.ServeHTTP(w, r2)
+	})
+	s.router.Handle("/ui", handler)
+	s.router.Handle("/ui/*", handler)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
