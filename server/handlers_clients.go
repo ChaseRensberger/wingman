@@ -14,6 +14,10 @@ type CreateClientRequest struct {
 }
 
 func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	var req CreateClientRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -35,6 +39,10 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	clients, err := s.store.ListClients()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -47,6 +55,10 @@ func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetClient(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	client, err := s.store.GetClient(id)

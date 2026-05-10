@@ -20,6 +20,10 @@ type CreateAgentRequest struct {
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	var req CreateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -50,6 +54,10 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	agents, err := s.store.ListAgents()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -62,6 +70,10 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	a, err := s.store.GetAgent(id)
@@ -84,6 +96,10 @@ type UpdateAgentRequest struct {
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	a, err := s.store.GetAgent(id)
@@ -129,6 +145,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	if err := s.store.DeleteAgent(id); err != nil {

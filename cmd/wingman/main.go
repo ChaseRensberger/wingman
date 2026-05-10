@@ -50,12 +50,16 @@ func main() {
 						Name:  "db",
 						Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 					},
-					&cli.StringFlag{
-						Name:  "ui-dev",
-						Usage: "Proxy /ui to a Vite dev server URL",
-					},
+				&cli.StringFlag{
+					Name:  "ui-dev",
+					Usage: "Proxy /ui to a Vite dev server URL",
 				},
-				Action: runServe,
+				&cli.BoolFlag{
+					Name:  "ephemeral",
+					Usage: "Run in ephemeral mode without persistence",
+				},
+			},
+			Action: runServe,
 			},
 			{
 				Name:  "version",
@@ -74,23 +78,29 @@ func main() {
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {
-	dbPath := cmd.String("db")
-	if dbPath == "" {
-		var err error
-		dbPath, err = store.DefaultDBPath()
-		if err != nil {
-			return fmt.Errorf("failed to get default database path: %w", err)
+	var st store.Store
+	if cmd.Bool("ephemeral") {
+		log.Printf("wingman: ephemeral mode (no persistence)")
+	} else {
+		dbPath := cmd.String("db")
+		if dbPath == "" {
+			var err error
+			dbPath, err = store.DefaultDBPath()
+			if err != nil {
+				return fmt.Errorf("failed to get default database path: %w", err)
+			}
 		}
+		sqliteStore, err := store.NewSQLiteStore(dbPath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize storage: %w", err)
+		}
+		defer sqliteStore.Close()
+		st = sqliteStore
+		log.Printf("Database: %s", dbPath)
 	}
-
-	store, err := store.NewSQLiteStore(dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to initialize storage: %w", err)
-	}
-	defer store.Close()
 
 	srv := server.New(server.Config{
-		Store:     store,
+		Store:     st,
 		WebDevURL: cmd.String("ui-dev"),
 	})
 
@@ -115,8 +125,6 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(httpSrv) }()
-
-	log.Printf("Database: %s", dbPath)
 
 	select {
 	case err := <-serveErr:

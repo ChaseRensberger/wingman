@@ -152,6 +152,8 @@ func (s *Server) setupRoutes() {
 		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 		r.Post("/{id}/abort", s.handleAbortSession)
 	})
+
+	s.router.Post("/run", s.handleRun)
 }
 
 func (s *Server) mountWebUI() {
@@ -189,6 +191,10 @@ func (s *Server) mountWebUI() {
 	s.router.Handle("/ui", handler)
 	s.router.Handle("/ui/*", handler)
 }
+
+// Ephemeral reports whether the server was created with a nil store,
+// meaning no persistence and CRUD endpoints return 501.
+func (s *Server) Ephemeral() bool { return s.store == nil }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
@@ -286,6 +292,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, ErrorResponse{Error: msg})
+}
+
+func (s *Server) ephemeralNotImplemented(w http.ResponseWriter) {
+	writeError(w, http.StatusNotImplemented, "persistence is disabled; this server is running in ephemeral mode")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

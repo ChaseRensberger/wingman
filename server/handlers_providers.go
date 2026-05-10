@@ -40,6 +40,10 @@ type ProviderAuthInfo struct {
 }
 
 func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	auth, err := s.store.GetAuth()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -66,6 +70,10 @@ type SetProvidersAuthRequest struct {
 }
 
 func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	var req SetProvidersAuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -95,6 +103,10 @@ func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	providerName := chi.URLParam(r, "provider")
 
 	if !provider.IsValid(providerName) {

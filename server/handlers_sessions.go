@@ -30,6 +30,10 @@ type CreateSessionRequest struct {
 const defaultSessionTitle = "New session"
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -70,6 +74,10 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	var sessions []*store.Session
 	var err error
 
@@ -90,6 +98,10 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -156,6 +168,10 @@ type UpdateSessionRequest struct {
 }
 
 func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -183,6 +199,10 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	if err := s.store.DeleteSession(id); err != nil {
@@ -211,7 +231,22 @@ type MessageSessionResponse struct {
 	Steps     int                      `json:"steps"`
 }
 
+// RunRequest is the body for POST /run. In ephemeral mode agent is
+// required and agent_id is rejected. In normal mode either agent_id
+// (looked up from the store) or agent (inline spec) is accepted.
+type RunRequest struct {
+	AgentID          string               `json:"agent_id,omitempty"`
+	Agent            *store.Agent         `json:"agent,omitempty"`
+	Message          string               `json:"message"`
+	OutputSchema     *messageOutputSchema `json:"output_schema,omitempty"`
+	WorkingDirectory string               `json:"working_directory,omitempty"`
+}
+
 func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		writeError(w, http.StatusNotImplemented, "persistence is disabled; use POST /run for ephemeral runs")
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -282,6 +317,10 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		writeError(w, http.StatusNotImplemented, "persistence is disabled; use POST /run for ephemeral runs")
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
@@ -411,6 +450,10 @@ type AbortSessionResponse struct {
 }
 
 func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	// Verify the session exists so callers get a 404 for typos rather
 	// than a misleading 200/aborted=0. Cheap lookup vs. silent miss.
@@ -420,6 +463,131 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 	}
 	n := s.aborts.abort(id)
 	writeJSON(w, http.StatusOK, AbortSessionResponse{SessionID: id, Aborted: n})
+}
+
+// handleRun is POST /run. It constructs an in-memory session from an
+// inline agent spec (ephemeral mode) or an existing agent_id (normal
+// mode), runs one turn, and streams events back via SSE. No session is
+// persisted.
+func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	var req RunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message is required")
+		return
+	}
+
+	var storedAgent *store.Agent
+	if req.AgentID != "" {
+		if s.Ephemeral() {
+			writeError(w, http.StatusBadRequest, "agent_id is not supported in ephemeral mode; provide an inline agent spec")
+			return
+		}
+		a, err := s.store.GetAgent(req.AgentID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
+			return
+		}
+		storedAgent = a
+	} else if req.Agent != nil {
+		storedAgent = req.Agent
+	} else {
+		writeError(w, http.StatusBadRequest, "agent or agent_id is required")
+		return
+	}
+
+	if storedAgent.Provider == "" || storedAgent.Model == "" {
+		writeError(w, http.StatusBadRequest, "agent must have provider and model configured")
+		return
+	}
+
+	workDir, err := session.ResolveWorkDir(req.WorkingDirectory)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	sess := &store.Session{
+		ID:      store.NewID("eph_"),
+		Title:   "ephemeral",
+		WorkDir: workDir,
+	}
+
+	runSession, err := s.buildSession(storedAgent, sess)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.OutputSchema != nil {
+		runSession.SetOutputSchema(&models.OutputSchema{
+			Name:   req.OutputSchema.Name,
+			Schema: req.OutputSchema.Schema,
+		})
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	done := s.trackInflight()
+	defer done()
+	go func() {
+		select {
+		case <-s.ShutdownCtx().Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	stream, err := runSession.RunStream(ctx, req.Message)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
+	for stream.Next() {
+		event := stream.Event()
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+		flusher.Flush()
+	}
+
+	if err := stream.Err(); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
+	result := stream.Result()
+	doneEnvelope := session.StreamEvent{
+		Type:    "done",
+		Version: session.EnvelopeVersion,
+		Data: map[string]any{
+			"usage": result.Usage,
+			"steps": result.Steps,
+		},
+	}
+	doneData, _ := json.Marshal(doneEnvelope)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
+	flusher.Flush()
 }
 
 // buildSession assembles a session.Session from a stored agent and the
@@ -468,9 +636,15 @@ func (s *Server) buildModel(providerID, model string, opts map[string]any) (mode
 	}
 	merged["model"] = model
 
-	auth, err := s.store.GetAuth()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load auth: %w", err)
+	var auth *store.Auth
+	if s.store != nil {
+		var err error
+		auth, err = s.store.GetAuth()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load auth: %w", err)
+		}
+	} else {
+		auth = &store.Auth{Providers: make(map[string]store.AuthCredential)}
 	}
 	if cred, ok := auth.Providers[providerID]; ok && cred.Key != "" {
 		merged["api_key"] = cred.Key
