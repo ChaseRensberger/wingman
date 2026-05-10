@@ -28,7 +28,7 @@ export default defineConfig({
 			},
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/chaserensberger/wingman' },
-				{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/Sxt68YGuZu' },
+				{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/Mw4KURek3Q' },
 			],
 			sidebar: [
 				{ label: 'Introduction', slug: '' },

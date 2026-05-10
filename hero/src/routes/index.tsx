@@ -17,7 +17,7 @@ const SDK_COMMAND = "go get github.com/chaserensberger/wingman";
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://wingman.actor/docs";
-const DISCORD_URL = "https://discord.gg/Sxt68YGuZu";
+const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 
 function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
 	const [copied, setCopied] = useState(false);
