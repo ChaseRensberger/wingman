@@ -1,13 +1,14 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/theme-toggle";
+import WingmanIcon from "@/assets/WingmanBlue.png";
 
 export default function App() {
 	return (
 		<div className="flex min-h-screen flex-col">
 			<header className="flex items-center justify-between gap-4 border-b px-4 py-3">
 				<div className="flex items-center gap-5">
-					<Link to="/" className="text-sm font-semibold hover:underline">
-						Wingman Web
+					<Link to="/">
+						<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />
 					</Link>
 					<nav className="flex items-center gap-3 text-xs text-muted-foreground">
 						<Link to="/sessions" className="hover:text-foreground">

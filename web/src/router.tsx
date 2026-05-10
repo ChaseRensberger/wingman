@@ -2,12 +2,14 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import App from "@/App";
 import AgentsPage from "@/routes/agents";
 import HomePage from "@/routes/home";
+import NotFoundPage from "@/routes/not-found";
 import ProvidersPage from "@/routes/providers";
 import SessionsPage from "@/routes/sessions";
 import SessionDetailPage from "@/routes/session-detail";
 
 const rootRoute = createRootRoute({
   component: App,
+  notFoundComponent: NotFoundPage,
 });
 
 const indexRoute = createRoute({
@@ -48,7 +50,7 @@ const routeTree = rootRoute.addChildren([
   sessionDetailRoute,
 ]);
 
-export const router = createRouter({ routeTree, basepath: "/ui" });
+export const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {
   interface Register {
