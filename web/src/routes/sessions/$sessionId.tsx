@@ -14,7 +14,7 @@ import {
   SelectItem,
 } from "@/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
-import { StopIcon, PaperPlaneRightIcon } from "@phosphor-icons/react";
+import { StopIcon, TrashIcon } from "@phosphor-icons/react";
 
 function parseSSE(buffer: string): {
   events: Array<{ event: string; data: string }>;
@@ -119,6 +119,7 @@ function SessionDetailPage() {
   const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
 
   const loadSession = useCallback(async () => {
     try {
@@ -162,10 +163,16 @@ function SessionDetailPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && stickToBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [session?.history, streamingText]);
+
+  function handleTranscriptScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function handleAbort() {
     try {
@@ -296,7 +303,7 @@ function SessionDetailPage() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -312,37 +319,28 @@ function SessionDetailPage() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
-      <div className="flex items-center justify-between gap-4 border-b py-3 text-sm">
+      <div className="border-b py-4">
         <PageBreadcrumb
           items={[
             { label: "Sessions", to: "/sessions" },
             { label: session.title || session.id.slice(0, 8) },
           ]}
         />
-        <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting || isStreaming}>
-          {deleting ? "Deleting..." : "Delete"}
-        </Button>
-      </div>
-
-      <div className="flex items-start justify-between gap-4 border-b py-3">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs text-muted-foreground">
-          <div>
-            <span className="font-medium text-foreground">Workdir:</span>{" "}
-            {session.work_dir || "—"}
+        <div className="mt-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold tracking-tight">
+              {session.title || "Untitled session"}
+            </h1>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>{new Date(session.created_at).toLocaleString()}</span>
+              <span className="max-w-full truncate">{session.work_dir || "-"}</span>
+            </div>
           </div>
-          <div>
-            <span className="font-medium text-foreground">Created:</span>{" "}
-            {new Date(session.created_at).toLocaleString()}
-          </div>
+          <Button size="sm" variant="ghost" onClick={handleDelete} disabled={deleting || isStreaming}>
+            <TrashIcon className="size-4" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
         </div>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={handleAbort}
-        >
-          <StopIcon className="size-4" />
-          Abort
-        </Button>
       </div>
 
       {error && (
@@ -352,54 +350,63 @@ function SessionDetailPage() {
         </Alert>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
-        {session.history.map((msg, idx) => (
-          <ChatMessage key={idx} message={msg} />
-        ))}
-        {streamingText && (
-          <ChatMessage message={buildStreamingMessage(streamingText)} />
+      <div ref={scrollRef} onScroll={handleTranscriptScroll} className="flex-1 overflow-y-auto py-2">
+        {session.history.length === 0 && !streamingText ? (
+          <div className="flex h-full items-center justify-center py-12 text-center">
+            <div>
+              <div className="text-sm font-medium">No messages yet</div>
+              <div className="mt-1 text-xs text-muted-foreground">Pick an agent and start the session below.</div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            {session.history.map((msg, idx) => (
+              <ChatMessage key={idx} message={msg} />
+            ))}
+            {streamingText && <ChatMessage message={buildStreamingMessage(streamingText)} />}
+          </div>
         )}
       </div>
 
       <form
         onSubmit={handleSend}
-        className="flex flex-col gap-2 border-t py-3"
+        className="border-t py-3"
       >
-        <div className="flex items-center gap-2">
-            <Select value={selectedAgent} onValueChange={(v) => setSelectedAgent(v ?? "")}>
-            <SelectTrigger className="h-8 w-48 text-xs">
-              <SelectValue placeholder="Select agent">
-                {agents.find((a) => a.id === selectedAgent)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground">
-            {isStreaming ? "Streaming..." : "Cmd+Enter to send"}
-          </span>
-        </div>
-        <div className="flex gap-2">
+        <div className="rounded-xl border bg-card p-2 shadow-sm shadow-primary/5">
           <Textarea
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
-            className="min-h-[80px] flex-1"
+            className="min-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
             disabled={isStreaming}
           />
-          <Button
-            type="submit"
-            disabled={isStreaming || !messageText.trim() || !selectedAgent}
-            className="self-end"
-          >
-            <PaperPlaneRightIcon className="size-4" />
-          </Button>
+          <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
+            <Select value={selectedAgent} onValueChange={(v) => setSelectedAgent(v ?? "")}>
+              <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
+                <SelectValue placeholder="Select agent">
+                  {agents.find((a) => a.id === selectedAgent)?.name}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {isStreaming ? (
+                <Button size="sm" variant="destructive" type="button" onClick={handleAbort}>
+                  <StopIcon className="size-4" />
+                  Abort
+                </Button>
+              ) : (
+                <span>Enter to send, Shift+Enter for newline</span>
+              )}
+            </div>
+          </div>
         </div>
       </form>
     </div>

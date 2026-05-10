@@ -50,15 +50,18 @@ export function ChatMessage({ message }: { message: Message }) {
   const isAssistant = message.role === "assistant";
 
   return (
-    <div className={`flex flex-col gap-1 py-3 ${isUser ? "items-end" : "items-start"}`}>
-      <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-        {message.role}
-      </div>
+    <div
+      className={`border-b border-border/60 py-5 last:border-b-0 ${
+        isUser ? "bg-primary/[0.03]" : message.role === "tool" ? "bg-muted/35" : ""
+      }`}
+    >
       <div
-        className={`max-w-[90%] rounded-lg border px-3 py-2 ${
+        className={`min-w-0 border-l-2 px-4 text-sm leading-6 ${
           isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-card text-card-foreground"
+            ? "border-primary/35 text-foreground"
+            : isAssistant
+              ? "border-transparent text-foreground"
+              : "border-muted-foreground/25 text-muted-foreground"
         }`}
       >
         {message.content.map((part, idx) => {
