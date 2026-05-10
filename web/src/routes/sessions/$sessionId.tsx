@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Message, Part } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
 import { Textarea } from "@/components/core/textarea";
+import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import {
   Select,
   SelectTrigger,
@@ -13,7 +14,7 @@ import {
   SelectItem,
 } from "@/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
-import { ArrowLeftIcon, StopIcon, PaperPlaneRightIcon } from "@phosphor-icons/react";
+import { StopIcon, PaperPlaneRightIcon } from "@phosphor-icons/react";
 
 function parseSSE(buffer: string): {
   events: Array<{ event: string; data: string }>;
@@ -298,12 +299,12 @@ function SessionDetailPage() {
   return (
     <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
       <div className="flex items-center gap-2 border-b py-3 text-sm">
-        <Link to="/sessions" className="text-muted-foreground hover:underline">
-          <ArrowLeftIcon className="size-4 inline" />
-          Sessions
-        </Link>
-        <span className="text-muted-foreground">›</span>
-        <span className="font-medium">{session.title || session.id.slice(0, 8)}</span>
+        <PageBreadcrumb
+          items={[
+            { label: "Sessions", to: "/sessions" },
+            { label: session.title || session.id.slice(0, 8) },
+          ]}
+        />
       </div>
 
       <div className="flex items-start justify-between gap-4 border-b py-3">

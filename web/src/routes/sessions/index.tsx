@@ -40,6 +40,7 @@ import {
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
 import { timeAgo } from "@/lib/utils";
+import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 export const Route = createFileRoute("/sessions/")({
   component: SessionsPage,
@@ -116,9 +117,7 @@ function SessionsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Sessions</span>
-        </div>
+        <PageBreadcrumb items={[{ label: "Sessions" }]} />
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger render={<Button size="sm"><PlusIcon className="size-4" />New session</Button>} />
           <DialogContent>

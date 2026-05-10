@@ -23,6 +23,7 @@ import { wfetch } from "@/lib/client";
 import { timeAgo } from "@/lib/utils";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { PlusIcon } from "@phosphor-icons/react";
+import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 const builtInTools = ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "perplexity_search"];
 
@@ -160,8 +161,8 @@ function AgentsPage() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold">Agents</h1>
-          <p className="text-sm text-muted-foreground">Create and maintain reusable Wingman agent definitions.</p>
+          <PageBreadcrumb items={[{ label: "Agents" }]} />
+          <p className="mt-1 text-sm text-muted-foreground">Create and maintain reusable Wingman agent definitions.</p>
         </div>
         <Button size="sm" onClick={openNew}>
           <PlusIcon className="size-4" />
