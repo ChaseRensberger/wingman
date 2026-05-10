@@ -78,6 +78,19 @@ function buildStreamingMessage(text: string): Message {
   };
 }
 
+function buildUserMessage(text: string): Message {
+  return {
+    role: "user",
+    content: [{ type: "text", text } as Part],
+  };
+}
+
+function eventField<T>(data: unknown, lower: string, upper: string): T | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as Record<string, unknown>;
+  return (record[lower] ?? record[upper]) as T | undefined;
+}
+
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionDetailPage,
 });
@@ -159,10 +172,18 @@ function SessionDetailPage() {
     if (e) e.preventDefault();
     if (!messageText.trim() || !selectedAgent) return;
 
+    const outboundText = messageText.trim();
+    setMessageText("");
+    setSession((prev) => {
+      if (!prev) return prev;
+      return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
+    });
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsStreaming(true);
     setStreamingText("");
+    let completed = false;
 
     try {
       const headers = new Headers({
@@ -176,7 +197,7 @@ function SessionDetailPage() {
       const res = await fetch(`/sessions/${sessionId}/message/stream`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ agent_id: selectedAgent, message: messageText.trim() }),
+        body: JSON.stringify({ agent_id: selectedAgent, message: outboundText }),
         signal: controller.signal,
       });
 
@@ -188,19 +209,25 @@ function SessionDetailPage() {
       let textBuffer = "";
       for await (const ev of readSSE(res)) {
         if (ev.event === "error") {
-          console.error("Stream error:", ev.data);
-          continue;
+          const message =
+            typeof ev.data === "string"
+              ? ev.data
+              : eventField<{ error?: string }>(ev.data, "data", "Data")?.error;
+          throw new Error(message || "Stream failed");
         }
         if (ev.event === "done") {
+          completed = true;
           break;
         }
         if (ev.event === "stream_part") {
           const envelope = ev.data as {
             type: string;
             version: number;
-            data: { step: number; part: { type: string; delta?: string } };
+            data?: unknown;
+            Data?: unknown;
           };
-          const part = envelope.data?.part;
+          const data = envelope.data ?? envelope.Data;
+          const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
           if (part?.type === "text-delta" && part.delta) {
             textBuffer += part.delta;
             setStreamingText(textBuffer);
@@ -210,26 +237,33 @@ function SessionDetailPage() {
           const envelope = ev.data as {
             type: string;
             version: number;
-            data: { message: Message };
+            data?: unknown;
+            Data?: unknown;
           };
-          if (envelope.data?.message) {
+          const data = envelope.data ?? envelope.Data;
+          const message = eventField<Message>(data, "message", "Message");
+          if (message) {
             setSession((prev) => {
               if (!prev) return prev;
-              return { ...prev, history: [...prev.history, envelope.data.message] };
+              return { ...prev, history: [...prev.history, message] };
             });
           }
         }
       }
+      completed = true;
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         console.error("Send failed", err);
+        setMessageText(outboundText);
         alert(String(err));
       }
     } finally {
       setIsStreaming(false);
       setStreamingText("");
       abortControllerRef.current = null;
-      setMessageText("");
+      if (!completed && controller.signal.aborted) {
+        setMessageText(outboundText);
+      }
       await loadSession();
     }
   }

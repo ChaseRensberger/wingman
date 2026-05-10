@@ -5,12 +5,22 @@ import type { Session } from "@/lib/types";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/core/alert-dialog";
+import {
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from "@/components/core/dialog";
 import {
@@ -23,12 +33,11 @@ import {
 } from "@/components/core/table";
 import {
   Empty,
-  EmptyIcon,
   EmptyTitle,
   EmptyDescription,
   EmptyActions,
 } from "@/components/core/empty";
-import { PlusIcon, ChatTeardropTextIcon } from "@phosphor-icons/react";
+import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -57,6 +66,7 @@ function SessionsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newWorkDir, setNewWorkDir] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +113,18 @@ function SessionsPage() {
     }
   }
 
+  async function handleDelete(session: Session) {
+    setDeletingId(session.id);
+    try {
+      await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
+      setSessions((current) => current.filter((s) => s.id !== session.id));
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between">
@@ -115,9 +137,6 @@ function SessionsPage() {
             <form onSubmit={handleCreate}>
               <DialogHeader>
                 <DialogTitle>New session</DialogTitle>
-                <DialogDescription>
-                  Create a new conversation session.
-                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 py-4">
                 <div className="grid gap-1">
@@ -158,9 +177,6 @@ function SessionsPage() {
         <div className="py-8 text-sm text-muted-foreground">Loading...</div>
       ) : filtered.length === 0 ? (
         <Empty>
-          <EmptyIcon>
-            <ChatTeardropTextIcon className="size-7" />
-          </EmptyIcon>
           <EmptyTitle>No sessions yet</EmptyTitle>
           <EmptyDescription>Start a new session to begin chatting.</EmptyDescription>
           <EmptyActions>
@@ -179,6 +195,7 @@ function SessionsPage() {
               <TableHead>Agent</TableHead>
               <TableHead>Created</TableHead>
               <TableHead>Workdir</TableHead>
+              <TableHead className="w-0 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -203,6 +220,40 @@ function SessionsPage() {
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate text-muted-foreground">
                   {s.work_dir || "—"}
+                </TableCell>
+                <TableCell className="text-right">
+                  <AlertDialog>
+                    <AlertDialogTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Delete ${s.title || s.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <TrashIcon className="size-4" />
+                        </Button>
+                      }
+                    />
+                    <AlertDialogContent size="sm" onClick={(e) => e.stopPropagation()}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete session?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This permanently deletes {s.title || s.id} and its message history.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deletingId === s.id}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          variant="destructive"
+                          disabled={deletingId === s.id}
+                          onClick={() => handleDelete(s)}
+                        >
+                          {deletingId === s.id ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}

@@ -56,11 +56,12 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
-	"github.com/chaserensberger/wingman/tool"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 // Config carries everything the loop needs to run. All fields except
@@ -488,27 +489,27 @@ type Event interface {
 // IterationStartEvent fires at the top of a turn, after OnTurnStart
 // hook but before the LLM call.
 type IterationStartEvent struct {
-	Step int
+	Step int `json:"step"`
 }
 
 // IterationEndEvent fires after a turn completes, before OnTurnEnd
 // hook. Carries the same Turn the hook receives.
 type IterationEndEvent struct {
-	Step int
-	Turn Turn
+	Step int  `json:"step"`
+	Turn Turn `json:"turn"`
 }
 
 // MessageEvent fires when a complete message has been appended to the
 // running history. This includes the assistant message at the end of
 // each turn and any tool result messages produced by tool execution.
 type MessageEvent struct {
-	Message models.Message
+	Message models.Message `json:"message"`
 }
 
 // ToolExecutionStartEvent fires immediately before Tool.Execute is
 // invoked (or, for unknown/skipped tools, where it would have been).
 type ToolExecutionStartEvent struct {
-	Call ToolCall
+	Call ToolCall `json:"call"`
 }
 
 // ToolExecutionEndEvent fires after Tool.Execute returns or after the
@@ -518,15 +519,29 @@ type ToolExecutionStartEvent struct {
 // source order should read Turn.Results from IterationEndEvent or
 // Result.Turns instead.
 type ToolExecutionEndEvent struct {
-	Result ToolResult
+	Result ToolResult `json:"result"`
 }
 
 // StreamPartEvent wraps a raw provider stream part. Consumers that want
 // to forward provider streaming verbatim (e.g., over SSE) consume these.
 // Consumers that only want lifecycle events ignore them.
 type StreamPartEvent struct {
-	Step int
-	Part models.StreamPart
+	Step int               `json:"step"`
+	Part models.StreamPart `json:"part"`
+}
+
+func (e StreamPartEvent) MarshalJSON() ([]byte, error) {
+	part, err := models.MarshalStreamPart(e.Part)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		Step int             `json:"step"`
+		Part json.RawMessage `json:"part"`
+	}{
+		Step: e.Step,
+		Part: part,
+	})
 }
 
 // ErrorEvent fires when the loop is about to terminate with an error.
@@ -563,12 +578,12 @@ type ContextTransformedEvent struct {
 	Head          *models.Message
 }
 
-func (IterationStartEvent) isEvent()      {}
-func (IterationEndEvent) isEvent()        {}
-func (MessageEvent) isEvent()             {}
-func (ToolExecutionStartEvent) isEvent()  {}
-func (ToolExecutionEndEvent) isEvent()    {}
-func (StreamPartEvent) isEvent()          {}
-func (ErrorEvent) isEvent()               {}
-func (ContextTransformedEvent) isEvent()  {}
-func (StructuredOutputEvent) isEvent()    {}
+func (IterationStartEvent) isEvent()     {}
+func (IterationEndEvent) isEvent()       {}
+func (MessageEvent) isEvent()            {}
+func (ToolExecutionStartEvent) isEvent() {}
+func (ToolExecutionEndEvent) isEvent()   {}
+func (StreamPartEvent) isEvent()         {}
+func (ErrorEvent) isEvent()              {}
+func (ContextTransformedEvent) isEvent() {}
+func (StructuredOutputEvent) isEvent()   {}
