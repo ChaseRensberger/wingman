@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/core/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/core/card";
 import { RadioGroup, RadioGroupItem } from "@/components/core/radio-group";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { type Theme, useTheme } from "@/components/theme-provider";
@@ -24,24 +24,20 @@ function SettingsPage() {
         <PageBreadcrumb items={[{ label: "Settings" }]} />
       </div>
 
-      <div className="grid gap-4">
-        <Card size="sm">
-          <CardHeader>
-            <div>
-              <CardTitle>Theme</CardTitle>
-              <CardDescription>Choose how Wingman should render the interface.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={theme}
-              onValueChange={(value) => setTheme(value as Theme)}
-              className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
-            >
-              {options.map((option) => {
-                const Icon = option.icon;
-                const active = theme === option.value;
-                return (
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>Theme</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            value={theme}
+            onValueChange={(value) => setTheme(value as Theme)}
+            className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
+          >
+            {options.map((option) => {
+              const Icon = option.icon;
+              const active = theme === option.value;
+              return (
                 <label
                   key={option.value}
                   className={cn(
@@ -55,11 +51,11 @@ function SettingsPage() {
                   <Icon className="size-4" />
                   <span>{option.label}</span>
                 </label>
-              )})}
-            </RadioGroup>
-          </CardContent>
-        </Card>
-      </div>
+              );
+            })}
+          </RadioGroup>
+        </CardContent>
+      </Card>
     </div>
   );
 }
