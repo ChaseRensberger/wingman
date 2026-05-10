@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
@@ -34,7 +35,11 @@ function schemaText(agent: Agent): string {
   return JSON.stringify(agent.output_schema, null, 2);
 }
 
-export default function AgentsPage() {
+export const Route = createFileRoute("/agents")({
+  component: AgentsPage,
+});
+
+function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
@@ -43,7 +48,6 @@ export default function AgentsPage() {
   const [saving, setSaving] = useState(false);
 
   async function load() {
-    setLoading(true);
     try {
       const [agentData, providerData] = await Promise.all([
         wfetch("/agents") as Promise<Agent[]>,

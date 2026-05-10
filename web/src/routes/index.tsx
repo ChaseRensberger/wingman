@@ -1,9 +1,13 @@
-import { Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/core/card";
 import { Button } from "@/components/core/button";
 
-export default function HomePage() {
+export const Route = createFileRoute("/")({
+  component: HomePage,
+});
+
+function HomePage() {
   const [status, setStatus] = useState("checking");
 
   useEffect(() => {

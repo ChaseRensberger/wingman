@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
@@ -7,7 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { wfetch } from "@/lib/client";
 import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
 
-export default function ProvidersPage() {
+export const Route = createFileRoute("/providers")({
+  component: ProvidersPage,
+});
+
+function ProvidersPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [auth, setAuth] = useState<ProviderAuthResponse>({ providers: {} });
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
@@ -15,7 +20,6 @@ export default function ProvidersPage() {
   const [loading, setLoading] = useState(true);
 
   async function load() {
-    setLoading(true);
     try {
       const [providerData, authData] = await Promise.all([
         wfetch("/provider") as Promise<Provider[]>,

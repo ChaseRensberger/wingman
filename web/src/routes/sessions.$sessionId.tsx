@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Message, Part } from "@/lib/types";
 import { Button } from "@/components/core/button";
@@ -78,8 +78,12 @@ function buildStreamingMessage(text: string): Message {
   };
 }
 
-export default function SessionDetailPage() {
-  const { sessionId } = useParams({ from: "/sessions/$sessionId" });
+export const Route = createFileRoute("/sessions/$sessionId")({
+  component: SessionDetailPage,
+});
+
+function SessionDetailPage() {
+  const { sessionId } = Route.useParams();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);

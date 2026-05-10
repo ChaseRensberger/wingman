@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch } from "@/lib/client";
 import type { Session } from "@/lib/types";
 import { Button } from "@/components/core/button";
@@ -44,7 +44,11 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export default function SessionsPage() {
+export const Route = createFileRoute("/sessions")({
+  component: SessionsPage,
+});
+
+function SessionsPage() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
