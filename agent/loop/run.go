@@ -25,7 +25,18 @@ import (
 // The returned Result.Messages is always populated, even on error, with
 // whatever conversation state had been assembled when termination
 // happened. This lets callers persist partial state.
-func Run(ctx context.Context, cfg Config) (*Result, error) {
+func Run(ctx context.Context, cfg Config) (result *Result, err error) {
+	if cfg.Hooks.AfterRun != nil {
+		defer func() {
+			if result == nil {
+				result = &Result{StopReason: StopReasonError}
+			}
+			if hookErr := cfg.Hooks.AfterRun(ctx, AfterRunInfo{Result: *result, Err: err}); hookErr != nil {
+				err = errors.Join(err, hookErr)
+			}
+		}()
+	}
+
 	if cfg.Model == nil {
 		return nil, errors.New("loop.Run: Config.Model is required")
 	}
@@ -244,13 +255,44 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// TransformContextHook (the read-side seam). The loop is
 	// deliberately unaware of any specific plugin's part types.
 
+	toolDefs := r.toolDefs
+	if r.cfg.Hooks.TransformToolDefs != nil {
+		info := TransformToolDefsInfo{
+			Step:  step,
+			Tools: append([]models.ToolDef(nil), toolDefs...),
+			Model: r.cfg.Model,
+		}
+		out, err := r.cfg.Hooks.TransformToolDefs(ctx, info)
+		if err != nil {
+			return Turn{}, fmt.Errorf("hook TransformToolDefs: %w", err)
+		}
+		toolDefs = out
+	}
+
+	params := SamplingParams{}
+	if r.cfg.Hooks.TransformParams != nil {
+		info := TransformParamsInfo{
+			Step:   step,
+			Model:  r.cfg.Model,
+			Params: params,
+		}
+		out, err := r.cfg.Hooks.TransformParams(ctx, info)
+		if err != nil {
+			return Turn{}, fmt.Errorf("hook TransformParams: %w", err)
+		}
+		params = out.Params
+	}
+
 	req := models.Request{
 		System:       system,
 		Messages:     msgs,
-		Tools:        r.toolDefs,
+		Tools:        toolDefs,
 		ToolChoice:   r.cfg.ToolChoice,
 		Capabilities: r.cfg.Capabilities,
 		OutputSchema: r.cfg.OutputSchema,
+	}
+	if params.MaxOutputTokens != nil {
+		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
 	stream, err := r.cfg.Model.Stream(ctx, req)

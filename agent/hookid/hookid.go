@@ -11,15 +11,18 @@ package hookid
 type ID string
 
 const (
-	RunBefore        ID = "run.before"
-	TurnStart        ID = "turn.start"
-	TurnEnd          ID = "turn.end"
-	HistoryTransform ID = "history.transform"
-	SystemTransform  ID = "system.transform"
-	ContextTransform ID = "context.transform"
-	ToolBefore       ID = "tool.before"
-	ToolAfter        ID = "tool.after"
-	EventSink        ID = "event.sink"
+	RunBefore         ID = "run.before"
+	RunAfter          ID = "run.after"
+	TurnStart         ID = "turn.start"
+	TurnEnd           ID = "turn.end"
+	HistoryTransform  ID = "history.transform"
+	SystemTransform   ID = "system.transform"
+	ContextTransform  ID = "context.transform"
+	ToolDefsTransform ID = "tooldefs.transform"
+	ParamsTransform   ID = "params.transform"
+	ToolBefore        ID = "tool.before"
+	ToolAfter         ID = "tool.after"
+	EventSink         ID = "event.sink"
 )
 
 type Hook struct {
@@ -33,6 +36,11 @@ var hooks = []Hook{
 		ID:          RunBefore,
 		GoSymbol:    "Hooks.BeforeRun",
 		Description: "Fires exactly once at the start of Run, after validation and before the first iteration.",
+	},
+	{
+		ID:          RunAfter,
+		GoSymbol:    "Hooks.AfterRun",
+		Description: "Fires exactly once at the end of Run, after termination for any reason.",
 	},
 	{
 		ID:          TurnStart,
@@ -58,6 +66,16 @@ var hooks = []Hook{
 		ID:          ContextTransform,
 		GoSymbol:    "Hooks.TransformContext",
 		Description: "May rewrite the message history for this turn only; mutations are ephemeral.",
+	},
+	{
+		ID:          ToolDefsTransform,
+		GoSymbol:    "Hooks.TransformToolDefs",
+		Description: "May rewrite the tool definitions for this turn's wire request only.",
+	},
+	{
+		ID:          ParamsTransform,
+		GoSymbol:    "Hooks.TransformParams",
+		Description: "May rewrite the sampling parameters for this turn's wire request only.",
 	},
 	{
 		ID:          ToolBefore,

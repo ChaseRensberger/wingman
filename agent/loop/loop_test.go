@@ -2,6 +2,7 @@ package loop_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -376,5 +377,259 @@ func TestAfterToolCallRewriteEchoedToModel(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected tool result message in second request")
+	}
+}
+
+// TestAfterRunFiresOnSuccess answers: Does AfterRun fire on a successful run with a non-nil Result and nil Err?
+func TestAfterRunFiresOnSuccess(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	var gotInfo loop.AfterRunInfo
+	hooks := loop.Hooks{
+		AfterRun: func(ctx context.Context, info loop.AfterRunInfo) error {
+			gotInfo = info
+			return nil
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	res, err := loop.Run(ctx, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil Result")
+	}
+	if gotInfo.Result.StopReason != loop.StopReasonEndTurn {
+		t.Errorf("expected StopReasonEndTurn, got %q", gotInfo.Result.StopReason)
+	}
+	if gotInfo.Err != nil {
+		t.Errorf("expected nil Err in AfterRunInfo, got %v", gotInfo.Err)
+	}
+}
+
+// TestAfterRunFiresOnError answers: Does AfterRun fire on an error path with the run error visible in info.Err?
+func TestAfterRunFiresOnError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.ReplyError(errors.New("model exploded")))
+	sink := looptest.NewRecordingSink()
+
+	var gotInfo loop.AfterRunInfo
+	hooks := loop.Hooks{
+		AfterRun: func(ctx context.Context, info loop.AfterRunInfo) error {
+			gotInfo = info
+			return nil
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	_, err := loop.Run(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if gotInfo.Err == nil {
+		t.Fatal("expected non-nil Err in AfterRunInfo")
+	}
+	if !strings.Contains(gotInfo.Err.Error(), "model exploded") {
+		t.Errorf("expected error to contain 'model exploded', got %v", gotInfo.Err)
+	}
+	if gotInfo.Result.StopReason != loop.StopReasonError {
+		t.Errorf("expected StopReasonError, got %q", gotInfo.Result.StopReason)
+	}
+}
+
+// TestAfterRunErrorJoinsWithRunError answers: Is an AfterRun error joined with the existing run error?
+func TestAfterRunErrorJoinsWithRunError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.ReplyError(errors.New("model exploded")))
+	sink := looptest.NewRecordingSink()
+
+	hooks := loop.Hooks{
+		AfterRun: func(ctx context.Context, info loop.AfterRunInfo) error {
+			return errors.New("after run failed")
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	_, err := loop.Run(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "model exploded") {
+		t.Errorf("expected error to contain 'model exploded', got %v", err)
+	}
+	if !strings.Contains(err.Error(), "after run failed") {
+		t.Errorf("expected error to contain 'after run failed', got %v", err)
+	}
+}
+
+// TestTransformToolDefsRewriteReachesModel answers: Does a TransformToolDefs rewrite actually reach the model request?
+func TestTransformToolDefsRewriteReachesModel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	noop := tool.NewFuncTool("noop", "does nothing", tool.Definition{
+		Name:        "noop",
+		Description: "A no-op tool for testing.",
+		InputSchema: tool.InputSchema{Type: "object"},
+	}, func(ctx context.Context, params map[string]any, workDir string) (string, error) {
+		return "ok", nil
+	})
+
+	hooks := loop.Hooks{
+		TransformToolDefs: func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+			out := append([]models.ToolDef(nil), info.Tools...)
+			if len(out) > 0 {
+				out[0].Description = "rewritten description"
+			}
+			return out, nil
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	cfg.Tools = []tool.Tool{noop}
+
+	_, err := loop.Run(ctx, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := model.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(reqs))
+	}
+	if len(reqs[0].Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(reqs[0].Tools))
+	}
+	if reqs[0].Tools[0].Description != "rewritten description" {
+		t.Errorf("expected rewritten description, got %q", reqs[0].Tools[0].Description)
+	}
+}
+
+// TestTransformToolDefsNilSendsNoTools answers: Does TransformToolDefs returning a nil slice send no tools to the model?
+func TestTransformToolDefsNilSendsNoTools(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	noop := tool.NewFuncTool("noop", "does nothing", tool.Definition{
+		Name:        "noop",
+		Description: "A no-op tool for testing.",
+		InputSchema: tool.InputSchema{Type: "object"},
+	}, func(ctx context.Context, params map[string]any, workDir string) (string, error) {
+		return "ok", nil
+	})
+
+	hooks := loop.Hooks{
+		TransformToolDefs: func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+			return nil, nil
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	cfg.Tools = []tool.Tool{noop}
+
+	_, err := loop.Run(ctx, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := model.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(reqs))
+	}
+	if len(reqs[0].Tools) != 0 {
+		t.Errorf("expected 0 tools, got %d", len(reqs[0].Tools))
+	}
+}
+
+// TestTransformToolDefsErrorFailsRun answers: Does a TransformToolDefs error fail the run?
+func TestTransformToolDefsErrorFailsRun(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	hooks := loop.Hooks{
+		TransformToolDefs: func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+			return nil, errors.New("tool defs transform failed")
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	_, err := loop.Run(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "tool defs transform failed") {
+		t.Errorf("expected error to contain 'tool defs transform failed', got %v", err)
+	}
+}
+
+// TestTransformParamsRewriteReachesModel answers: Does a TransformParams rewrite actually reach the model request?
+func TestTransformParamsRewriteReachesModel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	hooks := loop.Hooks{
+		TransformParams: func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+			tokens := 512
+			return loop.TransformParamsResult{Params: loop.SamplingParams{MaxOutputTokens: &tokens}}, nil
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	_, err := loop.Run(ctx, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := model.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(reqs))
+	}
+	if reqs[0].MaxOutputTokens != 512 {
+		t.Errorf("expected MaxOutputTokens=512, got %d", reqs[0].MaxOutputTokens)
+	}
+}
+
+// TestTransformParamsErrorFailsRun answers: Does a TransformParams error fail the run?
+func TestTransformParamsErrorFailsRun(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	model := looptest.NewRecordingModel(looptest.Reply("done"))
+	sink := looptest.NewRecordingSink()
+
+	hooks := loop.Hooks{
+		TransformParams: func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+			return loop.TransformParamsResult{}, errors.New("params transform failed")
+		},
+	}
+
+	cfg := newConfig(t, model, sink, hooks)
+	_, err := loop.Run(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "params transform failed") {
+		t.Errorf("expected error to contain 'params transform failed', got %v", err)
 	}
 }

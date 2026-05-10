@@ -51,6 +51,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/chaserensberger/wingman/agent/loop"
@@ -80,13 +81,16 @@ type Plugin interface {
 // have undefined effect. Sessions construct a fresh Registry per
 // activation.
 type Registry struct {
-	beforeRun        []loop.BeforeRunHook
-	transformHistory []loop.TransformHistoryHook
-	transformContext []loop.TransformContextHook
-	beforeToolCall   []loop.BeforeToolCallFunc
-	afterToolCall    []loop.AfterToolCallFunc
-	sinks            []loop.Sink
-	tools            []tool.Tool
+	beforeRun         []loop.BeforeRunHook
+	transformHistory  []loop.TransformHistoryHook
+	transformContext  []loop.TransformContextHook
+	beforeToolCall    []loop.BeforeToolCallFunc
+	afterToolCall     []loop.AfterToolCallFunc
+	afterRun          []loop.AfterRunHook
+	transformToolDefs []loop.TransformToolDefsHook
+	transformParams   []loop.TransformParamsHook
+	sinks             []loop.Sink
+	tools             []tool.Tool
 }
 
 // NewRegistry returns an empty Registry.
@@ -135,6 +139,32 @@ func (r *Registry) RegisterBeforeToolCall(h loop.BeforeToolCallFunc) {
 func (r *Registry) RegisterAfterToolCall(h loop.AfterToolCallFunc) {
 	if h != nil {
 		r.afterToolCall = append(r.afterToolCall, h)
+	}
+}
+
+// RegisterAfterRun adds an AfterRun hook. Hooks run in install order;
+// every registered hook sees the same Result and errors are joined.
+func (r *Registry) RegisterAfterRun(h loop.AfterRunHook) {
+	if h != nil {
+		r.afterRun = append(r.afterRun, h)
+	}
+}
+
+// RegisterTransformToolDefs adds a TransformToolDefs hook to the
+// per-turn pipeline. Hooks run in install order; each receives the
+// previous hook's output.
+func (r *Registry) RegisterTransformToolDefs(h loop.TransformToolDefsHook) {
+	if h != nil {
+		r.transformToolDefs = append(r.transformToolDefs, h)
+	}
+}
+
+// RegisterTransformParams adds a TransformParams hook to the per-turn
+// pipeline. Hooks run in install order; each receives the previous
+// hook's output.
+func (r *Registry) RegisterTransformParams(h loop.TransformParamsHook) {
+	if h != nil {
+		r.transformParams = append(r.transformParams, h)
 	}
 }
 
@@ -223,6 +253,30 @@ func (r *Registry) Build() Built {
 		hooks.AfterToolCall = r.afterToolCall[0]
 	default:
 		hooks.AfterToolCall = composeAfterToolCall(r.afterToolCall)
+	}
+
+	switch len(r.afterRun) {
+	case 0:
+	case 1:
+		hooks.AfterRun = r.afterRun[0]
+	default:
+		hooks.AfterRun = composeAfterRun(r.afterRun)
+	}
+
+	switch len(r.transformToolDefs) {
+	case 0:
+	case 1:
+		hooks.TransformToolDefs = r.transformToolDefs[0]
+	default:
+		hooks.TransformToolDefs = composeTransformToolDefs(r.transformToolDefs)
+	}
+
+	switch len(r.transformParams) {
+	case 0:
+	case 1:
+		hooks.TransformParams = r.transformParams[0]
+	default:
+		hooks.TransformParams = composeTransformParams(r.transformParams)
 	}
 
 	var sink loop.Sink
@@ -329,6 +383,56 @@ func composeAfterToolCall(hooks []loop.AfterToolCallFunc) loop.AfterToolCallFunc
 			out = newOut
 		}
 		return out, nil
+	}
+}
+
+// composeAfterRun runs all AfterRun hooks; every hook sees the same
+// Result and errors are joined.
+func composeAfterRun(hooks []loop.AfterRunHook) loop.AfterRunHook {
+	return func(ctx context.Context, info loop.AfterRunInfo) error {
+		var errs []error
+		for i, h := range hooks {
+			if err := h(ctx, info); err != nil {
+				errs = append(errs, fmt.Errorf("after_run[%d]: %w", i, err))
+			}
+		}
+		return errors.Join(errs...)
+	}
+}
+
+// composeTransformToolDefs chains TransformToolDefs hooks: each receives
+// the previous hook's output. Errors short-circuit the chain.
+func composeTransformToolDefs(hooks []loop.TransformToolDefsHook) loop.TransformToolDefsHook {
+	return func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+		tools := info.Tools
+		for i, h := range hooks {
+			next := info
+			next.Tools = tools
+			out, err := h(ctx, next)
+			if err != nil {
+				return nil, fmt.Errorf("transform_tool_defs[%d]: %w", i, err)
+			}
+			tools = out
+		}
+		return tools, nil
+	}
+}
+
+// composeTransformParams chains TransformParams hooks: each receives
+// the previous hook's output. Errors short-circuit the chain.
+func composeTransformParams(hooks []loop.TransformParamsHook) loop.TransformParamsHook {
+	return func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+		params := info.Params
+		for i, h := range hooks {
+			next := info
+			next.Params = params
+			out, err := h(ctx, next)
+			if err != nil {
+				return loop.TransformParamsResult{}, fmt.Errorf("transform_params[%d]: %w", i, err)
+			}
+			params = out.Params
+		}
+		return loop.TransformParamsResult{Params: params}, nil
 	}
 }
 

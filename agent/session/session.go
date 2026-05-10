@@ -56,8 +56,11 @@ type Session struct {
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
 	// pipelines), so a user-supplied hook always has the final word.
-	transformHistory loop.TransformHistoryHook
-	transformContext loop.TransformContextHook
+	transformHistory  loop.TransformHistoryHook
+	transformContext  loop.TransformContextHook
+	transformToolDefs loop.TransformToolDefsHook
+	transformParams   loop.TransformParamsHook
+	afterRun          loop.AfterRunHook
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
 	// (including plugin-injected messages such as compaction markers
@@ -137,6 +140,27 @@ func WithTransformHistory(h loop.TransformHistoryHook) Option {
 // redaction or per-turn context injection.
 func WithTransformContext(h loop.TransformContextHook) Option {
 	return func(s *Session) { s.transformContext = h }
+}
+
+// WithTransformToolDefs installs a raw per-turn hook that may rewrite
+// the tool definitions sent to the provider without affecting the
+// session's running tool registry. Composed *after* any
+// plugin-contributed TransformToolDefs hooks.
+func WithTransformToolDefs(h loop.TransformToolDefsHook) Option {
+	return func(s *Session) { s.transformToolDefs = h }
+}
+
+// WithTransformParams installs a raw per-turn hook that may rewrite
+// the sampling parameters sent to the provider. Composed *after* any
+// plugin-contributed TransformParams hooks.
+func WithTransformParams(h loop.TransformParamsHook) Option {
+	return func(s *Session) { s.transformParams = h }
+}
+
+// WithAfterRun installs a raw hook that fires exactly once at the end
+// of Run, after plugin-contributed AfterRun hooks. Errors are joined.
+func WithAfterRun(h loop.AfterRunHook) Option {
+	return func(s *Session) { s.afterRun = h }
 }
 
 // WithPlugin installs one or more plugins. Plugins contribute hooks,
@@ -326,6 +350,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	workDir := s.workDir
 	rawTransformHistory := s.transformHistory
 	rawTransformContext := s.transformContext
+	rawTransformToolDefs := s.transformToolDefs
+	rawTransformParams := s.transformParams
+	rawAfterRun := s.afterRun
 	plugins := append([]plugin.Plugin(nil), s.plugins...)
 	messageSink := s.messageSink
 	outputSchema := s.outputSchema
@@ -393,6 +420,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// supplied raw hooks run last and see the post-plugin slice.
 	transformHistory := composeTransformHistory(built.Hooks.TransformHistory, rawTransformHistory)
 	transformContext := composeTransformContext(built.Hooks.TransformContext, rawTransformContext)
+	transformToolDefs := composeTransformToolDefs(built.Hooks.TransformToolDefs, rawTransformToolDefs)
+	transformParams := composeTransformParams(built.Hooks.TransformParams, rawTransformParams)
+	afterRun := composeAfterRun(built.Hooks.AfterRun, rawAfterRun)
 
 	// Tool composition: session tools first, then plugin tools (later
 	// wins on name collision via the loop's registry).
@@ -432,11 +462,14 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		Sink:         internal,
 		OutputSchema: outputSchema,
 		Hooks: loop.Hooks{
-			BeforeRun:        built.Hooks.BeforeRun,
-			TransformHistory: transformHistory,
-			TransformContext: transformContext,
-			BeforeToolCall:   built.Hooks.BeforeToolCall,
-			AfterToolCall:    built.Hooks.AfterToolCall,
+			BeforeRun:         built.Hooks.BeforeRun,
+			TransformHistory:  transformHistory,
+			TransformContext:  transformContext,
+			TransformToolDefs: transformToolDefs,
+			TransformParams:   transformParams,
+			BeforeToolCall:    built.Hooks.BeforeToolCall,
+			AfterToolCall:     built.Hooks.AfterToolCall,
+			AfterRun:          afterRun,
 		},
 	}
 
@@ -569,5 +602,72 @@ func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loo
 		next := info
 		next.Messages = out
 		return userHook(ctx, next)
+	}
+}
+
+// composeTransformToolDefs mirrors composeTransformHistory for the
+// tool-definitions transform seam.
+func composeTransformToolDefs(pluginHook, userHook loop.TransformToolDefsHook) loop.TransformToolDefsHook {
+	switch {
+	case pluginHook == nil && userHook == nil:
+		return nil
+	case pluginHook == nil:
+		return userHook
+	case userHook == nil:
+		return pluginHook
+	}
+	return func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+		out, err := pluginHook(ctx, info)
+		if err != nil {
+			return nil, err
+		}
+		next := info
+		next.Tools = out
+		return userHook(ctx, next)
+	}
+}
+
+// composeTransformParams mirrors composeTransformHistory for the
+// sampling-parameters transform seam.
+func composeTransformParams(pluginHook, userHook loop.TransformParamsHook) loop.TransformParamsHook {
+	switch {
+	case pluginHook == nil && userHook == nil:
+		return nil
+	case pluginHook == nil:
+		return userHook
+	case userHook == nil:
+		return pluginHook
+	}
+	return func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+		out, err := pluginHook(ctx, info)
+		if err != nil {
+			return loop.TransformParamsResult{}, err
+		}
+		next := info
+		next.Params = out.Params
+		return userHook(ctx, next)
+	}
+}
+
+// composeAfterRun runs the plugin hook first, then the user hook.
+// Errors from both are joined.
+func composeAfterRun(pluginHook, userHook loop.AfterRunHook) loop.AfterRunHook {
+	switch {
+	case pluginHook == nil && userHook == nil:
+		return nil
+	case pluginHook == nil:
+		return userHook
+	case userHook == nil:
+		return pluginHook
+	}
+	return func(ctx context.Context, info loop.AfterRunInfo) error {
+		var errs []error
+		if err := pluginHook(ctx, info); err != nil {
+			errs = append(errs, err)
+		}
+		if err := userHook(ctx, info); err != nil {
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
 	}
 }

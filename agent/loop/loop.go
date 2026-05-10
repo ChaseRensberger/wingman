@@ -248,6 +248,27 @@ type Hooks struct {
 	// when execution failed). It may rewrite the result string. Returns
 	// the (possibly rewritten) result; an error here fails the loop.
 	AfterToolCall AfterToolCallFunc
+
+	// AfterRun fires exactly once at the end of Run, after the loop has
+	// terminated for any reason (success, error, max steps, context
+	// cancellation). It receives the final Result (possibly partial if
+	// Err != nil) and the run error, if any. Errors returned from
+	// AfterRun are joined with the existing run error using errors.Join.
+	// If AfterRun returns nil, the existing return value is unchanged.
+	AfterRun AfterRunHook
+
+	// TransformToolDefs rewrites the tool definitions for this turn's
+	// wire request only. Returning the input slice unchanged is a no-op.
+	// Returning a nil slice means "send no tools this turn". Errors fail
+	// the loop. The loop's running tool registry is unaffected.
+	TransformToolDefs TransformToolDefsHook
+
+	// TransformParams mutates the per-request sampling parameters before
+	// the LLM call. The hook receives the params the loop is about to
+	// send and returns the params that should be used for this turn's
+	// wire request only. The loop's own Config is unaffected. Errors fail
+	// the loop.
+	TransformParams TransformParamsHook
 }
 
 // TransformHistoryInfo is the input to a TransformHistoryHook. Step is 1-indexed and
@@ -299,6 +320,46 @@ type BeforeToolCallFunc func(ctx context.Context, call ToolCall) (newArgs map[st
 
 // AfterToolCallFunc is the signature for Hooks.AfterToolCall.
 type AfterToolCallFunc func(ctx context.Context, call ToolCall, result string, isError bool) (newResult string, err error)
+
+// AfterRunInfo is the input to an AfterRunHook.
+type AfterRunInfo struct {
+	Result Result // the final Result the loop will return
+	Err    error  // non-nil if the loop terminated with an error
+}
+
+// AfterRunHook is the signature for Hooks.AfterRun.
+type AfterRunHook func(ctx context.Context, info AfterRunInfo) error
+
+// TransformToolDefsInfo is the input to a TransformToolDefsHook.
+type TransformToolDefsInfo struct {
+	Step  int              // 1-indexed iteration the request is being built for
+	Tools []models.ToolDef // current tool definitions about to be sent to the model
+	Model models.Model     // the model the request is going to
+}
+
+// TransformToolDefsHook is the signature for Hooks.TransformToolDefs.
+type TransformToolDefsHook func(ctx context.Context, info TransformToolDefsInfo) ([]models.ToolDef, error)
+
+// SamplingParams is the set of per-request sampling knobs exposed by
+// the loop. Pointer fields distinguish "unset" from "set to zero".
+type SamplingParams struct {
+	MaxOutputTokens *int
+}
+
+// TransformParamsInfo is the input to a TransformParamsHook.
+type TransformParamsInfo struct {
+	Step   int
+	Model  models.Model
+	Params SamplingParams
+}
+
+// TransformParamsResult is the output of a TransformParamsHook.
+type TransformParamsResult struct {
+	Params SamplingParams
+}
+
+// TransformParamsHook is the signature for Hooks.TransformParams.
+type TransformParamsHook func(ctx context.Context, info TransformParamsInfo) (TransformParamsResult, error)
 
 // ErrSkipTool is returned from BeforeToolCall to skip tool execution
 // without failing the loop. The loop synthesizes a tool result message
