@@ -3,7 +3,7 @@ const CLIENT_ID_KEY = "wingman_client_id";
 export interface Client {
   id: string;
   name: string;
-  created_at: number;
+  created_at: string;
 }
 
 export async function ensureClient(): Promise<string> {
@@ -19,6 +19,21 @@ export async function ensureClient(): Promise<string> {
     } catch {
       return stored;
     }
+  }
+
+  const clientsRes = await fetch("/clients");
+  if (!clientsRes.ok) {
+    const text = await clientsRes.text();
+    throw new Error(`Failed to list clients: ${clientsRes.status} ${text}`);
+  }
+
+  const clients: Client[] = await clientsRes.json();
+  const existing = clients
+    .filter((client) => client.name === "web")
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+  if (existing) {
+    localStorage.setItem(CLIENT_ID_KEY, existing.id);
+    return existing.id;
   }
 
   const res = await fetch("/clients", {
