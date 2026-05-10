@@ -1,7 +1,6 @@
 ---
 title: "API"
 group: "Reference"
-draft: true
 order: 1000
 ---
 

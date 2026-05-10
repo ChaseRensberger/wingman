@@ -73,7 +73,7 @@ type Result struct {
 
 ## Streaming
 
-`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See [Streaming](../agent/streaming).
+`RunStream` runs the loop on a background goroutine and exposes a single-consumer iterator. See Streaming.
 
 ```go
 stream, err := s.RunStream(ctx, "Write a Go HTTP server")

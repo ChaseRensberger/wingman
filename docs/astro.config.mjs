@@ -33,6 +33,12 @@ export default defineConfig({
 			sidebar: [
 				{ label: 'Introduction', slug: '' },
 				{ label: 'Quickstart', slug: 'quickstart' },
+				{
+					label: 'Concepts',
+					items: [
+						{ label: 'Sessions', slug: 'concepts/sessions' },
+					],
+				},
 			],
 			plugins: [
 				theme({
