@@ -35,7 +35,7 @@ function schemaText(agent: Agent): string {
   return JSON.stringify(agent.output_schema, null, 2);
 }
 
-export const Route = createFileRoute("/agents")({
+export const Route = createFileRoute("/agents/")({
   component: AgentsPage,
 });
 

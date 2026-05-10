@@ -44,7 +44,7 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export const Route = createFileRoute("/sessions")({
+export const Route = createFileRoute("/sessions/")({
   component: SessionsPage,
 });
 

@@ -9,109 +9,89 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SessionsRouteImport } from './routes/sessions'
-import { Route as ProvidersRouteImport } from './routes/providers'
-import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
+import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
+import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
+import { Route as AgentsIndexRouteImport } from './routes/agents/index'
+import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 
-const SessionsRoute = SessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProvidersRoute = ProvidersRouteImport.update({
-  id: '/providers',
-  path: '/providers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AgentsRoute = AgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsIndexRoute = SessionsIndexRouteImport.update({
+  id: '/sessions/',
+  path: '/sessions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
+  id: '/providers/',
+  path: '/providers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsIndexRoute = AgentsIndexRouteImport.update({
+  id: '/agents/',
+  path: '/agents/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
-  id: '/$sessionId',
-  path: '/$sessionId',
-  getParentRoute: () => SessionsRoute,
+  id: '/sessions/$sessionId',
+  path: '/sessions/$sessionId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/agents': typeof AgentsRoute
-  '/providers': typeof ProvidersRoute
-  '/sessions': typeof SessionsRouteWithChildren
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/agents/': typeof AgentsIndexRoute
+  '/providers/': typeof ProvidersIndexRoute
+  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/agents': typeof AgentsRoute
-  '/providers': typeof ProvidersRoute
-  '/sessions': typeof SessionsRouteWithChildren
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/agents': typeof AgentsIndexRoute
+  '/providers': typeof ProvidersIndexRoute
+  '/sessions': typeof SessionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/agents': typeof AgentsRoute
-  '/providers': typeof ProvidersRoute
-  '/sessions': typeof SessionsRouteWithChildren
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/agents/': typeof AgentsIndexRoute
+  '/providers/': typeof ProvidersIndexRoute
+  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/agents'
-    | '/providers'
-    | '/sessions'
     | '/sessions/$sessionId'
+    | '/agents/'
+    | '/providers/'
+    | '/sessions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agents' | '/providers' | '/sessions' | '/sessions/$sessionId'
+  to: '/' | '/sessions/$sessionId' | '/agents' | '/providers' | '/sessions'
   id:
     | '__root__'
     | '/'
-    | '/agents'
-    | '/providers'
-    | '/sessions'
     | '/sessions/$sessionId'
+    | '/agents/'
+    | '/providers/'
+    | '/sessions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AgentsRoute: typeof AgentsRoute
-  ProvidersRoute: typeof ProvidersRoute
-  SessionsRoute: typeof SessionsRouteWithChildren
+  SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  AgentsIndexRoute: typeof AgentsIndexRoute
+  ProvidersIndexRoute: typeof ProvidersIndexRoute
+  SessionsIndexRoute: typeof SessionsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sessions': {
-      id: '/sessions'
-      path: '/sessions'
-      fullPath: '/sessions'
-      preLoaderRoute: typeof SessionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/providers': {
-      id: '/providers'
-      path: '/providers'
-      fullPath: '/providers'
-      preLoaderRoute: typeof ProvidersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/agents': {
-      id: '/agents'
-      path: '/agents'
-      fullPath: '/agents'
-      preLoaderRoute: typeof AgentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -119,33 +99,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/': {
+      id: '/sessions/'
+      path: '/sessions'
+      fullPath: '/sessions/'
+      preLoaderRoute: typeof SessionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/providers/': {
+      id: '/providers/'
+      path: '/providers'
+      fullPath: '/providers/'
+      preLoaderRoute: typeof ProvidersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/': {
+      id: '/agents/'
+      path: '/agents'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AgentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId': {
       id: '/sessions/$sessionId'
-      path: '/$sessionId'
+      path: '/sessions/$sessionId'
       fullPath: '/sessions/$sessionId'
       preLoaderRoute: typeof SessionsSessionIdRouteImport
-      parentRoute: typeof SessionsRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface SessionsRouteChildren {
-  SessionsSessionIdRoute: typeof SessionsSessionIdRoute
-}
-
-const SessionsRouteChildren: SessionsRouteChildren = {
-  SessionsSessionIdRoute: SessionsSessionIdRoute,
-}
-
-const SessionsRouteWithChildren = SessionsRoute._addFileChildren(
-  SessionsRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AgentsRoute: AgentsRoute,
-  ProvidersRoute: ProvidersRoute,
-  SessionsRoute: SessionsRouteWithChildren,
+  SessionsSessionIdRoute: SessionsSessionIdRoute,
+  AgentsIndexRoute: AgentsIndexRoute,
+  ProvidersIndexRoute: ProvidersIndexRoute,
+  SessionsIndexRoute: SessionsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

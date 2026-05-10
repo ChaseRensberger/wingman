@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { wfetch } from "@/lib/client";
 import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
 
-export const Route = createFileRoute("/providers")({
+export const Route = createFileRoute("/providers/")({
   component: ProvidersPage,
 });
 
