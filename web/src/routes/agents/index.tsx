@@ -162,7 +162,6 @@ function AgentsPage() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <PageBreadcrumb items={[{ label: "Agents" }]} />
-          <p className="mt-1 text-sm text-muted-foreground">Create and maintain reusable Wingman agent definitions.</p>
         </div>
         <Button size="sm" onClick={openNew}>
           <PlusIcon className="size-4" />
