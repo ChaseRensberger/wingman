@@ -1,6 +1,37 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/theme-toggle";
 import WingmanIcon from "@/assets/WingmanBlue.png";
+import { Chats, Robot, HardDrives } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+
+function NavLink({
+	to,
+	icon: Icon,
+	label,
+}: {
+	to: string;
+	icon: React.ComponentType<{ size?: number; className?: string }>;
+	label: string;
+}) {
+	const { location } = useRouterState();
+	const isActive =
+		location.pathname === to || location.pathname.startsWith(to + "/");
+
+	return (
+		<Link
+			to={to}
+			className={cn(
+				"flex items-center gap-2 rounded-md border shadow-sm p-2 text-xs transition-colors",
+				isActive
+					? "bg-primary text-primary-foreground border-primary"
+					: "bg-card text-muted-foreground hover:text-foreground hover:bg-accent"
+			)}
+		>
+			<Icon size={16} />
+			{label}
+		</Link>
+	);
+}
 
 export default function App() {
 	return (
@@ -11,15 +42,9 @@ export default function App() {
 						<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />
 					</Link>
 					<nav className="flex items-center gap-3 text-xs text-muted-foreground">
-						<Link to="/sessions" className="hover:text-foreground">
-							Sessions
-						</Link>
-						<Link to="/agents" className="hover:text-foreground">
-							Agents
-						</Link>
-						<Link to="/providers" className="hover:text-foreground">
-							Providers
-						</Link>
+						<NavLink to="/sessions" icon={Chats} label="Sessions" />
+						<NavLink to="/agents" icon={Robot} label="Agents" />
+						<NavLink to="/providers" icon={HardDrives} label="Providers" />
 					</nav>
 				</div>
 				<ThemeToggle />
