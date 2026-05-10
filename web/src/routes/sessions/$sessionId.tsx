@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Message, Part } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
@@ -14,7 +14,7 @@ import {
   SelectItem,
 } from "@/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
-import { StopIcon, TrashIcon } from "@phosphor-icons/react";
+import { StopIcon } from "@phosphor-icons/react";
 
 function parseSSE(buffer: string): {
   events: Array<{ event: string; data: string }>;
@@ -106,17 +106,15 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 });
 
 function SessionDetailPage() {
-  const { sessionId } = Route.useParams();
-  const navigate = useNavigate();
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+	const { sessionId } = Route.useParams();
+	const [session, setSession] = useState<Session | null>(null);
+	const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState("");
-  const [messageText, setMessageText] = useState("");
-  const [streamingText, setStreamingText] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState("");
+	const [messageText, setMessageText] = useState("");
+	const [streamingText, setStreamingText] = useState("");
+	const [isStreaming, setIsStreaming] = useState(false);
+	const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -189,19 +187,7 @@ function SessionDetailPage() {
     await loadSession();
   }
 
-  async function handleDelete() {
-    if (!session || !confirm(`Delete session ${session.title || session.id}?`)) return;
-    setDeleting(true);
-    try {
-      await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
-      navigate({ to: "/sessions" });
-    } catch (err) {
-      alert(String(err));
-      setDeleting(false);
-    }
-  }
-
-  async function handleSend(e?: React.FormEvent) {
+	async function handleSend(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!messageText.trim() || !selectedAgent) return;
 
@@ -336,12 +322,8 @@ function SessionDetailPage() {
               <span className="max-w-full truncate">{session.work_dir || "-"}</span>
             </div>
           </div>
-          <Button size="sm" variant="ghost" onClick={handleDelete} disabled={deleting || isStreaming}>
-            <TrashIcon className="size-4" />
-            {deleting ? "Deleting..." : "Delete"}
-          </Button>
-        </div>
-      </div>
+		</div>
+	</div>
 
       {error && (
         <Alert variant="destructive" className="mt-4">

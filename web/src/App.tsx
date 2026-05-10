@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import WingmanIcon from "@/assets/WingmanBlue.png";
+import WingmanIcon from "@/assets/icon-128.png";
 import { Gear, Lightning, SolarRoof, Stack } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
