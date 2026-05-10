@@ -1,7 +1,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { ThemeToggle } from "@/components/theme-toggle";
 import WingmanIcon from "@/assets/WingmanBlue.png";
-import { Chats, Robot, HardDrives } from "@phosphor-icons/react";
+import { Lightning, SolarRoof, Stack } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 function NavLink({
@@ -42,9 +42,9 @@ export default function App() {
 						<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />
 					</Link>
 					<nav className="flex items-center gap-3 text-xs text-muted-foreground">
-						<NavLink to="/sessions" icon={Chats} label="Sessions" />
-						<NavLink to="/agents" icon={Robot} label="Agents" />
-						<NavLink to="/providers" icon={HardDrives} label="Providers" />
+						<NavLink to="/sessions" icon={Stack} label="Sessions" />
+						<NavLink to="/agents" icon={Lightning} label="Agents" />
+						<NavLink to="/providers" icon={SolarRoof} label="Providers" />
 					</nav>
 				</div>
 				<ThemeToggle />
