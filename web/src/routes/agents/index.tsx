@@ -2,6 +2,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/core/select";
 import { Textarea } from "@/components/core/textarea";
 import { Badge } from "@/components/core/badge";
 import {
@@ -202,33 +209,40 @@ function AgentsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1">
                 <label className="text-xs font-medium">Provider</label>
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                <Select
                   value={form.provider}
-                  onChange={(e) => setForm((prev) => ({ ...prev, provider: e.target.value, model: "" }))}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, provider: value ?? "", model: "" }))}
                 >
-                  <option value="">Select provider</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        {provider.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1">
                 <label className="text-xs font-medium">Model</label>
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                <Select
                   value={form.model}
-                  onChange={(e) => setForm((prev) => ({ ...prev, model: e.target.value }))}
+                  onValueChange={(value) => setForm((prev) => ({ ...prev, model: value ?? "" }))}
+                  disabled={!form.provider || providerModels.length === 0}
                 >
-                  <option value="">Select model</option>
-                  {providerModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder={form.provider ? "Select model" : "Select provider first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid gap-2">

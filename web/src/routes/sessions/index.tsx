@@ -19,12 +19,38 @@ import {
 	EmptyActions,
 } from "@/components/core/empty";
 import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/core/alert-dialog";
+import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
+	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@/components/core/context-menu";
-import { MagnifyingGlassIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/core/dialog";
+import {
+	FolderOpenIcon,
+	MagnifyingGlassIcon,
+	PencilSimpleIcon,
+	PlusIcon,
+	TrashIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 
 import { timeAgo } from "@/lib/utils";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -38,12 +64,14 @@ function SessionsPage() {
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [filter, setFilter] = useState("");
-	const [createOpen, setCreateOpen] = useState(false);
 	const [filterOpen, setFilterOpen] = useState(false);
-	const [newTitle, setNewTitle] = useState("");
-	const [newWorkDir, setNewWorkDir] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [deletingSessionId, setDeletingSessionId] = useState("");
+	const [deleteSession, setDeleteSession] = useState<Session | null>(null);
+	const [editingSession, setEditingSession] = useState<Session | null>(null);
+	const [editTitle, setEditTitle] = useState("");
+	const [editWorkDir, setEditWorkDir] = useState("");
+	const [savingEdit, setSavingEdit] = useState(false);
 	const filterInputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
@@ -73,20 +101,12 @@ function SessionsPage() {
 		return haystack.includes(filter.toLowerCase());
 	});
 
-	async function handleCreate(e: React.FormEvent) {
-		e.preventDefault();
+	async function handleCreate() {
 		setCreating(true);
 		try {
-			const body: Record<string, string> = {};
-			if (newTitle.trim()) body.title = newTitle.trim();
-			if (newWorkDir.trim()) body.working_directory = newWorkDir.trim();
 			const session = (await wfetch("/sessions", {
 				method: "POST",
-				body: JSON.stringify(body),
 			})) as Session;
-			setCreateOpen(false);
-			setNewTitle("");
-			setNewWorkDir("");
 			navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } });
 		} catch (err) {
 			alert(String(err));
@@ -95,12 +115,55 @@ function SessionsPage() {
 		}
 	}
 
+	function openEdit(session: Session) {
+		setEditingSession(session);
+		setEditTitle(session.title || "");
+		setEditWorkDir(session.work_dir || "");
+	}
+
+	async function chooseWorkingDirectory() {
+		const picker = (window as Window & {
+			showDirectoryPicker?: () => Promise<{ name: string }>;
+		}).showDirectoryPicker;
+		if (!picker) {
+			alert("This browser does not support directory picking. Enter the path manually.");
+			return;
+		}
+		try {
+			const handle = await picker.call(window);
+			setEditWorkDir(handle.name);
+		} catch (err) {
+			if ((err as Error).name !== "AbortError") alert(String(err));
+		}
+	}
+
+	async function handleEdit(e: React.FormEvent) {
+		e.preventDefault();
+		if (!editingSession) return;
+		setSavingEdit(true);
+		try {
+			const updated = (await wfetch(`/sessions/${editingSession.id}`, {
+				method: "PUT",
+				body: JSON.stringify({
+					title: editTitle.trim(),
+					working_directory: editWorkDir.trim(),
+				}),
+			})) as Session;
+			setSessions((prev) => prev.map((session) => session.id === updated.id ? updated : session));
+			setEditingSession(null);
+		} catch (err) {
+			alert(String(err));
+		} finally {
+			setSavingEdit(false);
+		}
+	}
+
 	async function handleDelete(session: Session) {
-		if (!confirm(`Delete session ${session.title || session.id}?`)) return;
 		setDeletingSessionId(session.id);
 		try {
 			await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
 			setSessions((prev) => prev.filter((s) => s.id !== session.id));
+			setDeleteSession(null);
 		} catch (err) {
 			alert(String(err));
 		} finally {
@@ -113,9 +176,9 @@ function SessionsPage() {
 			<div className="mb-4">
 				<PageBreadcrumb items={[{ label: "Sessions" }]} />
 				<div className="mt-4 flex items-center justify-between gap-3">
-					<Button size="sm" onClick={() => setCreateOpen((open) => !open)}>
+					<Button size="sm" onClick={handleCreate} disabled={creating}>
 						<PlusIcon className="size-4" />
-						New
+						{creating ? "Creating..." : "New"}
 					</Button>
 
 					<div
@@ -156,32 +219,6 @@ function SessionsPage() {
 				</div>
 			</div>
 
-			{createOpen && (
-				<form onSubmit={handleCreate} className="mb-4 rounded-xl border bg-card p-4 shadow-sm shadow-primary/5">
-					<div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-						<div className="grid gap-1">
-							<label className="text-xs font-medium">Title</label>
-							<Input
-								placeholder="Optional title"
-								value={newTitle}
-								onChange={(e) => setNewTitle(e.target.value)}
-							/>
-						</div>
-						<div className="grid gap-1">
-							<label className="text-xs font-medium">Working directory</label>
-							<Input
-								placeholder="Optional working directory"
-								value={newWorkDir}
-								onChange={(e) => setNewWorkDir(e.target.value)}
-							/>
-						</div>
-						<Button type="submit" disabled={creating}>
-							{creating ? "Creating..." : "Create"}
-						</Button>
-					</div>
-				</form>
-			)}
-
 			{loading ? (
 				<div className="py-8 text-sm text-muted-foreground">Loading...</div>
 			) : filtered.length === 0 && filter ? (
@@ -194,9 +231,9 @@ function SessionsPage() {
 					<EmptyTitle>No sessions yet</EmptyTitle>
 					<EmptyDescription>Start a new session to begin chatting.</EmptyDescription>
 					<EmptyActions>
-						<Button size="sm" onClick={() => setCreateOpen(true)}>
+						<Button size="sm" onClick={handleCreate} disabled={creating}>
 							<PlusIcon className="size-4" />
-							New
+							{creating ? "Creating..." : "New"}
 						</Button>
 					</EmptyActions>
 				</Empty>
@@ -240,10 +277,15 @@ function SessionsPage() {
 									</TableCell>
 								</ContextMenuTrigger>
 								<ContextMenuContent className="w-44">
+									<ContextMenuItem onClick={() => openEdit(s)}>
+										<PencilSimpleIcon className="size-4" />
+										Edit session
+									</ContextMenuItem>
+									<ContextMenuSeparator />
 									<ContextMenuItem
 										variant="destructive"
 										disabled={deletingSessionId === s.id}
-										onClick={() => handleDelete(s)}
+										onClick={() => setDeleteSession(s)}
 									>
 										<TrashIcon className="size-4" />
 										{deletingSessionId === s.id ? "Deleting..." : "Delete session"}
@@ -254,6 +296,75 @@ function SessionsPage() {
 					</TableBody>
 				</Table>
 			)}
+
+			<Dialog open={editingSession !== null} onOpenChange={(open) => !open && setEditingSession(null)}>
+				<DialogContent>
+					<form onSubmit={handleEdit} className="grid gap-4">
+						<DialogHeader>
+							<DialogTitle>Edit session</DialogTitle>
+							<DialogDescription>
+								Change the session name or working directory.
+							</DialogDescription>
+						</DialogHeader>
+						<div className="grid gap-3">
+							<div className="grid gap-1">
+								<label className="text-xs font-medium">Name</label>
+								<Input
+									placeholder="Session name"
+									value={editTitle}
+									onChange={(e) => setEditTitle(e.target.value)}
+								/>
+							</div>
+							<div className="grid gap-1">
+								<label className="text-xs font-medium">Working directory</label>
+								<div className="flex gap-2">
+									<Input
+										placeholder="Optional working directory"
+										value={editWorkDir}
+										onChange={(e) => setEditWorkDir(e.target.value)}
+									/>
+									<Button type="button" variant="outline" onClick={chooseWorkingDirectory}>
+										<FolderOpenIcon className="size-4" />
+										Choose
+									</Button>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									Browsers do not expose absolute folder paths; enter the server path manually if needed.
+								</p>
+							</div>
+						</div>
+						<DialogFooter>
+							<Button type="button" variant="outline" onClick={() => setEditingSession(null)} disabled={savingEdit}>
+								Cancel
+							</Button>
+							<Button type="submit" disabled={savingEdit}>
+								{savingEdit ? "Saving..." : "Save changes"}
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
+
+			<AlertDialog open={deleteSession !== null} onOpenChange={(open) => !open && setDeleteSession(null)}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete session?</AlertDialogTitle>
+						<AlertDialogDescription>
+							This will permanently delete {deleteSession?.title || deleteSession?.id}. This action cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={!!deletingSessionId}>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							disabled={!deleteSession || !!deletingSessionId}
+							onClick={() => deleteSession && handleDelete(deleteSession)}
+						>
+							{deletingSessionId ? "Deleting..." : "Delete"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

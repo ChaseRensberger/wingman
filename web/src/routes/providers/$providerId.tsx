@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/core/alert-dialog";
 import { Badge } from "@/components/core/badge";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
@@ -63,7 +74,7 @@ function ProviderDetailPage() {
   }
 
   async function deleteKey() {
-    if (!provider || !confirm(`Delete API key for ${provider.name}?`)) return;
+    if (!provider) return;
     setDeleting(true);
     try {
       await wfetch(`/provider/auth/${provider.id}`, { method: "DELETE" });
@@ -110,9 +121,25 @@ function ProviderDetailPage() {
                 {saving ? "Saving..." : configured ? "Replace key" : "Save key"}
               </Button>
               {configured && (
-                <Button variant="destructive" onClick={deleteKey} disabled={deleting}>
-                  {deleting ? "Deleting..." : "Delete key"}
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger render={<Button variant="destructive" disabled={deleting} />}>
+                    {deleting ? "Deleting..." : "Delete key"}
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete API key?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will remove the saved API key for {provider.name}. You will need to enter a new key before using this provider again.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction variant="destructive" onClick={deleteKey} disabled={deleting}>
+                        {deleting ? "Deleting..." : "Delete key"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
             {!provider.auth_types.includes("api_key") && (
