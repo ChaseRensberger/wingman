@@ -662,14 +662,13 @@ func (s *Server) buildModel(providerID, model string, opts map[string]any) (mode
 // need strict validation should validate at agent-creation time.
 func (s *Server) resolveTools(toolNames []string) []tool.Tool {
 	builtins := map[string]tool.Tool{
-		"bash":              tool.NewBashTool(),
-		"read":              tool.NewReadTool(),
-		"write":             tool.NewWriteTool(),
-		"edit":              tool.NewEditTool(),
-		"glob":              tool.NewGlobTool(),
-		"grep":              tool.NewGrepTool(),
-		"webfetch":          tool.NewWebFetchTool(),
-		"perplexity_search": tool.NewPerplexityTool(),
+		"bash":     tool.NewBashTool(),
+		"read":     tool.NewReadTool(),
+		"write":    tool.NewWriteTool(),
+		"edit":     tool.NewEditTool(),
+		"glob":     tool.NewGlobTool(),
+		"grep":     tool.NewGrepTool(),
+		"webfetch": tool.NewWebFetchTool(),
 	}
 
 	var tools []tool.Tool

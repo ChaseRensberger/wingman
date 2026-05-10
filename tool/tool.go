@@ -218,15 +218,14 @@ func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir s
 // being caught at runtime by Registry.Register accepting any value
 // satisfying the (then-mutated) Tool interface.
 var (
-	_ Tool              = (*BashTool)(nil)
-	_ Tool              = (*EditTool)(nil)
-	_ Tool              = (*GlobTool)(nil)
-	_ Tool              = (*GrepTool)(nil)
-	_ Tool              = (*PerplexityTool)(nil)
-	_ Tool              = (*ReadTool)(nil)
-	_ Tool              = (*WebFetchTool)(nil)
-	_ Tool              = (*WriteTool)(nil)
-	_ Tool              = (*FuncTool)(nil)
+	_ Tool                = (*BashTool)(nil)
+	_ Tool                = (*EditTool)(nil)
+	_ Tool                = (*GlobTool)(nil)
+	_ Tool                = (*GrepTool)(nil)
+	_ Tool                = (*ReadTool)(nil)
+	_ Tool                = (*WebFetchTool)(nil)
+	_ Tool                = (*WriteTool)(nil)
+	_ Tool                = (*FuncTool)(nil)
 	_ DirectoryScopedTool = (*BashTool)(nil)
 	_ DirectoryScopedTool = (*EditTool)(nil)
 	_ DirectoryScopedTool = (*GlobTool)(nil)

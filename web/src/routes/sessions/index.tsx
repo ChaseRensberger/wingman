@@ -5,17 +5,6 @@ import type { Session } from "@/lib/types";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/core/alert-dialog";
-import {
   Dialog,
   DialogTrigger,
   DialogContent,
@@ -37,7 +26,7 @@ import {
   EmptyDescription,
   EmptyActions,
 } from "@/components/core/empty";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 
 import { timeAgo } from "@/lib/utils";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -55,7 +44,6 @@ function SessionsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newWorkDir, setNewWorkDir] = useState("");
   const [creating, setCreating] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,18 +87,6 @@ function SessionsPage() {
       alert(String(err));
     } finally {
       setCreating(false);
-    }
-  }
-
-  async function handleDelete(session: Session) {
-    setDeletingId(session.id);
-    try {
-      await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
-      setSessions((current) => current.filter((s) => s.id !== session.id));
-    } catch (err) {
-      alert(String(err));
-    } finally {
-      setDeletingId(null);
     }
   }
 
@@ -182,7 +158,6 @@ function SessionsPage() {
               <TableHead>Agent</TableHead>
               <TableHead>Created</TableHead>
               <TableHead>Workdir</TableHead>
-              <TableHead className="w-0 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -207,40 +182,6 @@ function SessionsPage() {
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate text-muted-foreground">
                   {s.work_dir || "—"}
-                </TableCell>
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Delete ${s.title || s.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <TrashIcon className="size-4" />
-                        </Button>
-                      }
-                    />
-                    <AlertDialogContent size="sm" onClick={(e) => e.stopPropagation()}>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete session?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This permanently deletes {s.title || s.id} and its message history.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deletingId === s.id}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          variant="destructive"
-                          disabled={deletingId === s.id}
-                          onClick={() => handleDelete(s)}
-                        >
-                          {deletingId === s.id ? "Deleting..." : "Delete"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}

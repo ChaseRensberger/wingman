@@ -1,16 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
 import { Badge } from "@/components/core/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/core/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/core/dialog";
 import { wfetch } from "@/lib/client";
 import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -20,12 +12,11 @@ export const Route = createFileRoute("/providers/")({
 });
 
 function ProvidersPage() {
+  const navigate = useNavigate();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [auth, setAuth] = useState<ProviderAuthResponse>({ providers: {} });
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
-  const [keys, setKeys] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -57,23 +48,6 @@ function ProvidersPage() {
     load().catch((err) => alert(String(err)));
   }, []);
 
-  async function saveKey(provider: Provider) {
-    const key = keys[provider.id]?.trim();
-    if (!key) return;
-    await wfetch("/provider/auth", {
-      method: "PUT",
-      body: JSON.stringify({ providers: { [provider.id]: { type: "api_key", key } } }),
-    });
-    setKeys((prev) => ({ ...prev, [provider.id]: "" }));
-    await load();
-  }
-
-  async function deleteKey(provider: Provider) {
-    await wfetch(`/provider/auth/${provider.id}`, { method: "DELETE" });
-    await load();
-  }
-
-  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) ?? null;
   const configuredCount = providers.filter((provider) => auth.providers[provider.id]?.configured).length;
   const modelCount = Object.values(models).reduce((total, providerModels) => total + providerModels.length, 0);
   const filteredProviders = providers.filter((provider) => {
@@ -132,7 +106,6 @@ function ProvidersPage() {
               <TableHead>Auth</TableHead>
               <TableHead>Models</TableHead>
               <TableHead>Capabilities</TableHead>
-              <TableHead className="w-0 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -140,7 +113,11 @@ function ProvidersPage() {
               const configured = auth.providers[provider.id]?.configured;
               const capabilities = providerCapabilities(provider);
               return (
-                <TableRow key={provider.id}>
+                <TableRow
+                  key={provider.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate({ to: "/providers/$providerId", params: { providerId: provider.id } })}
+                >
                   <TableCell>
                     <div className="font-medium">{provider.name}</div>
                     <div className="text-xs text-muted-foreground">{provider.id}</div>
@@ -163,67 +140,12 @@ function ProvidersPage() {
                       )) : <span className="text-muted-foreground">-</span>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => setSelectedProviderId(provider.id)}>
-                      Manage key
-                    </Button>
-                  </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
       )}
-
-      <Dialog open={!!selectedProvider} onOpenChange={(open) => !open && setSelectedProviderId(null)}>
-        <DialogContent>
-          {selectedProvider && (
-            <div className="grid gap-4">
-              <DialogHeader>
-                <DialogTitle>Manage {selectedProvider.name}</DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-1 text-sm">
-                <div className="text-xs text-muted-foreground">Provider ID</div>
-                <div className="font-mono text-xs">{selectedProvider.id}</div>
-              </div>
-              <div className="flex items-center justify-between rounded-lg border bg-card px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium">API key</div>
-                  <div className="text-xs text-muted-foreground">
-                    {auth.providers[selectedProvider.id]?.configured ? "A key is configured for this provider." : "No key configured."}
-                  </div>
-                </div>
-                <Badge variant={auth.providers[selectedProvider.id]?.configured ? "default" : "secondary"}>
-                  {auth.providers[selectedProvider.id]?.configured ? "Configured" : "Missing"}
-                </Badge>
-              </div>
-              {selectedProvider.auth_types.includes("api_key") ? (
-                <Input
-                  type="password"
-                  value={keys[selectedProvider.id] ?? ""}
-                  placeholder={auth.providers[selectedProvider.id]?.configured ? "New API key" : "API key"}
-                  onChange={(e) => setKeys((prev) => ({ ...prev, [selectedProvider.id]: e.target.value }))}
-                />
-              ) : (
-                <div className="text-sm text-muted-foreground">This provider does not support API key auth.</div>
-              )}
-              <DialogFooter>
-                {auth.providers[selectedProvider.id]?.configured && (
-                  <Button variant="destructive" onClick={() => deleteKey(selectedProvider)}>
-                    Delete key
-                  </Button>
-                )}
-                <Button
-                  onClick={() => saveKey(selectedProvider)}
-                  disabled={!selectedProvider.auth_types.includes("api_key") || !keys[selectedProvider.id]?.trim()}
-                >
-                  {auth.providers[selectedProvider.id]?.configured ? "Replace key" : "Save key"}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

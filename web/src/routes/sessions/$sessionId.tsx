@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Message, Part } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
@@ -107,6 +107,7 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -114,6 +115,7 @@ function SessionDetailPage() {
   const [messageText, setMessageText] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -178,6 +180,18 @@ function SessionDetailPage() {
     setIsStreaming(false);
     setStreamingText("");
     await loadSession();
+  }
+
+  async function handleDelete() {
+    if (!session || !confirm(`Delete session ${session.title || session.id}?`)) return;
+    setDeleting(true);
+    try {
+      await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
+      navigate({ to: "/sessions" });
+    } catch (err) {
+      alert(String(err));
+      setDeleting(false);
+    }
   }
 
   async function handleSend(e?: React.FormEvent) {
@@ -298,13 +312,16 @@ function SessionDetailPage() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
-      <div className="flex items-center gap-2 border-b py-3 text-sm">
+      <div className="flex items-center justify-between gap-4 border-b py-3 text-sm">
         <PageBreadcrumb
           items={[
             { label: "Sessions", to: "/sessions" },
             { label: session.title || session.id.slice(0, 8) },
           ]}
         />
+        <Button size="sm" variant="destructive" onClick={handleDelete} disabled={deleting || isStreaming}>
+          {deleting ? "Deleting..." : "Delete"}
+        </Button>
       </div>
 
       <div className="flex items-start justify-between gap-4 border-b py-3">

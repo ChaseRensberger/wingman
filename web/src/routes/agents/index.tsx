@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/core/button";
 import { Input } from "@/components/core/input";
@@ -25,10 +25,9 @@ import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { PlusIcon } from "@phosphor-icons/react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
-const builtInTools = ["bash", "read", "write", "edit", "glob", "grep", "webfetch", "perplexity_search"];
+const builtInTools = ["bash", "read", "write", "edit", "glob", "grep", "webfetch"];
 
 interface AgentForm {
-  id?: string;
   name: string;
   instructions: string;
   provider: string;
@@ -42,20 +41,16 @@ const emptyForm: AgentForm = {
   instructions: "",
   provider: "",
   model: "",
-  tools: [],
+  tools: builtInTools,
   outputSchema: "",
 };
-
-function schemaText(agent: Agent): string {
-  if (!agent.output_schema || Object.keys(agent.output_schema).length === 0) return "";
-  return JSON.stringify(agent.output_schema, null, 2);
-}
 
 export const Route = createFileRoute("/agents/")({
   component: AgentsPage,
 });
 
 function AgentsPage() {
+  const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
@@ -97,19 +92,6 @@ function AgentsPage() {
     setDialogOpen(true);
   }
 
-  function openEdit(agent: Agent) {
-    setForm({
-      id: agent.id,
-      name: agent.name,
-      instructions: agent.instructions ?? "",
-      provider: agent.provider ?? "",
-      model: agent.model ?? "",
-      tools: agent.tools ?? [],
-      outputSchema: schemaText(agent),
-    });
-    setDialogOpen(true);
-  }
-
   function toggleTool(tool: string) {
     setForm((prev) => ({
       ...prev,
@@ -134,11 +116,7 @@ function AgentsPage() {
         tools: form.tools,
         output_schema,
       });
-      if (form.id) {
-        await wfetch(`/agents/${form.id}`, { method: "PUT", body });
-      } else {
-        await wfetch("/agents", { method: "POST", body });
-      }
+      await wfetch("/agents", { method: "POST", body });
       setForm(emptyForm);
       setDialogOpen(false);
       await load();
@@ -147,12 +125,6 @@ function AgentsPage() {
     } finally {
       setSaving(false);
     }
-  }
-
-  async function remove(agent: Agent) {
-    if (!confirm(`Delete agent ${agent.name}?`)) return;
-    await wfetch(`/agents/${agent.id}`, { method: "DELETE" });
-    await load();
   }
 
   const providerModels = models[form.provider] ?? [];
@@ -180,12 +152,15 @@ function AgentsPage() {
               <TableHead>Model</TableHead>
               <TableHead>Tools</TableHead>
               <TableHead>Created</TableHead>
-              <TableHead className="w-0 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {agents.map((agent) => (
-              <TableRow key={agent.id}>
+              <TableRow
+                key={agent.id}
+                className="cursor-pointer"
+                onClick={() => navigate({ to: "/agents/$agentId", params: { agentId: agent.id } })}
+              >
                 <TableCell className="font-medium">{agent.name}</TableCell>
                 <TableCell className="text-muted-foreground">{agent.provider || "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{agent.model || "-"}</TableCell>
@@ -199,14 +174,6 @@ function AgentsPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{timeAgo(agent.created_at)}</TableCell>
-                <TableCell className="text-right">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(agent)}>
-                    Edit
-                  </Button>{" "}
-                  <Button size="sm" variant="destructive" onClick={() => remove(agent)}>
-                    Delete
-                  </Button>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -217,7 +184,7 @@ function AgentsPage() {
         <DialogContent>
           <form onSubmit={save}>
             <DialogHeader>
-              <DialogTitle>{form.id ? "Edit agent" : "New agent"}</DialogTitle>
+              <DialogTitle>New agent</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-4">
               <div className="grid gap-1">

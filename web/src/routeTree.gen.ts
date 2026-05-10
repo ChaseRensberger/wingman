@@ -14,6 +14,8 @@ import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
+import { Route as ProvidersProviderIdRouteImport } from './routes/providers/$providerId'
+import { Route as AgentsAgentIdRouteImport } from './routes/agents/$agentId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,9 +42,21 @@ const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
   path: '/sessions/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProvidersProviderIdRoute = ProvidersProviderIdRouteImport.update({
+  id: '/providers/$providerId',
+  path: '/providers/$providerId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsAgentIdRoute = AgentsAgentIdRouteImport.update({
+  id: '/agents/$agentId',
+  path: '/agents/$agentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents/$agentId': typeof AgentsAgentIdRoute
+  '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
@@ -50,6 +64,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agents/$agentId': typeof AgentsAgentIdRoute
+  '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents': typeof AgentsIndexRoute
   '/providers': typeof ProvidersIndexRoute
@@ -58,6 +74,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents/$agentId': typeof AgentsAgentIdRoute
+  '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
@@ -67,15 +85,26 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agents/$agentId'
+    | '/providers/$providerId'
     | '/sessions/$sessionId'
     | '/agents/'
     | '/providers/'
     | '/sessions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sessions/$sessionId' | '/agents' | '/providers' | '/sessions'
+  to:
+    | '/'
+    | '/agents/$agentId'
+    | '/providers/$providerId'
+    | '/sessions/$sessionId'
+    | '/agents'
+    | '/providers'
+    | '/sessions'
   id:
     | '__root__'
     | '/'
+    | '/agents/$agentId'
+    | '/providers/$providerId'
     | '/sessions/$sessionId'
     | '/agents/'
     | '/providers/'
@@ -84,6 +113,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsAgentIdRoute: typeof AgentsAgentIdRoute
+  ProvidersProviderIdRoute: typeof ProvidersProviderIdRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
@@ -127,11 +158,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/providers/$providerId': {
+      id: '/providers/$providerId'
+      path: '/providers/$providerId'
+      fullPath: '/providers/$providerId'
+      preLoaderRoute: typeof ProvidersProviderIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/$agentId': {
+      id: '/agents/$agentId'
+      path: '/agents/$agentId'
+      fullPath: '/agents/$agentId'
+      preLoaderRoute: typeof AgentsAgentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsAgentIdRoute: AgentsAgentIdRoute,
+  ProvidersProviderIdRoute: ProvidersProviderIdRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
