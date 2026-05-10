@@ -1,6 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { Copy, Check } from "@phosphor-icons/react";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/core/accordion";
 import { Button } from "@/components/core/button";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from '../components/ascii-logo';
@@ -18,6 +24,31 @@ const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://wingman.actor/docs";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
+const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
+const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
+
+const FAQS = [
+	{
+		question: "What is Wingman?",
+		answer:
+			"Wingman is an open-source, client-agnostic agent harness. It gives you the runtime, server, storage, tools, and plugin system for building agent-powered applications.",
+	},
+	{
+		question: "Is Wingman another coding-agent client?",
+		answer:
+			"No. Wingman is the backend harness exposed over HTTP, so any client in any language can drive it. Coding assistants are one possible client, not the whole product.",
+	},
+	{
+		question: "Who is it for?",
+		answer:
+			"Wingman is aimed at terminal-native developers who want a flexible, hackable runtime they can extend and automate for their own workflows.",
+	},
+	{
+		question: "Is it production-ready?",
+		answer:
+			"Not yet. The project is under active development, and the API and behavior may change while the core primitives settle.",
+	},
+];
 
 function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
 	const [copied, setCopied] = useState(false);
@@ -70,6 +101,112 @@ function InstallSection() {
 	);
 }
 
+function SectionMarker({ number, label }: { number: string; label: string }) {
+	return (
+		<div className="text-xs text-muted-foreground uppercase tracking-wider">
+			{number} / {label}
+		</div>
+	);
+}
+
+function SectionHeader({ title, number }: { title: string; number: string }) {
+	return (
+		<div className="flex items-center justify-between gap-4">
+			<h2 className="font-extrabold text-lg">{title}</h2>
+			<SectionMarker number={number} label={title} />
+		</div>
+	);
+}
+
+function LinkCard({
+	title,
+	description,
+	href,
+}: {
+	title: string;
+	description: string;
+	href: string;
+}) {
+	return (
+		<a
+			href={href}
+			target="_blank"
+			rel="noreferrer"
+			className="block rounded-sm border bg-card p-4 transition-colors hover:border-primary hover:text-primary"
+		>
+			<div className="flex items-start gap-2">
+				<span className="text-primary">[*]</span>
+				<div className="space-y-1">
+					<h3 className="font-semibold">{title}</h3>
+					<p className="text-sm text-muted-foreground">{description}</p>
+				</div>
+			</div>
+		</a>
+	);
+}
+
+function PluginsSection() {
+	return (
+		<section className="px-12 py-8 border-b space-y-4">
+			<SectionHeader title="Plugins" number="02" />
+			<LinkCard
+				title="Compaction"
+				description="Session context compaction as a first-party plugin."
+				href={COMPACTION_PLUGIN_URL}
+			/>
+		</section>
+	);
+}
+
+function ClientsSection() {
+	return (
+		<section className="px-12 py-8 border-b space-y-4">
+			<SectionHeader title="Clients" number="03" />
+			<LinkCard
+				title="Web"
+				description="A browser client built on top of the Wingman HTTP API."
+				href={WEB_CLIENT_URL}
+			/>
+		</section>
+	);
+}
+
+function ComingSoonSection() {
+	return (
+		<section className="px-12 py-8 border-b space-y-4">
+			<SectionHeader title="Coming Soon" number="04" />
+			<div className="grid gap-3 sm:grid-cols-2">
+				<div className="rounded-sm border bg-card p-4">
+					<h3 className="font-semibold">MCP support</h3>
+					<p className="mt-1 text-sm text-muted-foreground">Connect Wingman sessions to Model Context Protocol servers.</p>
+				</div>
+				<div className="rounded-sm border bg-card p-4">
+					<h3 className="font-semibold">Plugin Registry</h3>
+					<p className="mt-1 text-sm text-muted-foreground">Discover and install community plugins from a shared registry.</p>
+				</div>
+			</div>
+		</section>
+	);
+}
+
+function FAQSection() {
+	return (
+		<section className="px-12 py-8 border-b space-y-4">
+			<SectionHeader title="FAQ" number="01" />
+			<Accordion className="rounded-sm border bg-card px-4">
+				{FAQS.map((faq) => (
+					<AccordionItem key={faq.question}>
+						<AccordionTrigger>{faq.question}</AccordionTrigger>
+						<AccordionContent className="text-muted-foreground leading-relaxed">
+							{faq.answer}
+						</AccordionContent>
+					</AccordionItem>
+				))}
+			</Accordion>
+		</section>
+	);
+}
+
 function NavLink(navItem: {
 	name: string,
 	url: string
@@ -111,14 +248,10 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
-			<section className='flex-1 px-12 py-4 border-b space-y-4'>
-				<h2 className='font-extrabold text-lg'>Core</h2>
-				<ul className="text-muted-foreground space-y-2">
-					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="/">WingAgent - Core agent runtime</a></li>
-					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://models.wingman.actor">WingModels - A provider agnostic model api</a></li>
-					<li><span className="text-primary">[*]</span> <a className="hover:text-primary" href="https://news.wingman.actor">WingNews - A HackerNews client</a></li>
-				</ul>
-			</section >
+			<FAQSection />
+			<PluginsSection />
+			<ClientsSection />
+			<ComingSoonSection />
 			<footer className="px-6 py-4 text-center">
 				<p className="text-sm text-muted-foreground font-mono">
 					Wingman
