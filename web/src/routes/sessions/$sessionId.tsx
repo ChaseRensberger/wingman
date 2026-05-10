@@ -350,7 +350,9 @@ function SessionDetailPage() {
         <div className="flex items-center gap-2">
             <Select value={selectedAgent} onValueChange={(v) => setSelectedAgent(v ?? "")}>
             <SelectTrigger className="h-8 w-48 text-xs">
-              <SelectValue placeholder="Select agent" />
+              <SelectValue placeholder="Select agent">
+                {agents.find((a) => a.id === selectedAgent)?.name}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {agents.map((a) => (
