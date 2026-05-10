@@ -50,16 +50,16 @@ func main() {
 						Name:  "db",
 						Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 					},
-				&cli.StringFlag{
-					Name:  "ui-dev",
-					Usage: "Proxy /ui to a Vite dev server URL",
+					&cli.StringFlag{
+						Name:  "ui-dev",
+						Usage: "Proxy /web to a Vite dev server URL",
+					},
+					&cli.BoolFlag{
+						Name:  "ephemeral",
+						Usage: "Run in ephemeral mode without persistence",
+					},
 				},
-				&cli.BoolFlag{
-					Name:  "ephemeral",
-					Usage: "Run in ephemeral mode without persistence",
-				},
-			},
-			Action: runServe,
+				Action: runServe,
 			},
 			{
 				Name:  "version",

@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/chaserensberger/wingman/store"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/ollama"
+	"github.com/chaserensberger/wingman/store"
 )
 
 func setupTestServer(t *testing.T) (*httptest.Server, store.Store) {
@@ -66,6 +68,83 @@ func TestHealth(t *testing.T) {
 	decodeJSON(t, resp, &body)
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %q", body["status"])
+	}
+}
+
+func TestWebUI(t *testing.T) {
+	ts, _ := setupTestServer(t)
+
+	for _, path := range []string{"/web", "/web/sessions/example"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + path)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected 200, got %d", resp.StatusCode)
+			}
+			if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+				t.Fatalf("expected html content type, got %q", contentType)
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("failed to read response: %v", err)
+			}
+			if !strings.Contains(string(body), `id="root"`) {
+				t.Fatalf("expected web index body")
+			}
+		})
+	}
+
+	resp, err := http.Get(ts.URL + "/sessions")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected API /sessions to remain 200, got %d", resp.StatusCode)
+	}
+	if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "application/json") {
+		t.Fatalf("expected API json content type, got %q", contentType)
+	}
+}
+
+func TestWebUIDevProxy(t *testing.T) {
+	var proxiedPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxiedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("dev ui"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	srv := New(Config{WebDevURL: upstream.URL})
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/web/assets/app.js")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if proxiedPath != "/web/assets/app.js" {
+		t.Fatalf("expected proxied path /web/assets/app.js, got %q", proxiedPath)
+	}
+
+	resp, err = http.Get(ts.URL + "/health")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected API /health to remain 200, got %d", resp.StatusCode)
 	}
 }
 
@@ -1102,4 +1181,3 @@ func TestAgentProviderRoundtrip(t *testing.T) {
 		t.Errorf("expected temperature 0.5, got %v", fetched.Options["temperature"])
 	}
 }
-

@@ -105,18 +105,21 @@ func shouldBypassTimeout(r *http.Request) bool {
 
 func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/ui") {
-			next.ServeHTTP(w, r)
-			return
+		path := r.URL.Path
+		if strings.HasPrefix(path, "/health") ||
+			strings.HasPrefix(path, "/provider") ||
+			strings.HasPrefix(path, "/agents") ||
+			strings.HasPrefix(path, "/clients") ||
+			strings.HasPrefix(path, "/sessions") ||
+			strings.HasPrefix(path, "/run") {
+			w.Header().Set("Content-Type", "application/json")
 		}
-		w.Header().Set("Content-Type", "application/json")
 		next.ServeHTTP(w, r)
 	})
 }
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
-	s.mountWebUI()
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)
@@ -154,6 +157,8 @@ func (s *Server) setupRoutes() {
 	})
 
 	s.router.Post("/run", s.handleRun)
+
+	s.mountWebUI()
 }
 
 func (s *Server) mountWebUI() {
@@ -164,8 +169,8 @@ func (s *Server) mountWebUI() {
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(devURL)
-		s.router.Handle("/ui", proxy)
-		s.router.Handle("/ui/*", proxy)
+		s.router.Handle("/web", proxy)
+		s.router.Handle("/web/*", proxy)
 		return
 	}
 
@@ -176,20 +181,20 @@ func (s *Server) mountWebUI() {
 	}
 	files := http.FileServer(http.FS(dist))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		servePath := strings.TrimPrefix(r.URL.Path, "/ui")
+		servePath := strings.TrimPrefix(r.URL.Path, "/web")
 		if servePath == "" || servePath == "/" {
-			servePath = "/index.html"
+			servePath = "/"
 		}
 		name := strings.TrimPrefix(path.Clean(servePath), "/")
 		if stat, err := fs.Stat(dist, name); err != nil || stat.IsDir() {
-			servePath = "/index.html"
+			servePath = "/"
 		}
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = servePath
 		files.ServeHTTP(w, r2)
 	})
-	s.router.Handle("/ui", handler)
-	s.router.Handle("/ui/*", handler)
+	s.router.Handle("/web", handler)
+	s.router.Handle("/web/*", handler)
 }
 
 // Ephemeral reports whether the server was created with a nil store,
