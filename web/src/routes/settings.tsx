@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/core/card";
 import { RadioGroup, RadioGroupItem } from "@/components/core/radio-group";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { type Theme, useTheme } from "@/components/theme-provider";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -10,6 +12,11 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const options = [
+    { value: "light", label: "Light", icon: SunIcon },
+    { value: "dark", label: "Dark", icon: MoonIcon },
+    { value: "system", label: "System", icon: DesktopIcon },
+  ] as const;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -29,24 +36,26 @@ function SettingsPage() {
             <RadioGroup
               value={theme}
               onValueChange={(value) => setTheme(value as Theme)}
-              className="grid gap-2 sm:grid-cols-3"
+              className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
             >
-              {[
-                { value: "light", label: "Light", description: "Use the light interface." },
-                { value: "dark", label: "Dark", description: "Use the dark interface." },
-                { value: "system", label: "System", description: "Follow your OS setting." },
-              ].map((option) => (
+              {options.map((option) => {
+                const Icon = option.icon;
+                const active = theme === option.value;
+                return (
                 <label
                   key={option.value}
-                  className="flex cursor-pointer gap-3 rounded-lg border bg-background p-3 transition-colors hover:bg-accent"
+                  className={cn(
+                    "flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                    active
+                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
                 >
-                  <RadioGroupItem value={option.value} className="mt-0.5" />
-                  <span>
-                    <span className="block text-sm font-medium">{option.label}</span>
-                    <span className="block text-xs text-muted-foreground">{option.description}</span>
-                  </span>
+                  <RadioGroupItem value={option.value} className="sr-only" />
+                  <Icon className="size-4" />
+                  <span>{option.label}</span>
                 </label>
-              ))}
+              )})}
             </RadioGroup>
           </CardContent>
         </Card>
