@@ -68,7 +68,7 @@ A plugin commonly contributes both. The distinction is covered in detail on the 
 - A **hook** participates in the loop. It can change behavior, must complete before the loop continues, and chains with other plugins' hooks for the same seam.
 - A **sink** observes the loop. It receives events fan-out, can't change anything, and runs alongside other sinks.
 
-The [storage plugin](./storage) is the worked example: a `BeforeRun` hook (load history from disk) plus a sink (persist new messages as they land).
+`WithStore` is the canonical example of a cross-cutting concern that touches both sides: hydration before the run and upserts as messages land.
 
 ## Authoring a plugin
 
@@ -154,33 +154,6 @@ s := session.New(
 The plugin calls `Model.CountTokens` against the current snapshot, which avoids two bugs in any "estimate from last turn's usage" approach: first-call blindness and lag-by-one. `CountTokens` errors fall back to a chars/4 heuristic so a flaky counter endpoint never blocks the loop.
 
 When compaction runs, the loop emits a `ContextTransformedEvent` whose head message's first part has discriminator `compaction_marker`. The session stream classifier surfaces this as a dedicated `compaction` SSE event. Decode the marker with `compaction.DecodeMarker(part)`.
-
-## The storage plugin
-
-`storage` ships a plugin that gives a session full-cycle persistence — both load and save — through a single `session.WithPlugin` call:
-
-```go
-import (
-    "github.com/chaserensberger/wingman/plugins/storage"
-    "github.com/chaserensberger/wingman/agent/session"
-    wstorage "github.com/chaserensberger/wingman/store"
-)
-
-store, _ := wstorage.NewSQLiteStore("/path/to/wingman.db")
-sess, _ := store.GetSession(sessionID) // ensure the session row exists
-
-s := session.New(
-    session.WithModel(model),
-    session.WithPlugin(storageplugin.NewPlugin(store, sess.ID)),
-)
-```
-
-Internally the plugin contributes:
-
-- a **`BeforeRun` hook** that calls `store.GetSession(sessionID)` and returns `sess.History` as the loop's initial messages
-- a **sink** that filters for `loop.MessageEvent` and calls `store.AppendMessage` for each completed message
-
-This is the same wiring the [HTTP server](../server) uses internally, expressed as a reusable capability rather than a hard-coded server detail. See the [storage](./storage) page for more.
 
 ## Loading model
 

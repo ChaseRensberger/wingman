@@ -12,6 +12,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,8 +21,6 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"github.com/chaserensberger/wingman/models"
 )
 
 // SQLiteStore is the concrete persistence layer. Construct with
@@ -221,12 +220,12 @@ func (s *SQLiteStore) DeleteAgent(id string) error {
 // ---- clients -------------------------------------------------------------
 
 // CreateClient inserts a new client row with a fresh KSUID and the
-// current unix timestamp.
+// current RFC3339 timestamp.
 func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
 	client := &Client{
 		ID:        NewID(PrefixClient),
 		Name:      name,
-		CreatedAt: time.Now().Unix(),
+		CreatedAt: Now(),
 	}
 	_, err := s.db.Exec(`
 		INSERT INTO clients (id, name, created_at) VALUES (?, ?, ?)
@@ -272,9 +271,8 @@ func (s *SQLiteStore) ListClients() ([]*Client, error) {
 
 // ---- sessions ------------------------------------------------------------
 
-// CreateSession inserts a session row and (if non-empty) the initial
-// history. Runs in a single transaction so partial creation never
-// happens.
+// CreateSession inserts a session row. Runs in a single transaction so
+// partial creation never happens.
 func (s *SQLiteStore) CreateSession(session *Session) error {
 	if session.ID == "" {
 		session.ID = NewID(PrefixSession)
@@ -282,9 +280,6 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	now := Now()
 	session.CreatedAt = now
 	session.UpdatedAt = now
-	if session.History == nil {
-		session.History = []models.Message{}
-	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -317,13 +312,10 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
-	if err := writeMessages(tx, session.ID, session.History); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
-// GetSession returns the session with all of its messages and parts.
+// GetSession returns the session metadata.
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var session Session
 	var workDir sql.NullString
@@ -339,19 +331,11 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	}
 	session.WorkDir = workDir.String
 	session.ClientID = clientID.String
-
-	msgs, err := readMessages(s.db, id)
-	if err != nil {
-		return nil, err
-	}
-	session.History = msgs
 	return &session, nil
 }
 
-// ListSessions returns every session, newest first. History is loaded
-// for each; if you have many sessions with deep histories, consider
-// adding a ListSessionsMetadata() that omits History (out of scope for
-// v0.1).
+// ListSessions returns every session, newest first. History is no longer
+// loaded automatically; use ListMessages for message retrieval.
 func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
@@ -375,17 +359,6 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-
-	// Hydrate histories. Done outside the rows loop so the read query is
-	// closed before the per-session reads run (avoids reentrant queries
-	// on the single connection).
-	for _, sess := range out {
-		msgs, err := readMessages(s.db, sess.ID)
-		if err != nil {
-			return nil, err
-		}
-		sess.History = msgs
 	}
 	return out, nil
 }
@@ -416,24 +389,12 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	for _, sess := range out {
-		msgs, err := readMessages(s.db, sess.ID)
-		if err != nil {
-			return nil, err
-		}
-		sess.History = msgs
-	}
 	return out, nil
 }
 
 // UpdateSession overwrites the session's mutable metadata (title and
 // updated_at). work_dir is intentionally omitted — it is immutable once
-// set at session creation. It does NOT touch the message history; use
-// AppendMessage for incremental appends or ReplaceMessages for
-// full rewrites. This split prevents the wasteful "delete+rewrite the
-// whole transcript on every turn" pattern the original implementation
-// forced.
+// set at session creation.
 func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
 
@@ -453,108 +414,6 @@ func (s *SQLiteStore) UpdateSession(session *Session) error {
 	return nil
 }
 
-// AppendMessage appends a single message (and its parts) to the
-// session's history at the next idx. Wrapped in a transaction so
-// either every part lands or none do; idx is computed by selecting
-// MAX(idx)+1 inside the transaction to keep ordering stable under
-// concurrent writers (SQLite WAL serializes via the single conn cap,
-// but the SELECT-then-INSERT pattern still requires the txn).
-//
-// Also bumps the parent session's updated_at so listing/sorting
-// reflects activity without the caller having to issue a separate
-// UpdateSession.
-func (s *SQLiteStore) AppendMessage(sessionID string, msg models.Message) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Verify the session exists. Without this check a stray
-	// AppendMessage call on a deleted session would silently insert
-	// orphan rows (foreign-key cascades wouldn't fire because the
-	// parent is already gone — actually sqlite would reject the FK,
-	// but we want a clearer error).
-	var exists int
-	if err := tx.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("session not found: %s", sessionID)
-		}
-		return err
-	}
-
-	var nextIdx int
-	if err := tx.QueryRow(
-		`SELECT COALESCE(MAX(idx), -1) + 1 FROM messages WHERE session_id = ?`,
-		sessionID,
-	).Scan(&nextIdx); err != nil {
-		return fmt.Errorf("compute next idx: %w", err)
-	}
-
-	now := Now()
-	msgID := NewID(PrefixMessage)
-	if _, err := tx.Exec(`
-		INSERT INTO messages (id, session_id, idx, role, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, msgID, sessionID, nextIdx, string(msg.Role), now); err != nil {
-		return fmt.Errorf("insert message: %w", err)
-	}
-	for j, part := range msg.Content {
-		payload, err := models.MarshalPart(part)
-		if err != nil {
-			return fmt.Errorf("marshal part %d: %w", j, err)
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO parts (id, message_id, idx, kind, payload_json)
-			VALUES (?, ?, ?, ?, ?)
-		`, NewID(PrefixPart), msgID, j, part.Type(), string(payload)); err != nil {
-			return fmt.Errorf("insert part %d: %w", j, err)
-		}
-	}
-
-	if _, err := tx.Exec(
-		`UPDATE sessions SET updated_at = ? WHERE id = ?`,
-		now, sessionID,
-	); err != nil {
-		return fmt.Errorf("bump session updated_at: %w", err)
-	}
-	return tx.Commit()
-}
-
-// ReplaceMessages atomically clears the session's history and writes
-// msgs in order. Reserved for rehydration / history-edit tools; do
-// not call this in routine message paths (use AppendMessage instead).
-// Verifies the session exists; touches updated_at like AppendMessage.
-func (s *SQLiteStore) ReplaceMessages(sessionID string, msgs []models.Message) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	var exists int
-	if err := tx.QueryRow(`SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("session not found: %s", sessionID)
-		}
-		return err
-	}
-
-	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, sessionID); err != nil {
-		return fmt.Errorf("delete prior messages: %w", err)
-	}
-	if err := writeMessages(tx, sessionID, msgs); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(
-		`UPDATE sessions SET updated_at = ? WHERE id = ?`,
-		Now(), sessionID,
-	); err != nil {
-		return fmt.Errorf("bump session updated_at: %w", err)
-	}
-	return tx.Commit()
-}
-
 // DeleteSession removes the session and (via ON DELETE CASCADE) all of
 // its messages and parts.
 func (s *SQLiteStore) DeleteSession(id string) error {
@@ -570,6 +429,138 @@ func (s *SQLiteStore) DeleteSession(id string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	return nil
+}
+
+// UpsertMessage inserts or updates a message row keyed by ID.
+// Does not touch parts. Idx and created_at are preserved on update.
+func (s *SQLiteStore) UpsertMessage(ctx context.Context, msg StoredMessage) error {
+	createdAt := msg.CreatedAt.UTC().Format(time.RFC3339)
+	updatedAt := msg.UpdatedAt.UTC().Format(time.RFC3339)
+
+	var metadataJSON *string
+	if msg.MetadataJSON != nil {
+		s := string(msg.MetadataJSON)
+		metadataJSON = &s
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO messages (id, session_id, idx, role, metadata_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			role = excluded.role,
+			metadata_json = excluded.metadata_json,
+			updated_at = excluded.updated_at
+	`, msg.ID, msg.SessionID, msg.Idx, msg.Role, metadataJSON, createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert message: %w", err)
+	}
+	return nil
+}
+
+// UpsertPart inserts or updates a part row keyed by ID.
+// Sequence (mapped to idx) and created_at are preserved on update.
+func (s *SQLiteStore) UpsertPart(ctx context.Context, part StoredPart) error {
+	createdAt := part.CreatedAt.UTC().Format(time.RFC3339)
+	updatedAt := part.UpdatedAt.UTC().Format(time.RFC3339)
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO parts (id, message_id, idx, kind, payload_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			kind = excluded.kind,
+			payload_json = excluded.payload_json,
+			updated_at = excluded.updated_at
+	`, part.ID, part.MessageID, part.Sequence, part.Kind, string(part.PayloadJSON), createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert part: %w", err)
+	}
+	return nil
+}
+
+// ListMessages returns all messages for the session ordered by Idx ASC,
+// with each message's Parts populated and ordered by Sequence (idx) ASC.
+// Returns ErrSessionNotFound if the session does not exist.
+// Returns an empty slice (not nil) when the session has no messages.
+func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrSessionNotFound
+		}
+		return nil, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, idx, role, metadata_json, created_at, updated_at
+		FROM messages
+		WHERE session_id = ?
+		ORDER BY idx ASC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []StoredMessage
+	for rows.Next() {
+		var m StoredMessage
+		var metadataJSON sql.NullString
+		var createdAt, updatedAt string
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Idx, &m.Role, &metadataJSON, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		m.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if metadataJSON.Valid {
+			m.MetadataJSON = []byte(metadataJSON.String)
+		} else {
+			m.MetadataJSON = nil
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(msgs) == 0 {
+		return []StoredMessage{}, nil
+	}
+
+	partRows, err := s.db.QueryContext(ctx, `
+		SELECT p.id, p.message_id, p.idx, p.kind, p.payload_json, p.created_at, p.updated_at
+		FROM parts p
+		JOIN messages m ON p.message_id = m.id
+		WHERE m.session_id = ?
+		ORDER BY p.message_id, p.idx ASC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query parts: %w", err)
+	}
+	defer partRows.Close()
+
+	msgMap := make(map[string]*StoredMessage, len(msgs))
+	for i := range msgs {
+		msgMap[msgs[i].ID] = &msgs[i]
+	}
+
+	for partRows.Next() {
+		var p StoredPart
+		var payload, createdAt, updatedAt string
+		if err := partRows.Scan(&p.ID, &p.MessageID, &p.Sequence, &p.Kind, &payload, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		p.PayloadJSON = []byte(payload)
+		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if m, ok := msgMap[p.MessageID]; ok {
+			m.Parts = append(m.Parts, p)
+		}
+	}
+	if err := partRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return msgs, nil
 }
 
 // ---- auth ----------------------------------------------------------------
@@ -663,108 +654,4 @@ func marshalNullable(v any) (*string, error) {
 	}
 	str := string(b)
 	return &str, nil
-}
-
-// txExecer is the subset of *sql.Tx and *sql.DB we need for inserting
-// messages and parts. Lets writeMessages run inside any transaction.
-type txExecer interface {
-	Exec(query string, args ...any) (sql.Result, error)
-}
-
-// writeMessages inserts every message + part for a session, in order.
-// Caller is responsible for clearing prior rows if doing a replace.
-func writeMessages(tx txExecer, sessionID string, msgs []models.Message) error {
-	now := Now()
-	for i, msg := range msgs {
-		msgID := NewID(PrefixMessage)
-		if _, err := tx.Exec(`
-			INSERT INTO messages (id, session_id, idx, role, created_at)
-			VALUES (?, ?, ?, ?, ?)
-		`, msgID, sessionID, i, string(msg.Role), now); err != nil {
-			return fmt.Errorf("insert message %d: %w", i, err)
-		}
-		for j, part := range msg.Content {
-			payload, err := models.MarshalPart(part)
-			if err != nil {
-				return fmt.Errorf("marshal part %d/%d: %w", i, j, err)
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO parts (id, message_id, idx, kind, payload_json)
-				VALUES (?, ?, ?, ?, ?)
-			`, NewID(PrefixPart), msgID, j, part.Type(), string(payload)); err != nil {
-				return fmt.Errorf("insert part %d/%d: %w", i, j, err)
-			}
-		}
-	}
-	return nil
-}
-
-// readMessages reads every message + part for a session, in order, and
-// reconstructs the models.Message slice. Empty session = empty slice
-// (never nil; callers check len).
-func readMessages(db *sql.DB, sessionID string) ([]models.Message, error) {
-	rows, err := db.Query(`
-		SELECT id, idx, role FROM messages WHERE session_id = ? ORDER BY idx ASC
-	`, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("query messages: %w", err)
-	}
-
-	type msgRow struct {
-		id   string
-		role string
-	}
-	var meta []msgRow
-	for rows.Next() {
-		var m msgRow
-		var idx int
-		if err := rows.Scan(&m.id, &idx, &m.role); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		meta = append(meta, m)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	out := make([]models.Message, 0, len(meta))
-	for _, m := range meta {
-		parts, err := readParts(db, m.id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, models.Message{
-			Role:    models.Role(m.role),
-			Content: parts,
-		})
-	}
-	return out, nil
-}
-
-// readParts reads every part for a message, in order, and decodes them
-// via models.UnmarshalPart.
-func readParts(db *sql.DB, messageID string) (models.Content, error) {
-	rows, err := db.Query(`
-		SELECT payload_json FROM parts WHERE message_id = ? ORDER BY idx ASC
-	`, messageID)
-	if err != nil {
-		return nil, fmt.Errorf("query parts: %w", err)
-	}
-	defer rows.Close()
-
-	var parts models.Content
-	for rows.Next() {
-		var payload string
-		if err := rows.Scan(&payload); err != nil {
-			return nil, err
-		}
-		p, err := models.UnmarshalPart([]byte(payload))
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal part: %w", err)
-		}
-		parts = append(parts, p)
-	}
-	return parts, rows.Err()
 }

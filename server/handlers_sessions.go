@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/plugins/storage"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
@@ -51,7 +50,6 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	sess := &store.Session{
 		Title:   title,
 		WorkDir: workDir,
-		History: []models.Message{},
 	}
 
 	clientID := r.Header.Get("X-Wingman-Client")
@@ -100,7 +98,57 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, sess)
+	history, err := s.sessionHistory(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SessionDetailResponse{
+		Session: sess,
+		History: history,
+	})
+}
+
+type SessionDetailResponse struct {
+	*store.Session
+	History []models.Message `json:"history"`
+}
+
+func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models.Message, error) {
+	storedMsgs, err := s.store.ListMessages(ctx, sessionID)
+	if err != nil {
+		if err == store.ErrSessionNotFound {
+			return nil, fmt.Errorf("session not found: %s", sessionID)
+		}
+		return nil, fmt.Errorf("list messages: %w", err)
+	}
+
+	history := make([]models.Message, len(storedMsgs))
+	for i, sm := range storedMsgs {
+		msg := models.Message{Role: models.Role(sm.Role)}
+		if len(sm.MetadataJSON) > 0 {
+			var meta models.Meta
+			if err := json.Unmarshal(sm.MetadataJSON, &meta); err != nil {
+				return nil, fmt.Errorf("unmarshal message metadata: %w", err)
+			}
+			msg.Metadata = meta
+		}
+		content := make(models.Content, len(sm.Parts))
+		for j, sp := range sm.Parts {
+			part, err := models.UnmarshalPart(sp.PayloadJSON)
+			if err != nil {
+				return nil, fmt.Errorf("unmarshal message part: %w", err)
+			}
+			content[j] = part
+		}
+		msg.Content = content
+		history[i] = msg
+	}
+	if history == nil {
+		history = []models.Message{}
+	}
+	return history, nil
 }
 
 type UpdateSessionRequest struct {
@@ -376,9 +424,9 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 
 // buildSession assembles a session.Session from a stored agent and the
 // stored session record. It instantiates the model via the providers
-// registry, resolves the tool registry, and installs the storage plugin
-// so the session loads its history from disk on Run and persists every
-// new message back as it lands.
+// registry, resolves the tool registry, and wires persistence directly
+// via WithStore so the session loads its history from disk on Run and
+// persists every new message back as it lands.
 func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
 	if stored.Provider == "" || stored.Model == "" {
 		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
@@ -390,17 +438,11 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 	}
 
 	opts := []session.Option{
+		session.WithID(sess.ID),
 		session.WithModel(model),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
-		// The storage plugin packages both sides of persistence:
-		// BeforeRun loads sess.History from the store, and a sink
-		// listening for loop.MessageEvent appends each completed
-		// message back. Replacing the prior explicit AddMessage
-		// replay + WithMessageSink wiring with a single plugin call
-		// removes the chance of one side being installed without the
-		// other, and keeps storage out of the SDK and loop core.
-		session.WithPlugin(storageplugin.NewPlugin(s.store, sess.ID)),
+		session.WithStore(s.store),
 	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))

@@ -5,7 +5,8 @@
 //   - a working directory passed to tool executions
 //   - a models.Model + system prompt + tool registry
 //   - the running message history
-// - optional lifecycle hooks (TransformHistory / TransformContext)
+//   - optional lifecycle hooks (TransformHistory / TransformContext)
+//   - optional persistence via WithStore
 //
 // Session itself is concurrency-safe (mu-guarded). Run and RunStream
 // drive a single inference loop turn batch and append both the user
@@ -20,10 +21,10 @@
 // available for power users who want to install one-off hooks without
 // the plugin bundle.
 //
-// Session is deliberately minimal: it owns no persistence and no
-// transport. The caller (typically server) wires those in by
-// reading History() after Run returns or by attaching its own sink via
-// a plugin.
+// Persistence is wired directly via WithStore. When a store is
+// configured, the session hydrates prior history on the first Run and
+// persists every new message (user, assistant, and tool results) as
+// they are produced. Nil store means in-memory only.
 package session
 
 import (
@@ -68,6 +69,11 @@ type Session struct {
 	// loop turn to a JSON document conforming to the schema. See
 	// WithOutputSchema for details.
 	outputSchema *models.OutputSchema
+
+	// store, if non-nil, provides message-level persistence. Hydration
+	// happens on the first Run when history is empty; upserts happen
+	// for every message appended to history.
+	store store.Store
 
 	history []models.Message
 	mu      sync.RWMutex
@@ -148,7 +154,7 @@ func WithPlugin(plugins ...plugin.Plugin) Option {
 // WithMessageSink installs a callback fired for every complete
 // message added to history during a Run — including plugin-injected
 // messages (e.g. compaction markers) when the plugin emits a
-// MessageEvent through the loop sink. Use this to persist messages
+// MessageEvent through the loop sink. Use this to observe messages
 // incrementally as they're produced rather than batching at end of
 // turn. Calls are synchronous on the loop goroutine; the callback
 // must not block.
@@ -333,12 +339,23 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		}
 	}
 
+	// Hydrate prior history from the store on first run.
+	if err := s.hydrate(ctx); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+
 	// Append the user message before starting the loop so it ends up in
 	// history even if the loop fails immediately.
 	s.history = append(s.history, models.Message{
 		Role:    models.RoleUser,
 		Content: models.Content{models.TextPart{Text: message}},
 	})
+	userMsgIdx := len(s.history) - 1
+	if err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
 	historySnap := append([]models.Message(nil), s.history...)
 	s.mu.Unlock()
 
@@ -361,13 +378,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		}
 	}
 	// Inject the session's own in-memory history as the final
-	// BeforeRun contribution. Plugin BeforeRun hooks (e.g. storage
-	// rehydration) run first; the session then appends its
-	// in-memory snapshot on top. This keeps the loop's "BeforeRun is
-	// the single source of initial history" invariant intact while
-	// preserving the existing AddMessage / SetHistory / Run-then-
-	// Run-again semantics for SDK consumers who don't use a storage
-	// plugin.
+	// BeforeRun contribution. Plugin BeforeRun hooks run first;
+	// the session then appends its in-memory snapshot on top. This
+	// keeps the loop's "BeforeRun is the single source of initial
+	// history" invariant intact while preserving the existing
+	// AddMessage / SetHistory / Run-then-Run-again semantics for
+	// SDK consumers.
 	reg.RegisterBeforeRun(func(_ context.Context, current []models.Message) ([]models.Message, error) {
 		return append(current, historySnap...), nil
 	})
@@ -382,13 +398,21 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// wins on name collision via the loop's registry).
 	tools = append(tools, built.Tools...)
 
-	// Sink fan-out: forward MessageEvents to the messageSink and
-	// every event to plugin and extra sinks. Tool results are
-	// collected from res.Turns after the loop returns (source order,
-	// no shared mutable state across goroutines).
+	// Sink fan-out: persist MessageEvents, then forward to the
+	// messageSink, plugin sinks, and extraSink. Tool results are
+	// collected from res.Turns after the loop returns.
+	var persistErr error
+	nextMsgIdx := len(historySnap)
+
 	internal := loop.SinkFunc(func(e loop.Event) {
-		if messageSink != nil {
-			if me, ok := e.(loop.MessageEvent); ok {
+		if me, ok := e.(loop.MessageEvent); ok {
+			if s.store != nil {
+				if err := s.persistMessage(ctx, me.Message, nextMsgIdx); err != nil && persistErr == nil {
+					persistErr = err
+				}
+				nextMsgIdx++
+			}
+			if messageSink != nil {
 				messageSink(me.Message)
 			}
 		}
@@ -461,6 +485,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	}
 	if runErr != nil {
 		return out, fmt.Errorf("loop: %w", runErr)
+	}
+	if persistErr != nil {
+		return out, fmt.Errorf("persist: %w", persistErr)
 	}
 	return out, nil
 }

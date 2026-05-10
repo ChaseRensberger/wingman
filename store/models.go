@@ -1,8 +1,6 @@
 package store
 
-import (
-	"github.com/chaserensberger/wingman/models"
-)
+import "time"
 
 type Agent struct {
 	ID           string         `json:"id"`
@@ -18,19 +16,44 @@ type Agent struct {
 }
 
 type Session struct {
-	ID        string           `json:"id"`
-	Title     string           `json:"title,omitempty"`
-	WorkDir   string           `json:"work_dir,omitempty"`
-	ClientID  string           `json:"client_id,omitempty"`
-	History   []models.Message `json:"history"`
-	CreatedAt string           `json:"created_at"`
-	UpdatedAt string           `json:"updated_at"`
+	ID        string `json:"id"`
+	Title     string `json:"title,omitempty"`
+	WorkDir   string `json:"work_dir,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// StoredMessage is a single message row for a session.
+type StoredMessage struct {
+	ID           string
+	SessionID    string
+	Idx          int
+	Role         string
+	MetadataJSON []byte
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Parts        []StoredPart
+}
+
+// StoredPart is a single content part belonging to a message.
+// PayloadJSON is opaque to the store: serialization and interpretation
+// belong to the agent/session layer; Kind is a free-form discriminator
+// string.
+type StoredPart struct {
+	ID          string
+	MessageID   string
+	Sequence    int
+	Kind        string
+	PayloadJSON []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Client struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	CreatedAt int64  `json:"created_at"`
+	CreatedAt string `json:"created_at"`
 }
 
 // Fleet and Formation types are archived; their definitions live in

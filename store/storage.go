@@ -1,6 +1,11 @@
 package store
 
-import "github.com/chaserensberger/wingman/models"
+import (
+	"context"
+	"errors"
+)
+
+var ErrSessionNotFound = errors.New("session not found")
 
 type Store interface {
 	CreateAgent(agent *Agent) error
@@ -15,20 +20,20 @@ type Store interface {
 	ListSessionsByClient(clientID string) ([]*Session, error)
 	// UpdateSession persists metadata-only fields (title and
 	// updated_at). work_dir is intentionally omitted — it is immutable
-	// once set at session creation. It does NOT touch the message
-	// history; use AppendMessage for incremental appends or
-	// ReplaceMessages for full rewrites.
+	// once set at session creation.
 	UpdateSession(session *Session) error
-	// AppendMessage appends a single message (and its parts) to the
-	// session's history at the next index. Use this from message-sink
-	// callbacks during a Run for incremental persistence.
-	AppendMessage(sessionID string, msg models.Message) error
-	// ReplaceMessages atomically clears the session's existing
-	// history and writes msgs in order. Reserved for power users
-	// (rehydration tools, history editors); routine traffic should
-	// use AppendMessage.
-	ReplaceMessages(sessionID string, msgs []models.Message) error
 	DeleteSession(id string) error
+
+	// UpsertMessage inserts or updates a message row keyed by ID.
+	// It does not touch parts.
+	UpsertMessage(ctx context.Context, msg StoredMessage) error
+	// UpsertPart inserts or updates a part row keyed by ID.
+	UpsertPart(ctx context.Context, part StoredPart) error
+	// ListMessages returns all messages for the session ordered by Idx
+	// ASC, with each message's Parts populated and ordered by Sequence
+	// ASC. Returns ErrSessionNotFound if the session does not exist.
+	// Returns an empty slice (not nil) when the session has no messages.
+	ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
 
 	CreateClient(name string) (*Client, error)
 	GetClient(id string) (*Client, error)

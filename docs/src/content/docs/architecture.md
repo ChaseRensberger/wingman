@@ -90,16 +90,15 @@ See [Sessions](./agent/sessions).
 
 Plugins are the v0.1 extension mechanism. A `Plugin` bundles hooks, sinks, tools, and Part registrations behind a single `Install(*plugin.Registry) error`. The session builds a fresh `Registry` per call and folds it into a `loop.Hooks` value, a merged tool slice, and a fan-out sink. Composition is install-order: pipeline seams chain, sinks fan out, tool name collisions resolve last-wins. Plugin names must be unique within a session.
 
-Two canonical plugins ship in-tree:
+One canonical plugin ships in-tree:
 
 - `plugins/compaction` — summarizes long histories into an inline marker, demonstrating the two-seam (`TransformHistory` + `TransformContext`) pattern.
-- `storage` — packages persistence as a capability: a `BeforeRun` hook loads prior history and a sink appends new messages. Used by the HTTP server to wire sessions to SQLite without the loop or session core importing store.
 
 See [Plugins](./agent/plugins).
 
 ## Storage
 
-`store.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithPlugin(storageplugin.NewPlugin(store, sessionID))`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
+`store.Store` is the persistence interface. It covers agents, sessions, message history, and provider credentials. The recommended way to give a session both load and save is `session.WithStore(store)`; the lower-level `session.WithMessageSink` remains supported for ad-hoc message observation.
 
 IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See [Storage](./storage).
 
@@ -109,7 +108,7 @@ IDs are KSUIDs with stable prefixes: `agt_`, `ses_`, `msg_`, `prt_`, `tlu_`. See
 
 1. Load the agent definition and the session record.
 2. Build the provider from `provider`/`model`/`options`, injecting stored credentials.
-3. Construct a `*session.Session` with `session.WithPlugin(storageplugin.NewPlugin(store, sess.ID))`. The plugin's `BeforeRun` rehydrates history; its sink appends new messages as they land.
+3. Construct a `*session.Session` with `session.WithStore(store)`. The session hydrates prior history on the first Run and persists every new message as it lands.
 4. Drive `Run` or `RunStream`; stream events over SSE if requested.
 5. Return the response. Storage already has each message appended.
 

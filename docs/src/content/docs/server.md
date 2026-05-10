@@ -57,11 +57,11 @@ When you post a message, the server:
 
 1. loads the stored agent record and session record
 2. constructs the provider via the registry, injecting stored credentials
-3. builds a `*session.Session` with the [storage plugin](./storage#the-storage-plugin) installed via `session.WithPlugin(storageplugin.NewPlugin(store, sess.ID))`
+3. builds a `*session.Session` with `session.WithStore(store)` installed
 4. runs `Run` or `RunStream`
 5. returns the response (or streams events) to the client
 
-Steps 1–4 happen inside `buildSession`. The storage plugin handles both sides of persistence: its `BeforeRun` hook loads the session's prior history from SQLite into the loop, and its sink calls `store.AppendMessage` for each new message as the loop emits it. The server itself doesn't talk to the storage layer during a run — that's the plugin's job.
+Steps 1–4 happen inside `buildSession`. The session handles both sides of persistence: it hydrates prior history from SQLite before the first turn, and calls `UpsertMessage` / `UpsertPart` for each new message as the loop emits it. The server itself doesn't talk to the storage layer during a run — that's the session's job.
 
 See [Storage](./storage) for the schema and [Sessions](./agent/sessions) for what `Run` actually does.
 

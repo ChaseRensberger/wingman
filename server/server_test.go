@@ -332,9 +332,6 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.WorkDir != "/tmp" {
 			t.Errorf("expected work_dir '/tmp', got %q", sess.WorkDir)
 		}
-		if sess.History == nil {
-			t.Error("expected history to be initialized")
-		}
 
 		sessionID = sess.ID
 	})
@@ -927,7 +924,7 @@ func TestClientsEndpoints(t *testing.T) {
 		if client.ID == "" {
 			t.Fatal("expected client ID to be set")
 		}
-		if client.CreatedAt == 0 {
+		if client.CreatedAt == "" {
 			t.Error("expected created_at to be set")
 		}
 	})

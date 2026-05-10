@@ -7,7 +7,7 @@ order: 108
 
 # Storage
 
-The HTTP server persists state in SQLite via the `store.Store` interface. Persistence is exposed to sessions through the **storage plugin**, which packages both load (rehydrate prior history) and save (append new messages) behind a single `session.WithPlugin` call. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
+The HTTP server persists state in SQLite via the `store.Store` interface. Sessions wire persistence directly via `session.WithStore`. The SDK does not require storage; you can run sessions entirely in memory and decide your own persistence strategy.
 
 ## The `Store` interface
 
@@ -22,10 +22,17 @@ type Store interface {
     CreateSession(session *Session) error
     GetSession(id string) (*Session, error)
     ListSessions() ([]*Session, error)
+    ListSessionsByClient(clientID string) ([]*Session, error)
     UpdateSession(session *Session) error
-    AppendMessage(sessionID string, msg models.Message) error
-    ReplaceMessages(sessionID string, msgs []models.Message) error
     DeleteSession(id string) error
+
+    UpsertMessage(ctx context.Context, msg StoredMessage) error
+    UpsertPart(ctx context.Context, part StoredPart) error
+    ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
+
+    CreateClient(name string) (*Client, error)
+    GetClient(id string) (*Client, error)
+    ListClients() ([]*Client, error)
 
     GetAuth() (*Auth, error)
     SetAuth(auth *Auth) error
@@ -36,20 +43,19 @@ type Store interface {
 
 Notes:
 
-- **`UpdateSession` is metadata-only.** It persists `title`, `work_dir`, and `updated_at`. It does NOT touch message history.
-- **`AppendMessage`** appends a single message (and its parts) at the next index. This is the routine path for incremental persistence — wire it via the storage plugin (recommended) or `WithMessageSink` (low-level).
-- **`ReplaceMessages`** atomically clears history and writes `msgs` in order. Reserved for power users (rehydration tools, history editors); routine traffic uses `AppendMessage`.
+- **`UpdateSession` is metadata-only.** It persists `title` and `updated_at`. It does NOT touch message history.
+- **`UpsertMessage`** / **`UpsertPart`** insert or update a single message or part row keyed by ID. This is the routine path for incremental persistence — the session calls these automatically when `WithStore` is configured.
+- **`ListMessages`** returns all messages for a session ordered by `Idx`, with parts populated and ordered by `Sequence`.
 
-## The storage plugin
+## `WithStore`
 
-`storageplugin.NewPlugin(store, sessionID)` returns a [Plugin](./plugins) that wires both sides of persistence to `store` and `sessionID`:
+`session.WithStore(store)` wires both sides of persistence directly into the session:
 
-- A **`BeforeRun`** hook calls `store.GetSession(sessionID)` and returns `sess.History` as the loop's initial messages — so a session resumed across processes (or just across HTTP requests) starts with the same context the prior run ended with.
-- A **sink** filters for `loop.MessageEvent` and calls `store.AppendMessage` for each completed message — so every turn (and any plugin-injected message such as a compaction marker) lands in storage as it happens.
+- **Hydration:** on the first `Run` when in-memory history is empty, the session calls `store.ListMessages(ctx, sessionID)` and rebuilds its history from the returned rows.
+- **Upserts:** every new message (user, assistant, and tool results) is persisted via `UpsertMessage` and `UpsertPart` as it is produced. Errors propagate and fail the run.
 
 ```go
 import (
-    "github.com/chaserensberger/wingman/plugins/storage"
     "github.com/chaserensberger/wingman/agent/session"
     wstorage "github.com/chaserensberger/wingman/store"
 )
@@ -61,25 +67,22 @@ if err != nil {
 defer store.Close()
 
 // Ensure the session row exists (CreateSession to mint a new one,
-// GetSession to verify an existing id). The plugin loads from this id.
+// GetSession to verify an existing id).
 sess, err := store.GetSession(sessionID)
 if err != nil {
     log.Fatal(err)
 }
 
 s := session.New(
+    session.WithID(sess.ID),
     session.WithModel(model),
-    session.WithPlugin(storageplugin.NewPlugin(store, sess.ID)),
+    session.WithStore(store),
 )
 ```
 
-The plugin's `Name()` is `"storage"`. Installing two storage plugins in the same session fails the run — the [plugin registry](./plugins#the-plugin-interface) enforces name uniqueness so you can't accidentally have two BeforeRun hooks fighting over initial history.
-
-Sink-side errors (an `AppendMessage` failure) are logged and swallowed: a single SQLite hiccup shouldn't kill an in-flight run. The transcript on disk may end up with gaps in the rare error case, but the in-memory transcript returned in `Result.Messages` is always correct. `BeforeRun` errors do fail the run, since proceeding without a known starting state would silently desynchronize the in-memory and on-disk transcripts.
-
 ## `WithMessageSink` — lower-level primitive
 
-`session.WithMessageSink(fn)` installs a callback that fires for every `MessageEvent`. It's the building block the storage plugin uses internally, and it remains supported for ad-hoc observation:
+`session.WithMessageSink(fn)` installs a callback that fires for every `MessageEvent`. It remains supported for ad-hoc observation:
 
 ```go
 s := session.New(
@@ -90,7 +93,7 @@ s := session.New(
 )
 ```
 
-For persistence, prefer the storage plugin: it bundles load and save together, so you can't accidentally wire one without the other. `WithMessageSink` is appropriate when you only need observation (logging, metrics, UI fanout) and not load-side rehydration.
+For persistence, prefer `WithStore`: it bundles load and save together, so you can't accidentally wire one without the other. `WithMessageSink` is appropriate when you only need observation (logging, metrics, UI fanout) and not load-side rehydration.
 
 ## Stored types
 
