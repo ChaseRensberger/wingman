@@ -522,8 +522,10 @@ func TestSessionsCRUD(t *testing.T) {
 
 	t.Run("update session", func(t *testing.T) {
 		newTitle := "renamed session"
+		newWorkDir := t.TempDir()
 		body := mustJSON(t, map[string]any{
-			"title": newTitle,
+			"title":             newTitle,
+			"working_directory": newWorkDir,
 		})
 
 		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/sessions/"+sessionID, bytes.NewReader(body))
@@ -543,9 +545,8 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.Title != newTitle {
 			t.Errorf("expected title %q, got %q", newTitle, sess.Title)
 		}
-		// work_dir is immutable; it should remain as set at creation.
-		if sess.WorkDir != "/tmp" {
-			t.Errorf("expected work_dir preserved from creation, got %q", sess.WorkDir)
+		if sess.WorkDir != newWorkDir {
+			t.Errorf("expected work_dir %q, got %q", newWorkDir, sess.WorkDir)
 		}
 	})
 
@@ -565,8 +566,8 @@ func TestSessionsCRUD(t *testing.T) {
 		if sess.Title != "title only" {
 			t.Errorf("expected title 'title only', got %q", sess.Title)
 		}
-		if sess.WorkDir != "/tmp" {
-			t.Errorf("expected work_dir to be preserved, got %q", sess.WorkDir)
+		if sess.WorkDir == "" {
+			t.Errorf("expected work_dir to be preserved when omitted")
 		}
 	})
 

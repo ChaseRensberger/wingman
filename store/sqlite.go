@@ -392,15 +392,17 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 	return out, nil
 }
 
-// UpdateSession overwrites the session's mutable metadata (title and
-// updated_at). work_dir is intentionally omitted — it is immutable once
-// set at session creation.
+// UpdateSession overwrites the session's mutable metadata.
 func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
+	var workDirPtr *string
+	if session.WorkDir != "" {
+		workDirPtr = &session.WorkDir
+	}
 
 	res, err := s.db.Exec(`
-		UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?
-	`, session.Title, session.UpdatedAt, session.ID)
+		UPDATE sessions SET title = ?, work_dir = ?, updated_at = ? WHERE id = ?
+	`, session.Title, workDirPtr, session.UpdatedAt, session.ID)
 	if err != nil {
 		return err
 	}

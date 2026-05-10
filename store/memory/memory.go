@@ -297,7 +297,6 @@ func (s *Store) UpdateSession(session *store.Session) error {
 	}
 
 	session.UpdatedAt = store.Now()
-	session.WorkDir = existing.WorkDir
 	session.ClientID = existing.ClientID
 	session.CreatedAt = existing.CreatedAt
 	s.sessions[session.ID] = copySession(session)

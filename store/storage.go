@@ -18,9 +18,7 @@ type Store interface {
 	GetSession(id string) (*Session, error)
 	ListSessions() ([]*Session, error)
 	ListSessionsByClient(clientID string) ([]*Session, error)
-	// UpdateSession persists metadata-only fields (title and
-	// updated_at). work_dir is intentionally omitted — it is immutable
-	// once set at session creation.
+	// UpdateSession persists mutable session metadata.
 	UpdateSession(session *Session) error
 	DeleteSession(id string) error
 

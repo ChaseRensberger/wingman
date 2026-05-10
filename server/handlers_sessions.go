@@ -164,7 +164,8 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 }
 
 type UpdateSessionRequest struct {
-	Title *string `json:"title,omitempty"`
+	Title            *string `json:"title,omitempty"`
+	WorkingDirectory *string `json:"working_directory,omitempty"`
 }
 
 func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +189,14 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 
 	if req.Title != nil {
 		sess.Title = *req.Title
+	}
+	if req.WorkingDirectory != nil {
+		workDir, err := session.ResolveWorkDir(*req.WorkingDirectory)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sess.WorkDir = workDir
 	}
 
 	if err := s.store.UpdateSession(sess); err != nil {
