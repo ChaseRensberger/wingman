@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Badge } from "@/components/core/badge";
 import { Button } from "@/components/core/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/core/alert-dialog";
 import { Input } from "@/components/core/input";
 import { Textarea } from "@/components/core/textarea";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -117,7 +128,7 @@ function AgentDetailPage() {
   }
 
   async function remove() {
-    if (!agent || !confirm(`Delete agent ${agent.name}?`)) return;
+    if (!agent) return;
     setDeleting(true);
     try {
       await wfetch(`/agents/${agent.id}`, { method: "DELETE" });
@@ -136,9 +147,25 @@ function AgentDetailPage() {
       <div className="mb-4 flex items-center justify-between gap-4">
         <PageBreadcrumb items={[{ label: "Agents", to: "/agents" }, { label: crumbLabel }]} />
         {agent && (
-          <Button size="sm" variant="destructive" onClick={remove} disabled={deleting}>
-            {deleting ? "Deleting..." : "Delete"}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button size="sm" variant="destructive" disabled={deleting} />}>
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete agent?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete {agent.name}. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={remove} disabled={deleting}>
+                  {deleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
 
