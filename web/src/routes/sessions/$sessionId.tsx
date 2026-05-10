@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Message, Part } from "@/lib/types";
+import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
 import { Textarea } from "@/components/core/textarea";
 import {
@@ -91,6 +92,14 @@ function eventField<T>(data: unknown, lower: string, upper: string): T | undefin
   return (record[lower] ?? record[upper]) as T | undefined;
 }
 
+function formatSessionError(err: unknown): string {
+  const message = String(err instanceof Error ? err.message : err);
+  if (message.includes("requires a working directory, but session has none")) {
+    return "This session has no working directory. The selected agent tried to use a tool that requires one. Create a new session with a working directory to use this agent.";
+  }
+  return message.replace(/^Error:\s*/, "");
+}
+
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionDetailPage,
 });
@@ -104,6 +113,7 @@ function SessionDetailPage() {
   const [messageText, setMessageText] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +121,7 @@ function SessionDetailPage() {
     try {
       const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
       setSession(data);
+      setError("");
     } catch (err) {
       console.error("Failed to load session", err);
       alert(String(err));
@@ -173,6 +184,7 @@ function SessionDetailPage() {
     if (!messageText.trim() || !selectedAgent) return;
 
     const outboundText = messageText.trim();
+    setError("");
     setMessageText("");
     setSession((prev) => {
       if (!prev) return prev;
@@ -255,7 +267,7 @@ function SessionDetailPage() {
       if ((err as Error).name !== "AbortError") {
         console.error("Send failed", err);
         setMessageText(outboundText);
-        alert(String(err));
+        setError(formatSessionError(err));
       }
     } finally {
       setIsStreaming(false);
@@ -314,6 +326,13 @@ function SessionDetailPage() {
           Abort
         </Button>
       </div>
+
+      {error && (
+        <Alert variant="destructive" className="mt-4">
+          <AlertTitle>Message failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
         {session.history.map((msg, idx) => (
