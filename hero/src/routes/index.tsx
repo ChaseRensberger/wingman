@@ -45,11 +45,12 @@ const PROVIDERS = [
 	},
 ];
 
+// TODO: figure out more FAQS
 const FAQS = [
 	{
 		question: "I don't get it, what is this?",
 		answer:
-			"Most agentic harnesses are built for a specific purpose. Projects like OpenCode have gotten incredibly popular as a coding harness and although it is possible to route your llm workflows through something"
+			"Most agentic harnesses are built for a specific purpose (right now mostly coding TUIs). Wingman aims to be fully agnostic to any specific agentic use case and in turn allow consumers to build arbitrary clients on top of it."
 	},
 	{
 		question: "Is it production-ready?",
