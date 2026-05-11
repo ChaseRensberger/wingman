@@ -271,10 +271,21 @@ strong {
 	font-weight: 500 !important;
 }
 
-ul,
-ol {
+nav.sidebar ul,
+.right-sidebar-panel ul,
+ul.top-level {
 	list-style: none !important;
 	padding: 0 !important;
+}
+
+.sl-markdown-content ul:not(:where(.not-content *)) {
+	list-style: disc;
+	padding-inline-start: 1.5rem;
+}
+
+.sl-markdown-content ol:not(:where(.not-content *)) {
+	list-style: decimal;
+	padding-inline-start: 1.5rem;
 }
 
 .sl-markdown-content .tab > [role="tab"][aria-selected="true"] {
