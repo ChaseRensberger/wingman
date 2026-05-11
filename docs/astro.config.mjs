@@ -34,9 +34,15 @@ export default defineConfig({
 				{ label: 'Introduction', slug: '' },
 				{ label: 'Quickstart', slug: 'quickstart' },
 				{
-					label: 'Concepts',
+					label: 'Core',
 					items: [
 						{ label: 'Sessions', slug: 'concepts/sessions' },
+					],
+				},
+				{
+					label: 'Concepts',
+					items: [
+						{ label: 'Context Handoff', slug: 'concepts/context-handoff' },
 					],
 				},
 			],

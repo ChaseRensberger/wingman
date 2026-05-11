@@ -1,7 +1,7 @@
 ---
 title: "Quickstart"
 description: "Run Wingman locally and send your first agent message."
-draft: true
+draft: false
 order: 2
 ---
 

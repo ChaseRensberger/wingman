@@ -1,7 +1,7 @@
 ---
 title: "Sessions"
-group: "Concepts"
-draft: true
+group: "Core"
+draft: false
 order: 102
 ---
 
