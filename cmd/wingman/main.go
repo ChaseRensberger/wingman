@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/chaserensberger/wingman/internal/observability"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
@@ -35,6 +35,16 @@ func main() {
 				Name:  "serve",
 				Usage: "Start the HTTP server",
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "log-format",
+						Value: "json",
+						Usage: "Log format: json or text",
+					},
+					&cli.StringFlag{
+						Name:  "log-level",
+						Value: "info",
+						Usage: "Log level: debug, info, warn, or error",
+					},
 					&cli.IntFlag{
 						Name:  "port",
 						Value: 2323,
@@ -72,18 +82,23 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {
+	logger, err := observability.ConfigureDefault(cmd.String("log-format"), cmd.String("log-level"))
+	if err != nil {
+		return err
+	}
+
 	var st store.Store
 	if cmd.Bool("ephemeral") {
-		log.Printf("wingman: ephemeral mode (no persistence)")
+		logger.Info("persistence disabled", "mode", "ephemeral")
 	} else {
 		dbPath := cmd.String("db")
 		if dbPath == "" {
-			var err error
 			dbPath, err = store.DefaultDBPath()
 			if err != nil {
 				return fmt.Errorf("failed to get default database path: %w", err)
@@ -95,12 +110,13 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		}
 		defer sqliteStore.Close()
 		st = sqliteStore
-		log.Printf("Database: %s", dbPath)
+		logger.Info("storage initialized", "db_path", dbPath)
 	}
 
 	srv := server.New(server.Config{
 		Store:     st,
 		WebDevURL: cmd.String("ui-dev"),
+		Logger:    logger,
 	})
 
 	host := cmd.String("host")
@@ -122,7 +138,7 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	case err := <-serveErr:
 		return err
 	case <-sigCtx.Done():
-		log.Printf("Shutdown signal received; draining (30s budget)...")
+		logger.Info("shutdown signal received", "budget", "30s")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx, httpSrv); err != nil {
@@ -130,7 +146,7 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		}
 		// Wait for Serve to return so we don't race the defer-store-Close.
 		<-serveErr
-		log.Printf("Shutdown complete")
+		logger.Info("shutdown complete")
 		return nil
 	}
 }

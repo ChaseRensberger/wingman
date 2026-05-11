@@ -31,13 +31,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
-	"github.com/chaserensberger/wingman/models"
 )
 
 // Session is a single conversation. Construct with New.
@@ -47,6 +49,7 @@ type Session struct {
 	model   models.Model
 	system  string
 	tools   []tool.Tool
+	logger  *slog.Logger
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -122,6 +125,12 @@ func WithSystem(prompt string) Option {
 // WithTools registers the tools the model may call.
 func WithTools(tools ...tool.Tool) Option {
 	return func(s *Session) { s.tools = append(s.tools, tools...) }
+}
+
+// WithLogger enables structured runtime logs for this session. The logger is
+// expected to already carry request/session attributes supplied by the caller.
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Session) { s.logger = logger }
 }
 
 // WithTransformHistory installs a raw hook that runs before each loop step
@@ -348,6 +357,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
 	workDir := s.workDir
+	logger := s.logger
 	rawTransformHistory := s.transformHistory
 	rawTransformContext := s.transformContext
 	rawTransformToolDefs := s.transformToolDefs
@@ -433,8 +443,19 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// collected from res.Turns after the loop returns.
 	var persistErr error
 	nextMsgIdx := len(historySnap)
+	if logger != nil {
+		info := model.Info()
+		logger = logger.With(
+			"session_id", s.id,
+			"provider", info.Provider,
+			"model", info.ID,
+			"tools", len(tools),
+			"workdir_set", workDir != "",
+		)
+	}
 
 	internal := loop.SinkFunc(func(e loop.Event) {
+		logLoopEvent(logger, e)
 		if me, ok := e.(loop.MessageEvent); ok {
 			if s.store != nil {
 				if err := s.persistMessage(ctx, me.Message, nextMsgIdx); err != nil && persistErr == nil {
@@ -473,6 +494,10 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		},
 	}
 
+	start := time.Now()
+	if logger != nil {
+		logger.Info("session run started", "history_messages", len(historySnap))
+	}
 	res, runErr := loop.Run(ctx, cfg)
 
 	// Adopt the loop's terminal message slice wholesale. This handles
@@ -516,6 +541,27 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 			out.Response = textOf(*last)
 		}
 	}
+	if logger != nil {
+		attrs := []any{
+			"duration_ms", time.Since(start).Milliseconds(),
+			"tool_calls", len(toolCalls),
+			"input_tokens", out.Usage.InputTokens,
+			"output_tokens", out.Usage.OutputTokens,
+			"total_tokens", out.Usage.TotalTokens,
+			"reasoning_tokens", out.Usage.ReasoningTokens,
+			"cached_input_tokens", out.Usage.CachedInputTokens,
+			"cache_write_tokens", out.Usage.CacheWriteTokens,
+			"steps", out.Steps,
+			"stop_reason", out.StopReason,
+		}
+		if runErr != nil {
+			logger.Error("session run failed", append(attrs, "error", runErr)...)
+		} else if persistErr != nil {
+			logger.Error("session run persistence failed", append(attrs, "error", persistErr)...)
+		} else {
+			logger.Info("session run completed", attrs...)
+		}
+	}
 	if runErr != nil {
 		return out, fmt.Errorf("loop: %w", runErr)
 	}
@@ -523,6 +569,44 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		return out, fmt.Errorf("persist: %w", persistErr)
 	}
 	return out, nil
+}
+
+func logLoopEvent(logger *slog.Logger, e loop.Event) {
+	if logger == nil {
+		return
+	}
+	switch v := e.(type) {
+	case loop.IterationStartEvent:
+		logger.Debug("loop turn started", "step", v.Step)
+	case loop.IterationEndEvent:
+		logger.Info("loop turn completed",
+			"step", v.Step,
+			"tool_calls", len(v.Turn.Results),
+			"input_tokens", v.Turn.Usage.InputTokens,
+			"output_tokens", v.Turn.Usage.OutputTokens,
+			"total_tokens", v.Turn.Usage.TotalTokens,
+		)
+	case loop.ToolExecutionStartEvent:
+		logger.Info("tool execution started", "tool", v.Call.Name, "call_id", v.Call.ID)
+	case loop.ToolExecutionEndEvent:
+		logger.Info("tool execution completed",
+			"tool", v.Result.Name,
+			"call_id", v.Result.CallID,
+			"duration_ms", v.Result.Duration.Milliseconds(),
+			"is_error", v.Result.IsError,
+		)
+	case loop.ContextTransformedEvent:
+		logger.Info("context transformed",
+			"step", v.Step,
+			"phase", v.Phase,
+			"original_count", v.OriginalCount,
+			"new_count", v.NewCount,
+		)
+	case loop.StructuredOutputEvent:
+		logger.Info("structured output produced", "schema", v.Schema)
+	case loop.ErrorEvent:
+		logger.Error("loop error", "error", v.Err)
+	}
 }
 
 // errStringIf returns msg when isError is true, "" otherwise. Centralizes

@@ -620,6 +620,7 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
 		session.WithStore(s.store),
+		session.WithLogger(s.logger.With("agent_id", stored.ID)),
 	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))

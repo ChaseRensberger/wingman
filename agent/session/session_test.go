@@ -1,7 +1,9 @@
 package session_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -58,4 +60,56 @@ func TestSessionStart_DirectoryScopedToolsRequireWorkDir(t *testing.T) {
 			t.Fatalf("expected session to start, got error: %v", err)
 		}
 	})
+}
+
+func TestSessionLoggerEmitsLifecycleWithoutContent(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	model := looptest.NewRecordingModel(
+		looptest.ReplyWithTool("probe", `{"secret":"do-not-log"}`),
+		looptest.Reply("final response should stay out of logs"),
+	)
+	probe := tool.NewFuncTool("probe", "probe tool", tool.Definition{
+		Name:        "probe",
+		Description: "probe tool",
+		InputSchema: tool.InputSchema{
+			Type: "object",
+			Properties: map[string]tool.Property{
+				"secret": {Type: "string"},
+			},
+		},
+	}, func(ctx context.Context, params map[string]any, workDir string) (string, error) {
+		return "tool output should stay out of logs", nil
+	})
+
+	sess := session.New(
+		session.WithModel(model),
+		session.WithTools(probe),
+		session.WithLogger(logger),
+	)
+	result, err := sess.Run(context.Background(), "user prompt should stay out of logs")
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if result.StopReason == "" || result.StopReason != "end_turn" {
+		t.Fatalf("unexpected stop reason: %q", result.StopReason)
+	}
+
+	out := logs.String()
+	for _, leaked := range []string{"do-not-log", "tool output should stay out of logs", "user prompt should stay out of logs", "final response should stay out of logs"} {
+		if strings.Contains(out, leaked) {
+			t.Fatalf("log leaked content %q:\n%s", leaked, out)
+		}
+	}
+	for _, want := range []string{"session run started", "tool execution started", "tool execution completed", "loop turn completed", "session run completed"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected log %q in:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, `"tool":"probe"`) {
+		t.Fatalf("expected tool name in logs:\n%s", out)
+	}
+	if !strings.Contains(out, `"provider":"looptest"`) || !strings.Contains(out, `"model":"recording-model"`) {
+		t.Fatalf("expected provider/model in logs:\n%s", out)
+	}
 }

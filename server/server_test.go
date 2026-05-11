@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +69,52 @@ func TestHealth(t *testing.T) {
 	decodeJSON(t, resp, &body)
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %q", body["status"])
+	}
+}
+
+func TestRequestLoggerEmitsStructuredFields(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	store, err := store.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create test store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	srv := New(Config{Store: store, Logger: logger})
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/health", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("X-Wingman-Client", "cli_test")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+
+	var entry map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &entry); err != nil {
+		t.Fatalf("log entry was not json: %v\n%s", err, logs.String())
+	}
+	if entry["msg"] != "http request" {
+		t.Fatalf("expected http request log, got %v", entry["msg"])
+	}
+	if entry["method"] != http.MethodGet || entry["path"] != "/health" {
+		t.Fatalf("unexpected request fields: %#v", entry)
+	}
+	if got := int(entry["status"].(float64)); got != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", got)
+	}
+	if entry["request_id"] == "" {
+		t.Fatalf("expected request_id in log: %#v", entry)
+	}
+	if entry["client_id"] != "cli_test" {
+		t.Fatalf("expected client_id, got %#v", entry["client_id"])
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -27,6 +27,7 @@ type Server struct {
 	router    *chi.Mux
 	aborts    *abortRegistry
 	webDevURL string
+	logger    *slog.Logger
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -45,15 +46,21 @@ type Server struct {
 type Config struct {
 	Store     store.Store
 	WebDevURL string
+	Logger    *slog.Logger
 }
 
 func New(cfg Config) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	s := &Server{
 		store:          cfg.Store,
 		router:         chi.NewRouter(),
 		aborts:         newAbortRegistry(),
 		webDevURL:      cfg.WebDevURL,
+		logger:         logger,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
@@ -74,10 +81,51 @@ func (s *Server) setupMiddleware() {
 	}))
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
-	s.router.Use(middleware.Logger)
+	s.router.Use(s.requestLogger)
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(timeoutWithBypass(60*time.Second, shouldBypassTimeout))
 	s.router.Use(jsonContentType)
+}
+
+func (s *Server) requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		next.ServeHTTP(ww, r)
+
+		status := ww.Status()
+		if status == 0 {
+			status = http.StatusOK
+		}
+		duration := time.Since(start)
+		attrs := []any{
+			"request_id", middleware.GetReqID(r.Context()),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"route", chi.RouteContext(r.Context()).RoutePattern(),
+			"status", status,
+			"bytes", ww.BytesWritten(),
+			"duration_ms", duration.Milliseconds(),
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+		}
+		if q := r.URL.RawQuery; q != "" {
+			attrs = append(attrs, "query", q)
+		}
+		if clientID := r.Header.Get("X-Wingman-Client"); clientID != "" {
+			attrs = append(attrs, "client_id", clientID)
+		}
+
+		switch {
+		case status >= 500:
+			s.logger.Error("http request", attrs...)
+		case status >= 400:
+			s.logger.Warn("http request", attrs...)
+		default:
+			s.logger.Info("http request", attrs...)
+		}
+	})
 }
 
 func timeoutWithBypass(timeout time.Duration, bypass func(*http.Request) bool) func(http.Handler) http.Handler {
@@ -165,7 +213,7 @@ func (s *Server) mountWebUI() {
 	if s.webDevURL != "" {
 		devURL, err := url.Parse(s.webDevURL)
 		if err != nil {
-			log.Printf("invalid web dev url %q: %v", s.webDevURL, err)
+			s.logger.Error("invalid web dev url", "url", s.webDevURL, "error", err)
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(devURL)
@@ -176,7 +224,7 @@ func (s *Server) mountWebUI() {
 
 	dist, err := fs.Sub(webui.Dist, "dist")
 	if err != nil {
-		log.Printf("web UI unavailable: %v", err)
+		s.logger.Error("web UI unavailable", "error", err)
 		return
 	}
 	files := http.FileServer(http.FS(dist))
@@ -224,7 +272,7 @@ func (s *Server) ListenAndServe(addr string) error {
 // shutdown, the underlying error otherwise.
 func (s *Server) Serve(srv *http.Server) error {
 	srv.Handler = s.router
-	log.Printf("Starting server on %s", srv.Addr)
+	s.logger.Info("server starting", "addr", srv.Addr)
 	err := srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
@@ -291,7 +339,7 @@ type ErrorResponse struct {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("Failed to encode response: %v", err)
+		slog.Error("failed to encode response", "error", err)
 	}
 }
 
