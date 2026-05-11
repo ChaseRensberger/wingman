@@ -471,8 +471,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	}
 
 	// Real execution. Tool errors become result text with IsError=true;
-	// only hook errors fail the loop. This mirrors pi-mono's behavior
-	// and means the model can recover from tool errors by trying again.
+	// only hook errors fail the loop.
 	start := time.Now()
 	output, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
 	duration := time.Since(start)

@@ -7,7 +7,7 @@ order: 102
 
 # Sessions
 
-A session is the stateful execution context for a Wingman agent. It owns conversation history, the active model, system prompt, tool registry, working directory, installed plugins, and an optional message sink.
+A session is the stateful execution context of a Wingman agent. It owns conversation history, the active model, system prompt, tool registry, working directory, installed plugins, and an optional message sink.
 
 `*session.Session` is a thin wrapper over `agent/loop`. It holds state; the loop does the work.
 

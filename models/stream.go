@@ -8,7 +8,7 @@ import (
 
 // EventStream is a one-producer, one-consumer event channel with a single
 // final-result slot. Adapted from pi-mono's TypeScript EventStream<T,R>
-	// (bb/pi-mono/packages/ai/src/scripts/event-stream.ts), translated to Go using
+// (bb/pi-mono/packages/ai/src/scripts/event-stream.ts), translated to Go using
 // a buffered channel for events and a sync.Once for the final result.
 //
 // Usage on the producer side:

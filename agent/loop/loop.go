@@ -2,24 +2,6 @@
 // across multiple turns, dispatches tool calls between turns, and emits
 // lifecycle events to a sink.
 //
-// # Design influences
-//
-//   - pi-mono's agent-loop.ts (bb/pi-mono/packages/agent/src/agent-loop.ts)
-//     contributed the per-turn shape: drain pending messages, stream one
-//     assistant response, execute tool calls, loop. The "sequential trumps
-//     parallel per batch" rule and tool-batch terminate semantics are
-//     ports of pi's behavior.
-//   - opencode's session/prompt.ts (bb/opencode/packages/opencode/src/
-//     session/prompt.ts) contributed the hook slicing: tool args in/out
-//     are separate from message-history transform, which is separate from
-//     system-prompt transform, which is separate from sampling parameters.
-//     Six well-defined seams instead of one big "TransformContext".
-//   - We diverge from both on calling convention. opencode uses
-//     mutate-the-output-object hooks; pi-mono returns optional partials.
-//     We use Go-idiomatic (NewValue, error) returns where a sentinel
-//     error (ErrSkipTool, ErrDenyTool) controls flow. No magic, no
-//     reflection.
-//
 // # What this package owns
 //
 // Everything between "we have a Model and a Tool list" and "the next

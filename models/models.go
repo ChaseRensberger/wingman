@@ -2,12 +2,11 @@
 // parts (the units of message content), streaming events, and the Model
 // interface that providers implement.
 //
-// Wire format
+// # Wire format
 //
-// The streaming event shape (see event.go) is the Vercel AI SDK v3
-// LanguageModelV3StreamPart shape, hyphenated names preserved exactly. See
-// bb/ai/packages/provider/src/language-model/v3/language-model-v3-stream-part.ts.
-// We add two things on top of the AI SDK shape:
+// The streaming event shape is inspired is the Vercel AI SDK v3
+// LanguageModelV3StreamPart shape TODO: migrate to v4, hyphenated names
+// preserved exactly. We add two things on top of the AI SDK shape:
 //
 //  1. The "finish" event carries the assembled *Message, not just usage and
 //     finish reason. This spares consumers from rebuilding state. The
@@ -19,14 +18,12 @@
 // Stored Part shape (Message.Content) is opencode-derived: a discriminated
 // union over Text/Reasoning/Image/ToolCall/ToolResult. See part.go.
 //
-// Provider error contract
+// # Provider error contract
 //
 // Providers MUST return (nil, error) from Stream() only for synchronous setup
 // failures (auth missing, network refused before the first response byte).
 // Once the stream begins, all failures terminate via an "error" event followed
-// by a "finish" event with FinishReasonError or FinishReasonAborted. This
-// matches pi-mono's contract; see bb/pi-mono/packages/ai/src/types.ts comment
-// on StreamFunction.
+// by a "finish" event with FinishReasonError or FinishReasonAborted.
 package models
 
 // Role identifies the author of a Message in conversation history.

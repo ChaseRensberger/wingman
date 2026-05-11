@@ -42,8 +42,6 @@ type Tool interface {
 // the loop into sequential execution mode for any batch it appears in.
 //
 // Tools that don't implement this interface are treated as parallel-safe.
-// This matches pi-mono's "sequential trumps parallel per-batch" rule:
-// a single sequential tool poisons the whole batch.
 type SequentialTool interface {
 	Tool
 	Sequential() bool
