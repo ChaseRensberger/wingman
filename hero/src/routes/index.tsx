@@ -29,24 +29,14 @@ const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web
 
 const FAQS = [
 	{
-		question: "What is Wingman?",
+		question: "I don't get it, what is this?",
 		answer:
-			"Wingman is an open-source, client-agnostic agent harness. It gives you the runtime, server, storage, tools, and plugin system for building agent-powered applications.",
-	},
-	{
-		question: "Is Wingman another coding-agent client?",
-		answer:
-			"No. Wingman is the backend harness exposed over HTTP, so any client in any language can drive it. Coding assistants are one possible client, not the whole product.",
-	},
-	{
-		question: "Who is it for?",
-		answer:
-			"Wingman is aimed at terminal-native developers who want a flexible, hackable runtime they can extend and automate for their own workflows.",
+			"Most agentic harnesses are built for a specific purpose. Projects like OpenCode have gotten incredibly popular as a coding harness and although it is possible to route your llm workflows through something"
 	},
 	{
 		question: "Is it production-ready?",
 		answer:
-			"Not yet. The project is under active development, and the API and behavior may change while the core primitives settle.",
+			"Nope! The project is under active development and it is safe to expect breaking changes. Working hard to make sure this isn't true for long though."
 	},
 ];
 
