@@ -2,19 +2,21 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { rehypeHeadingIds } from '@astrojs/markdown-remark';
-import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import theme from 'toolbeam-docs-theme';
 
 // https://astro.build/config
 export default defineConfig({
 	markdown: {
-		rehypePlugins: [rehypeHeadingIds, [rehypeAutolinkHeadings, { behavior: 'wrap' }]],
+		rehypePlugins: [rehypeHeadingIds],
 	},
 	integrations: [
 		starlight({
 			title: 'Wingman',
 			favicon: '/WingmanBlue.png',
 			expressiveCode: { themes: ['github-light', 'github-dark'] },
+			markdown: {
+				headingLinks: false,
+			},
 			customCss: [
 				'@fontsource/roboto-mono/400.css',
 				'@fontsource/roboto-mono/400-italic.css',
@@ -24,6 +26,7 @@ export default defineConfig({
 				'./src/styles/custom.css',
 			],
 			components: {
+				Footer: './src/components/Footer.astro',
 				SiteTitle: './src/components/SiteTitle.astro',
 			},
 			social: [

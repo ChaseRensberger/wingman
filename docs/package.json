@@ -15,7 +15,6 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/roboto-mono": "^5.2.8",
     "astro": "^6.1.9",
-    "rehype-autolink-headings": "^7.1.0",
     "sharp": "^0.34.5",
     "toolbeam-docs-theme": "^0.4.8"
   }
