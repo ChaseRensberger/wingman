@@ -1,120 +1,49 @@
-// Package catalog provides static metadata about LLM providers and models,
-// sourced from https://models.dev/api.json.
+// Package catalog provides bundled metadata about LLM providers and models.
 //
 // Layout:
-//   - snapshot.json: a build-time snapshot of the entire models.dev catalog,
-//     embedded into the binary so first boot works offline.
-//   - Client: holds an in-memory ModelsDB (initialized from the snapshot) and
-//     refreshes it from the live API on a background interval.
+//   - data/: TOML source for the catalog.
+//   - wingmodels_snapshot.json: a generated snapshot embedded into the binary.
+//   - Client: holds an in-memory ModelsDB projected from the snapshot.
 //   - Get(provider, model) returns a normalized models.ModelInfo for use
 //     by Model implementations.
 //
 // The raw types (ProviderData, Model, ModelCost, ModelLimit, Modalities)
-// remain exported for callers that want richer metadata than ModelInfo
-// provides (cost data, modalities, knowledge cutoff dates, etc.).
+// remain exported for callers that want richer metadata than ModelInfo provides.
 package catalog
 
 import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"slices"
+	"strings"
 	"sync"
-	"time"
 
 	"github.com/chaserensberger/wingman/models"
 )
 
-const (
-	modelsDevURL = "https://models.dev/api.json"
-	// fetchTimeout caps a single live-fetch attempt. The background refresher
-	// will retry on the next tick if the network is slow or down.
-	fetchTimeout = 30 * time.Second
-	// defaultRefreshInterval is how often the background goroutine re-pulls
-	// the live catalog. Hourly is plenty: model metadata changes infrequently.
-	defaultRefreshInterval = 1 * time.Hour
-)
-
-//go:embed snapshot.json
+//go:embed wingmodels_snapshot.json
 var snapshotJSON []byte
 
-// Client wraps the ModelsDB with a refresher. Most callers should use the
-// package-level functions (Get, GetAll, etc.) which delegate to a default
-// Client started at init. Construct your own Client only if you need
-// independent refresh schedules or HTTP clients (e.g. tests).
+// Client wraps the projected model catalog. Most callers should use the
+// package-level functions (Get, GetAll, etc.) which delegate to a default Client.
 type Client struct {
-	httpClient *http.Client
-
-	mu       sync.RWMutex
-	cache    ModelsDB
-	cachedAt time.Time
-	source   string // "snapshot" or "live"
+	mu    sync.RWMutex
+	cache ModelsDB
 }
 
-// NewClient builds a Client preloaded from the embedded snapshot. The
-// snapshot decode is deterministic and offline; failures are programmer
-// errors (corrupt embed) and panic.
+// NewClient builds a Client preloaded from the embedded snapshot.
 func NewClient() *Client {
-	c := &Client{
-		httpClient: &http.Client{Timeout: fetchTimeout},
+	c := &Client{}
+	var snapshot Snapshot
+	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
+		panic(fmt.Errorf("catalog: corrupt embedded wingmodels_snapshot.json: %w", err))
 	}
-	var db ModelsDB
-	if err := json.Unmarshal(snapshotJSON, &db); err != nil {
-		panic(fmt.Errorf("catalog: corrupt embedded snapshot.json: %w", err))
-	}
-	c.cache = db
-	c.cachedAt = time.Time{} // zero indicates snapshot, not live
-	c.source = "snapshot"
+	c.cache = projectSnapshot(snapshot)
 	return c
 }
 
-// StartRefresher starts a background goroutine that refreshes the live
-// catalog every interval. Returns immediately; safe to call once. Cancel by
-// closing stop.
-//
-// Refresh failures are intentionally silent: the snapshot remains usable and
-// the next tick will retry. We don't log because the catalog package has no
-// logger dependency; callers who care can wrap and observe via Source().
-func (c *Client) StartRefresher(interval time.Duration, stop <-chan struct{}) {
-	if interval <= 0 {
-		interval = defaultRefreshInterval
-	}
-	go func() {
-		// Kick off an immediate refresh so the first hour isn't snapshot-only.
-		_, _ = c.Refresh()
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				_, _ = c.Refresh()
-			}
-		}
-	}()
-}
-
-// Source reports whether the in-memory catalog is from the embedded snapshot
-// ("snapshot") or from a live fetch ("live"). Useful for diagnostics.
-func (c *Client) Source() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.source
-}
-
-// CachedAt reports when the live catalog was last fetched. Zero if the
-// in-memory copy is still the embedded snapshot.
-func (c *Client) CachedAt() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.cachedAt
-}
-
-// GetAll returns the in-memory catalog. Safe to call without StartRefresher;
-// returns the snapshot in that case.
+// GetAll returns the in-memory catalog.
 func (c *Client) GetAll() ModelsDB {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -160,17 +89,6 @@ func (c *Client) GetModels(providerName string) (map[string]Model, bool) {
 // Get returns a normalized models.ModelInfo for a provider/model pair.
 // This is the adapter Model implementations call from their Info() method.
 //
-// Mapping notes:
-//   - Provider/ID copy directly.
-//   - ContextWindow comes from Limit.Context.
-//   - MaxOutput comes from Limit.Output.
-//   - Capabilities.Tools comes from ToolCall.
-//   - Capabilities.Images is true if "image" appears in input modalities.
-//   - Capabilities.Reasoning comes from Reasoning.
-//   - Capabilities.StructuredOutput comes from StructuredOutput.
-//   - Cost fields come from Cost.{Input,Output,CacheRead,CacheWrite}; these
-//     are already in USD per 1M tokens in the models.dev schema.
-//
 // API, BaseURL and Compat are NOT populated here: those are
 // provider-implementation concerns set by the provider's factory after
 // calling Get.
@@ -197,48 +115,10 @@ func (c *Client) Get(providerName, modelID string) (models.ModelInfo, bool) {
 	}, true
 }
 
-// Refresh pulls the live catalog. Updates the in-memory copy on success.
-// Returns the new ModelsDB and an error; on error the existing in-memory
-// copy is unchanged.
-func (c *Client) Refresh() (ModelsDB, error) {
-	resp, err := c.httpClient.Get(modelsDevURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch models.dev: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("models.dev returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read models.dev response: %w", err)
-	}
-
-	var db ModelsDB
-	if err := json.Unmarshal(body, &db); err != nil {
-		return nil, fmt.Errorf("parse models.dev response: %w", err)
-	}
-
-	c.mu.Lock()
-	c.cache = db
-	c.cachedAt = time.Now()
-	c.source = "live"
-	c.mu.Unlock()
-
-	return db, nil
-}
-
-// defaultClient is the package-level Client used by Get / GetAll / etc. It is
-// preloaded from the snapshot at init and does not auto-refresh; the binary
-// entrypoint (cmd/wingman) is responsible for calling StartRefresher if it
-// wants live updates. This keeps imports of catalog in tools like example
-// programs from spawning background goroutines.
+// defaultClient is the package-level Client used by Get / GetAll / etc.
 var defaultClient = NewClient()
 
-// Default returns the package-level Client. Use this to call StartRefresher
-// from your main.
+// Default returns the package-level Client.
 func Default() *Client { return defaultClient }
 
 // Get is the package-level convenience wrapper around defaultClient.Get.
@@ -256,4 +136,110 @@ func GetModel(providerName, modelID string) (*Model, bool) {
 }
 func GetModels(providerName string) (map[string]Model, bool) {
 	return defaultClient.GetModels(providerName)
+}
+
+func projectSnapshot(snapshot Snapshot) ModelsDB {
+	providers := make(map[string]Provider, len(snapshot.Providers))
+	for _, provider := range snapshot.Providers {
+		providers[provider.ID] = provider
+	}
+
+	labModels := make(map[string]LabModel, len(snapshot.LabModels))
+	for _, model := range snapshot.LabModels {
+		labModels[model.ID] = model
+	}
+
+	db := make(ModelsDB, len(snapshot.Providers))
+	for _, provider := range snapshot.Providers {
+		data := ProviderData{
+			ID:     provider.ID,
+			Name:   provider.DisplayName,
+			Models: make(map[string]Model),
+		}
+		if provider.Auth != nil {
+			data.Env = append([]string(nil), provider.Auth.EnvVars...)
+		}
+		if len(provider.BaseURLs) > 0 {
+			data.API = provider.BaseURLs[0]
+		}
+		db[provider.ID] = data
+	}
+
+	for _, providerModel := range snapshot.ProviderModels {
+		providerID, modelID, ok := splitProviderModelID(providerModel.ID)
+		if !ok {
+			continue
+		}
+		provider, ok := providers[providerID]
+		if !ok {
+			continue
+		}
+
+		providerData := db[providerID]
+		labModel := labModels[modelID]
+		providerData.Models[modelID] = projectModel(providerModel, labModel)
+		providerData.Name = provider.DisplayName
+		db[providerID] = providerData
+	}
+
+	return db
+}
+
+func splitProviderModelID(id string) (string, string, bool) {
+	providerID, modelID, ok := strings.Cut(id, "/")
+	return providerID, modelID, ok && providerID != "" && modelID != ""
+}
+
+func projectModel(providerModel ProviderModel, labModel LabModel) Model {
+	modelID := providerModel.ID
+	if _, id, ok := splitProviderModelID(providerModel.ID); ok {
+		modelID = id
+	}
+
+	modalities := Modalities{}
+	if providerModel.Modalities != nil {
+		modalities = *providerModel.Modalities
+	} else if labModel.Modalities != nil {
+		modalities = *labModel.Modalities
+	}
+
+	model := Model{
+		ID:               modelID,
+		Name:             providerModel.DisplayName,
+		Family:           labModel.Family,
+		Reasoning:        hasCapability(providerModel, CapabilityReasoning),
+		ToolCall:         hasCapability(providerModel, CapabilityToolCalling) || hasCapability(providerModel, CapabilityFunctionCalling),
+		StructuredOutput: hasCapability(providerModel, CapabilityStructuredOutput),
+		Temperature:      slices.Contains(providerModel.SupportedParameters, ParameterTemperature),
+		Knowledge:        labModel.KnowledgeCutoff,
+		ReleaseDate:      labModel.ReleaseDate,
+		OpenWeights:      labModel.OpenWeights,
+		Modalities:       modalities,
+	}
+
+	if providerModel.Pricing != nil {
+		model.Cost = ModelCost{
+			Input:      providerModel.Pricing.InputPerMillion,
+			Output:     providerModel.Pricing.OutputPerMillion,
+			CacheRead:  providerModel.Pricing.CacheReadPerMillion,
+			CacheWrite: providerModel.Pricing.CacheWritePerMillion,
+		}
+	}
+	if providerModel.Limits != nil {
+		model.Limit = ModelLimit{
+			Context: providerModel.Limits.ContextWindow,
+			Input:   providerModel.Limits.MaxInputTokens,
+			Output:  providerModel.Limits.MaxOutputTokens,
+		}
+	}
+	return model
+}
+
+func hasCapability(providerModel ProviderModel, capabilityID CapabilityID) bool {
+	for _, capability := range providerModel.Capabilities {
+		if capability.ID == capabilityID {
+			return true
+		}
+	}
+	return false
 }

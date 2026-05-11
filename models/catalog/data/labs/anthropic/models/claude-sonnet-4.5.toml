@@ -1,0 +1,11 @@
+id = "claude-sonnet-4.5"
+lab_id = "anthropic"
+display_name = "Claude Sonnet 4.5"
+family = "claude-sonnet"
+release_date = 2025-09-29
+knowledge_cutoff = 2025-07
+open_weights = false
+
+[modalities]
+input = ["text", "image", "pdf"]
+output = ["text"]

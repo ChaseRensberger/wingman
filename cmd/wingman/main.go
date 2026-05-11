@@ -12,7 +12,6 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/chaserensberger/wingman/models/catalog"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
@@ -109,13 +108,6 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
 	httpSrv := &http.Server{Addr: addr}
-
-	// Background catalog refresh. Models.dev publishes incremental
-	// updates we want to pick up without restarting; failures are
-	// silent (the embedded snapshot remains the source of truth).
-	catalogStop := make(chan struct{})
-	defer close(catalogStop)
-	catalog.Default().StartRefresher(time.Hour, catalogStop)
 
 	// SIGINT/SIGTERM → graceful shutdown. Drain has a 30s budget;
 	// after that we return with the deadline error and let the

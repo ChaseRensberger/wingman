@@ -1,0 +1,320 @@
+{
+  "version": "v1",
+  "generated_at": "2026-05-11T01:17:10.407630955Z",
+  "labs": [
+    {
+      "id": "anthropic",
+      "display_name": "Anthropic"
+    },
+    {
+      "id": "openai",
+      "display_name": "OpenAI"
+    }
+  ],
+  "lab_models": [
+    {
+      "id": "claude-haiku-4.5",
+      "lab_id": "anthropic",
+      "display_name": "Claude Haiku 4.5",
+      "family": "claude-haiku",
+      "release_date": "2025-10-15",
+      "knowledge_cutoff": "2025-02",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false
+    },
+    {
+      "id": "claude-sonnet-4.5",
+      "lab_id": "anthropic",
+      "display_name": "Claude Sonnet 4.5",
+      "family": "claude-sonnet",
+      "release_date": "2025-09-29",
+      "knowledge_cutoff": "2025-07",
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false
+    },
+    {
+      "id": "gpt-4o",
+      "lab_id": "openai",
+      "display_name": "GPT-4o",
+      "family": "gpt",
+      "release_date": "2024-05-13",
+      "knowledge_cutoff": "2023-09",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "open_weights": false
+    }
+  ],
+  "providers": [
+    {
+      "id": "anthropic",
+      "display_name": "Anthropic",
+      "base_urls": [
+        "https://api.anthropic.com"
+      ],
+      "auth": {
+        "env_vars": [
+          "ANTHROPIC_API_KEY"
+        ]
+      }
+    },
+    {
+      "id": "openai",
+      "display_name": "OpenAI",
+      "base_urls": [
+        "https://api.openai.com/v1"
+      ],
+      "auth": {
+        "env_vars": [
+          "OPENAI_API_KEY"
+        ]
+      }
+    },
+    {
+      "id": "opencode-zen",
+      "display_name": "OpenCode Zen",
+      "base_urls": [
+        "https://opencode.ai/zen/v1"
+      ],
+      "auth": {
+        "env_vars": [
+          "OPENCODE_API_KEY"
+        ]
+      }
+    }
+  ],
+  "provider_models": [
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "display_name": "Claude Haiku 4.5 via Anthropic",
+      "interface_profiles": [
+        "anthropic.messages.v1"
+      ],
+      "capabilities": [
+        {
+          "id": "text-input"
+        },
+        {
+          "id": "text-output"
+        },
+        {
+          "id": "image-input"
+        },
+        {
+          "id": "pdf-input"
+        },
+        {
+          "id": "reasoning"
+        },
+        {
+          "id": "tool-calling",
+          "version": "v1"
+        }
+      ],
+      "supported_parameters": [
+        "sampling.temperature",
+        "sampling.top_p",
+        "limits.max_output_tokens"
+      ],
+      "limits": {
+        "context_window": 200000,
+        "max_output_tokens": 64000
+      },
+      "pricing": {
+        "input_per_million": 1,
+        "output_per_million": 5,
+        "cache_read_per_million": 0.1,
+        "cache_write_per_million": 1.25
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "display_name": "Claude Sonnet 4.5 via Anthropic",
+      "interface_profiles": [
+        "anthropic.messages.v1"
+      ],
+      "capabilities": [
+        {
+          "id": "text-input"
+        },
+        {
+          "id": "text-output"
+        },
+        {
+          "id": "image-input"
+        },
+        {
+          "id": "pdf-input"
+        },
+        {
+          "id": "reasoning"
+        },
+        {
+          "id": "tool-calling",
+          "version": "v1"
+        }
+      ],
+      "supported_parameters": [
+        "sampling.temperature",
+        "sampling.top_p",
+        "limits.max_output_tokens"
+      ],
+      "limits": {
+        "context_window": 200000,
+        "max_output_tokens": 64000
+      },
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_per_million": 0.3,
+        "cache_write_per_million": 3.75
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "display_name": "GPT-4o via OpenAI",
+      "interface_profiles": [
+        "openai.responses.v1",
+        "openai.chatcompletions.v1"
+      ],
+      "capabilities": [
+        {
+          "id": "text-input"
+        },
+        {
+          "id": "text-output"
+        },
+        {
+          "id": "image-input"
+        },
+        {
+          "id": "tool-calling",
+          "version": "v1"
+        },
+        {
+          "id": "structured-output"
+        }
+      ],
+      "supported_parameters": [
+        "sampling.temperature",
+        "sampling.top_p",
+        "limits.max_output_tokens"
+      ],
+      "limits": {
+        "context_window": 128000,
+        "max_output_tokens": 16384
+      },
+      "pricing": {
+        "input_per_million": 2.5,
+        "output_per_million": 10,
+        "cache_read_per_million": 1.25
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      }
+    },
+    {
+      "id": "opencode-zen/claude-sonnet-4.5",
+      "display_name": "Claude Sonnet 4.5 via OpenCode Zen",
+      "interface_profiles": [
+        "anthropic.messages.v1"
+      ],
+      "capabilities": [
+        {
+          "id": "text-input"
+        },
+        {
+          "id": "text-output"
+        },
+        {
+          "id": "image-input"
+        },
+        {
+          "id": "pdf-input"
+        },
+        {
+          "id": "reasoning"
+        },
+        {
+          "id": "tool-calling",
+          "version": "v1"
+        }
+      ],
+      "supported_parameters": [
+        "sampling.temperature",
+        "sampling.top_p",
+        "limits.max_output_tokens"
+      ],
+      "limits": {
+        "context_window": 200000,
+        "max_output_tokens": 64000
+      },
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_per_million": 0.3,
+        "cache_write_per_million": 3.75
+      },
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      }
+    }
+  ]
+}

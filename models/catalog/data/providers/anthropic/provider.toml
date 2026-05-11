@@ -1,0 +1,6 @@
+id = "anthropic"
+display_name = "Anthropic"
+base_urls = ["https://api.anthropic.com"]
+
+[auth]
+env_vars = ["ANTHROPIC_API_KEY"]

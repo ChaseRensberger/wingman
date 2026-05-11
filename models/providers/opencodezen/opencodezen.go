@@ -4,7 +4,7 @@
 // accepts OpenAI Chat Completions wire format for all models (including
 // Claude and Gemini). Auth is a bearer OPENCODE_API_KEY.
 //
-// Catalog provider: "opencode" (see snapshot.json).
+// Catalog provider: "opencode-zen".
 //
 // All routing is handled by the upstream proxy; the client does not need to
 // know which underlying model family it is talking to.
@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	baseURL       = "https://opencode.ai/zen/v1"
-	providerID    = "opencodezen"
-	catalogID     = "opencode"
-	defaultModel  = "claude-sonnet-4-5"
+	baseURL      = "https://opencode.ai/zen/v1"
+	providerID   = "opencodezen"
+	catalogID    = "opencode-zen"
+	defaultModel = "claude-sonnet-4.5"
 )
 
 // Meta is the registry entry for the OpenCode Zen provider.
