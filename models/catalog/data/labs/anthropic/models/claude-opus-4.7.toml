@@ -1,0 +1,11 @@
+id = "claude-opus-4.7"
+lab_id = "anthropic"
+display_name = "Claude Opus 4.7"
+family = "claude-opus"
+release_date = 2026-04-16
+knowledge_cutoff = 2026-01
+open_weights = false
+
+[modalities]
+input = ["text", "image", "pdf"]
+output = ["text"]

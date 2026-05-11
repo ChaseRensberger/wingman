@@ -1,0 +1,11 @@
+id = "gpt-4.1"
+lab_id = "openai"
+display_name = "GPT-4.1"
+family = "gpt"
+release_date = 2025-04-14
+knowledge_cutoff = 2024-04
+open_weights = false
+
+[modalities]
+input = ["text", "image", "pdf"]
+output = ["text"]

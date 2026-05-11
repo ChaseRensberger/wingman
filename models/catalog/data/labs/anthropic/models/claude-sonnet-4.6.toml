@@ -1,0 +1,11 @@
+id = "claude-sonnet-4.6"
+lab_id = "anthropic"
+display_name = "Claude Sonnet 4.6"
+family = "claude-sonnet"
+release_date = 2026-02-17
+knowledge_cutoff = 2025-08
+open_weights = false
+
+[modalities]
+input = ["text", "image", "pdf"]
+output = ["text"]

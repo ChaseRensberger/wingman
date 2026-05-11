@@ -26,6 +26,24 @@ const DOCS_URL = "https://wingman.actor/docs";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
+const PROVIDERS = [
+	{
+		name: "Anthropic",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/anthropic",
+	},
+	{
+		name: "OpenAI",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/openai",
+	},
+	{
+		name: "OpenCode Zen",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/opencode-zen",
+	},
+	{
+		name: "Ollama",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/providers/ollama",
+	},
+];
 
 const FAQS = [
 	{
@@ -138,12 +156,37 @@ function LinkCard({
 function PluginsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Plugins" number="02" />
+			<SectionHeader title="Plugins" number="03" />
 			<LinkCard
 				title="Compaction"
-				description="Session context compaction as a first-party plugin."
+				description="Save context by compacting older messages when close to an overflow."
 				href={COMPACTION_PLUGIN_URL}
 			/>
+		</section>
+	);
+}
+
+function ProvidersSection() {
+	return (
+		<section className="px-12 py-8 border-b space-y-4">
+			<SectionHeader title="Providers" number="02" />
+			<div className="grid gap-3 sm:grid-cols-2">
+				{PROVIDERS.map((provider) => (
+					<a
+						key={provider.name}
+						href={provider.href}
+						target="_blank"
+						rel="noreferrer"
+						className="block rounded-sm border bg-card p-4 transition-colors hover:border-primary hover:text-primary"
+					>
+						<div className="flex items-center gap-2">
+							<span className="text-primary">[*]</span>
+							<h3 className="font-semibold">{provider.name}</h3>
+						</div>
+					</a>
+				))}
+			</div>
+			<p className="text-sm text-muted-foreground">More providers are coming soon.</p>
 		</section>
 	);
 }
@@ -151,10 +194,11 @@ function PluginsSection() {
 function ClientsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Clients" number="03" />
+			<SectionHeader title="Clients" number="04" />
+			<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			<LinkCard
 				title="Web"
-				description="A browser client built on top of the Wingman HTTP API."
+				description="A browser client bundled into the Wingman binary."
 				href={WEB_CLIENT_URL}
 			/>
 		</section>
@@ -163,16 +207,22 @@ function ClientsSection() {
 
 function ComingSoonSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Coming Soon" number="04" />
+		<section className="px-12 py-8 border-b space-y-2">
+			<SectionHeader title="Coming Soon" number="05" />
+			<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
 			<div className="grid gap-3 sm:grid-cols-2">
 				<div className="rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">MCP support</h3>
-					<p className="mt-1 text-sm text-muted-foreground">Connect Wingman sessions to Model Context Protocol servers.</p>
+					<p className="mt-1 text-sm text-muted-foreground">Connect Wingman agents to local or remote Model Context Protocol servers.</p>
 				</div>
 				<div className="rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">Plugin Registry</h3>
 					<p className="mt-1 text-sm text-muted-foreground">Discover and install community plugins from a shared registry.</p>
+				</div>
+
+				<div className="rounded-sm border bg-card p-4">
+					<h3 className="font-semibold">More Providers</h3>
+					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it.</p>
 				</div>
 			</div>
 		</section>
@@ -239,6 +289,7 @@ function Hero() {
 				</div>
 			</section>
 			<FAQSection />
+			<ProvidersSection />
 			<PluginsSection />
 			<ClientsSection />
 			<ComingSoonSection />
