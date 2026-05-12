@@ -7,7 +7,7 @@ draft: true
 
 # WingModels
 
-WingModels is Wingman's provider agnostic model SDK. It provides a stable way to call a variety of model providers, stream normalized events, preserve conversation history across providers, and expose enough model metadata for capability gates, cost display, and compaction decisions.
+WingModels is a provider agnostic model SDK (written in [go](https://go.dev)). It provides a stable way to call a variety of model providers, stream normalized events, handoff context across providers, and many more useful things.
 
 The core interface is intentionally small:
 
@@ -18,8 +18,6 @@ type Model interface {
     CountTokens(context.Context, []Message) (int, error)
 }
 ```
-
-The rest of Wingman depends on that interface, not on Anthropic, OpenAI, OpenCode Zen, or any provider SDK.
 
 ## Why It Exists
 
