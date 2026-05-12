@@ -124,7 +124,15 @@ A protocol owns semantic API-family behavior:
 - Count tokens or provide a local estimate.
 - Advertise the API family, such as `openai-chat`.
 
-The first reusable protocol is `models/protocols/openaichat`, which implements the OpenAI Chat Completions request and SSE stream shape.
+The common protocol packages are:
+
+- `models/protocols/openaichat` for OpenAI Chat Completions and compatible providers.
+- `models/protocols/openairesponses` for OpenAI Responses.
+- `models/protocols/anthropicmessages` for Anthropic Messages.
+- `models/protocols/gemini` for Google Gemini `streamGenerateContent`.
+- `models/protocols/bedrockconverse` for AWS Bedrock Converse request lowering and decoded ConverseStream events.
+
+Bedrock is the one protocol whose production route still needs more than plain HTTP+SSE: AWS SigV4 auth and AWS event-stream binary framing belong in transport/auth helpers, not in the semantic protocol.
 
 ### Route
 

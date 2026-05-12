@@ -6,3 +6,7 @@ release_date = "2026-04-23"
 last_updated = "2026-04-23"
 knowledge_cutoff = "2025-12-01"
 open_weights = false
+
+[modalities]
+input = ["text", "image", "pdf"]
+output = ["text"]

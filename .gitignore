@@ -8,6 +8,7 @@ dist/
 report.md
 bb/
 snapshot.json
+wingmodels_snapshot.json
 _archive/
 wingcode/
 spec.md

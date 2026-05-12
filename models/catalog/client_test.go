@@ -28,15 +28,15 @@ func TestBundledSnapshotIncludesAnthropicDefault(t *testing.T) {
 }
 
 func TestBundledSnapshotIncludesOpenAIDefault(t *testing.T) {
-	info, ok := Get("openai", "gpt-4o")
+	info, ok := Get("openai", "gpt-5.5")
 	if !ok {
-		t.Fatal("expected openai gpt-4o in bundled catalog")
+		t.Fatal("expected openai gpt-5.5 in bundled catalog")
 	}
 	if !info.Capabilities.StructuredOutput {
 		t.Fatal("expected structured output support")
 	}
-	if info.OutputCostPerMTok != 10 {
-		t.Fatalf("OutputCostPerMTok = %f, want 10", info.OutputCostPerMTok)
+	if info.OutputCostPerMTok != 30 {
+		t.Fatalf("OutputCostPerMTok = %f, want 30", info.OutputCostPerMTok)
 	}
 }
 

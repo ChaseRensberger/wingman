@@ -20,6 +20,7 @@ type LabModel struct {
 	DisplayName     string      `json:"display_name"`
 	Family          string      `json:"family,omitempty"`
 	ReleaseDate     string      `json:"release_date,omitempty"`
+	LastUpdated     string      `json:"last_updated,omitempty"`
 	KnowledgeCutoff string      `json:"knowledge_cutoff,omitempty"`
 	Modalities      *Modalities `json:"modalities,omitempty"`
 	OpenWeights     bool        `json:"open_weights"`

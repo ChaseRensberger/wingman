@@ -213,6 +213,7 @@ func projectModel(providerModel ProviderModel, labModel LabModel) Model {
 		Temperature:      slices.Contains(providerModel.SupportedParameters, ParameterTemperature),
 		Knowledge:        labModel.KnowledgeCutoff,
 		ReleaseDate:      labModel.ReleaseDate,
+		LastUpdated:      labModel.LastUpdated,
 		OpenWeights:      labModel.OpenWeights,
 		Modalities:       modalities,
 	}
