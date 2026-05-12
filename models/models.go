@@ -66,12 +66,10 @@ const (
 	FinishReasonUnknown FinishReason = "unknown"
 )
 
-// ProviderOptions is a two-level namespaced bag of provider-specific metadata
-// attached to individual message Parts. The outer key is the provider id; the
-// inner map is opaque. Used for round-trip preservation: a Part stored with
-// provider-specific metadata survives serialization and can be re-read by a
-// future provider implementation.
+// ProviderOptions is a two-level namespaced bag of provider-specific values.
+// The outer key is the provider id or API family; the inner map is opaque.
 //
-// This type is intentionally NOT on Request — request-level knobs use the
-// typed Capabilities and ToolChoice fields instead.
+// On Parts, providers use it for round-trip preservation of native metadata.
+// On Requests, callers use it for provider-native knobs that do not belong in
+// the cross-provider API. Providers ignore namespaces they do not own.
 type ProviderOptions map[string]map[string]any

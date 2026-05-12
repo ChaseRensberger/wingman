@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/models/protocols/openaichat"
 )
 
 func TestPrepareBuildsOpenAICompatibleChatRequest(t *testing.T) {
@@ -76,6 +77,68 @@ func TestPrepareBuildsOpenAICompatibleChatRequest(t *testing.T) {
 	if !ok || format["type"] != "json_schema" {
 		t.Fatalf("response_format = %#v", body["response_format"])
 	}
+}
+
+func TestPrepareAppliesChatProfileAndProviderOptions(t *testing.T) {
+	c, err := New(Config{
+		ProviderID: "test-compatible",
+		APIKey:     "test-key",
+		Model:      "test-model",
+		BaseURL:    "https://example.test/v1",
+		MaxTokens:  123,
+		Profile:    mustKnownProfile(t, openaichat.ProfileOpenAIChat),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	prepared, err := c.Prepare(context.Background(), models.Request{
+		System:   "system prompt",
+		Messages: []models.Message{models.NewUserText("hello")},
+		ProviderOptions: models.ProviderOptions{
+			"test-compatible":                   {"parallel_tool_calls": false},
+			string(models.APIOpenAICompletions): {"service_tier": "flex"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(prepared.Body, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("max_tokens should be omitted for OpenAI Chat profile: %#v", body["max_tokens"])
+	}
+	if body["max_completion_tokens"] != float64(123) {
+		t.Fatalf("max_completion_tokens = %#v", body["max_completion_tokens"])
+	}
+	if body["store"] != false {
+		t.Fatalf("store = %#v", body["store"])
+	}
+	msgs, ok := body["messages"].([]any)
+	if !ok || len(msgs) == 0 {
+		t.Fatalf("messages = %#v", body["messages"])
+	}
+	first, ok := msgs[0].(map[string]any)
+	if !ok || first["role"] != "developer" {
+		t.Fatalf("first message = %#v", msgs[0])
+	}
+	if body["parallel_tool_calls"] != false {
+		t.Fatalf("parallel_tool_calls = %#v", body["parallel_tool_calls"])
+	}
+	if body["service_tier"] != "flex" {
+		t.Fatalf("service_tier = %#v", body["service_tier"])
+	}
+}
+
+func mustKnownProfile(t *testing.T, id string) openaichat.Profile {
+	t.Helper()
+	profile, ok := openaichat.KnownProfile(id)
+	if !ok {
+		t.Fatalf("unknown profile %q", id)
+	}
+	return profile
 }
 
 func TestStreamUsesRouteTransportAndParsesEvents(t *testing.T) {

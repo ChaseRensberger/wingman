@@ -13,12 +13,3 @@ const (
 	CapabilityFunctionCalling  CapabilityID = "function-calling"
 	CapabilityStructuredOutput CapabilityID = "structured-output"
 )
-
-// ParameterID is the canonical string vocabulary for catalog-supported params.
-type ParameterID string
-
-const (
-	ParameterTemperature     ParameterID = "sampling.temperature"
-	ParameterTopP            ParameterID = "sampling.top_p"
-	ParameterMaxOutputTokens ParameterID = "limits.max_output_tokens"
-)

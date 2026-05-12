@@ -59,16 +59,15 @@ type Pricing struct {
 }
 
 type ProviderModel struct {
-	ID                  string               `json:"id"`
-	DisplayName         string               `json:"display_name"`
-	InterfaceProfiles   []string             `json:"interface_profiles,omitempty"`
-	Capabilities        []CapabilityInstance `json:"capabilities,omitempty"`
-	SupportedParameters []ParameterID        `json:"supported_parameters,omitempty"`
-	Limits              *Limits              `json:"limits,omitempty"`
-	Pricing             *Pricing             `json:"pricing,omitempty"`
-	Modalities          *Modalities          `json:"modalities,omitempty"`
-	Sources             []Source             `json:"sources,omitempty"`
-	Extensions          map[string]any       `json:"extensions,omitempty"`
+	ID           string               `json:"id"`
+	DisplayName  string               `json:"display_name"`
+	RouteProfile string               `json:"route_profile,omitempty"`
+	Capabilities []CapabilityInstance `json:"capabilities,omitempty"`
+	Limits       *Limits              `json:"limits,omitempty"`
+	Pricing      *Pricing             `json:"pricing,omitempty"`
+	Modalities   *Modalities          `json:"modalities,omitempty"`
+	Sources      []Source             `json:"sources,omitempty"`
+	Extensions   map[string]any       `json:"extensions,omitempty"`
 }
 
 type Snapshot struct {

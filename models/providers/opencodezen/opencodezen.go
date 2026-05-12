@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/models/protocols/openaichat"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/models/providers/openaicompat"
 )
@@ -89,6 +90,7 @@ func New(cfg ...Config) (*openaicompat.Client, error) {
 		}
 	}
 
+	profile, _ := openaichat.KnownProfile(openaichat.ProfileOpenCodeZen)
 	return openaicompat.New(openaicompat.Config{
 		ProviderID:      providerID,
 		CatalogProvider: catalogID,
@@ -96,6 +98,7 @@ func New(cfg ...Config) (*openaicompat.Client, error) {
 		Model:           model,
 		BaseURL:         baseURL,
 		MaxTokens:       maxTokens,
+		Profile:         profile,
 		Options:         c.Options,
 	})
 }

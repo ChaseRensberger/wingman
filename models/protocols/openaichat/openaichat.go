@@ -24,17 +24,18 @@ type Protocol struct{}
 func (Protocol) API() models.API { return models.APIOpenAICompletions }
 
 func (Protocol) Prepare(_ context.Context, ref route.ModelRef, req models.Request) (*route.PreparedBody, error) {
+	profile := profileFromRef(ref)
 	req.Messages = transform.Apply(req.Messages, transform.Target{
 		Provider:     ref.Provider,
 		API:          models.APIOpenAICompletions,
 		ModelID:      ref.ModelID,
 		Capabilities: ref.Info.Capabilities,
 	})
-	body, err := json.Marshal(buildRequest(ref, req))
+	payload, err := marshalPayload(buildRequest(ref, req, profile), ref, req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: marshal request: %w", ref.Provider, err)
 	}
-	return &route.PreparedBody{Body: body}, nil
+	return &route.PreparedBody{Body: payload}, nil
 }
 
 func (Protocol) ParseStream(ctx context.Context, ref route.ModelRef, resp *http.Response, out *models.EventStream[models.StreamPart, *models.Message]) {
@@ -81,13 +82,61 @@ func origin(ref route.ModelRef) *models.MessageOrigin {
 }
 
 type chatRequest struct {
-	Model          string              `json:"model"`
-	Messages       []chatMessage       `json:"messages"`
-	Stream         bool                `json:"stream"`
-	MaxTokens      int                 `json:"max_tokens,omitempty"`
-	Tools          []chatTool          `json:"tools,omitempty"`
-	ToolChoice     any                 `json:"tool_choice,omitempty"`
-	ResponseFormat *chatResponseFormat `json:"response_format,omitempty"`
+	Model               string              `json:"model"`
+	Messages            []chatMessage       `json:"messages"`
+	Stream              bool                `json:"stream"`
+	MaxTokens           int                 `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int                 `json:"max_completion_tokens,omitempty"`
+	Store               *bool               `json:"store,omitempty"`
+	Tools               []chatTool          `json:"tools,omitempty"`
+	ToolChoice          any                 `json:"tool_choice,omitempty"`
+	ResponseFormat      *chatResponseFormat `json:"response_format,omitempty"`
+}
+
+// Profile describes service-specific Chat Completions dialect choices.
+type Profile struct {
+	ID                    string
+	SystemRole            string
+	MaxTokensField        string
+	Store                 *bool
+	ReasoningContentField string
+}
+
+const (
+	ProfileOpenAIChat  = "openai.chat"
+	ProfileCompatChat  = "openai-compatible.chat"
+	ProfileOpenCodeZen = "opencode-zen.openai-chat"
+)
+
+func KnownProfile(id string) (Profile, bool) {
+	switch id {
+	case ProfileOpenAIChat:
+		store := false
+		return Profile{ID: id, SystemRole: "developer", MaxTokensField: "max_completion_tokens", Store: &store, ReasoningContentField: "reasoning_content"}, true
+	case ProfileOpenCodeZen:
+		return Profile{ID: id, SystemRole: "system", MaxTokensField: "max_tokens", ReasoningContentField: "reasoning_content"}, true
+	case "", ProfileCompatChat:
+		return Profile{ID: ProfileCompatChat, SystemRole: "system", MaxTokensField: "max_tokens", ReasoningContentField: "reasoning_content"}, true
+	default:
+		return Profile{}, false
+	}
+}
+
+func profileFromRef(ref route.ModelRef) Profile {
+	switch v := ref.Compat.(type) {
+	case Profile:
+		return v
+	case *Profile:
+		if v != nil {
+			return *v
+		}
+	case string:
+		if profile, ok := KnownProfile(v); ok {
+			return profile
+		}
+	}
+	profile, _ := KnownProfile("")
+	return profile
 }
 
 type chatResponseFormat struct {
@@ -136,16 +185,21 @@ type chatTool struct {
 	} `json:"function"`
 }
 
-func buildRequest(ref route.ModelRef, req models.Request) chatRequest {
+func buildRequest(ref route.ModelRef, req models.Request, profile Profile) chatRequest {
 	maxOut := req.MaxOutputTokens
 	if maxOut == 0 {
 		maxOut = ref.MaxOutputTokens
 	}
 	r := chatRequest{
-		Model:     ref.ModelID,
-		Messages:  toWireMessages(req),
-		Stream:    true,
-		MaxTokens: maxOut,
+		Model:    ref.ModelID,
+		Messages: toWireMessages(req, profile),
+		Stream:   true,
+		Store:    profile.Store,
+	}
+	if profile.MaxTokensField == "max_completion_tokens" {
+		r.MaxCompletionTokens = maxOut
+	} else {
+		r.MaxTokens = maxOut
 	}
 	if len(req.Tools) > 0 {
 		r.Tools = make([]chatTool, len(req.Tools))
@@ -190,10 +244,31 @@ func buildRequest(ref route.ModelRef, req models.Request) chatRequest {
 	return r
 }
 
-func toWireMessages(req models.Request) []chatMessage {
+func marshalPayload(r chatRequest, ref route.ModelRef, req models.Request) ([]byte, error) {
+	body, err := json.Marshal(r)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	for _, key := range []string{ref.Provider, string(models.APIOpenAICompletions)} {
+		for k, v := range req.ProviderOptions[key] {
+			payload[k] = v
+		}
+	}
+	return json.Marshal(payload)
+}
+
+func toWireMessages(req models.Request, profile Profile) []chatMessage {
 	var out []chatMessage
 	if req.System != "" {
-		out = append(out, chatMessage{Role: "system", Content: req.System})
+		role := profile.SystemRole
+		if role == "" {
+			role = "system"
+		}
+		out = append(out, chatMessage{Role: role, Content: req.System})
 	}
 	for _, m := range req.Messages {
 		switch m.Role {

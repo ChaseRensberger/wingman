@@ -1,7 +1,6 @@
 id = "anthropic/claude-haiku-4.5"
 display_name = "Claude Haiku 4.5 via Anthropic"
-interface_profiles = ["anthropic.messages.v1"]
-supported_parameters = ["sampling.temperature", "sampling.top_p", "limits.max_output_tokens"]
+route_profile = "anthropic.messages"
 
 [[capabilities]]
 id = "text-input"

@@ -58,6 +58,10 @@ type Request struct {
 	// simultaneously by every provider; callers requiring both should
 	// reserve OutputSchema for the final no-tool turn.
 	OutputSchema *OutputSchema
+	// ProviderOptions carries provider-native request fields that are not part
+	// of the cross-provider API. The outer key is the provider id or API family;
+	// providers ignore namespaces they do not own.
+	ProviderOptions ProviderOptions
 }
 
 // OutputSchema describes a JSON schema the model's response must conform to.

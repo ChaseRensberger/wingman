@@ -28,6 +28,7 @@ type Config struct {
 	BaseURL         string
 	MaxTokens       int
 	MaxRetries      int
+	Profile         openaichat.Profile
 	Options         map[string]any
 }
 
@@ -49,6 +50,7 @@ type Client struct {
 	maxTokens       int
 	httpClient      *http.Client
 	maxRetries      int
+	profile         openaichat.Profile
 	route           route.Route
 }
 
@@ -119,6 +121,18 @@ func New(cfg Config) (*Client, error) {
 		maxRetries = defaultMaxRetries
 	}
 
+	profile := cfg.Profile
+	if profile.ID == "" {
+		if id, ok := cfg.Options["route_profile"].(string); ok && id != "" {
+			if p, ok := openaichat.KnownProfile(id); ok {
+				profile = p
+			}
+		}
+	}
+	if profile.ID == "" {
+		profile, _ = openaichat.KnownProfile(openaichat.ProfileCompatChat)
+	}
+
 	c := &Client{
 		providerID:      providerID,
 		catalogProvider: catalogProvider,
@@ -128,6 +142,7 @@ func New(cfg Config) (*Client, error) {
 		maxTokens:       maxTokens,
 		httpClient:      &http.Client{Timeout: httpTimeout},
 		maxRetries:      maxRetries,
+		profile:         profile,
 	}
 	c.route = route.Route{
 		ID:        "openai-compatible-chat",
@@ -145,9 +160,10 @@ func (c *Client) Info() models.ModelInfo {
 	if info, ok := catalog.Get(c.catalogProvider, c.model); ok {
 		info.API = models.APIOpenAICompletions
 		info.BaseURL = c.baseURL
+		info.Compat = c.profile
 		return info
 	}
-	return models.ModelInfo{Provider: c.providerID, ID: c.model, API: models.APIOpenAICompletions, BaseURL: c.baseURL}
+	return models.ModelInfo{Provider: c.providerID, ID: c.model, API: models.APIOpenAICompletions, BaseURL: c.baseURL, Compat: c.profile}
 }
 
 func (c *Client) CountTokens(_ context.Context, msgs []models.Message) (int, error) {
@@ -171,6 +187,7 @@ func (c *Client) modelRef() route.ModelRef {
 		BaseURL:         c.baseURL,
 		MaxOutputTokens: c.maxTokens,
 		Info:            c.Info(),
+		Compat:          c.profile,
 	}
 }
 

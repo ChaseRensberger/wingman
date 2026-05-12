@@ -210,7 +210,7 @@ func projectModel(providerModel ProviderModel, labModel LabModel) Model {
 		Reasoning:        hasCapability(providerModel, CapabilityReasoning),
 		ToolCall:         hasCapability(providerModel, CapabilityToolCalling) || hasCapability(providerModel, CapabilityFunctionCalling),
 		StructuredOutput: hasCapability(providerModel, CapabilityStructuredOutput),
-		Temperature:      slices.Contains(providerModel.SupportedParameters, ParameterTemperature),
+		RouteProfile:     providerModel.RouteProfile,
 		Knowledge:        labModel.KnowledgeCutoff,
 		ReleaseDate:      labModel.ReleaseDate,
 		LastUpdated:      labModel.LastUpdated,

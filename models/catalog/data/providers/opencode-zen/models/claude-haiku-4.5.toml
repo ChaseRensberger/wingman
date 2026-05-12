@@ -1,7 +1,6 @@
 id = "opencode-zen/claude-haiku-4.5"
 display_name = "Claude Haiku 4.5 via OpenCode Zen"
-interface_profiles = ["openai.chatcompletions.v1"]
-supported_parameters = ["sampling.temperature", "sampling.top_p", "limits.max_output_tokens"]
+route_profile = "opencode-zen.openai-chat"
 
 [[capabilities]]
 id = "text-input"

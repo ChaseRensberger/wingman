@@ -1,7 +1,6 @@
 id = "opencode-zen/gpt-5.5"
 display_name = "GPT-5.5 via OpenCode Zen"
-interface_profiles = ["openai.chatcompletions.v1"]
-supported_parameters = ["limits.max_output_tokens"]
+route_profile = "opencode-zen.openai-chat"
 
 [[capabilities]]
 id = "text-input"

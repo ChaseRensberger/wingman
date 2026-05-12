@@ -21,6 +21,7 @@ type Model struct {
 	ToolCall         bool       `json:"tool_call"`
 	StructuredOutput bool       `json:"structured_output,omitempty"`
 	Temperature      bool       `json:"temperature,omitempty"`
+	RouteProfile     string     `json:"route_profile,omitempty"`
 	Knowledge        string     `json:"knowledge,omitempty"`
 	ReleaseDate      string     `json:"release_date,omitempty"`
 	LastUpdated      string     `json:"last_updated,omitempty"`

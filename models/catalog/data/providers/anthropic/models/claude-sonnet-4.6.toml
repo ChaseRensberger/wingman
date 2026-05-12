@@ -1,7 +1,6 @@
 id = "anthropic/claude-sonnet-4.6"
 display_name = "Claude Sonnet 4.6 via Anthropic"
-interface_profiles = ["anthropic.messages.v1"]
-supported_parameters = ["sampling.temperature", "sampling.top_p", "limits.max_output_tokens"]
+route_profile = "anthropic.messages"
 
 [[capabilities]]
 id = "text-input"

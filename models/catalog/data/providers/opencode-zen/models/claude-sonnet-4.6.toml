@@ -1,7 +1,6 @@
 id = "opencode-zen/claude-sonnet-4.6"
 display_name = "Claude Sonnet 4.6 via OpenCode Zen"
-interface_profiles = ["openai.chatcompletions.v1"]
-supported_parameters = ["sampling.temperature", "sampling.top_p", "limits.max_output_tokens"]
+route_profile = "opencode-zen.openai-chat"
 
 [[capabilities]]
 id = "text-input"
