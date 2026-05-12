@@ -1,6 +1,6 @@
 id = "opencode-zen/claude-opus-4.7"
 display_name = "Claude Opus 4.7 via OpenCode Zen"
-interface_profiles = ["anthropic.messages.v1"]
+interface_profiles = ["openai.chatcompletions.v1"]
 supported_parameters = ["sampling.temperature", "sampling.top_p", "limits.max_output_tokens"]
 
 [[capabilities]]

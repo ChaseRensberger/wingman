@@ -48,8 +48,9 @@ import (
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
+	"github.com/chaserensberger/wingman/models/protocols/anthropicmessages"
 	provider "github.com/chaserensberger/wingman/models/providers"
-	"github.com/chaserensberger/wingman/models/transform"
+	"github.com/chaserensberger/wingman/models/route"
 )
 
 // Meta is the registry entry for the Anthropic provider.
@@ -81,7 +82,8 @@ const (
 	defaultModel      = "claude-haiku-4-5"
 	defaultMaxTokens  = 4096
 	defaultMaxRetries = 3
-	apiURL            = "https://api.anthropic.com/v1/messages"
+	baseURL           = "https://api.anthropic.com/v1"
+	apiURL            = baseURL + "/messages"
 	apiTokenURL       = "https://api.anthropic.com/v1/messages/count_tokens"
 	apiVersion        = "2023-06-01"
 	httpTimeout       = 5 * time.Minute
@@ -96,6 +98,7 @@ type Client struct {
 	maxTokens  int
 	httpClient *http.Client
 	maxRetries int
+	route      route.Route
 }
 
 // New constructs a Client. API key resolution order: Config.APIKey, then
@@ -164,13 +167,22 @@ func New(cfg ...Config) (*Client, error) {
 		maxRetries = defaultMaxRetries
 	}
 
-	return &Client{
+	client := &Client{
 		apiKey:     apiKey,
 		model:      model,
 		maxTokens:  maxTokens,
 		httpClient: &http.Client{Timeout: httpTimeout},
 		maxRetries: maxRetries,
-	}, nil
+	}
+	client.route = route.Route{
+		ID:        "anthropic-messages",
+		Provider:  "anthropic",
+		Protocol:  anthropicmessages.Protocol{},
+		Endpoint:  route.Path("/messages"),
+		Auth:      route.Header("x-api-key", apiKey),
+		Transport: route.HTTPTransport{Client: client.httpClient, MaxRetries: maxRetries, MaxRetryDelay: maxRetryDelay},
+	}
+	return client, nil
 }
 
 // Info returns the catalog ModelInfo for this client's model. If the model is
@@ -180,12 +192,14 @@ func New(cfg ...Config) (*Client, error) {
 func (c *Client) Info() models.ModelInfo {
 	if info, ok := catalog.Get("anthropic", c.model); ok {
 		info.API = models.APIAnthropicMessages
+		info.BaseURL = baseURL
 		return info
 	}
 	return models.ModelInfo{
 		Provider: "anthropic",
 		ID:       c.model,
 		API:      models.APIAnthropicMessages,
+		BaseURL:  baseURL,
 	}
 }
 
@@ -248,32 +262,17 @@ func (c *Client) CountTokens(ctx context.Context, msgs []models.Message) (int, e
 // reconciles orphaned tool calls, elides empty messages). The transform is
 // pure; the caller's slice is not mutated.
 func (c *Client) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
-	info := c.Info()
-	req.Messages = transform.Apply(req.Messages, transform.Target{
-		Provider:     "anthropic",
-		API:          models.APIAnthropicMessages,
-		ModelID:      c.model,
-		Capabilities: info.Capabilities,
-	})
+	return c.route.Stream(ctx, c.modelRef(), req)
+}
 
-	built := c.buildRequest(req)
-	built.wire.Stream = true
-
-	body, err := json.Marshal(built.wire)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: marshal request: %w", err)
+func (c *Client) modelRef() route.ModelRef {
+	return route.ModelRef{
+		Provider:        "anthropic",
+		ModelID:         c.model,
+		BaseURL:         baseURL,
+		MaxOutputTokens: c.maxTokens,
+		Info:            c.Info(),
 	}
-
-	resp, err := c.doStreamWithRetry(ctx, body, built.needsThinkingBeta)
-	if err != nil {
-		return nil, err
-	}
-
-	// 64-event buffer is generous; Anthropic typically emits a few events
-	// per second and the consumer drains synchronously in the agent loop.
-	out := models.NewEventStream[models.StreamPart, *models.Message](64)
-	go runStream(ctx, resp, out, c.origin())
-	return out, nil
 }
 
 // runStream owns the http.Response and emits parsed events on out. It MUST
@@ -328,7 +327,7 @@ func runStream(ctx context.Context, resp *http.Response, out *models.EventStream
 // Anthropic doesn't supply ids for text/thinking blocks). For tool_use blocks
 // the Anthropic-supplied tool_use_id is the models id.
 type streamParser struct {
-	out      *models.EventStream[models.StreamPart, *models.Message]
+	out        *models.EventStream[models.StreamPart, *models.Message]
 	terminated bool
 
 	// origin is stamped on the assembled assistant message so downstream
@@ -357,8 +356,8 @@ const (
 
 type blockState struct {
 	kind     blockKind
-	id       string         // models block id (also tool_use_id for tool blocks)
-	toolName string         // tool_use only
+	id       string // models block id (also tool_use_id for tool blocks)
+	toolName string // tool_use only
 	textBuf  strings.Builder
 	jsonBuf  strings.Builder // raw input JSON for tool_use
 	// Reasoning extras: Anthropic may emit a signature_delta (extended
@@ -654,12 +653,12 @@ type anthropicMessage struct {
 type contentBlock struct {
 	Type      string         `json:"type"`
 	Text      string         `json:"text,omitempty"`
-	ID        string         `json:"id,omitempty"`         // tool_use
-	Name      string         `json:"name,omitempty"`       // tool_use
-	Input     map[string]any `json:"input,omitempty"`      // tool_use
+	ID        string         `json:"id,omitempty"`          // tool_use
+	Name      string         `json:"name,omitempty"`        // tool_use
+	Input     map[string]any `json:"input,omitempty"`       // tool_use
 	ToolUseID string         `json:"tool_use_id,omitempty"` // tool_result
-	Content   any            `json:"content,omitempty"`    // tool_result (string or []contentBlock)
-	IsError   bool           `json:"is_error,omitempty"`   // tool_result
+	Content   any            `json:"content,omitempty"`     // tool_result (string or []contentBlock)
+	IsError   bool           `json:"is_error,omitempty"`    // tool_result
 	// Extended thinking round-trip fields:
 	Thinking  string `json:"thinking,omitempty"`
 	Signature string `json:"signature,omitempty"`
@@ -716,7 +715,7 @@ type thinkingConfig struct {
 // struct with any extra request-level metadata (e.g. beta headers) that Stream
 // needs to inject before sending.
 type builtRequest struct {
-	wire             request
+	wire              request
 	needsThinkingBeta bool // inject interleaved-thinking beta header
 }
 
@@ -775,7 +774,7 @@ func (c *Client) buildRequest(req models.Request) builtRequest {
 			if req.ToolChoice.Tool != "" {
 				r.ToolChoice = &toolChoice{Type: "tool", Name: req.ToolChoice.Tool}
 			}
-		// ToolChoiceAuto and zero-value: omit — Anthropic defaults to auto.
+			// ToolChoiceAuto and zero-value: omit — Anthropic defaults to auto.
 		}
 	}
 
@@ -826,7 +825,7 @@ func (c *Client) buildRequest(req models.Request) builtRequest {
 // Part mapping:
 //   - TextPart       -> {type:"text", text}
 //   - ReasoningPart  -> {type:"thinking", thinking, signature} or
-//                       {type:"redacted_thinking", data: signature} when redacted
+//     {type:"redacted_thinking", data: signature} when redacted
 //   - ToolCallPart   -> {type:"tool_use", id, name, input}
 //   - ToolResultPart -> {type:"tool_result", tool_use_id, content, is_error}
 //   - ImagePart      -> currently dropped (image input not wired in v0.1)

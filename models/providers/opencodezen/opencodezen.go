@@ -23,7 +23,7 @@ const (
 	baseURL      = "https://opencode.ai/zen/v1"
 	providerID   = "opencodezen"
 	catalogID    = "opencode-zen"
-	defaultModel = "claude-sonnet-4.5"
+	defaultModel = "claude-sonnet-4.6"
 )
 
 // Meta is the registry entry for the OpenCode Zen provider.

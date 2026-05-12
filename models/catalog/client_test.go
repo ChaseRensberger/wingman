@@ -45,8 +45,8 @@ func TestBundledSnapshotIncludesOpenCodeZenDefault(t *testing.T) {
 	if !ok {
 		t.Fatal("expected opencode-zen provider in bundled catalog")
 	}
-	if _, ok := models["claude-sonnet-4.5"]; !ok {
-		t.Fatal("expected opencode-zen claude-sonnet-4.5 in bundled catalog")
+	if _, ok := models["claude-sonnet-4.6"]; !ok {
+		t.Fatal("expected opencode-zen claude-sonnet-4.6 in bundled catalog")
 	}
 }
 

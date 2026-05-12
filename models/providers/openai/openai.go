@@ -58,8 +58,9 @@ import (
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
+	"github.com/chaserensberger/wingman/models/protocols/openairesponses"
 	provider "github.com/chaserensberger/wingman/models/providers"
-	"github.com/chaserensberger/wingman/models/transform"
+	"github.com/chaserensberger/wingman/models/route"
 )
 
 // Meta is the registry entry for the OpenAI provider.
@@ -85,10 +86,10 @@ type Config struct {
 }
 
 const (
-	defaultModel      = "gpt-4o"
+	defaultModel      = "gpt-5.5"
 	defaultMaxTokens  = 4096
 	defaultMaxRetries = 3
-	defaultBaseURL    = "https://api.openai.com/v1/responses"
+	defaultBaseURL    = "https://api.openai.com/v1"
 	httpTimeout       = 5 * time.Minute
 	maxRetryDelay     = 60 * time.Second
 )
@@ -101,6 +102,7 @@ type Client struct {
 	maxTokens  int
 	httpClient *http.Client
 	maxRetries int
+	route      route.Route
 }
 
 // New constructs a Client. API key resolution order: Config.APIKey,
@@ -178,14 +180,28 @@ func New(cfg ...Config) (*Client, error) {
 		maxRetries = defaultMaxRetries
 	}
 
-	return &Client{
+	client := &Client{
 		apiKey:     apiKey,
 		model:      model,
 		baseURL:    baseURL,
 		maxTokens:  maxTokens,
 		httpClient: &http.Client{Timeout: httpTimeout},
 		maxRetries: maxRetries,
-	}, nil
+	}
+	client.route = route.Route{
+		ID:       "openai-responses",
+		Provider: "openai",
+		Protocol: openairesponses.Protocol{},
+		Endpoint: route.EndpointFunc(func(ref route.ModelRef) (string, error) {
+			if strings.HasSuffix(strings.TrimRight(ref.BaseURL, "/"), "/responses") {
+				return strings.TrimRight(ref.BaseURL, "/"), nil
+			}
+			return route.JoinPath(ref.BaseURL, "/responses")
+		}),
+		Auth:      route.Bearer(apiKey),
+		Transport: route.HTTPTransport{Client: client.httpClient, MaxRetries: maxRetries, MaxRetryDelay: maxRetryDelay},
+	}
+	return client, nil
 }
 
 // Info returns catalog ModelInfo. API is always stamped to APIOpenAIResponses.
@@ -241,28 +257,23 @@ func (c *Client) CountTokens(_ context.Context, msgs []models.Message) (int, err
 
 // Stream starts a streaming Responses API request.
 func (c *Client) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
-	info := c.Info()
-	req.Messages = transform.Apply(req.Messages, transform.Target{
-		Provider:     "openai",
-		API:          models.APIOpenAIResponses,
-		ModelID:      c.model,
-		Capabilities: info.Capabilities,
-	})
+	return c.route.Stream(ctx, c.modelRef(), req)
+}
 
-	built := c.buildRequest(req, info.Capabilities)
-	body, err := json.Marshal(built)
-	if err != nil {
-		return nil, fmt.Errorf("openai: marshal request: %w", err)
+// Prepare lowers a provider-neutral request into the HTTP request that Stream
+// would send, without performing network I/O.
+func (c *Client) Prepare(ctx context.Context, req models.Request) (*route.PreparedRequest, error) {
+	return c.route.Prepare(ctx, c.modelRef(), req)
+}
+
+func (c *Client) modelRef() route.ModelRef {
+	return route.ModelRef{
+		Provider:        "openai",
+		ModelID:         c.model,
+		BaseURL:         c.baseURL,
+		MaxOutputTokens: c.maxTokens,
+		Info:            c.Info(),
 	}
-
-	resp, err := c.doStreamWithRetry(ctx, body)
-	if err != nil {
-		return nil, err
-	}
-
-	out := models.NewEventStream[models.StreamPart, *models.Message](64)
-	go runStream(ctx, resp, out, c.origin())
-	return out, nil
 }
 
 // ---- request building ------------------------------------------------------
@@ -351,7 +362,7 @@ func (c *Client) buildRequest(req models.Request, caps models.ModelCapabilities)
 					"name": req.ToolChoice.Tool,
 				}
 			}
-		// ToolChoiceAuto and zero-value: omit — Responses default is "auto".
+			// ToolChoiceAuto and zero-value: omit — Responses default is "auto".
 		}
 	}
 
