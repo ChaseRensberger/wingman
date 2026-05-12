@@ -1,6 +1,0 @@
-id = "openai"
-display_name = "OpenAI"
-base_urls = ["https://api.openai.com/v1"]
-
-[auth]
-env_vars = ["OPENAI_API_KEY"]
