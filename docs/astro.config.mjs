@@ -6,13 +6,14 @@ import theme from "toolbeam-docs-theme";
 
 // https://astro.build/config
 export default defineConfig({
+  base: "/docs",
   markdown: {
     rehypePlugins: [rehypeHeadingIds],
   },
   integrations: [
     starlight({
       title: "Wingman",
-      favicon: "/WingmanBlue.png",
+      favicon: "/icon-32.png",
       expressiveCode: { themes: ["github-light", "github-dark"] },
       markdown: {
         headingLinks: false,
@@ -48,13 +49,6 @@ export default defineConfig({
           label: "Core",
           items: [
             { label: "Sessions", slug: "core/sessions" },
-            { label: "WingModels", slug: "core/wingmodels" },
-          ],
-        },
-        {
-          label: "Concepts",
-          items: [
-            { label: "Context Handoff", slug: "concepts/context-handoff" },
           ],
         },
       ],

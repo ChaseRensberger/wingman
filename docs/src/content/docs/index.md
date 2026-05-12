@@ -27,7 +27,7 @@ and many many more...
 
 ## Next Steps
 
-- **Want to start using Wingman?** Check out the [Quickstart](/quickstart)
+- **Want to start using Wingman?** Check out the [Quickstart](/docs/quickstart)
 - **Have an idea for how I can improve the project?** [Create an issue](https://github.com/chaserensberger/wingman/issues)
 - **Want to contribute?** [Open a PR](https://github.com/chaserensberger/wingman/pulls)
 - **Want to talk to me directly/join the community?** [Join the discord]()

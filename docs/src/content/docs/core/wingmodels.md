@@ -2,13 +2,12 @@
 title: "WingModels"
 group: "Core"
 order: 103
+draft: true
 ---
 
 # WingModels
 
-WingModels is Wingman's model runtime. In code it is the `models/` package; the WingModels name is the docs/product name.
-
-Its job is narrow: give the agent runtime one stable way to call LLM providers, stream normalized events, preserve conversation history across providers, and expose enough model metadata for capability gates, cost display, and compaction decisions.
+WingModels is Wingman's provider agnostic model SDK. It provides a stable way to call a variety of model providers, stream normalized events, preserve conversation history across providers, and expose enough model metadata for capability gates, cost display, and compaction decisions.
 
 The core interface is intentionally small:
 
