@@ -3,7 +3,7 @@
 // A Session owns:
 //   - an identifier (ULID)
 //   - a working directory passed to tool executions
-//   - a models.Model + system prompt + tool registry
+//   - a models.Client + model ref + system prompt + tool registry
 //   - the running message history
 //   - optional lifecycle hooks (TransformHistory / TransformContext)
 //   - optional persistence via WithStore
@@ -44,16 +44,18 @@ import (
 
 // Session is a single conversation. Construct with New.
 type Session struct {
-	id      string
-	workDir string
-	model   models.Model
-	system  string
-	tools   []tool.Tool
-	logger  *slog.Logger
+	id        string
+	workDir   string
+	client    models.Client
+	model     models.ModelRef
+	modelInfo models.ModelInfo
+	system    string
+	tools     []tool.Tool
+	logger    *slog.Logger
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
-	// (model can change via SetModel between turns).
+	// (model can change via SetModelRef between turns).
 	plugins []plugin.Plugin
 
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
@@ -90,8 +92,8 @@ type Option func(*Session)
 
 // New returns a Session with a freshly minted KSUID (ses_ prefix) and
 // the supplied options applied. A new Session has an empty history and
-// no model; Run/RunStream will return ErrNoModel until WithModel (or
-// SetModel) is applied.
+// no model; Run/RunStream will return ErrNoModel until WithClient and
+// WithModelRef (or SetModelRef) are applied.
 //
 // Plugins are opt-in. A bare New() session runs the loop with no
 // hooks, no extra tools, and no extra sinks. Use WithPlugin to install
@@ -112,9 +114,31 @@ func WithWorkDir(dir string) Option {
 	return func(s *Session) { s.workDir = dir }
 }
 
-// WithModel sets the models.Model used for inference.
-func WithModel(m models.Model) Option {
-	return func(s *Session) { s.model = m }
+// WithClient sets the model client used for inference.
+func WithClient(c models.Client) Option {
+	return func(s *Session) { s.client = c }
+}
+
+// WithModelRef sets the model used for inference.
+func WithModelRef(ref models.ModelRef, info models.ModelInfo) Option {
+	return func(s *Session) {
+		s.model = ref
+		s.modelInfo = info
+	}
+}
+
+// WithModel is a compatibility helper for tests and embedders that already
+// have a concrete client-like model value. It does not change the loop's
+// client/model-ref contract.
+func WithModel(c models.Client) Option {
+	return func(s *Session) {
+		s.client = c
+		if infoProvider, ok := c.(interface{ Info() models.ModelInfo }); ok {
+			info := infoProvider.Info()
+			s.model = models.ModelRef{Provider: info.Provider, ID: info.ID, API: info.API, BaseURL: info.BaseURL}
+			s.modelInfo = info
+		}
+	}
 }
 
 // WithSystem sets the system prompt sent on every turn.
@@ -198,7 +222,7 @@ func WithMessageSink(fn func(models.Message)) Option {
 // WithOutputSchema constrains the assistant's reply on every loop turn
 // to a JSON document conforming to the supplied schema. Providers that
 // do not support native structured output silently ignore this; consult
-// Model.Info().Capabilities.StructuredOutput to detect support.
+// ModelInfo.Capabilities.StructuredOutput to detect support.
 //
 // When the session has tools configured, the schema is sent on every
 // turn including tool-calling turns. Providers that disallow tools and
@@ -232,12 +256,12 @@ func (s *Session) WorkDir() string {
 	return s.workDir
 }
 
-// SetModel swaps the active model. Useful for handlers that build the
-// model lazily after constructing the session.
-func (s *Session) SetModel(m models.Model) {
+// SetModelRef swaps the active model.
+func (s *Session) SetModelRef(ref models.ModelRef, info models.ModelInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.model = m
+	s.model = ref
+	s.modelInfo = info
 }
 
 // SetSystem replaces the system prompt.
@@ -348,12 +372,14 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 // keeps the running history in sync.
 func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Sink) (*Result, error) {
 	s.mu.Lock()
-	if s.model == nil {
+	if s.client == nil || s.model.Provider == "" || s.model.ID == "" {
 		s.mu.Unlock()
 		return nil, ErrNoModel
 	}
 	// Snapshot inputs.
+	client := s.client
 	model := s.model
+	modelInfo := s.modelInfo
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
 	workDir := s.workDir
@@ -444,11 +470,10 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	var persistErr error
 	nextMsgIdx := len(historySnap)
 	if logger != nil {
-		info := model.Info()
 		logger = logger.With(
 			"session_id", s.id,
-			"provider", info.Provider,
-			"model", info.ID,
+			"provider", model.Provider,
+			"model", model.ID,
 			"tools", len(tools),
 			"workdir_set", workDir != "",
 		)
@@ -476,7 +501,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	})
 
 	cfg := loop.Config{
+		Client:       client,
 		Model:        model,
+		ModelInfo:    modelInfo,
 		System:       system,
 		Tools:        tools,
 		WorkDir:      workDir,

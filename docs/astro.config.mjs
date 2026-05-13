@@ -6,7 +6,6 @@ import theme from "toolbeam-docs-theme";
 
 // https://astro.build/config
 export default defineConfig({
-  base: "/docs",
   markdown: {
     rehypePlugins: [rehypeHeadingIds],
   },

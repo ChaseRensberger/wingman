@@ -37,15 +37,18 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 		}()
 	}
 
-	if cfg.Model == nil {
+	if cfg.Client == nil {
+		return nil, errors.New("loop.Run: Config.Client is required")
+	}
+	if cfg.Model.Provider == "" || cfg.Model.ID == "" {
 		return nil, errors.New("loop.Run: Config.Model is required")
 	}
 	if cfg.Hooks.BeforeRun != nil && len(cfg.Messages) > 0 {
 		return nil, errors.New("loop.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
 	}
 
-	if cfg.OutputSchema != nil && !cfg.Model.Info().Capabilities.StructuredOutput {
-		info := cfg.Model.Info()
+	if cfg.OutputSchema != nil && !cfg.ModelInfo.Capabilities.StructuredOutput {
+		info := cfg.ModelInfo
 		return nil, fmt.Errorf("loop: model %s/%s does not support structured output", info.Provider, info.ID)
 	}
 
@@ -133,11 +136,13 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		// agent/hook).
 		if r.cfg.Hooks.TransformHistory != nil {
 			info := TransformHistoryInfo{
-				Step:     step + 1,
-				Messages: r.messages,
-				Usage:    r.usage,
-				Model:    r.cfg.Model,
-				Sink:     r.cfg.Sink,
+				Step:      step + 1,
+				Messages:  r.messages,
+				Usage:     r.usage,
+				Client:    r.cfg.Client,
+				Model:     r.cfg.Model,
+				ModelInfo: r.cfg.ModelInfo,
+				Sink:      r.cfg.Sink,
 			}
 			newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
 			if err != nil {
@@ -223,9 +228,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	msgs := r.messages
 	if r.cfg.Hooks.TransformContext != nil {
 		info := TransformContextInfo{
-			Step:     step,
-			Messages: append([]models.Message(nil), msgs...),
-			Model:    r.cfg.Model,
+			Step:      step,
+			Messages:  append([]models.Message(nil), msgs...),
+			Model:     r.cfg.Model,
+			ModelInfo: r.cfg.ModelInfo,
 		}
 		m, err := r.cfg.Hooks.TransformContext(ctx, info)
 		if err != nil {
@@ -258,9 +264,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	toolDefs := r.toolDefs
 	if r.cfg.Hooks.TransformToolDefs != nil {
 		info := TransformToolDefsInfo{
-			Step:  step,
-			Tools: append([]models.ToolDef(nil), toolDefs...),
-			Model: r.cfg.Model,
+			Step:      step,
+			Tools:     append([]models.ToolDef(nil), toolDefs...),
+			Model:     r.cfg.Model,
+			ModelInfo: r.cfg.ModelInfo,
 		}
 		out, err := r.cfg.Hooks.TransformToolDefs(ctx, info)
 		if err != nil {
@@ -272,9 +279,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	params := SamplingParams{}
 	if r.cfg.Hooks.TransformParams != nil {
 		info := TransformParamsInfo{
-			Step:   step,
-			Model:  r.cfg.Model,
-			Params: params,
+			Step:      step,
+			Model:     r.cfg.Model,
+			ModelInfo: r.cfg.ModelInfo,
+			Params:    params,
 		}
 		out, err := r.cfg.Hooks.TransformParams(ctx, info)
 		if err != nil {
@@ -284,6 +292,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	}
 
 	req := models.Request{
+		Model:        r.cfg.Model,
 		System:       system,
 		Messages:     msgs,
 		Tools:        toolDefs,
@@ -295,9 +304,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
-	stream, err := r.cfg.Model.Stream(ctx, req)
+	stream, err := r.cfg.Client.Stream(ctx, req)
 	if err != nil {
-		return Turn{}, fmt.Errorf("model.Stream: %w", err)
+		return Turn{}, fmt.Errorf("model stream: %w", err)
 	}
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's

@@ -637,6 +637,9 @@ func scanAgent(r rowScanner) (*Agent, error) {
 			return nil, err
 		}
 	}
+	if a.Provider != "" && a.Model != "" {
+		a.ModelRef = a.Provider + "/" + a.Model
+	}
 	return &a, nil
 }
 

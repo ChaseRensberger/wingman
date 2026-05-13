@@ -11,10 +11,12 @@ import (
 func newConfig(t *testing.T, model *looptest.RecordingModel, sink *looptest.RecordingSink, hooks loop.Hooks) loop.Config {
 	t.Helper()
 	return loop.Config{
-		Model:    model,
-		Sink:     sink,
-		Hooks:    hooks,
-		MaxSteps: 5,
+		Client:    model,
+		Model:     models.ModelRef{Provider: "looptest", ID: "recording-model"},
+		ModelInfo: model.Info(),
+		Sink:      sink,
+		Hooks:     hooks,
+		MaxSteps:  5,
 	}
 }
 

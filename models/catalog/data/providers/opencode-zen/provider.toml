@@ -1,6 +1,0 @@
-id = "opencode-zen"
-display_name = "OpenCode Zen"
-base_urls = ["https://opencode.ai/zen/v1"]
-
-[auth]
-env_vars = ["OPENCODE_API_KEY"]

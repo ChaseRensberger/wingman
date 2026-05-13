@@ -79,7 +79,7 @@ type streamResult struct {
 // complete.
 func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream, error) {
 	s.mu.RLock()
-	if s.model == nil {
+	if s.client == nil || s.model.Provider == "" || s.model.ID == "" {
 		s.mu.RUnlock()
 		return nil, ErrNoModel
 	}

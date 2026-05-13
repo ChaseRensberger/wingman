@@ -39,7 +39,10 @@ func ReplyWithTool(name, jsonArgs string) ScriptedReply {
 }
 
 // ToolCall is a helper for building multi-tool ScriptedReplies.
-type ToolCall struct{ Name string; Args map[string]any }
+type ToolCall struct {
+	Name string
+	Args map[string]any
+}
 
 // ReplyWithToolCalls returns a ScriptedReply that emits multiple tool calls.
 func ReplyWithToolCalls(calls ...ToolCall) ScriptedReply {
@@ -54,7 +57,7 @@ func ReplyWithToolCalls(calls ...ToolCall) ScriptedReply {
 // Stream setup.
 func ReplyError(err error) ScriptedReply { return ScriptedReply{err: err} }
 
-// RecordingModel implements models.Model by replaying a script of
+// RecordingModel implements models.Client by replaying a script of
 // pre-canned replies. It records every incoming request for later inspection.
 type RecordingModel struct {
 	mu       sync.Mutex
@@ -65,7 +68,9 @@ type RecordingModel struct {
 }
 
 // NewRecordingModel constructs a RecordingModel with the given script.
-func NewRecordingModel(script ...ScriptedReply) *RecordingModel { return &RecordingModel{script: script} }
+func NewRecordingModel(script ...ScriptedReply) *RecordingModel {
+	return &RecordingModel{script: script}
+}
 
 // RecordedRequest captures the arguments to a single Stream call.
 type RecordedRequest struct {
@@ -145,6 +150,23 @@ func (m *RecordingModel) Stream(ctx context.Context, req models.Request) (*model
 		stream.Push(models.FinishPart{Reason: reason, Usage: reply.usage, Message: msg})
 	}()
 	return stream, nil
+}
+
+// Prepare records and returns a synthetic prepared request.
+func (m *RecordingModel) Prepare(ctx context.Context, req models.Request) (*models.PreparedRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.requests = append(m.requests, RecordedRequest{
+		System: req.System, Messages: deepCopy(req.Messages), Tools: deepCopy(req.Tools),
+		ToolChoice: req.ToolChoice, Capabilities: req.Capabilities,
+		OutputSchema: req.OutputSchema, MaxOutputTokens: req.MaxOutputTokens,
+	})
+	return &models.PreparedRequest{Model: req.Model, API: req.Model.API, Body: map[string]any{}}, nil
+}
+
+// Generate drains Stream and returns the final message.
+func (m *RecordingModel) Generate(ctx context.Context, req models.Request) (*models.Message, error) {
+	return models.Generate(ctx, m, req)
 }
 
 // CountTokens returns a dummy token count.

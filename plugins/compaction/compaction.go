@@ -146,7 +146,9 @@ type Plugin struct {
 	keepTail      int
 	minMessages   int
 	summaryPrompt string
-	model         models.Model
+	client        models.Client
+	model         models.ModelRef
+	modelInfo     models.ModelInfo
 }
 
 // New constructs a compaction plugin with the supplied options applied
@@ -179,11 +181,17 @@ func WithMinMessages(n int) Option { return func(p *Plugin) { p.minMessages = n 
 // WithSummaryPrompt overrides the summarization system prompt.
 func WithSummaryPrompt(s string) Option { return func(p *Plugin) { p.summaryPrompt = s } }
 
-// WithModel uses a specific model for the summarization sub-call.
+// WithModelRef uses a specific model for the summarization sub-call.
 // Default: use the loop's model at invocation time. Useful when
 // summarization should run on a cheaper / faster / longer-context
 // model than the main conversation.
-func WithModel(m models.Model) Option { return func(p *Plugin) { p.model = m } }
+func WithModelRef(client models.Client, ref models.ModelRef, info models.ModelInfo) Option {
+	return func(p *Plugin) {
+		p.client = client
+		p.model = ref
+		p.modelInfo = info
+	}
+}
 
 // Name implements plugin.Plugin.
 func (p *Plugin) Name() string { return "compaction" }
@@ -213,28 +221,27 @@ func (p *Plugin) Install(r *plugin.Registry) error {
 // new marker. The pre-compaction messages are kept in history so the
 // transcript remains addressable on disk and via History().
 func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
+	client := p.client
 	model := p.model
-	if model == nil {
+	modelInfo := p.modelInfo
+	if client == nil {
+		client = info.Client
 		model = info.Model
+		modelInfo = info.ModelInfo
 	}
-	if model == nil {
+	if client == nil || model.Provider == "" || model.ID == "" {
 		return info.Messages, nil
 	}
 
 	if len(info.Messages) < p.minMessages {
 		return info.Messages, nil
 	}
-	ctxWindow := model.Info().ContextWindow
+	ctxWindow := modelInfo.ContextWindow
 	if ctxWindow <= 0 {
 		return info.Messages, nil
 	}
 
-	// Token estimate against the current snapshot. CountTokens is
-	// part of the Model contract; on error we fall back to chars/4.
-	tokens, err := model.CountTokens(ctx, info.Messages)
-	if err != nil {
-		tokens = approxTokens(info.Messages)
-	}
+	tokens := approxTokens(info.Messages)
 	if float64(tokens)/float64(ctxWindow) < p.threshold {
 		return info.Messages, nil
 	}
@@ -254,7 +261,7 @@ func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistor
 		return info.Messages, nil
 	}
 
-	summary, err := summarize(ctx, model, p.summaryPrompt, head)
+	summary, err := summarize(ctx, client, model, p.summaryPrompt, head)
 	if err != nil {
 		return nil, fmt.Errorf("summarize: %w", err)
 	}
@@ -354,15 +361,16 @@ func findLatestMarker(msgs []models.Message) int {
 // summarize runs a single non-tool LLM call to produce a compact
 // summary. Uses models.Run for sync drainage; we only want the
 // final assembled text.
-func summarize(ctx context.Context, model models.Model, prompt string, msgs []models.Message) (string, error) {
+func summarize(ctx context.Context, client models.Client, model models.ModelRef, prompt string, msgs []models.Message) (string, error) {
 	if prompt == "" {
 		prompt = defaultSummaryPrompt
 	}
 	req := models.Request{
+		Model:    model,
 		System:   prompt,
 		Messages: stripForSummarization(msgs),
 	}
-	out, err := models.Run(ctx, model, req)
+	out, err := client.Generate(ctx, req)
 	if err != nil {
 		return "", err
 	}

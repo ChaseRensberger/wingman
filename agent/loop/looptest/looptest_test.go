@@ -15,9 +15,11 @@ func TestRecordingModelAndSink(t *testing.T) {
 	sink := NewRecordingSink()
 
 	cfg := loop.Config{
-		Model:    m,
-		Sink:     sink,
-		Messages: []models.Message{models.NewUserText("start")},
+		Client:    m,
+		Model:     models.ModelRef{Provider: "looptest", ID: "recording-model"},
+		ModelInfo: m.Info(),
+		Sink:      sink,
+		Messages:  []models.Message{models.NewUserText("start")},
 	}
 
 	// First run consumes the "hi" reply.

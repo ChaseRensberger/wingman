@@ -1,4 +1,4 @@
-package anthropic
+package opencode
 
 import (
 	"github.com/chaserensberger/wingman/models/providers"
@@ -6,8 +6,8 @@ import (
 
 func init() {
 	provider.Register(provider.ProviderMeta{
-		ID:        "anthropic",
-		Name:      "Anthropic",
+		ID:        "opencode",
+		Name:      "OpenCode",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
 	})
 }

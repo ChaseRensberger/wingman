@@ -14,7 +14,8 @@ import (
 	"testing"
 
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/ollama"
+	_ "github.com/chaserensberger/wingman/models/providers/openai"
+	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -835,8 +836,8 @@ func TestProviders(t *testing.T) {
 		var providers []map[string]any
 		decodeJSON(t, resp, &providers)
 
-		if len(providers) < 2 {
-			t.Fatalf("expected at least 2 providers (anthropic, ollama), got %d", len(providers))
+		if len(providers) < 3 {
+			t.Fatalf("expected at least 3 providers (anthropic, openai, opencode), got %d", len(providers))
 		}
 
 		names := make(map[string]bool)
@@ -848,8 +849,11 @@ func TestProviders(t *testing.T) {
 		if !names["anthropic"] {
 			t.Error("expected anthropic in provider list")
 		}
-		if !names["ollama"] {
-			t.Error("expected ollama in provider list")
+		if !names["openai"] {
+			t.Error("expected openai in provider list")
+		}
+		if !names["opencode"] {
+			t.Error("expected opencode in provider list")
 		}
 	})
 

@@ -1,117 +1,211 @@
 package models
 
 import (
-	"errors"
-	"iter"
+	"encoding/json"
+	"fmt"
 	"sync"
 )
 
-// EventStream is a one-producer, one-consumer event channel with a single
-// final-result slot. Adapted from pi-mono's TypeScript EventStream<T,R>
-// (bb/pi-mono/packages/ai/src/scripts/event-stream.ts), translated to Go using
-// a buffered channel for events and a sync.Once for the final result.
-//
-// Usage on the producer side:
-//
-//	stream := NewEventStream[StreamPart, *Message](64)
-//	go func() {
-//	    defer stream.Close(finalMsg, nil) // always close exactly once
-//	    stream.Push(StreamStartPart{})
-//	    // ...
-//	}()
-//	return stream, nil
-//
-// Usage on the consumer side:
-//
-//	for part := range stream.Iter() {
-//	    // handle part
-//	}
-//	msg, err := stream.Final()
-//
-// Concurrency:
-//   - Push and Close are safe from a single producer goroutine. Calling Push
-//     after Close panics on a closed channel; producers must structure code
-//     so Close is the last operation.
-//   - Iter and Final are safe from a single consumer goroutine.
-//   - Final blocks until Close has been called, even if the consumer hasn't
-//     drained Iter yet.
-type EventStream[E any, R any] struct {
-	events chan E
+// ------------------------------------------------------------------
+// StreamPart
+// ------------------------------------------------------------------
 
-	closeOnce sync.Once
-	done      chan struct{}
-	result    R
-	err       error
+// StreamPart is the closed union of values emitted by Model.Stream.
+type StreamPart interface {
+	isStreamPart()
 }
 
-// NewEventStream constructs a stream with the given buffered event capacity.
-// Cap should be sized to absorb a typical burst of stream parts without
-// blocking the producer; 64 is a reasonable default for LLM streams.
-func NewEventStream[E any, R any](cap int) *EventStream[E, R] {
-	if cap < 0 {
-		cap = 0
+func (StreamStartPart) isStreamPart()      {}
+func (TextStartPart) isStreamPart()        {}
+func (TextDeltaPart) isStreamPart()        {}
+func (TextEndPart) isStreamPart()          {}
+func (ToolInputStartPart) isStreamPart()   {}
+func (ToolInputDeltaPart) isStreamPart()   {}
+func (ToolInputEndPart) isStreamPart()     {}
+func (ToolCallPart_) isStreamPart()        {}
+func (FinishPart) isStreamPart()           {}
+func (ErrorPart) isStreamPart()            {}
+func (ResponseMetadataPart) isStreamPart() {}
+
+// StreamStartPart signals the beginning of a stream.
+type StreamStartPart struct{}
+
+// TextStartPart begins a text block.
+type TextStartPart struct {
+	ID string `json:"id"`
+}
+
+// TextDeltaPart carries an incremental text fragment.
+type TextDeltaPart struct {
+	ID    string `json:"id"`
+	Delta string `json:"delta"`
+}
+
+// TextEndPart ends a text block.
+type TextEndPart struct {
+	ID string `json:"id"`
+}
+
+// ToolInputStartPart begins a tool-call argument block.
+type ToolInputStartPart struct {
+	ID       string `json:"id"`
+	ToolName string `json:"tool_name"`
+}
+
+// ToolInputDeltaPart carries an incremental tool argument fragment.
+type ToolInputDeltaPart struct {
+	ID    string `json:"id"`
+	Delta string `json:"delta"`
+}
+
+// ToolInputEndPart ends a tool-call argument block.
+type ToolInputEndPart struct {
+	ID string `json:"id"`
+}
+
+// ToolCallPart_ is a stream event representing a completed tool call.
+type ToolCallPart_ struct {
+	ID       string         `json:"id"`
+	ToolName string         `json:"tool_name"`
+	Input    map[string]any `json:"input"`
+}
+
+// FinishPart terminates the stream and carries the assembled message.
+type FinishPart struct {
+	Reason  FinishReason `json:"reason"`
+	Usage   Usage        `json:"usage"`
+	Message *Message     `json:"message,omitempty"`
+}
+
+// ErrorPart signals a terminal stream error.
+type ErrorPart struct {
+	Error string `json:"error"`
+}
+
+// ResponseMetadataPart carries provider-specific metadata mid-stream.
+type ResponseMetadataPart struct {
+	Meta map[string]any `json:"meta"`
+}
+
+// ------------------------------------------------------------------
+// StreamPart registry
+// ------------------------------------------------------------------
+
+var (
+	streamPartRegistryMu sync.RWMutex
+	streamPartRegistry   = map[string]func(data []byte) (StreamPart, error){
+		"stream_start": func(data []byte) (StreamPart, error) {
+			var p StreamStartPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"text_start": func(data []byte) (StreamPart, error) {
+			var p TextStartPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"text_delta": func(data []byte) (StreamPart, error) {
+			var p TextDeltaPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"text_end": func(data []byte) (StreamPart, error) {
+			var p TextEndPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"tool_input_start": func(data []byte) (StreamPart, error) {
+			var p ToolInputStartPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"tool_input_delta": func(data []byte) (StreamPart, error) {
+			var p ToolInputDeltaPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"tool_input_end": func(data []byte) (StreamPart, error) {
+			var p ToolInputEndPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"tool_call": func(data []byte) (StreamPart, error) {
+			var p ToolCallPart_
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"finish": func(data []byte) (StreamPart, error) {
+			var p FinishPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"error": func(data []byte) (StreamPart, error) {
+			var p ErrorPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
+		"response_metadata": func(data []byte) (StreamPart, error) {
+			var p ResponseMetadataPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
 	}
-	return &EventStream[E, R]{
-		events: make(chan E, cap),
-		done:   make(chan struct{}),
+)
+
+func streamPartTypeName(p StreamPart) string {
+	switch p.(type) {
+	case StreamStartPart:
+		return "stream_start"
+	case TextStartPart:
+		return "text_start"
+	case TextDeltaPart:
+		return "text_delta"
+	case TextEndPart:
+		return "text_end"
+	case ToolInputStartPart:
+		return "tool_input_start"
+	case ToolInputDeltaPart:
+		return "tool_input_delta"
+	case ToolInputEndPart:
+		return "tool_input_end"
+	case ToolCallPart_:
+		return "tool_call"
+	case FinishPart:
+		return "finish"
+	case ErrorPart:
+		return "error"
+	case ResponseMetadataPart:
+		return "response_metadata"
+	default:
+		return ""
 	}
 }
 
-// Push delivers an event to the stream. Blocks if the buffer is full and the
-// consumer is not draining; this is the intended back-pressure behavior.
-//
-// Push after Close is a programmer error and panics (sending on a closed
-// channel). Producers must structure code so Close is the last call.
-func (s *EventStream[E, R]) Push(event E) {
-	s.events <- event
-}
-
-// Close terminates the stream with a final result and optional error. Safe to
-// call multiple times; only the first call is recorded. Closing the events
-// channel signals the iterator to stop.
-//
-// Pass a zero R if there is no meaningful result (e.g. on early error). Pass
-// nil err on success.
-func (s *EventStream[E, R]) Close(result R, err error) {
-	s.closeOnce.Do(func() {
-		s.result = result
-		s.err = err
-		close(s.events)
-		close(s.done)
-	})
-}
-
-// Iter returns an iter.Seq over events. Ranging continues until Close is
-// called and the buffer is drained.
-//
-// Single-consumer: only one goroutine should range over Iter. Multiple
-// consumers would race on channel receives and observe arbitrary partitions
-// of the event stream.
-func (s *EventStream[E, R]) Iter() iter.Seq[E] {
-	return func(yield func(E) bool) {
-		for ev := range s.events {
-			if !yield(ev) {
-				return
-			}
-		}
+func MarshalStreamPart(p StreamPart) ([]byte, error) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
 	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	m["type"] = streamPartTypeName(p)
+	return json.Marshal(m)
 }
 
-// Final blocks until Close has been called, then returns the final result and
-// error recorded by Close. Safe to call from any goroutine, multiple times.
-//
-// Final does not drain the events channel; callers that haven't ranged over
-// Iter will not observe individual events but Final still resolves once the
-// producer has called Close. In practice consumers either:
-//   - Range Iter, then call Final to get the assembled result; or
-//   - Skip Iter entirely and only care about the final outcome (e.g.
-//     models.Run does this for synchronous calls).
-func (s *EventStream[E, R]) Final() (R, error) {
-	<-s.done
-	return s.result, s.err
+func UnmarshalStreamPart(data []byte) (StreamPart, error) {
+	var wrapper struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		return nil, err
+	}
+	streamPartRegistryMu.RLock()
+	fn, ok := streamPartRegistry[wrapper.Type]
+	streamPartRegistryMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown stream part type: %s", wrapper.Type)
+	}
+	return fn(data)
 }
-
-// ErrStreamNotClosed is reserved for future use by a non-blocking accessor.
-// Currently unused; Final blocks instead of returning this. Kept exported
-// so callers can refer to it without re-declaration.
-var ErrStreamNotClosed = errors.New("stream not yet closed")

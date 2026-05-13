@@ -57,6 +57,9 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		if got.Model != agent.Model {
 			t.Errorf("model mismatch: got %q, want %q", got.Model, agent.Model)
 		}
+		if got.ModelRef != agent.Provider+"/"+agent.Model {
+			t.Errorf("model_ref mismatch: got %q, want %q", got.ModelRef, agent.Provider+"/"+agent.Model)
+		}
 		if !reflect.DeepEqual(got.Options, agent.Options) {
 			t.Errorf("options mismatch: got %v, want %v", got.Options, agent.Options)
 		}
