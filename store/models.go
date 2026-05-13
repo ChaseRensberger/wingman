@@ -7,6 +7,7 @@ type Agent struct {
 	Name         string         `json:"name"`
 	Instructions string         `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
+	ModelRef     string         `json:"model_ref,omitempty"`
 	Provider     string         `json:"provider,omitempty"`
 	Model        string         `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`

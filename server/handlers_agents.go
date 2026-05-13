@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -13,6 +14,7 @@ type CreateAgentRequest struct {
 	Name         string         `json:"name"`
 	Instructions string         `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
+	ModelRef     string         `json:"model_ref,omitempty"`
 	Provider     string         `json:"provider,omitempty"`
 	Model        string         `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
@@ -35,12 +37,14 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	provider, model := splitModelRef(req.ModelRef, req.Provider, req.Model)
 	a := &store.Agent{
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
-		Provider:     req.Provider,
-		Model:        req.Model,
+		ModelRef:     joinModelRef(provider, model),
+		Provider:     provider,
+		Model:        model,
 		Options:      req.Options,
 		OutputSchema: req.OutputSchema,
 	}
@@ -89,6 +93,7 @@ type UpdateAgentRequest struct {
 	Name         *string        `json:"name,omitempty"`
 	Instructions *string        `json:"instructions,omitempty"`
 	Tools        []string       `json:"tools,omitempty"`
+	ModelRef     *string        `json:"model_ref,omitempty"`
 	Provider     *string        `json:"provider,omitempty"`
 	Model        *string        `json:"model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
@@ -123,11 +128,21 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Tools != nil {
 		a.Tools = req.Tools
 	}
-	if req.Provider != nil {
-		a.Provider = *req.Provider
-	}
-	if req.Model != nil {
-		a.Model = *req.Model
+	if req.ModelRef != nil || req.Provider != nil || req.Model != nil {
+		provider := a.Provider
+		model := a.Model
+		modelRef := ""
+		if req.ModelRef != nil {
+			modelRef = *req.ModelRef
+		}
+		if req.Provider != nil {
+			provider = *req.Provider
+		}
+		if req.Model != nil {
+			model = *req.Model
+		}
+		a.Provider, a.Model = splitModelRef(modelRef, provider, model)
+		a.ModelRef = joinModelRef(a.Provider, a.Model)
 	}
 	if req.Options != nil {
 		a.Options = req.Options
@@ -142,6 +157,24 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, a)
+}
+
+func splitModelRef(modelRef, provider, model string) (string, string) {
+	if modelRef == "" {
+		return provider, model
+	}
+	left, right, ok := strings.Cut(modelRef, "/")
+	if !ok || left == "" || right == "" {
+		return provider, model
+	}
+	return left, right
+}
+
+func joinModelRef(provider, model string) string {
+	if provider == "" || model == "" {
+		return ""
+	}
+	return provider + "/" + model
 }
 
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {

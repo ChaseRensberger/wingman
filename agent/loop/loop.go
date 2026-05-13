@@ -1,4 +1,4 @@
-// Package loop is the agent inference loop. It drives a models.Model
+// Package loop is the agent inference loop. It drives a models.Client
 // across multiple turns, dispatches tool calls between turns, and emits
 // lifecycle events to a sink.
 //
@@ -47,10 +47,16 @@ import (
 )
 
 // Config carries everything the loop needs to run. All fields except
-// Model and Messages have sensible zero-value defaults.
+// Client, Model, and Messages have sensible zero-value defaults.
 type Config struct {
-	// Model is the models.Model the loop streams against. Required.
-	Model models.Model
+	// Client streams provider requests. Required.
+	Client models.Client
+
+	// Model is the provider-qualified model ref sent on every request. Required.
+	Model models.ModelRef
+
+	// ModelInfo carries static metadata used for capability gates and hooks.
+	ModelInfo models.ModelInfo
 
 	// Messages is the conversation history the loop appends to. The loop
 	// mutates this slice in place: assistant messages from each turn and
@@ -90,8 +96,8 @@ type Config struct {
 	// text-only turn.
 	//
 	// Providers that lack native structured-output support silently ignore
-	// this field; consult Model.Info().Capabilities.StructuredOutput for
-	// reliable detection.
+	// this field; consult ModelInfo.Capabilities.StructuredOutput for reliable
+	// detection.
 	OutputSchema *models.OutputSchema
 
 	// MaxSteps caps the number of assistant turns. Zero means unlimited
@@ -258,18 +264,20 @@ type Hooks struct {
 // reflects the upcoming iteration. Messages is the loop's current
 // running history (the hook may inspect or copy but should treat it as
 // read-only; return a new slice to mutate). Usage is the cumulative
-// token usage across all completed turns. Model is the loop's model;
-// hooks may use it for sub-calls (e.g. summarization). Sink is the
+// token usage across all completed turns. Model is the loop's model ref.
+// Sink is the
 // loop's event sink: hooks that synthesize new history messages
 // (compaction markers, redaction notices, etc.) should emit a
 // MessageEvent for each so observers (storage, UIs) see them on the
 // same channel as loop-produced messages.
 type TransformHistoryInfo struct {
-	Step     int
-	Messages []models.Message
-	Usage    models.Usage
-	Model    models.Model
-	Sink     Sink
+	Step      int
+	Messages  []models.Message
+	Usage     models.Usage
+	Client    models.Client
+	Model     models.ModelRef
+	ModelInfo models.ModelInfo
+	Sink      Sink
 }
 
 // TransformHistoryHook is the signature for Hooks.TransformHistory. See its docs.
@@ -284,12 +292,13 @@ type BeforeRunHook func(ctx context.Context, current []models.Message) ([]models
 
 // TransformContextInfo is the input to a TransformContextHook. Step is
 // 1-indexed and reflects the current iteration. Messages is the slice
-// being prepared for the model (post-TransformHistory). Model is supplied so
-// hooks can introspect (e.g. context window) for budget decisions.
+// being prepared for the model (post-TransformHistory). ModelInfo is supplied
+// so hooks can introspect (e.g. context window) for budget decisions.
 type TransformContextInfo struct {
-	Step     int
-	Messages []models.Message
-	Model    models.Model
+	Step      int
+	Messages  []models.Message
+	Model     models.ModelRef
+	ModelInfo models.ModelInfo
 }
 
 // TransformContextHook is the signature for Hooks.TransformContext. See
@@ -315,9 +324,10 @@ type AfterRunHook func(ctx context.Context, info AfterRunInfo) error
 
 // TransformToolDefsInfo is the input to a TransformToolDefsHook.
 type TransformToolDefsInfo struct {
-	Step  int              // 1-indexed iteration the request is being built for
-	Tools []models.ToolDef // current tool definitions about to be sent to the model
-	Model models.Model     // the model the request is going to
+	Step      int              // 1-indexed iteration the request is being built for
+	Tools     []models.ToolDef // current tool definitions about to be sent to the model
+	Model     models.ModelRef  // the model the request is going to
+	ModelInfo models.ModelInfo
 }
 
 // TransformToolDefsHook is the signature for Hooks.TransformToolDefs.
@@ -331,9 +341,10 @@ type SamplingParams struct {
 
 // TransformParamsInfo is the input to a TransformParamsHook.
 type TransformParamsInfo struct {
-	Step   int
-	Model  models.Model
-	Params SamplingParams
+	Step      int
+	Model     models.ModelRef
+	ModelInfo models.ModelInfo
+	Params    SamplingParams
 }
 
 // TransformParamsResult is the output of a TransformParamsHook.

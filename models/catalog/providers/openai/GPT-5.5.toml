@@ -1,0 +1,13 @@
+id = "gpt-5.5"
+provider = "openai"
+api = "openai_responses"
+base_url = "https://api.openai.com/v1"
+auth_env = "OPENAI_API_KEY"
+context_window = 128000
+max_output = 8192
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true

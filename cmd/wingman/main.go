@@ -13,9 +13,8 @@ import (
 
 	"github.com/chaserensberger/wingman/internal/observability"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/ollama"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
-	_ "github.com/chaserensberger/wingman/models/providers/opencodezen"
+	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
 )

@@ -10,12 +10,14 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/ollama"
+	_ "github.com/chaserensberger/wingman/models/providers/openai"
+	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 )
 
 type CreateSessionRequest struct {
@@ -609,14 +611,15 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
 	}
 
-	model, err := s.buildModel(stored.Provider, stored.Model, stored.Options)
+	modelRef, modelInfo, client, err := s.buildModelClient(stored.Provider, stored.Model)
 	if err != nil {
 		return nil, err
 	}
 
 	opts := []session.Option{
 		session.WithID(sess.ID),
-		session.WithModel(model),
+		session.WithClient(client),
+		session.WithModelRef(modelRef, modelInfo),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
 		session.WithStore(s.store),
@@ -636,35 +639,33 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 	return session.New(opts...), nil
 }
 
-// buildModel instantiates a models.Model from the providers registry.
-// It merges the stored options with the model name and any API key from
-// the auth store.
-func (s *Server) buildModel(providerID, model string, opts map[string]any) (models.Model, error) {
-	merged := make(map[string]any, len(opts)+2)
-	for k, v := range opts {
-		merged[k] = v
+// buildModelClient resolves a model ref and returns a catalog-backed model client.
+func (s *Server) buildModelClient(providerID, model string) (models.ModelRef, models.ModelInfo, models.Client, error) {
+	ref := models.ModelRef{Provider: providerID, ID: model}
+	info, ok := catalog.Get(providerID, model)
+	if !ok {
+		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("unknown model: %s", ref.Ref())
 	}
-	merged["model"] = model
-
 	var auth *store.Auth
 	if s.store != nil {
 		var err error
 		auth, err = s.store.GetAuth()
 		if err != nil {
-			return nil, fmt.Errorf("failed to load auth: %w", err)
+			return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("failed to load auth: %w", err)
 		}
 	} else {
 		auth = &store.Auth{Providers: make(map[string]store.AuthCredential)}
 	}
+	keys := map[string]string{}
+	for id, cred := range auth.Providers {
+		if cred.Key != "" {
+			keys[id] = cred.Key
+		}
+	}
 	if cred, ok := auth.Providers[providerID]; ok && cred.Key != "" {
-		merged["api_key"] = cred.Key
+		keys[providerID] = cred.Key
 	}
-
-	m, err := provider.New(providerID, merged)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate provider %q: %w", providerID, err)
-	}
-	return m, nil
+	return ref, info, provider.NewClient(keys), nil
 }
 
 // resolveTools maps stored tool name strings to live tool.Tool
