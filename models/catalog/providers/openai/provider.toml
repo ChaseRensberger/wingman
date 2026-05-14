@@ -1,0 +1,2 @@
+base_url = "https://api.openai.com/v1"
+env = ["OPENAI_API_KEY"]

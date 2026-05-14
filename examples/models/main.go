@@ -38,7 +38,7 @@ func main() {
 	ref.BaseURL = info.BaseURL
 
 	client := provider.NewClient(map[string]string{
-		// Optional. If omitted, the client falls back to the catalog auth_env:
+		// Optional. If omitted, the client falls back to the provider catalog env:
 		// OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENCODE_API_KEY.
 		"opencode": os.Getenv("OPENCODE_API_KEY"),
 	})
@@ -59,8 +59,8 @@ func main() {
 	pretty, _ := json.MarshalIndent(prepared, "", "  ")
 	fmt.Printf("Prepared request:\n%s\n\n", pretty)
 
-	if os.Getenv(info.AuthEnv) == "" {
-		fmt.Printf("Set %s to run the live request.\n", info.AuthEnv)
+	if missing := missingEnv(info.Env); missing != "" {
+		fmt.Printf("Set %s to run the live request.\n", missing)
 		return
 	}
 
@@ -74,4 +74,13 @@ func main() {
 			fmt.Println(text.Text)
 		}
 	}
+}
+
+func missingEnv(keys []string) string {
+	for _, key := range keys {
+		if os.Getenv(key) == "" {
+			return key
+		}
+	}
+	return ""
 }

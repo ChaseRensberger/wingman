@@ -408,7 +408,7 @@ type ModelInfo struct {
 	ID                string            `json:"id"`
 	API               API               `json:"api,omitempty"`
 	BaseURL           string            `json:"base_url,omitempty"`
-	AuthEnv           string            `json:"auth_env,omitempty"`
+	Env               []string          `json:"env,omitempty"`
 	ContextWindow     int               `json:"context_window,omitempty"`
 	MaxOutput         int               `json:"max_output,omitempty"`
 	Capabilities      ModelCapabilities `json:"capabilities"`

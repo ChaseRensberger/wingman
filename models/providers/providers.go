@@ -116,8 +116,13 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	if c.Auth != nil {
 		apiKey = c.Auth[info.Provider]
 	}
-	if apiKey == "" && info.AuthEnv != "" {
-		apiKey = os.Getenv(info.AuthEnv)
+	if apiKey == "" {
+		for _, env := range info.Env {
+			if v := os.Getenv(env); v != "" {
+				apiKey = v
+				break
+			}
+		}
 	}
 	return &httpmodel.Model{
 		Info_:    info,

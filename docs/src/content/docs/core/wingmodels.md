@@ -174,7 +174,7 @@ client := provider.NewClient(map[string]string{
 })
 ```
 
-If an API key is not passed explicitly, the client falls back to the catalog entry's `auth_env`:
+If an API key is not passed explicitly, the client falls back to the first populated provider catalog `env` value:
 
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
@@ -208,21 +208,29 @@ The catalog is embedded TOML under `models/catalog/providers`.
 Current files:
 
 ```text
+models/catalog/providers/anthropic/provider.toml
 models/catalog/providers/anthropic/claude-sonnet-4-6.toml
+models/catalog/providers/openai/provider.toml
 models/catalog/providers/openai/GPT-5.5.toml
+models/catalog/providers/opencode/provider.toml
 models/catalog/providers/opencode/claude-sonnet-4-6.toml
 ```
 
 There is no generated snapshot and no lab/provider split. The catalog only contains fields that current code uses.
 
-Example:
+Example provider entry:
+
+```toml
+base_url = "https://opencode.ai/zen/v1"
+env = ["OPENCODE_API_KEY"]
+```
+
+Example model entry:
 
 ```toml
 id = "claude-sonnet-4-6"
 provider = "opencode"
 api = "anthropic_messages"
-base_url = "https://opencode.ai/zen/v1"
-auth_env = "OPENCODE_API_KEY"
 context_window = 200000
 max_output = 8192
 
@@ -235,11 +243,18 @@ structured_output = true
 
 Current catalog fields:
 
+Provider fields:
+
+- `base_url`: default provider API base URL.
+- `env`: environment variables required by the provider. The current API-key client uses the first populated value as the fallback API key.
+
+Model fields:
+
 - `id`: provider-local model ID.
 - `provider`: provider ID used in model refs.
 - `api`: protocol selector (`openai_responses`, `openai_completions`, or `anthropic_messages`).
-- `base_url`: provider API base URL.
-- `auth_env`: fallback environment variable for API key lookup.
+- `base_url`: optional provider API base URL override.
+- `env`: optional provider environment variable override.
 - `context_window`: coarse context limit used by runtime gates/plugins.
 - `max_output`: default maximum output tokens where needed.
 - `capabilities`: booleans used for runtime/API capability checks.

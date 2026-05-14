@@ -3,7 +3,9 @@ package catalog
 
 import (
 	"embed"
+	"errors"
 	"fmt"
+	iofs "io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,19 +19,24 @@ import (
 var fs embed.FS
 
 type modelFile struct {
-	ID            string `toml:"id"`
-	Provider      string `toml:"provider"`
-	API           string `toml:"api"`
-	BaseURL       string `toml:"base_url"`
-	AuthEnv       string `toml:"auth_env"`
-	ContextWindow int    `toml:"context_window"`
-	MaxOutput     int    `toml:"max_output"`
+	ID            string   `toml:"id"`
+	Provider      string   `toml:"provider"`
+	API           string   `toml:"api"`
+	BaseURL       string   `toml:"base_url"`
+	Env           []string `toml:"env"`
+	ContextWindow int      `toml:"context_window"`
+	MaxOutput     int      `toml:"max_output"`
 	Capabilities  struct {
 		Tools            bool `toml:"tools"`
 		Images           bool `toml:"images"`
 		Reasoning        bool `toml:"reasoning"`
 		StructuredOutput bool `toml:"structured_output"`
 	} `toml:"capabilities"`
+}
+
+type providerFile struct {
+	BaseURL string   `toml:"base_url"`
+	Env     []string `toml:"env"`
 }
 
 var (
@@ -53,13 +60,18 @@ func load() error {
 				continue
 			}
 			provider := providerDir.Name()
+			providerDefaults, err := readProviderFile(provider)
+			if err != nil {
+				loadErr = err
+				return
+			}
 			files, err := fs.ReadDir(filepath.Join("providers", provider))
 			if err != nil {
 				loadErr = err
 				return
 			}
 			for _, file := range files {
-				if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
+				if file.IsDir() || file.Name() == "provider.toml" || !strings.HasSuffix(file.Name(), ".toml") {
 					continue
 				}
 				path := filepath.Join("providers", provider, file.Name())
@@ -73,12 +85,21 @@ func load() error {
 					loadErr = fmt.Errorf("%s: %w", path, err)
 					return
 				}
+				if src.Provider == "" {
+					src.Provider = provider
+				}
+				if src.BaseURL == "" {
+					src.BaseURL = providerDefaults.BaseURL
+				}
+				if len(src.Env) == 0 {
+					src.Env = providerDefaults.Env
+				}
 				info := models.ModelInfo{
 					Provider:      src.Provider,
 					ID:            src.ID,
 					API:           models.API(src.API),
 					BaseURL:       src.BaseURL,
-					AuthEnv:       src.AuthEnv,
+					Env:           src.Env,
 					ContextWindow: src.ContextWindow,
 					MaxOutput:     src.MaxOutput,
 					Capabilities: models.ModelCapabilities{
@@ -98,6 +119,22 @@ func load() error {
 		}
 	})
 	return loadErr
+}
+
+func readProviderFile(provider string) (providerFile, error) {
+	path := filepath.Join("providers", provider, "provider.toml")
+	b, err := fs.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return providerFile{}, nil
+		}
+		return providerFile{}, err
+	}
+	var src providerFile
+	if err := toml.Unmarshal(b, &src); err != nil {
+		return providerFile{}, fmt.Errorf("%s: %w", path, err)
+	}
+	return src, nil
 }
 
 // GetRef returns metadata for a provider-qualified model ref.

@@ -1,8 +1,6 @@
 id = "claude-sonnet-4-6"
 provider = "opencode"
 api = "anthropic_messages"
-base_url = "https://opencode.ai/zen/v1"
-auth_env = "OPENCODE_API_KEY"
 context_window = 200000
 max_output = 8192
 
