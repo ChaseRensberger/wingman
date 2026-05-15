@@ -171,7 +171,7 @@ function ProvidersSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
 			<SectionHeader title="Providers" number="02" />
-			<div className="grid gap-3 sm:grid-cols-2">
+			<div className="grid gap-3">
 				{PROVIDERS.map((provider) => (
 					<a
 						key={provider.name}
