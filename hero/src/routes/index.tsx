@@ -28,19 +28,15 @@ const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web
 const PROVIDERS = [
 	{
 		name: "Anthropic",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/anthropic",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/anthropic",
 	},
 	{
 		name: "OpenAI",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/openai",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/openai",
 	},
 	{
 		name: "OpenCode Zen",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/data/providers/opencode-zen",
-	},
-	{
-		name: "Ollama",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/providers/ollama",
+		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/opencode",
 	},
 ];
 
