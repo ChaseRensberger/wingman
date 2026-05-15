@@ -23,6 +23,7 @@ type LogBuffer struct {
 	pending string
 }
 
+// NewLogBuffer creates a bounded log buffer for recent process-local entries.
 func NewLogBuffer(limit int) *LogBuffer {
 	if limit <= 0 {
 		limit = 500
@@ -30,6 +31,7 @@ func NewLogBuffer(limit int) *LogBuffer {
 	return &LogBuffer{limit: limit}
 }
 
+// Write appends complete newline-delimited log entries to the buffer.
 func (b *LogBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -49,6 +51,7 @@ func (b *LogBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Entries returns a snapshot of currently buffered log entries.
 func (b *LogBuffer) Entries() []LogEntry {
 	b.mu.Lock()
 	defer b.mu.Unlock()

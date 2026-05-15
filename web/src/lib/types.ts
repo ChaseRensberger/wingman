@@ -15,11 +15,18 @@ export interface Provider {
   id: string;
   name: string;
   auth_types: ProviderAuthType[];
+  auth: ProviderAuthStatus;
 }
 
 export interface ProviderAuthType {
   type: string;
   name?: string;
+}
+
+export interface ProviderAuthStatus {
+  configured: boolean;
+  source: "stored" | "env" | "none";
+  env?: string;
 }
 
 export interface ProviderModel {

@@ -3,18 +3,23 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
+	"github.com/chaserensberger/wingman/store"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 	providers := provider.List()
-	writeJSON(w, http.StatusOK, providers)
+	dtos := make([]ProviderDTO, 0, len(providers))
+	for _, meta := range providers {
+		dtos = append(dtos, s.providerToDTO(meta))
+	}
+	writeJSON(w, http.StatusOK, dtos)
 }
 
 func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +31,52 @@ func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, meta)
+	writeJSON(w, http.StatusOK, s.providerToDTO(meta))
+}
+
+type ProviderDTO struct {
+	ID        string                `json:"id"`
+	Name      string                `json:"name"`
+	AuthTypes []provider.AuthType   `json:"auth_types,omitempty"`
+	Auth      ProviderAuthStatusDTO `json:"auth"`
+}
+
+type ProviderAuthStatusDTO struct {
+	Configured bool   `json:"configured"`
+	Source     string `json:"source"`
+	Env        string `json:"env,omitempty"`
+}
+
+func (s *Server) providerToDTO(meta provider.ProviderMeta) ProviderDTO {
+	return ProviderDTO{
+		ID:        meta.ID,
+		Name:      meta.Name,
+		AuthTypes: meta.AuthTypes,
+		Auth:      s.providerAuthStatus(meta.ID),
+	}
+}
+
+func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
+	if s.store != nil {
+		auth, err := s.store.GetAuth()
+		if err == nil {
+			if cred, ok := auth.Providers[providerID]; ok && cred.Key != "" {
+				return ProviderAuthStatusDTO{Configured: true, Source: "stored"}
+			}
+		}
+	}
+
+	if models, ok := catalog.GetModels(providerID); ok {
+		for _, model := range models {
+			for _, env := range model.Env {
+				if os.Getenv(env) != "" {
+					return ProviderAuthStatusDTO{Configured: true, Source: "env", Env: env}
+				}
+			}
+		}
+	}
+
+	return ProviderAuthStatusDTO{Configured: false, Source: "none"}
 }
 
 type ProvidersAuthResponse struct {

@@ -41,6 +41,9 @@ func NewLogger(out io.Writer, format, level string) (*slog.Logger, error) {
 }
 
 func NewBufferedLogger(out io.Writer, format, level string, buffer *LogBuffer) (*slog.Logger, error) {
+	if out == nil {
+		out = os.Stderr
+	}
 	if buffer != nil {
 		out = io.MultiWriter(out, buffer)
 	}

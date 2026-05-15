@@ -17,7 +17,7 @@ import { Input } from "@/components/core/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/core/table";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
-import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
+import type { Provider, ProviderModel } from "@/lib/types";
 
 export const Route = createFileRoute("/providers/$providerId")({
   component: ProviderDetailPage,
@@ -26,7 +26,6 @@ export const Route = createFileRoute("/providers/$providerId")({
 function ProviderDetailPage() {
   const { providerId } = Route.useParams();
   const [provider, setProvider] = useState<Provider | null>(null);
-  const [auth, setAuth] = useState<ProviderAuthResponse>({ providers: {} });
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [key, setKey] = useState("");
   const [loading, setLoading] = useState(true);
@@ -35,12 +34,8 @@ function ProviderDetailPage() {
 
   async function load() {
     try {
-      const [providerData, authData] = await Promise.all([
-        wfetch("/provider") as Promise<Provider[]>,
-        wfetch("/provider/auth") as Promise<ProviderAuthResponse>,
-      ]);
+      const providerData = (await wfetch("/provider")) as Provider[];
       setProvider(providerData.find((item) => item.id === providerId) ?? null);
-      setAuth(authData);
       try {
         const modelData = (await wfetch(`/provider/${providerId}/models`)) as Record<string, ProviderModel>;
         setModels(Object.values(modelData).sort((a, b) => a.id.localeCompare(b.id)));
@@ -86,7 +81,8 @@ function ProviderDetailPage() {
     }
   }
 
-  const configured = provider ? auth.providers[provider.id]?.configured : false;
+  const configured = provider?.auth.configured ?? false;
+  const storedKeyConfigured = provider?.auth.source === "stored";
   const supportsApiKey = provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
   const crumbLabel = provider?.name || providerId;
 
@@ -108,8 +104,16 @@ function ProviderDetailPage() {
                 <div className="text-sm font-medium">{provider.name}</div>
                 <div className="font-mono text-xs text-muted-foreground">{provider.id}</div>
               </div>
-              <Badge variant={configured ? "default" : "secondary"}>{configured ? "Configured" : "Needs key"}</Badge>
+              <Badge variant={configured ? "default" : "secondary"}>
+                {provider.auth.source === "env" ? "Configured via env" : configured ? "Configured" : "Needs key"}
+              </Badge>
             </div>
+            {provider.auth.source === "env" && (
+              <div className="text-sm text-muted-foreground">
+                Using server environment variable {provider.auth.env ? <code>{provider.auth.env}</code> : "for this provider"}.
+                Save a key here to override it.
+              </div>
+            )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
               <Input
                 type="password"
@@ -121,7 +125,7 @@ function ProviderDetailPage() {
               <Button onClick={saveKey} disabled={saving || !supportsApiKey || !key.trim()}>
                 {saving ? "Saving..." : configured ? "Replace key" : "Save key"}
               </Button>
-              {configured && (
+              {storedKeyConfigured && (
                 <AlertDialog>
                   <AlertDialogTrigger render={<Button variant="destructive" disabled={deleting} />}>
                     {deleting ? "Deleting..." : "Delete key"}

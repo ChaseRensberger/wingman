@@ -4,11 +4,17 @@ import { Input } from "@/components/core/input";
 import { Badge } from "@/components/core/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/core/table";
 import { wfetch } from "@/lib/client";
-import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
+import type { Provider, ProviderModel } from "@/lib/types";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 function formatAuthType(authType: Provider["auth_types"][number]) {
   return authType.name || authType.type.replaceAll("_", " ");
+}
+
+function authStatusLabel(provider: Provider) {
+  if (provider.auth.source === "env") return "Env key";
+  if (provider.auth.configured) return "Configured";
+  return "Needs key";
 }
 
 export const Route = createFileRoute("/providers/")({
@@ -18,19 +24,14 @@ export const Route = createFileRoute("/providers/")({
 function ProvidersPage() {
   const navigate = useNavigate();
   const [providers, setProviders] = useState<Provider[]>([]);
-  const [auth, setAuth] = useState<ProviderAuthResponse>({ providers: {} });
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
   async function load() {
     try {
-      const [providerData, authData] = await Promise.all([
-        wfetch("/provider") as Promise<Provider[]>,
-        wfetch("/provider/auth") as Promise<ProviderAuthResponse>,
-      ]);
+      const providerData = (await wfetch("/provider")) as Provider[];
       setProviders(providerData);
-      setAuth(authData);
 
       const modelEntries = await Promise.all(
         providerData.map(async (provider) => {
@@ -52,7 +53,7 @@ function ProvidersPage() {
     load().catch((err) => alert(String(err)));
   }, []);
 
-  const configuredCount = providers.filter((provider) => auth.providers[provider.id]?.configured).length;
+  const configuredCount = providers.filter((provider) => provider.auth.configured).length;
   const modelCount = Object.values(models).reduce((total, providerModels) => total + providerModels.length, 0);
   const filteredProviders = providers.filter((provider) => {
     const haystack = `${provider.name} ${provider.id}`.toLowerCase();
@@ -114,7 +115,6 @@ function ProvidersPage() {
           </TableHeader>
           <TableBody>
             {filteredProviders.map((provider) => {
-              const configured = auth.providers[provider.id]?.configured;
               const capabilities = providerCapabilities(provider);
               return (
                 <TableRow
@@ -127,8 +127,8 @@ function ProvidersPage() {
                     <div className="text-xs text-muted-foreground">{provider.id}</div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={configured ? "default" : "secondary"}>
-                      {configured ? "Configured" : "Needs key"}
+                    <Badge variant={provider.auth.configured ? "default" : "secondary"}>
+                      {authStatusLabel(provider)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
