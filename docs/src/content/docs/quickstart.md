@@ -1,11 +1,11 @@
 ---
-title: "Quickstart"
+title: "Quick Start"
 description: "Run Wingman locally and send your first agent message."
 draft: false
 order: 2
 ---
 
-# Quickstart
+# Quick Start
 
 This guide starts the Wingman HTTP server, creates an agent, creates a session, and sends one message.
 

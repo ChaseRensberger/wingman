@@ -20,18 +20,21 @@ const logo = [
   .site-title {
     align-items: center;
     text-decoration: none;
-    color: oklch(0.6072 0.119 246.1);
+    color: var(--sl-color-accent);
   }
 
   .ascii-logo {
-    font-family: var(--sl-font-mono);
+    font-family: var(--font-mono);
     font-size: 4px;
     line-height: 1;
     margin: 0;
     padding: 0;
     white-space: pre;
-    color: oklch(0.6072 0.119 246.1);
-    font-weight: 700;
+    color: var(--sl-color-accent);
+    font-weight: 400;
+    font-synthesis: none;
+    font-variant-ligatures: none;
+    letter-spacing: 0;
   }
 
   @media (min-width: 50rem) {

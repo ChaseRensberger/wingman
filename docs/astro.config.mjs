@@ -1,34 +1,24 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
-import { rehypeHeadingIds } from "@astrojs/markdown-remark";
-import theme from "toolbeam-docs-theme";
 
 // https://astro.build/config
 export default defineConfig({
-  markdown: {
-    rehypePlugins: [rehypeHeadingIds],
-  },
+  site: "https://docs.wingman.actor",
   integrations: [
     starlight({
       title: "Wingman",
-      favicon: "/icon-32.png",
-      expressiveCode: { themes: ["github-light", "github-dark"] },
-      markdown: {
-        headingLinks: false,
-      },
-      customCss: [
-        "@fontsource/roboto-mono/400.css",
-        "@fontsource/roboto-mono/400-italic.css",
-        "@fontsource/roboto-mono/500.css",
-        "@fontsource/roboto-mono/600.css",
-        "@fontsource/roboto-mono/700.css",
-        "./src/styles/custom.css",
-      ],
+      // logo: {
+      //   src: "./src/assets/icon-512.png",
+      // },
       components: {
-        Footer: "./src/components/Footer.astro",
         SiteTitle: "./src/components/SiteTitle.astro",
+        ThemeProvider: "./src/components/ThemeProvider.astro",
+        ThemeSelect: "./src/components/ThemeSelect.astro",
       },
+      customCss: ["./src/styles/custom.css"],
+      favicon: "/icon-32.png",
+      pagination: false,
       social: [
         {
           icon: "github",
@@ -42,19 +32,20 @@ export default defineConfig({
         },
       ],
       sidebar: [
-        { label: "Introduction", slug: "" },
-        { label: "Quickstart", slug: "quickstart" },
+        { label: "Introduction", link: "/" },
+        { label: "Quick Start", slug: "quickstart" },
         {
           label: "Core",
-          items: [
-            { label: "Sessions", slug: "core/sessions" },
-          ],
+          items: [{ label: "Sessions", slug: "core/sessions" }],
         },
-      ],
-      plugins: [
-        theme({
-          headerLinks: [],
-        }),
+        {
+          label: "Concepts",
+          items: [{ label: "Context Handoff", slug: "concepts/context-handoff" }],
+        },
+        {
+          label: "Reference",
+          items: [{ label: "API", slug: "reference/referenceapi" }],
+        },
       ],
     }),
   ],
