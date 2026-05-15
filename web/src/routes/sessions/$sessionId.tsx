@@ -16,6 +16,10 @@ import {
 import { ChatMessage } from "@/components/chat-message";
 import { StopIcon } from "@phosphor-icons/react";
 
+const STREAM_MIN_CHARS_PER_FRAME = 1;
+const STREAM_MAX_CHARS_PER_FRAME = 18;
+const STREAM_BACKLOG_DIVISOR = 14;
+
 function parseSSE(buffer: string): {
   events: Array<{ event: string; data: string }>;
   remainder: string;
@@ -106,24 +110,26 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 });
 
 function SessionDetailPage() {
-	const { sessionId } = Route.useParams();
-	const [session, setSession] = useState<Session | null>(null);
-	const [loading, setLoading] = useState(true);
+  const { sessionId } = Route.useParams();
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState("");
-	const [messageText, setMessageText] = useState("");
-	const [streamingText, setStreamingText] = useState("");
-	const [isStreaming, setIsStreaming] = useState(false);
-	const [error, setError] = useState("");
+  const [messageText, setMessageText] = useState("");
+  const [streamingText, setStreamingText] = useState("");
+  const [visibleStreamingText, setVisibleStreamingText] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const streamingTextRef = useRef("");
+  const visibleStreamingTextRef = useRef("");
 
   const loadSession = useCallback(async () => {
     try {
       const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
       setSession(data);
-      setError("");
     } catch (err) {
       console.error("Failed to load session", err);
       alert(String(err));
@@ -164,7 +170,43 @@ function SessionDetailPage() {
     if (scrollRef.current && stickToBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [session?.history, streamingText]);
+  }, [session?.history, visibleStreamingText]);
+
+  useEffect(() => {
+    streamingTextRef.current = streamingText;
+  }, [streamingText]);
+
+  useEffect(() => {
+    visibleStreamingTextRef.current = visibleStreamingText;
+  }, [visibleStreamingText]);
+
+  useEffect(() => {
+    if (!isStreaming && !streamingText) return;
+
+    let frameId = 0;
+    const tick = () => {
+      const target = streamingTextRef.current;
+      const visible = visibleStreamingTextRef.current;
+
+      if (visible.length < target.length) {
+        const backlog = target.length - visible.length;
+        const charsThisFrame = Math.min(
+          STREAM_MAX_CHARS_PER_FRAME,
+          Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(backlog / STREAM_BACKLOG_DIVISOR)),
+        );
+        const next = target.slice(0, visible.length + charsThisFrame);
+        visibleStreamingTextRef.current = next;
+        setVisibleStreamingText(next);
+      }
+
+      if (isStreaming || visibleStreamingTextRef.current.length < streamingTextRef.current.length) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isStreaming, streamingText]);
 
   function handleTranscriptScroll() {
     const el = scrollRef.current;
@@ -184,10 +226,11 @@ function SessionDetailPage() {
     }
     setIsStreaming(false);
     setStreamingText("");
+    setVisibleStreamingText("");
     await loadSession();
   }
 
-	async function handleSend(e?: React.FormEvent) {
+  async function handleSend(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!messageText.trim() || !selectedAgent) return;
 
@@ -203,6 +246,7 @@ function SessionDetailPage() {
     abortControllerRef.current = controller;
     setIsStreaming(true);
     setStreamingText("");
+    setVisibleStreamingText("");
     let completed = false;
 
     try {
@@ -214,7 +258,7 @@ function SessionDetailPage() {
         headers.set("X-Wingman-Client", clientId);
       }
 
-		const res = await fetch(`/sessions/${sessionId}/message/stream`, {
+      const res = await fetch(`/sessions/${sessionId}/message/stream`, {
         method: "POST",
         headers,
         body: JSON.stringify({ agent_id: selectedAgent, message: outboundText }),
@@ -248,7 +292,7 @@ function SessionDetailPage() {
           };
           const data = envelope.data ?? envelope.Data;
           const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
-          if (part?.type === "text-delta" && part.delta) {
+          if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
             textBuffer += part.delta;
             setStreamingText(textBuffer);
           }
@@ -280,6 +324,7 @@ function SessionDetailPage() {
     } finally {
       setIsStreaming(false);
       setStreamingText("");
+      setVisibleStreamingText("");
       abortControllerRef.current = null;
       if (!completed && controller.signal.aborted) {
         setMessageText(outboundText);
@@ -322,8 +367,8 @@ function SessionDetailPage() {
               <span className="max-w-full truncate">{session.work_dir || "-"}</span>
             </div>
           </div>
-		</div>
-	</div>
+        </div>
+      </div>
 
       {error && (
         <Alert variant="destructive" className="mt-4">
@@ -333,7 +378,7 @@ function SessionDetailPage() {
       )}
 
       <div ref={scrollRef} onScroll={handleTranscriptScroll} className="flex-1 overflow-y-auto py-2">
-        {session.history.length === 0 && !streamingText ? (
+        {session.history.length === 0 && !visibleStreamingText ? (
           <div className="flex h-full items-center justify-center py-12 text-center">
             <div>
               <div className="text-sm font-medium">No messages yet</div>
@@ -345,7 +390,9 @@ function SessionDetailPage() {
             {session.history.map((msg, idx) => (
               <ChatMessage key={idx} message={msg} />
             ))}
-            {streamingText && <ChatMessage message={buildStreamingMessage(streamingText)} />}
+            {visibleStreamingText && (
+              <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />
+            )}
           </div>
         )}
       </div>

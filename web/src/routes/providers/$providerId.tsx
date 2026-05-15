@@ -87,6 +87,7 @@ function ProviderDetailPage() {
   }
 
   const configured = provider ? auth.providers[provider.id]?.configured : false;
+  const supportsApiKey = provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
   const crumbLabel = provider?.name || providerId;
 
   return (
@@ -115,9 +116,9 @@ function ProviderDetailPage() {
                 value={key}
                 placeholder={configured ? "New API key" : "API key"}
                 onChange={(e) => setKey(e.target.value)}
-                disabled={!provider.auth_types.includes("api_key")}
+                disabled={!supportsApiKey}
               />
-              <Button onClick={saveKey} disabled={saving || !provider.auth_types.includes("api_key") || !key.trim()}>
+              <Button onClick={saveKey} disabled={saving || !supportsApiKey || !key.trim()}>
                 {saving ? "Saving..." : configured ? "Replace key" : "Save key"}
               </Button>
               {configured && (
@@ -142,7 +143,7 @@ function ProviderDetailPage() {
                 </AlertDialog>
               )}
             </div>
-            {!provider.auth_types.includes("api_key") && (
+            {!supportsApiKey && (
               <div className="text-sm text-muted-foreground">This provider does not support API key auth.</div>
             )}
           </div>

@@ -7,6 +7,10 @@ import { wfetch } from "@/lib/client";
 import type { Provider, ProviderAuthResponse, ProviderModel } from "@/lib/types";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
+function formatAuthType(authType: Provider["auth_types"][number]) {
+  return authType.name || authType.type.replaceAll("_", " ");
+}
+
 export const Route = createFileRoute("/providers/")({
   component: ProvidersPage,
 });
@@ -128,7 +132,7 @@ function ProvidersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {provider.auth_types.map((authType) => authType.replace("_", " ")).join(", ") || "-"}
+                    {provider.auth_types.map(formatAuthType).join(", ") || "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{models[provider.id]?.length ?? 0}</TableCell>
                   <TableCell>

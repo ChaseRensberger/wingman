@@ -87,7 +87,8 @@ func main() {
 }
 
 func runServe(ctx context.Context, cmd *cli.Command) error {
-	logger, err := observability.ConfigureDefault(cmd.String("log-format"), cmd.String("log-level"))
+	logs := observability.NewLogBuffer(500)
+	logger, err := observability.ConfigureDefaultWithBuffer(cmd.String("log-format"), cmd.String("log-level"), logs)
 	if err != nil {
 		return err
 	}
@@ -116,6 +117,7 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		Store:     st,
 		WebDevURL: cmd.String("ui-dev"),
 		Logger:    logger,
+		Logs:      logs,
 	})
 
 	host := cmd.String("host")

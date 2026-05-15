@@ -14,7 +14,12 @@ export interface Agent {
 export interface Provider {
   id: string;
   name: string;
-  auth_types: string[];
+  auth_types: ProviderAuthType[];
+}
+
+export interface ProviderAuthType {
+  type: string;
+  name?: string;
 }
 
 export interface ProviderModel {
@@ -107,4 +112,12 @@ export interface ToolResultPart {
 export interface OpaquePart {
   type: string;
   [key: string]: unknown;
+}
+
+export interface LogEntry {
+  raw: string;
+  time?: string;
+  level?: string;
+  msg?: string;
+  attrs?: Record<string, unknown>;
 }

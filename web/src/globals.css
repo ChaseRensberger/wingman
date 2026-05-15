@@ -98,4 +98,24 @@
   body {
     @apply bg-background text-foreground font-mono;
   }
+
+  .streaming-caret {
+    @apply ml-1 inline-block h-4 w-1 translate-y-0.5 rounded-full bg-primary/75 align-baseline;
+    animation: streaming-caret-blink 1.1s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .streaming-caret {
+      animation: none;
+    }
+  }
+}
+
+@keyframes streaming-caret-blink {
+  0%, 100% {
+    opacity: 0.25;
+  }
+  45%, 65% {
+    opacity: 1;
+  }
 }

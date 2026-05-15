@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/chaserensberger/wingman/internal/observability"
 	"github.com/chaserensberger/wingman/store"
 	webui "github.com/chaserensberger/wingman/web"
 )
@@ -28,6 +29,7 @@ type Server struct {
 	aborts    *abortRegistry
 	webDevURL string
 	logger    *slog.Logger
+	logs      *observability.LogBuffer
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -47,6 +49,7 @@ type Config struct {
 	Store     store.Store
 	WebDevURL string
 	Logger    *slog.Logger
+	Logs      *observability.LogBuffer
 }
 
 func New(cfg Config) *Server {
@@ -61,6 +64,7 @@ func New(cfg Config) *Server {
 		aborts:         newAbortRegistry(),
 		webDevURL:      cfg.WebDevURL,
 		logger:         logger,
+		logs:           cfg.Logs,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
@@ -158,6 +162,7 @@ func jsonContentType(next http.Handler) http.Handler {
 			strings.HasPrefix(path, "/provider") ||
 			strings.HasPrefix(path, "/agents") ||
 			strings.HasPrefix(path, "/clients") ||
+			strings.HasPrefix(path, "/logs") ||
 			strings.HasPrefix(path, "/sessions") ||
 			strings.HasPrefix(path, "/run") {
 			w.Header().Set("Content-Type", "application/json")
@@ -168,6 +173,7 @@ func jsonContentType(next http.Handler) http.Handler {
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
+	s.router.Get("/logs", s.handleLogs)
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)

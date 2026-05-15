@@ -45,7 +45,7 @@ function ToolResultCard({ part }: { part: ToolResultPart }) {
   );
 }
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({ message, isStreaming = false }: { message: Message; isStreaming?: boolean }) {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
 
@@ -68,7 +68,7 @@ export function ChatMessage({ message }: { message: Message }) {
           if (part.type === "text") {
             const textPart = part as { text: string };
             if (isAssistant) {
-              return <Markdown key={idx} text={textPart.text} />;
+              return <Markdown key={idx} text={textPart.text} isStreaming={isStreaming} />;
             }
             return (
               <div key={idx} className="whitespace-pre-wrap text-sm">

@@ -40,10 +40,21 @@ func NewLogger(out io.Writer, format, level string) (*slog.Logger, error) {
 	}
 }
 
+func NewBufferedLogger(out io.Writer, format, level string, buffer *LogBuffer) (*slog.Logger, error) {
+	if buffer != nil {
+		out = io.MultiWriter(out, buffer)
+	}
+	return NewLogger(out, format, level)
+}
+
 // ConfigureDefault installs the process-wide logger used by packages that do
 // not receive an explicit logger.
 func ConfigureDefault(format, level string) (*slog.Logger, error) {
-	logger, err := NewLogger(os.Stderr, format, level)
+	return ConfigureDefaultWithBuffer(format, level, nil)
+}
+
+func ConfigureDefaultWithBuffer(format, level string, buffer *LogBuffer) (*slog.Logger, error) {
+	logger, err := NewBufferedLogger(os.Stderr, format, level, buffer)
 	if err != nil {
 		return nil, err
 	}
