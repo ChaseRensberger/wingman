@@ -4,9 +4,7 @@
 
 # Wingman
 
-The open-source client-agnostic agent harness
-
-> **Disclaimer:** This project is under active development and is **not ready for production use**. Expect breaking changes.
+The open-source client-agnostic agent harness.
 
 ## Installation
 
