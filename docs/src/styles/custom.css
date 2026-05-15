@@ -126,6 +126,14 @@ a {
   -webkit-backdrop-filter: blur(16px);
 }
 
+.content-panel:has(#_top.sr-only) {
+  padding-block: 0;
+}
+
+.content-panel:has(#_top.sr-only) + .content-panel {
+  border-top: 0;
+}
+
 .social-icons::after {
   display: none;
 }

@@ -12,6 +12,7 @@ export default defineConfig({
       //   src: "./src/assets/icon-512.png",
       // },
       components: {
+        PageTitle: "./src/components/PageTitle.astro",
         SiteTitle: "./src/components/SiteTitle.astro",
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",

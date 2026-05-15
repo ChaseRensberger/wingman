@@ -3,6 +3,7 @@ title: "Introduction"
 draft: false
 order: 1
 ---
+# Introduction
 
 Wingman is an open-source client-agnostic agent harness. It is designed to be extremely portable (written in go and compiled to a binary with zero external dependencies) and performant (spawn fleets of agents as go routines).
 
@@ -19,7 +20,7 @@ Unsurprisingly, some non-negligible percentage of this project was built with as
 I have taken inspiration from more projects than I can count but to name a few (that I reference daily):
 
 - [Pi](https://pi.dev)
-- [OpenCode](https://opencode.ai/) (also I stole their docs theme)
+- [OpenCode](https://opencode.ai/)
 - [Shelley](https://github.com/boldsoftware/shelley)
 - [Vercel's entire AI stack](https://open-agents.dev/)
 
