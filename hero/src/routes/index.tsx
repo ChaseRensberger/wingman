@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
-import { Copy, Check } from "@phosphor-icons/react";
+import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import {
 	Accordion,
 	AccordionContent,
@@ -19,7 +19,6 @@ function RouteComponent() {
 	return <Hero />
 }
 
-const SDK_COMMAND = "go get github.com/chaserensberger/wingman";
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
@@ -82,9 +81,9 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 				aria-label="Copy install command"
 			>
 				{copied ? (
-					<Check className="size-4 text-green-500" weight="bold" />
+					<CheckIcon className="size-4 text-green-500" weight="bold" />
 				) : (
-					<Copy className="size-4" />
+					<CopyIcon className="size-4" />
 				)}
 			</Button>
 		</div>
@@ -93,19 +92,11 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 
 function InstallSection() {
 	return (
-		<div className="space-y-6">
-			<div className="space-y-2">
-				<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
-				<CopyCommand command={SERVER_COMMAND}>
-					{SERVER_COMMAND}
-				</CopyCommand>
-			</div>
-			<div className="space-y-2">
-				<p className="text-xs text-muted-foreground uppercase tracking-wider">SDK</p>
-				<CopyCommand command={SDK_COMMAND}>
-					{SDK_COMMAND}
-				</CopyCommand>
-			</div>
+		<div className="space-y-3">
+			<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
+			<CopyCommand command={SERVER_COMMAND}>
+				{SERVER_COMMAND}
+			</CopyCommand>
 		</div >
 	);
 }
