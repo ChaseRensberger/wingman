@@ -13,6 +13,14 @@ type ThemeProviderState = {
 	setTheme: (theme: Theme) => void
 }
 
+const lightModeDisabled = true
+
+const resolveTheme = (theme: Theme): Exclude<Theme, "light"> => {
+	if (theme === "light") return "dark"
+
+	return theme
+}
+
 const initialState: ThemeProviderState = {
 	theme: "system",
 	setTheme: () => null,
@@ -27,33 +35,38 @@ export function ThemeProvider({
 	...props
 }: ThemeProviderProps) {
 	const [theme, setTheme] = useState<Theme>(
-		() => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+		() => resolveTheme((localStorage.getItem(storageKey) as Theme) || defaultTheme)
 	)
 
 	useEffect(() => {
 		const root = window.document.documentElement
+		const activeTheme = resolveTheme(theme)
 
 		root.classList.remove("light", "dark")
 
-		if (theme === "system") {
+		if (activeTheme === "system") {
 			const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
 				.matches
 				? "dark"
-				: "light"
+				: lightModeDisabled
+					? "dark"
+					: "light"
 
 			root.classList.add(systemTheme)
 			return
 		}
 
-		root.classList.add(theme)
+		root.classList.add(activeTheme)
 	}, [theme])
 
 	const value = {
 		theme,
 		setTheme: (newTheme: Theme) => {
+			const nextTheme = resolveTheme(newTheme)
+
 			localStorage.removeItem("ui-theme-overrides")
-			localStorage.setItem(storageKey, newTheme)
-			setTheme(newTheme)
+			localStorage.setItem(storageKey, nextTheme)
+			setTheme(nextTheme)
 		},
 	}
 

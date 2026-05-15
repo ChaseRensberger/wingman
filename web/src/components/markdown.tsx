@@ -4,6 +4,8 @@ import remarkGfm from "remark-gfm";
 import { getSingletonHighlighter } from "shiki";
 import { useTheme } from "@/components/theme-provider";
 
+const lightModeDisabled = true;
+
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const { theme } = useTheme();
   const [html, setHtml] = useState("");
@@ -31,6 +33,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
         ],
       });
       const isDark =
+        lightModeDisabled ||
         theme === "dark" ||
         (theme === "system" &&
           window.matchMedia("(prefers-color-scheme: dark)").matches);
