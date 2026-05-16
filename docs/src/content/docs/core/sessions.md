@@ -32,5 +32,3 @@ curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
 Wingman loads the session history, loads the selected agent, builds the runtime configuration, runs the turn, and appends the resulting messages back to the session.
 
 The session table intentionally does not have an `agent_id` or `model_ref` column, if a client wants to display a default agent for a session, that is client UI state, not harness state.
-
-
