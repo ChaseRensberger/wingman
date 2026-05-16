@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
+  SelectGroup,
+  SelectLabel,
   SelectItem,
 } from "@/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
@@ -240,6 +242,16 @@ function SessionDetailPage() {
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
+  function handleTranscriptWheel(e: React.WheelEvent<HTMLDivElement>) {
+    if (e.deltaY < 0) {
+      stickToBottomRef.current = false;
+    }
+  }
+
+  function handleTranscriptTouchMove() {
+    stickToBottomRef.current = false;
+  }
+
   async function handleAbort() {
     try {
       await wfetch(`/sessions/${sessionId}/abort`, { method: "POST" });
@@ -371,7 +383,10 @@ function SessionDetailPage() {
   }
 
   const selectedAgentName = agents.find((a) => a.id === selectedAgent)?.name;
-  const providerModels = models[selectedProvider] ?? [];
+  const selectedProviderName = providers.find((provider) => provider.id === selectedProvider)?.name;
+  const modelSelectValue = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
+  const modelSelectLabel = selectedProviderName && selectedModel ? `${selectedProviderName} / ${selectedModel}` : undefined;
+  const hasModels = Object.values(models).some((providerModels) => providerModels.length > 0);
 
   if (loading) {
     return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
@@ -410,7 +425,13 @@ function SessionDetailPage() {
         </Alert>
       )}
 
-      <div ref={scrollRef} onScroll={handleTranscriptScroll} className="flex-1 overflow-y-auto py-2">
+      <div
+        ref={scrollRef}
+        onScroll={handleTranscriptScroll}
+        onWheel={handleTranscriptWheel}
+        onTouchMove={handleTranscriptTouchMove}
+        className="flex-1 overflow-y-auto py-2"
+      >
         {session.history.length === 0 && !visibleStreamingText ? (
           <div className="flex h-full items-center justify-center py-12 text-center">
             <div>
@@ -445,63 +466,56 @@ function SessionDetailPage() {
           />
           <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
             <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={selectedAgent}
-              onValueChange={(v) => {
-                const agent = agents.find((a) => a.id === v);
-                const modelRef = splitModelRef(agent?.model_ref);
-                setSelectedAgent(v ?? "");
-                setSelectedProvider(modelRef.provider);
-                setSelectedModel(modelRef.model);
-              }}
-            >
-              <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
-                <SelectValue placeholder="Select agent">
-                  {selectedAgentName}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedProvider}
-              onValueChange={(v) => {
-                setSelectedProvider(v ?? "");
-                setSelectedModel("");
-              }}
-            >
-              <SelectTrigger className="h-8 w-44 border-0 bg-muted/60 text-xs shadow-none">
-                <SelectValue placeholder="Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers.map((provider) => (
-                  <SelectItem key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedModel}
-              onValueChange={(v) => setSelectedModel(v ?? "")}
-              disabled={!selectedProvider || providerModels.length === 0}
-            >
-              <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
-                <SelectValue placeholder={selectedProvider ? "Model" : "Select provider first"} />
-              </SelectTrigger>
-              <SelectContent>
-                {providerModels.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select
+                value={selectedAgent}
+                onValueChange={(v) => {
+                  const agent = agents.find((a) => a.id === v);
+                  const modelRef = splitModelRef(agent?.model_ref);
+                  setSelectedAgent(v ?? "");
+                  setSelectedProvider(modelRef.provider);
+                  setSelectedModel(modelRef.model);
+                }}
+              >
+                <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
+                  <SelectValue placeholder="Select agent">
+                    {selectedAgentName}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={modelSelectValue}
+                onValueChange={(v) => {
+                  const modelRef = splitModelRef(v ?? "");
+                  setSelectedProvider(modelRef.provider);
+                  setSelectedModel(modelRef.model);
+                }}
+                disabled={!hasModels}
+              >
+                <SelectTrigger className="h-8 w-72 border-0 bg-muted/60 text-xs shadow-none">
+                  <SelectValue placeholder="Select model">
+                    {modelSelectLabel}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {providers.map((provider) => (
+                    <SelectGroup key={provider.id}>
+                      <SelectLabel>{provider.name}</SelectLabel>
+                      {(models[provider.id] ?? []).map((model) => (
+                        <SelectItem key={`${provider.id}/${model.id}`} value={`${provider.id}/${model.id}`}>
+                          {model.id}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {isStreaming ? (
