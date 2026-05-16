@@ -30,13 +30,20 @@ interface AgentForm {
   outputSchema: string;
 }
 
+function splitModelRef(modelRef?: string) {
+  const index = modelRef?.indexOf("/") ?? -1;
+  if (!modelRef || index <= 0 || index === modelRef.length - 1) return { provider: "", model: "" };
+  return { provider: modelRef.slice(0, index), model: modelRef.slice(index + 1) };
+}
+
 function formFromAgent(agent: Agent): AgentForm {
   const tools = new Set(builtInTools);
+  const modelRef = splitModelRef(agent.model_ref);
   return {
     name: agent.name,
     instructions: agent.instructions ?? "",
-    provider: agent.provider ?? "",
-    model: agent.model ?? "",
+    provider: modelRef.provider,
+    model: modelRef.model,
     tools: (agent.tools ?? []).filter((tool) => tools.has(tool)),
     outputSchema: agent.output_schema && Object.keys(agent.output_schema).length > 0
       ? JSON.stringify(agent.output_schema, null, 2)
@@ -112,8 +119,7 @@ function AgentDetailPage() {
         body: JSON.stringify({
           name: form.name.trim(),
           instructions: form.instructions,
-          provider: form.provider,
-          model: form.model,
+          model_ref: form.provider && form.model ? `${form.provider}/${form.model}` : "",
           tools: form.tools,
           output_schema,
         }),

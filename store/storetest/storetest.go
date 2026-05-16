@@ -20,8 +20,7 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 			Name:         "test-agent",
 			Instructions: "You are a test agent.",
 			Tools:        []string{"bash", "read"},
-			Provider:     "anthropic",
-			Model:        "claude-sonnet",
+			ModelRef:     "anthropic/claude-sonnet",
 			Options:      map[string]any{"temperature": 0.7},
 			OutputSchema: map[string]any{"type": "object"},
 		}
@@ -51,14 +50,8 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		if !reflect.DeepEqual(got.Tools, agent.Tools) {
 			t.Errorf("tools mismatch: got %v, want %v", got.Tools, agent.Tools)
 		}
-		if got.Provider != agent.Provider {
-			t.Errorf("provider mismatch: got %q, want %q", got.Provider, agent.Provider)
-		}
-		if got.Model != agent.Model {
-			t.Errorf("model mismatch: got %q, want %q", got.Model, agent.Model)
-		}
-		if got.ModelRef != agent.Provider+"/"+agent.Model {
-			t.Errorf("model_ref mismatch: got %q, want %q", got.ModelRef, agent.Provider+"/"+agent.Model)
+		if got.ModelRef != agent.ModelRef {
+			t.Errorf("model_ref mismatch: got %q, want %q", got.ModelRef, agent.ModelRef)
 		}
 		if !reflect.DeepEqual(got.Options, agent.Options) {
 			t.Errorf("options mismatch: got %v, want %v", got.Options, agent.Options)

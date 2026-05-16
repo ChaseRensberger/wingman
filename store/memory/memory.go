@@ -60,9 +60,6 @@ func copyAgent(a *store.Agent) *store.Agent {
 	copy(cp.Tools, a.Tools)
 	cp.Options = deepCopyMap(a.Options)
 	cp.OutputSchema = deepCopyMap(a.OutputSchema)
-	if cp.ModelRef == "" && cp.Provider != "" && cp.Model != "" {
-		cp.ModelRef = cp.Provider + "/" + cp.Model
-	}
 	return &cp
 }
 

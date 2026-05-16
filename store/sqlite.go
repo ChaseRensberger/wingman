@@ -121,9 +121,9 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools_json, provider, model, options_json, output_schema_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.ModelRef, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert agent: %w", err)
 	}
@@ -133,7 +133,7 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 // GetAgent returns the agent with the given ID, or an error if not found.
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	row := s.db.QueryRow(`
-		SELECT id, name, instructions, tools_json, provider, model, options_json, output_schema_json, created_at, updated_at
+		SELECT id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at
 		FROM agents WHERE id = ?
 	`, id)
 	a, err := scanAgent(row)
@@ -146,7 +146,7 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 // ListAgents returns every agent, newest first by created_at.
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools_json, provider, model, options_json, output_schema_json, created_at, updated_at
+		SELECT id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -184,9 +184,9 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 	}
 
 	res, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools_json = ?, provider = ?, model = ?, options_json = ?, output_schema_json = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools_json = ?, model_ref = ?, options_json = ?, output_schema_json = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), agent.Provider, agent.Model, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), agent.ModelRef, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
 	if err != nil {
 		return err
 	}
@@ -617,7 +617,7 @@ func scanAgent(r rowScanner) (*Agent, error) {
 
 	if err := r.Scan(
 		&a.ID, &a.Name, &a.Instructions, &toolsJSON,
-		&a.Provider, &a.Model, &optionsJSON, &outputSchemaJSON,
+		&a.ModelRef, &optionsJSON, &outputSchemaJSON,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -636,9 +636,6 @@ func scanAgent(r rowScanner) (*Agent, error) {
 		if err := json.Unmarshal([]byte(outputSchemaJSON.String), &a.OutputSchema); err != nil {
 			return nil, err
 		}
-	}
-	if a.Provider != "" && a.Model != "" {
-		a.ModelRef = a.Provider + "/" + a.Model
 	}
 	return &a, nil
 }

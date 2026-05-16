@@ -227,6 +227,7 @@ type messageOutputSchema struct {
 
 type MessageSessionRequest struct {
 	AgentID      string               `json:"agent_id"`
+	ModelRef     string               `json:"model_ref,omitempty"`
 	Message      string               `json:"message"`
 	OutputSchema *messageOutputSchema `json:"output_schema,omitempty"`
 }
@@ -244,6 +245,7 @@ type MessageSessionResponse struct {
 type RunRequest struct {
 	AgentID          string               `json:"agent_id,omitempty"`
 	Agent            *store.Agent         `json:"agent,omitempty"`
+	ModelRef         string               `json:"model_ref,omitempty"`
 	Message          string               `json:"message"`
 	OutputSchema     *messageOutputSchema `json:"output_schema,omitempty"`
 	WorkingDirectory string               `json:"working_directory,omitempty"`
@@ -283,7 +285,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runSession, err := s.buildSession(storedAgent, sess)
+	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef), sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -357,7 +359,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	runSession, err := s.buildSession(storedAgent, sess)
+	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef), sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -507,8 +509,9 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if storedAgent.Provider == "" || storedAgent.Model == "" {
-		writeError(w, http.StatusBadRequest, "agent must have provider and model configured")
+	storedAgent = s.agentWithRequestModel(storedAgent, req.ModelRef)
+	if storedAgent.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "model_ref is required when agent has no model_ref")
 		return
 	}
 
@@ -603,11 +606,11 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
 func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	if stored.Provider == "" || stored.Model == "" {
-		return nil, fmt.Errorf("agent %q has no provider/model configured", stored.ID)
+	if stored.ModelRef == "" {
+		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
 
-	modelRef, modelInfo, client, err := s.buildModelClient(stored.Provider, stored.Model)
+	modelRef, modelInfo, client, err := s.buildModelClient(stored.ModelRef)
 	if err != nil {
 		return nil, err
 	}
@@ -636,9 +639,12 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 }
 
 // buildModelClient resolves a model ref and returns a catalog-backed model client.
-func (s *Server) buildModelClient(providerID, model string) (models.ModelRef, models.ModelInfo, models.Client, error) {
-	ref := models.ModelRef{Provider: providerID, ID: model}
-	info, ok := catalog.Get(providerID, model)
+func (s *Server) buildModelClient(modelRef string) (models.ModelRef, models.ModelInfo, models.Client, error) {
+	ref, ok := models.ParseModelRef(modelRef)
+	if !ok {
+		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("invalid model_ref: %s", modelRef)
+	}
+	info, ok := catalog.Get(ref.Provider, ref.ID)
 	if !ok {
 		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("unknown model: %s", ref.Ref())
 	}
@@ -658,10 +664,19 @@ func (s *Server) buildModelClient(providerID, model string) (models.ModelRef, mo
 			keys[id] = cred.Key
 		}
 	}
-	if cred, ok := auth.Providers[providerID]; ok && cred.Key != "" {
-		keys[providerID] = cred.Key
+	if cred, ok := auth.Providers[ref.Provider]; ok && cred.Key != "" {
+		keys[ref.Provider] = cred.Key
 	}
 	return ref, info, provider.NewClient(keys), nil
+}
+
+func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string) *store.Agent {
+	if modelRef == "" {
+		return stored
+	}
+	cp := *stored
+	cp.ModelRef = modelRef
+	return &cp
 }
 
 // resolveTools maps stored tool name strings to live tool.Tool

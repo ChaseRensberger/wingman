@@ -3,8 +3,7 @@ export interface Agent {
   name: string;
   instructions?: string;
   tools?: string[];
-  provider?: string;
-  model?: string;
+  model_ref?: string;
   options?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
   created_at: string;

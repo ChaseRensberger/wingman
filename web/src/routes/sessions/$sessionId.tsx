@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
-import type { Session, Agent, Message, Part } from "@/lib/types";
+import type { Session, Agent, Message, Part, Provider, ProviderModel } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
 import { Textarea } from "@/components/core/textarea";
@@ -105,6 +105,12 @@ function formatSessionError(err: unknown): string {
   return message.replace(/^Error:\s*/, "");
 }
 
+function splitModelRef(modelRef?: string) {
+  const index = modelRef?.indexOf("/") ?? -1;
+  if (!modelRef || index <= 0 || index === modelRef.length - 1) return { provider: "", model: "" };
+  return { provider: modelRef.slice(0, index), model: modelRef.slice(index + 1) };
+}
+
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionDetailPage,
 });
@@ -114,7 +120,11 @@ function SessionDetailPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [selectedAgent, setSelectedAgent] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [messageText, setMessageText] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [visibleStreamingText, setVisibleStreamingText] = useState("");
@@ -142,15 +152,31 @@ function SessionDetailPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [sessData, agentsData] = await Promise.all([
+        const [sessData, agentsData, providerData] = await Promise.all([
           wfetch(`/sessions/${sessionId}`) as Promise<Session>,
           wfetch("/agents") as Promise<Agent[]>,
+          wfetch("/provider") as Promise<Provider[]>,
         ]);
+        const modelEntries = await Promise.all(
+          providerData.map(async (provider) => {
+            try {
+              const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
+              return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
+            } catch {
+              return [provider.id, []] as const;
+            }
+          }),
+        );
         if (!cancelled) {
           setSession(sessData);
           setAgents(agentsData);
+          setProviders(providerData);
+          setModels(Object.fromEntries(modelEntries));
           if (agentsData.length > 0) {
             setSelectedAgent(agentsData[0].id);
+            const modelRef = splitModelRef(agentsData[0].model_ref);
+            setSelectedProvider(modelRef.provider);
+            setSelectedModel(modelRef.model);
           }
         }
       } catch (err) {
@@ -261,7 +287,11 @@ function SessionDetailPage() {
       const res = await fetch(`/sessions/${sessionId}/message/stream`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ agent_id: selectedAgent, message: outboundText }),
+        body: JSON.stringify({
+          agent_id: selectedAgent,
+          model_ref: selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "",
+          message: outboundText,
+        }),
         signal: controller.signal,
       });
 
@@ -340,6 +370,9 @@ function SessionDetailPage() {
     }
   }
 
+  const selectedAgentName = agents.find((a) => a.id === selectedAgent)?.name;
+  const providerModels = models[selectedProvider] ?? [];
+
   if (loading) {
     return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
   }
@@ -411,10 +444,20 @@ function SessionDetailPage() {
             disabled={isStreaming}
           />
           <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
-            <Select value={selectedAgent} onValueChange={(v) => setSelectedAgent(v ?? "")}>
+            <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={selectedAgent}
+              onValueChange={(v) => {
+                const agent = agents.find((a) => a.id === v);
+                const modelRef = splitModelRef(agent?.model_ref);
+                setSelectedAgent(v ?? "");
+                setSelectedProvider(modelRef.provider);
+                setSelectedModel(modelRef.model);
+              }}
+            >
               <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
                 <SelectValue placeholder="Select agent">
-                  {agents.find((a) => a.id === selectedAgent)?.name}
+                  {selectedAgentName}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -425,6 +468,41 @@ function SessionDetailPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={selectedProvider}
+              onValueChange={(v) => {
+                setSelectedProvider(v ?? "");
+                setSelectedModel("");
+              }}
+            >
+              <SelectTrigger className="h-8 w-44 border-0 bg-muted/60 text-xs shadow-none">
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((provider) => (
+                  <SelectItem key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={selectedModel}
+              onValueChange={(v) => setSelectedModel(v ?? "")}
+              disabled={!selectedProvider || providerModels.length === 0}
+            >
+              <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
+                <SelectValue placeholder={selectedProvider ? "Model" : "Select provider first"} />
+              </SelectTrigger>
+              <SelectContent>
+                {providerModels.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {isStreaming ? (
                 <Button size="sm" variant="destructive" type="button" onClick={handleAbort}>

@@ -119,8 +119,7 @@ function AgentsPage() {
       const body = JSON.stringify({
         name: form.name.trim(),
         instructions: form.instructions,
-        provider: form.provider,
-        model: form.model,
+        model_ref: form.provider && form.model ? `${form.provider}/${form.model}` : "",
         tools: form.tools,
         output_schema,
       });
@@ -137,7 +136,7 @@ function AgentsPage() {
 
   const providerModels = models[form.provider] ?? [];
   const filteredAgents = agents.filter((agent) => {
-    const haystack = `${agent.name} ${agent.provider || ""} ${agent.model || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
+    const haystack = `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
     return haystack.includes(filter.toLowerCase());
   });
 
@@ -291,7 +290,6 @@ function AgentsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Provider</TableHead>
               <TableHead>Model</TableHead>
               <TableHead>Tools</TableHead>
               <TableHead>Created</TableHead>
@@ -305,8 +303,7 @@ function AgentsPage() {
                 onClick={() => navigate({ to: "/agents/$agentId", params: { agentId: agent.id } })}
               >
                 <TableCell className="font-medium">{agent.name}</TableCell>
-                <TableCell className="text-muted-foreground">{agent.provider || "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{agent.model || "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{agent.model_ref || "-"}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
                     {(agent.tools ?? []).map((tool) => (
