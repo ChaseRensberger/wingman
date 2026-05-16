@@ -219,7 +219,7 @@ func (s *SQLiteStore) DeleteAgent(id string) error {
 
 // ---- clients -------------------------------------------------------------
 
-// CreateClient inserts a new client row with a fresh KSUID and the
+// CreateClient inserts a new Wingman API client row with a fresh KSUID and the
 // current RFC3339 timestamp.
 func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
 	client := &Client{
@@ -363,8 +363,8 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	return out, nil
 }
 
-// ListSessionsByClient returns every session belonging to a specific
-// client, newest first. Sessions with no client are excluded.
+// ListSessionsByClient returns every session attributed to a specific
+// Wingman API client, newest first. Sessions with no client are excluded.
 func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC

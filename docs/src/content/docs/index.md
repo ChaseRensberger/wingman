@@ -5,7 +5,7 @@ order: 1
 ---
 # Introduction
 
-Wingman is an open-source client-agnostic agent harness. It is designed to be extremely portable (written in go and compiled to a binary with zero external dependencies) and performant (spawn fleets of agents as go routines).
+Wingman is an open-source client-agnostic agent harness. It is designed to be extremely portable (written in go and compiled to a binary with zero external dependencies) and performant (spawn fleets of agents as go routines). A Wingman client can be any application that speaks the HTTP API: the built-in web UI, a CLI, an editor plugin, a Formation runner, or a third-party integration.
 
 The mission of Wingman is to have:
 
@@ -34,4 +34,3 @@ Also as an aside, I Wingman (as I've already mentioned) is written in golang and
 - **Have an idea for how I can improve the project?** [Create an issue](https://github.com/chaserensberger/wingman/issues)
 - **Want to contribute?** [Open a PR](https://github.com/chaserensberger/wingman/pulls)
 - **Want to talk to the team behing Wingman directly/join the community?** [Join the discord](https://discord.gg/Mw4KURek3Q)
-

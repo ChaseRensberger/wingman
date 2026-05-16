@@ -37,7 +37,10 @@ export default defineConfig({
         { label: "Quick Start", slug: "quickstart" },
         {
           label: "Core",
-          items: [{ label: "Sessions", slug: "core/sessions" }],
+          items: [
+            { label: "Clients", slug: "core/clients" },
+            { label: "Sessions", slug: "core/sessions" },
+          ],
         },
         {
           label: "Concepts",

@@ -13,6 +13,8 @@ type CreateClientRequest struct {
 	Name string `json:"name"`
 }
 
+// handleCreateClient registers an application or integration consuming the
+// Wingman HTTP API. It is attribution/organization, not auth.
 func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)

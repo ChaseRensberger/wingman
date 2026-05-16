@@ -33,6 +33,7 @@ type Store interface {
 	// Returns an empty slice (not nil) when the session has no messages.
 	ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
 
+	// CreateClient registers a Wingman API consumer identity.
 	CreateClient(name string) (*Client, error)
 	GetClient(id string) (*Client, error)
 	ListClients() ([]*Client, error)

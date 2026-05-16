@@ -20,7 +20,7 @@ This enables [Context Handoff](/concepts/context-handoff) between different prov
 
 ## Usage
 
-When a client (consumer of Wingman) sends a message, it passes the agent to use for that turn:
+Sessions can be created and used with or without a [Wingman client](/core/clients). A client context attributes the session to the application using Wingman; it is not an authorization boundary today. Each message still passes the agent to use for that turn:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
@@ -34,7 +34,6 @@ curl -sS -X POST http://localhost:2323/sessions/ses_.../message \
 Wingman loads the session history, loads the selected agent, builds the runtime configuration, runs the turn, and appends the resulting messages back to the same session.
 
 The session table intentionally does not have an `agent_id` or `model_ref` column, if a client wants to display a default agent for a session, that is client UI state, not harness state.
-
 
 
 

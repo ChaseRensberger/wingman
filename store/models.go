@@ -49,6 +49,8 @@ type StoredPart struct {
 	UpdatedAt   time.Time
 }
 
+// Client is a Wingman API consumer identity, such as a web UI, CLI,
+// editor plugin, Formation runner, or third-party integration.
 type Client struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
