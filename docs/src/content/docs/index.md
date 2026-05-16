@@ -26,9 +26,12 @@ I have taken inspiration from more projects than I can count but to name a few (
 
 and many many more...
 
+Also as an aside, I Wingman (as I've already mentioned) is written in golang and can thus has serveral features (like [WingModels](/core/wingmodels)) that can be imported and used as an SDK for your go application. This documentation is focused largely on the complete Wingman runtime but I suspect there will be people that want to use just the SDK without all the extra fluff. I will update the documentation in time to streamline that process.
+
 ## Next Steps
 
 - **Want to start using Wingman?** Check out the [Quickstart](/quickstart)
 - **Have an idea for how I can improve the project?** [Create an issue](https://github.com/chaserensberger/wingman/issues)
 - **Want to contribute?** [Open a PR](https://github.com/chaserensberger/wingman/pulls)
-- **Want to talk to me directly/join the community?** [Join the discord]()
+- **Want to talk to the team behing Wingman directly/join the community?** [Join the discord](https://discord.gg/Mw4KURek3Q)
+
