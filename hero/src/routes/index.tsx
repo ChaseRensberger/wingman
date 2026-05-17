@@ -1,12 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
-import {
-	Accordion,
-	AccordionContent,
-	AccordionItem,
-	AccordionTrigger,
-} from "@/components/core/accordion";
 import { Button } from "@/components/core/button";
 import { Markdown } from "@/components/core/markdown";
 import WingmanIcon from "../assets/WingmanBlue.png";
@@ -87,25 +81,6 @@ const FEATURES = [
 		title: "Single binary deploy",
 		description:
 			"Ship the harness, HTTP API, and bundled client as a self-hostable Go binary.",
-	},
-];
-
-const WHAT_IS_WINGMAN = [
-	"An open-source agent harness: runtime, server, storage, tools, and plugin system in one Go binary.",
-	"Client-agnostic by design, so CLIs, web apps, editors, automations, and custom clients can all drive it over HTTP.",
-	"Built for terminal-native power users who want a flexible, hackable backend for agent-powered workflows.",
-];
-
-const FAQS = [
-	{
-		question: "I don't get it, what is this?",
-		answer:
-			"Most agentic harnesses are built for a specific purpose (right now mostly coding TUIs). Wingman aims to be fully agnostic to any specific agentic use case and in turn allow consumers to build arbitrary clients on top of it."
-	},
-	{
-		question: "Is it production-ready?",
-		answer:
-			"Nope! The project is under active development and it is safe to expect breaking changes. Working hard to make sure this isn't true for long though."
 	},
 ];
 
@@ -314,24 +289,6 @@ function ComingSoonSection() {
 	);
 }
 
-function FAQSection() {
-	return (
-		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="FAQ" markerId="03" />
-			<Accordion className="rounded-sm border bg-card px-4">
-				{FAQS.map((faq) => (
-					<AccordionItem key={faq.question}>
-						<AccordionTrigger>{faq.question}</AccordionTrigger>
-						<AccordionContent className="text-muted-foreground leading-relaxed">
-							{faq.answer}
-						</AccordionContent>
-					</AccordionItem>
-				))}
-			</Accordion>
-		</section>
-	);
-}
-
 function NavLink(navItem: {
 	name: string,
 	url: string
@@ -357,7 +314,10 @@ function Hero() {
 					{/* <NavLink name="Discord" url={DISCORD_URL} /> */}
 				</div>
 			</nav>
-			<section className="border-b p-12 space-y-8">
+			<div className="border-b bg-primary/10 px-6 py-3 text-sm text-primary sm:px-12">
+				<strong>Wingman is not production ready.</strong> Expect frequent changes to apis and data models as I receive feedback and iterate over the next couple weeks.
+			</div>
+			<section className="border-b p-12 py-24 space-y-8">
 				<div className="space-y-2">
 					<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">
 						<ASCIILOGO />
@@ -372,7 +332,6 @@ function Hero() {
 			</section>
 			<WhatIsWingmanSection />
 			<FeaturesSection />
-			<FAQSection />
 			<ProvidersSection />
 			<PluginsSection />
 			<ClientsSection />
