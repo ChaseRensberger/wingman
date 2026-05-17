@@ -90,6 +90,12 @@ const FEATURES = [
 	},
 ];
 
+const WHAT_IS_WINGMAN = [
+	"An open-source agent harness: runtime, server, storage, tools, and plugin system in one Go binary.",
+	"Client-agnostic by design, so CLIs, web apps, editors, automations, and custom clients can all drive it over HTTP.",
+	"Built for terminal-native power users who want a flexible, hackable backend for agent-powered workflows.",
+];
+
 const FAQS = [
 	{
 		question: "I don't get it, what is this?",
@@ -138,7 +144,7 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 function InstallSection() {
 	return (
 		<div className="space-y-3">
-			<p className="text-xs text-muted-foreground uppercase tracking-wider">Server</p>
+			<p className="text-xs text-muted-foreground uppercase tracking-wider">INSTALL</p>
 			<CopyCommand command={SERVER_COMMAND}>
 				{SERVER_COMMAND}
 			</CopyCommand>
@@ -146,19 +152,19 @@ function InstallSection() {
 	);
 }
 
-function SectionMarker({ number, label }: { number: string; label: string }) {
+function SectionMarker({ id, title }: { id: string; title: string }) {
 	return (
 		<div className="text-xs text-muted-foreground uppercase tracking-wider">
-			{number} / {label}
+			{id} / {title}
 		</div>
 	);
 }
 
-function SectionHeader({ title, number }: { title: string; number: string }) {
+function SectionHeader({ title, markerId, markerTitle = title }: { title: string; markerId: string; markerTitle?: string }) {
 	return (
 		<div className="flex items-center justify-between gap-4">
 			<h2 className="font-extrabold text-lg">{title}</h2>
-			<SectionMarker number={number} label={title} />
+			<SectionMarker id={markerId} title={markerTitle} />
 		</div>
 	);
 }
@@ -190,10 +196,32 @@ function LinkCard({
 	);
 }
 
+function WhatIsWingmanSection() {
+	return (
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
+			<SectionHeader title="What is Wingman?" markerId="01" markerTitle="Wingman" />
+			<ul className="space-y-3">
+				{WHAT_IS_WINGMAN.map((item) => (
+					<li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>{item}</span>
+					</li>
+				))}
+			</ul>
+			<a
+				href={DOCS_URL}
+				className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+			>
+				Read Docs -&gt;
+			</a>
+		</section>
+	);
+}
+
 function FeaturesSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
-			<SectionHeader title="Features" number="01" />
+			<SectionHeader title="Features" markerId="02" />
 			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 				{FEATURES.map((feature) => (
 					<div key={feature.title} className="rounded-sm border bg-card p-4">
@@ -214,7 +242,7 @@ function FeaturesSection() {
 function PluginsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Plugins" number="04" />
+			<SectionHeader title="Plugins" markerId="05" />
 			<LinkCard
 				title="Compaction"
 				description="Save context by compacting older messages when close to an overflow."
@@ -227,7 +255,7 @@ function PluginsSection() {
 function ProvidersSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="WingModels" number="03" />
+			<SectionHeader title="WingModels" markerId="04" />
 			<p className='text-sm text-muted-foreground'>
 				Wingman ships its own provider agnostic model sdk (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
 			</p>
@@ -239,7 +267,7 @@ function ProvidersSection() {
 function ClientsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="Clients" number="05" />
+			<SectionHeader title="Clients" markerId="06" />
 			<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			<LinkCard
 				title="Web"
@@ -253,7 +281,7 @@ function ClientsSection() {
 function ComingSoonSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="Coming Soon" number="06" />
+			<SectionHeader title="Coming Soon" markerId="07" />
 			<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
 			<div className="grid gap-3 sm:grid-cols-2">
 				<div className="rounded-sm border bg-card p-4">
@@ -277,7 +305,7 @@ function ComingSoonSection() {
 function FAQSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="FAQ" number="02" />
+			<SectionHeader title="FAQ" markerId="03" />
 			<Accordion className="rounded-sm border bg-card px-4">
 				{FAQS.map((faq) => (
 					<AccordionItem key={faq.question}>
@@ -330,6 +358,7 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
+			<WhatIsWingmanSection />
 			<FeaturesSection />
 			<FAQSection />
 			<ProvidersSection />
