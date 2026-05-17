@@ -40,7 +40,6 @@ const PROVIDERS = [
 	},
 ];
 
-// TODO: figure out more FAQS
 const FAQS = [
 	{
 		question: "I don't get it, what is this?",
