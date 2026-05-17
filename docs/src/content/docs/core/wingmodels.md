@@ -9,13 +9,15 @@ draft: true
 
 WingModels is Wingman's Go-native model layer. It gives the agent runtime one request shape, one message shape, and one stream shape while keeping provider wire formats behind the model client.
 
-The current implementation is intentionally small. It supports three catalog model refs:
+The current implementation is intentionally small. It has built-in catalog metadata for three model refs:
 
 - `openai/gpt-5.5`
 - `anthropic/claude-sonnet-4-6`
 - `opencode/claude-sonnet-4-6`
 
 OpenCode here means OpenCode Zen, exposed through provider ID `opencode`.
+
+WingModels can also run a non-catalog model when the caller supplies explicit route metadata (`api` and `base_url`) for one of the supported protocols. The catalog is the ergonomic/default path, not the only execution path.
 
 ## Why It Exists
 
@@ -72,14 +74,18 @@ type Request struct {
 
 ```go
 type ModelRef struct {
-    Provider string
-    ID       string
-    API      API
-    BaseURL  string
+    Provider      string
+    ID            string
+    API           API
+    BaseURL       string
+    Env           []string
+    ContextWindow int
+    MaxOutput     int
+    Capabilities  ModelCapabilities
 }
 ```
 
-Use refs like `openai/gpt-5.5`, not separate conceptual provider and model choices in new code. The store still has provider/model columns for now, but server handlers compute and expose `model_ref` while the storage migration remains incremental.
+Use refs like `openai/gpt-5.5`, not separate conceptual provider and model choices in new code. For catalog models, `Provider` and `ID` are enough. For custom models, `API` and `BaseURL` are required and the remaining fields provide runtime metadata.
 
 ## Messages And Parts
 
@@ -124,9 +130,6 @@ Example:
 
 ```go
 ref, _ := models.ParseModelRef("opencode/claude-sonnet-4-6")
-info, _ := catalog.Get(ref.Provider, ref.ID)
-ref.API = info.API
-ref.BaseURL = info.BaseURL
 
 client := provider.NewClient(nil)
 
@@ -174,29 +177,29 @@ client := provider.NewClient(map[string]string{
 })
 ```
 
-If an API key is not passed explicitly, the client falls back to the first populated provider catalog `env` value:
+If an API key is not passed explicitly, the client falls back to the first populated `env` value from catalog metadata or explicit route metadata:
 
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENCODE_API_KEY`
 
-The provider client resolves `Request.Model` through `models/catalog`, selects the right protocol, and streams through the shared HTTP/SSE implementation.
+The provider client resolves `Request.Model` through `models/catalog` first. If the ref is not cataloged, it uses the explicit route metadata on `Request.Model`. A custom model must provide `api` and `base_url`; otherwise the client returns an unknown-model error.
 
 ## Supported Protocols
 
 Current protocol support is deliberately narrow:
 
-- OpenAI Responses for `openai/gpt-5.5`.
-- Anthropic Messages for `anthropic/claude-sonnet-4-6`.
-- Anthropic Messages over OpenCode Zen for `opencode/claude-sonnet-4-6`.
+- OpenAI Responses (`openai_responses`).
+- OpenAI Chat Completions (`openai_completions`).
+- Anthropic Messages (`anthropic_messages`).
 
-OpenAI Chat Completions support exists in the HTTP model implementation, but no catalog model currently uses it.
+The catalog currently uses OpenAI Responses and Anthropic Messages. OpenAI Chat Completions is available for explicit custom routes.
 
 Unsupported today:
 
 - Ollama.
 - `opencodezen` as a provider ID.
-- Generic OpenAI-compatible providers.
+- First-class generic OpenAI-compatible provider discovery/configuration.
 - Gemini.
 - Bedrock.
 - OpenRouter or other gateway providers.
@@ -261,6 +264,57 @@ Model fields:
 
 Do not add catalog fields speculatively. A field belongs here only when runtime code, API responses, or docs use it now.
 
+## Custom Models
+
+Catalog membership is not required when the caller supplies route metadata. This is useful when a provider exposes a new model before the local catalog is updated, or when an embedding application wants to target an OpenAI-compatible deployment without adding TOML.
+
+SDK example:
+
+```go
+ref := models.ModelRef{
+    Provider: "openai",
+    ID:       "gpt-4.1",
+    API:      models.APIOpenAIResponses,
+    BaseURL:  "https://api.openai.com/v1",
+    Env:      []string{"OPENAI_API_KEY"},
+    Capabilities: models.ModelCapabilities{
+        Tools:            true,
+        Images:           true,
+        StructuredOutput: true,
+    },
+}
+
+msg, err := provider.NewClient(nil).Generate(ctx, models.Request{
+    Model:    ref,
+    Messages: []models.Message{models.NewUserText("Say hello.")},
+})
+```
+
+HTTP/server agents can pass the same metadata as `model_route`; Wingman stores it under the agent `options.model_route` field:
+
+```json
+{
+  "name": "custom-openai",
+  "model_ref": "openai/gpt-4.1",
+  "model_route": {
+    "api": "openai_responses",
+    "base_url": "https://api.openai.com/v1",
+    "env": ["OPENAI_API_KEY"],
+    "context_window": 1047576,
+    "max_output": 32768,
+    "capabilities": {
+      "tools": true,
+      "images": true,
+      "structured_output": true
+    }
+  }
+}
+```
+
+If `model_ref` is in the catalog, the catalog wins. If it is not in the catalog, `model_route.provider` and `model_route.id` may be omitted; they default to the provider and model ID parsed from `model_ref`. If supplied, they must match `model_ref`.
+
+Custom routes do not add broad provider support by themselves. The target endpoint must speak one of the supported wire protocols.
+
 ## Prepare
 
 `Prepare` shows the exact provider-native request body without making a network call:
@@ -300,7 +354,7 @@ WingModels is usable for the narrow supported path, but it is not a broad provid
 Known limitations:
 
 - The protocol implementation handles the common text/tool/usage streaming paths, not every provider event type.
-- There is no generic OpenAI-compatible provider.
+- There is no first-class generic OpenAI-compatible provider catalog or discovery flow; explicit OpenAI-compatible routes can be supplied manually.
 - There is no `CountTokens` API. Compaction currently uses a local approximation.
 - There is no separate `models/transform` package for cross-provider replay normalization yet.
 - Catalog metadata is intentionally tiny and should stay that way until fields have direct consumers.
