@@ -15,6 +15,7 @@ function RouteComponent() {
 }
 
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
+const ENABLE_COMMAND = "sudo wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
 // const DISCORD_URL = "";
@@ -118,10 +119,15 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 
 function InstallSection() {
 	return (
-		<div className="space-y-3">
+		<div className="space-y-4">
 			<p className="text-xs text-muted-foreground uppercase tracking-wider">INSTALL</p>
 			<CopyCommand command={SERVER_COMMAND}>
 				{SERVER_COMMAND}
+			</CopyCommand>
+
+			<p className="text-xs text-muted-foreground uppercase tracking-wider">ENABLE</p>
+			<CopyCommand command={ENABLE_COMMAND}>
+				{ENABLE_COMMAND}
 			</CopyCommand>
 		</div >
 	);
@@ -235,10 +241,10 @@ function PluginsSection() {
 			</div>
 			<LinkCard
 				title="Compaction"
-				description="Save context by compacting older messages when close to an overflow."
+				description="Save context by compacting older messages when close to a session overflow."
 				href={COMPACTION_PLUGIN_URL}
 			/>
-			<Button disabled>Plugin Registry Coming Soon -></Button>
+			<Button disabled>Plugin Registry Coming Soon -&gt;</Button>
 		</section>
 	);
 }
