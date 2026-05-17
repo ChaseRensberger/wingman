@@ -18,6 +18,7 @@ const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const ENABLE_COMMAND = "sudo wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
+const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 // const DISCORD_URL = "";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
@@ -257,6 +258,23 @@ function ProvidersSection() {
 				Wingman ships its own provider agnostic model sdk (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
 			</p>
 			<Markdown>{WINGMODELS_EXAMPLE}</Markdown>
+			<div className="space-y-3">
+				<p className="text-xs text-muted-foreground uppercase tracking-wider">Supported Providers (More coming soon)</p>
+				<ul className="space-y-3">
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>OpenAI</span>
+					</li>
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>Anthropic</span>
+					</li>
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>OpenCode Zen</span>
+					</li>
+				</ul>
+			</div>
 		</section>
 	);
 }
@@ -279,9 +297,11 @@ function ClientsSection() {
 
 function ComingSoonSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="Coming Soon" markerId="07" />
-			<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
+		<section className="px-12 py-8 border-b space-y-4">
+			<div>
+				<SectionHeader title="Coming Soon" markerId="07" />
+				<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
+			</div>
 			<div className="grid gap-3 sm:grid-cols-2">
 				<div className="rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">MCP support</h3>
@@ -297,6 +317,9 @@ function ComingSoonSection() {
 					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it.</p>
 				</div>
 			</div>
+			<a href={ISSUE_URL} target="_blank" rel="noreferrer" className="inline-block">
+				<Button>Something missing? Open An Issue -&gt;</Button>
+			</a>
 		</section>
 	);
 }
