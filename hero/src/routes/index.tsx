@@ -8,6 +8,7 @@ import {
 	AccordionTrigger,
 } from "@/components/core/accordion";
 import { Button } from "@/components/core/button";
+import { Markdown } from "@/components/core/markdown";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from '../components/ascii-logo';
 
@@ -25,18 +26,67 @@ const DOCS_URL = "https://docs.wingman.actor";
 // const DISCORD_URL = "";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
-const PROVIDERS = [
+const WINGMODELS_EXAMPLE = `
+
+\`\`\`go
+func main() {
+  ref, ok := models.ParseModelRef("openai/gpt-5.5")
+  if !ok {
+    log.Fatal("invalid model ref")
+  }
+
+  client := provider.NewClient(nil)
+
+  msg, err := client.Generate(context.Background(), models.Request{
+    Model: ref,
+    System: "You are concise.",
+    Messages: []models.Message{
+      models.NewUserText("Explain Wingman in one sentence."),
+    },
+    Generation: models.Generation{MaxTokens: 80},
+  })
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  for _, part := range msg.Content {
+    if text, ok := part.(models.TextPart); ok {
+      fmt.Println(text.Text)
+    }
+  }
+}
+\`\`\``;
+
+const FEATURES = [
 	{
-		name: "Anthropic",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/anthropic",
+		title: "Client-agnostic runtime",
+		description:
+			"Run Wingman as the backend for CLIs, web apps, editors, automations, or your own custom client.",
 	},
 	{
-		name: "OpenAI",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/openai",
+		title: "Plugin-first harness",
+		description:
+			"Extend session behavior with lifecycle hooks, custom tools, model contributions, and event sinks.",
 	},
 	{
-		name: "OpenCode Zen",
-		href: "https://github.com/ChaseRensberger/wingman/tree/main/models/catalog/providers/opencode",
+		title: "Provider-neutral models",
+		description:
+			"Use WingModels to route OpenAI, Anthropic, and OpenCode Zen through one Go-native SDK.",
+	},
+	{
+		title: "Durable sessions",
+		description:
+			"Persist session metadata, messages, and parts through swappable storage adapters.",
+	},
+	{
+		title: "Formation-ready API",
+		description:
+			"Coordinate many sessions from any language over HTTP without baking orchestration into the core.",
+	},
+	{
+		title: "Single binary deploy",
+		description:
+			"Ship the harness, HTTP API, and bundled client as a self-hostable Go binary.",
 	},
 ];
 
@@ -140,10 +190,31 @@ function LinkCard({
 	);
 }
 
+function FeaturesSection() {
+	return (
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
+			<SectionHeader title="Features" number="01" />
+			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				{FEATURES.map((feature) => (
+					<div key={feature.title} className="rounded-sm border bg-card p-4">
+						<div className="flex items-start gap-2">
+							<span className="text-primary">[*]</span>
+							<div className="space-y-1">
+								<h3 className="font-semibold">{feature.title}</h3>
+								<p className="text-sm text-muted-foreground">{feature.description}</p>
+							</div>
+						</div>
+					</div>
+				))}
+			</div>
+		</section>
+	);
+}
+
 function PluginsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Plugins" number="03" />
+			<SectionHeader title="Plugins" number="04" />
 			<LinkCard
 				title="Compaction"
 				description="Save context by compacting older messages when close to an overflow."
@@ -155,33 +226,20 @@ function PluginsSection() {
 
 function ProvidersSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Providers" number="02" />
-			<div className="grid gap-3">
-				{PROVIDERS.map((provider) => (
-					<a
-						key={provider.name}
-						href={provider.href}
-						target="_blank"
-						rel="noreferrer"
-						className="block rounded-sm border bg-card p-4 transition-colors hover:border-primary hover:text-primary"
-					>
-						<div className="flex items-center gap-2">
-							<span className="text-primary">[*]</span>
-							<h3 className="font-semibold">{provider.name}</h3>
-						</div>
-					</a>
-				))}
-			</div>
-			<p className="text-sm text-muted-foreground">More providers are coming soon.</p>
+		<section className="px-12 py-8 border-b space-y-2">
+			<SectionHeader title="WingModels" number="03" />
+			<p className='text-sm text-muted-foreground'>
+				Wingman ships its own provider agnostic model sdk (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
+			</p>
+			<Markdown>{WINGMODELS_EXAMPLE}</Markdown>
 		</section>
 	);
 }
 
 function ClientsSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Clients" number="04" />
+		<section className="px-12 py-8 border-b space-y-2">
+			<SectionHeader title="Clients" number="05" />
 			<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			<LinkCard
 				title="Web"
@@ -195,7 +253,7 @@ function ClientsSection() {
 function ComingSoonSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="Coming Soon" number="05" />
+			<SectionHeader title="Coming Soon" number="06" />
 			<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
 			<div className="grid gap-3 sm:grid-cols-2">
 				<div className="rounded-sm border bg-card p-4">
@@ -218,8 +276,8 @@ function ComingSoonSection() {
 
 function FAQSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="FAQ" number="01" />
+		<section className="px-12 py-8 border-b space-y-2">
+			<SectionHeader title="FAQ" number="02" />
 			<Accordion className="rounded-sm border bg-card px-4">
 				{FAQS.map((faq) => (
 					<AccordionItem key={faq.question}>
@@ -272,6 +330,7 @@ function Hero() {
 					<InstallSection />
 				</div>
 			</section>
+			<FeaturesSection />
 			<FAQSection />
 			<ProvidersSection />
 			<PluginsSection />
