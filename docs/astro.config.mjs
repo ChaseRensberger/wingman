@@ -40,11 +40,14 @@ export default defineConfig({
           items: [
             { label: "Clients", slug: "core/clients" },
             { label: "Sessions", slug: "core/sessions" },
+            { label: "Agents", slug: "core/agents" },
           ],
         },
         {
           label: "Concepts",
-          items: [{ label: "Context Handoff", slug: "concepts/context-handoff" }],
+          items: [
+            { label: "Context Handoff", slug: "concepts/context-handoff" },
+          ],
         },
         {
           label: "Editorial",

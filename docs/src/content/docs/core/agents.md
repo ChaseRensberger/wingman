@@ -8,8 +8,6 @@ order: 100
 
 An agent is a reusable definition for how a tasks should be completed (in the contect of a [session](/core/sessions)). It describes the runtime configuration for a turn.
 
-## Create An Agent
-
 ```bash
 curl -sS -X POST http://localhost:2323/agents \
   -H "Content-Type: application/json" \
@@ -23,3 +21,5 @@ curl -sS -X POST http://localhost:2323/agents \
         }
       }'
 ```
+
+To use an agent, see [sessions](/core/sessions).
