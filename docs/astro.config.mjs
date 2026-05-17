@@ -47,6 +47,15 @@ export default defineConfig({
           items: [{ label: "Context Handoff", slug: "concepts/context-handoff" }],
         },
         {
+          label: "Editorial",
+          items: [
+            {
+              label: "Build a Coding TUI with Wingman",
+              slug: "editorial/build-coding-tui-with-wingman",
+            },
+          ],
+        },
+        {
           label: "Reference",
           items: [{ label: "API", slug: "reference/referenceapi" }],
         },
