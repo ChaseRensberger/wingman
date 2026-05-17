@@ -200,21 +200,33 @@ function WhatIsWingmanSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<SectionHeader title="What is Wingman?" markerId="01" markerTitle="Wingman" />
+			<p className='text-sm text-muted-foreground'>Wingman is yet another agent harness but this one is:</p>
 			<ul className="space-y-3">
-				{WHAT_IS_WINGMAN.map((item) => (
-					<li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
-						<span className="text-primary">[*]</span>
-						<span>{item}</span>
-					</li>
-				))}
+				<li className="flex items-start gap-2 text-sm text-muted-foreground">
+					<span className="text-primary">[*]</span>
+					<span>Written in Go.</span>
+				</li>
+				<li className="flex items-start gap-2 text-sm text-muted-foreground">
+					<span className="text-primary">[*]</span>
+					<span>Client agnostic - can run multiple clients/uis on a single machine that all use Wingman as a dependency. Wingman is decoupled from any specific use case, so it doesnt come bundled with a coding tui, but you can run a coding tui on top of it.</span>
+				</li>
+				<li className="flex items-start gap-2 text-sm text-muted-foreground">
+					<span className="text-primary">[*]</span>
+					<span>Doesn't rely on your usual harness dependencies. No vercel ai sdk, no models.dev, etc...making it ideal for running in secure or airgapped environements.</span>
+				</li>
+				<li className="flex items-start gap-2 text-sm text-muted-foreground">
+					<span className="text-primary">[*]</span>
+					<span>Highly extendable - plugin support via in process go modules or out of process json rpc. Can register tools, attach to lifecycle events, rewrite history, etc...</span>
+				</li>
 			</ul>
 			<a
 				href={DOCS_URL}
-				className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
 			>
-				Read Docs -&gt;
+				<Button>
+					Read Docs -&gt;
+				</Button>
 			</a>
-		</section>
+		</section >
 	);
 }
 
