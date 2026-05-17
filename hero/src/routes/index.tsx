@@ -229,12 +229,16 @@ function FeaturesSection() {
 function PluginsSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-4">
-			<SectionHeader title="Plugins" markerId="05" />
+			<div>
+				<SectionHeader title="Plugins" markerId="05" />
+				<p className='text-sm text-muted-foreground'>Extend Wingman via in process go module or out of process json rpc. If you build one, open up a PR to add it to this section.</p>
+			</div>
 			<LinkCard
 				title="Compaction"
 				description="Save context by compacting older messages when close to an overflow."
 				href={COMPACTION_PLUGIN_URL}
 			/>
+			<Button disabled>Plugin Registry Coming Soon -></Button>
 		</section>
 	);
 }
@@ -242,7 +246,7 @@ function PluginsSection() {
 function ProvidersSection() {
 	return (
 		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="WingModels" markerId="04" />
+			<SectionHeader title="Multi-provider support via WingModels" markerId="04" markerTitle='WingModels' />
 			<p className='text-sm text-muted-foreground'>
 				Wingman ships its own provider agnostic model sdk (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
 			</p>
@@ -253,9 +257,11 @@ function ProvidersSection() {
 
 function ClientsSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-2">
-			<SectionHeader title="Clients" markerId="06" />
-			<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
+		<section className="px-12 py-8 border-b space-y-4">
+			<div>
+				<SectionHeader title="Clients" markerId="06" />
+				<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
+			</div>
 			<LinkCard
 				title="Web"
 				description="A browser client bundled into the Wingman binary."
