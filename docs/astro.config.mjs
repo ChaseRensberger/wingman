@@ -41,6 +41,10 @@ export default defineConfig({
             { label: "Clients", slug: "core/clients" },
             { label: "Sessions", slug: "core/sessions" },
             { label: "Agents", slug: "core/agents" },
+            { label: "WingModels", slug: "core/wingmodels" },
+            { label: "Plugins", slug: "core/plugins" },
+            { label: "Storage", slug: "core/storage" },
+            { label: "Tools", slug: "core/tools" },
           ],
         },
         {
@@ -63,6 +67,7 @@ export default defineConfig({
           items: [
             { label: "CLI", slug: "reference/cli" },
             { label: "API", slug: "reference/referenceapi" },
+            { label: "Demos", slug: "reference/demos" },
           ],
         },
       ],

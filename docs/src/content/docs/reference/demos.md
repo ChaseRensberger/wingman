@@ -1,7 +1,6 @@
 ---
 title: "Demos"
 group: "Overview"
-draft: true
 order: 3
 ---
 

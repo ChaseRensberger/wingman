@@ -2,7 +2,6 @@
 title: "WingModels"
 group: "Core"
 order: 103
-draft: true
 ---
 
 # WingModels

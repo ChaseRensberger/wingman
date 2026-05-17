@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/chaserensberger/wingman/internal/observability"
+	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
 	webui "github.com/chaserensberger/wingman/web"
 )
@@ -30,6 +31,7 @@ type Server struct {
 	webDevURL string
 	logger    *slog.Logger
 	logs      *observability.LogBuffer
+	plugins   *pluginhost.Manager
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -50,6 +52,7 @@ type Config struct {
 	WebDevURL string
 	Logger    *slog.Logger
 	Logs      *observability.LogBuffer
+	Plugins   *pluginhost.Manager
 }
 
 func New(cfg Config) *Server {
@@ -65,6 +68,7 @@ func New(cfg Config) *Server {
 		webDevURL:      cfg.WebDevURL,
 		logger:         logger,
 		logs:           cfg.Logs,
+		plugins:        cfg.Plugins,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}
@@ -163,6 +167,7 @@ func jsonContentType(next http.Handler) http.Handler {
 			strings.HasPrefix(path, "/agents") ||
 			strings.HasPrefix(path, "/clients") ||
 			strings.HasPrefix(path, "/logs") ||
+			strings.HasPrefix(path, "/plugins") ||
 			strings.HasPrefix(path, "/sessions") ||
 			strings.HasPrefix(path, "/run") {
 			w.Header().Set("Content-Type", "application/json")
@@ -174,6 +179,10 @@ func jsonContentType(next http.Handler) http.Handler {
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/logs", s.handleLogs)
+	s.router.Route("/plugins", func(r chi.Router) {
+		r.Get("/", s.handleListPlugins)
+		r.Post("/reload", s.handleReloadPlugins)
+	})
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)

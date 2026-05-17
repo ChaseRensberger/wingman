@@ -21,6 +21,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
+	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -111,6 +112,14 @@ func serveFlags() []cli.Flag {
 			Name:  "ephemeral",
 			Usage: "Run in ephemeral mode without persistence",
 		},
+		&cli.StringSliceFlag{
+			Name:  "plugin-dir",
+			Usage: "Additional global plugin directory (can be repeated)",
+		},
+		&cli.BoolFlag{
+			Name:  "no-plugins",
+			Usage: "Disable out-of-process plugin loading",
+		},
 	}
 }
 
@@ -141,11 +150,29 @@ func runServe(ctx context.Context, cmd *cli.Command) error {
 		logger.Info("storage initialized", "db_path", dbPath)
 	}
 
+	var plugins *pluginhost.Manager
+	if !cmd.Bool("no-plugins") {
+		dirs := []string{}
+		defaultPluginDir, err := pluginhost.DefaultGlobalDir()
+		if err != nil {
+			return fmt.Errorf("failed to get default plugin directory: %w", err)
+		}
+		dirs = append(dirs, defaultPluginDir)
+		dirs = append(dirs, cmd.StringSlice("plugin-dir")...)
+		plugins, err = pluginhost.New(ctx, dirs)
+		if err != nil {
+			return fmt.Errorf("failed to initialize plugins: %w", err)
+		}
+		defer plugins.Close()
+		logger.Info("plugins initialized", "dirs", dirs)
+	}
+
 	srv := server.New(server.Config{
 		Store:     st,
 		WebDevURL: cmd.String("ui-dev"),
 		Logger:    logger,
 		Logs:      logs,
+		Plugins:   plugins,
 	})
 
 	host := cmd.String("host")
@@ -306,6 +333,12 @@ func systemdUnit(exe, serviceUser, homeDir string, cmd *cli.Command) string {
 	}
 	if cmd.Bool("ephemeral") {
 		args = append(args, "--ephemeral")
+	}
+	for _, dir := range cmd.StringSlice("plugin-dir") {
+		args = append(args, "--plugin-dir", dir)
+	}
+	if cmd.Bool("no-plugins") {
+		args = append(args, "--no-plugins")
 	}
 
 	return fmt.Sprintf(`[Unit]

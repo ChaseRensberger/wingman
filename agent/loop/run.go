@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -151,12 +152,8 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			}
 			if newMsgs != nil && len(newMsgs) != len(r.messages) {
 				orig := len(r.messages)
+				head := firstChangedMessage(r.messages, newMsgs)
 				r.messages = newMsgs
-				var head *models.Message
-				if len(newMsgs) > 0 {
-					h := newMsgs[0]
-					head = &h
-				}
 				r.emit(ContextTransformedEvent{
 					Step:          step + 1,
 					Phase:         "before_step",
@@ -208,6 +205,28 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return r.finalize(step, StopReasonEndTurn), nil
 		}
 	}
+}
+
+func firstChangedMessage(oldMsgs, newMsgs []models.Message) *models.Message {
+	limit := len(oldMsgs)
+	if len(newMsgs) < limit {
+		limit = len(newMsgs)
+	}
+	for i := 0; i < limit; i++ {
+		if !reflect.DeepEqual(oldMsgs[i], newMsgs[i]) {
+			h := newMsgs[i]
+			return &h
+		}
+	}
+	if len(newMsgs) > len(oldMsgs) {
+		h := newMsgs[len(oldMsgs)]
+		return &h
+	}
+	if len(newMsgs) > 0 {
+		h := newMsgs[0]
+		return &h
+	}
+	return nil
 }
 
 // runTurn streams one assistant message, executes any tool calls in it,

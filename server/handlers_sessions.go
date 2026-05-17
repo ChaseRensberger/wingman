@@ -626,6 +626,9 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 		session.WithStore(s.store),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
 	}
+	if s.plugins != nil {
+		s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir)
+	}
 	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
@@ -755,6 +758,11 @@ func (s *Server) resolveTools(toolNames []string) []tool.Tool {
 		"glob":     tool.NewGlobTool(),
 		"grep":     tool.NewGrepTool(),
 		"webfetch": tool.NewWebFetchTool(),
+	}
+	if s.plugins != nil {
+		for _, t := range s.plugins.Tools() {
+			builtins[t.Name()] = t
+		}
 	}
 
 	var tools []tool.Tool
