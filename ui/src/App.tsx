@@ -10,6 +10,7 @@ import { CardShowcase } from './showcases/card-showcase'
 import { ButtonShowcase } from './showcases/button-showcase'
 import { ButtonGroupShowcase } from './showcases/button-group-showcase'
 import { TypographyShowcase } from './showcases/typography-showcase'
+import { MarkdownShowcase } from './showcases/markdown-showcase'
 import { SpinnerShowcase } from './showcases/spinner-showcase'
 import { KbdShowcase } from './showcases/kbd-showcase'
 import { AspectRatioShowcase } from './showcases/aspect-ratio-showcase'
@@ -78,6 +79,7 @@ export default function App() {
 				<ButtonShowcase />
 				<ButtonGroupShowcase />
 				<TypographyShowcase />
+				<MarkdownShowcase />
 				<InputShowcase />
 				<InputGroupShowcase />
 				<TextareaShowcase />
