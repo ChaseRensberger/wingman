@@ -135,7 +135,16 @@ func WithModel(c models.Client) Option {
 		s.client = c
 		if infoProvider, ok := c.(interface{ Info() models.ModelInfo }); ok {
 			info := infoProvider.Info()
-			s.model = models.ModelRef{Provider: info.Provider, ID: info.ID, API: info.API, BaseURL: info.BaseURL}
+			s.model = models.ModelRef{
+				Provider:      info.Provider,
+				ID:            info.ID,
+				API:           info.API,
+				BaseURL:       info.BaseURL,
+				Env:           info.Env,
+				ContextWindow: info.ContextWindow,
+				MaxOutput:     info.MaxOutput,
+				Capabilities:  info.Capabilities,
+			}
 			s.modelInfo = info
 		}
 	}

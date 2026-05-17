@@ -6,16 +6,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 )
 
+const agentOptionModelRoute = "model_route"
+
 type CreateAgentRequest struct {
-	Name         string         `json:"name"`
-	Instructions string         `json:"instructions,omitempty"`
-	Tools        []string       `json:"tools,omitempty"`
-	ModelRef     string         `json:"model_ref,omitempty"`
-	Options      map[string]any `json:"options,omitempty"`
-	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	Name         string            `json:"name"`
+	Instructions string            `json:"instructions,omitempty"`
+	Tools        []string          `json:"tools,omitempty"`
+	ModelRef     string            `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo `json:"model_route,omitempty"`
+	Options      map[string]any    `json:"options,omitempty"`
+	OutputSchema map[string]any    `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +46,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Options:      req.Options,
 		OutputSchema: req.OutputSchema,
 	}
+	setAgentModelRoute(a, req.ModelRoute)
 
 	if err := s.store.CreateAgent(a); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -84,12 +89,13 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateAgentRequest struct {
-	Name         *string        `json:"name,omitempty"`
-	Instructions *string        `json:"instructions,omitempty"`
-	Tools        []string       `json:"tools,omitempty"`
-	ModelRef     *string        `json:"model_ref,omitempty"`
-	Options      map[string]any `json:"options,omitempty"`
-	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	Name         *string           `json:"name,omitempty"`
+	Instructions *string           `json:"instructions,omitempty"`
+	Tools        []string          `json:"tools,omitempty"`
+	ModelRef     *string           `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo `json:"model_route,omitempty"`
+	Options      map[string]any    `json:"options,omitempty"`
+	OutputSchema map[string]any    `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +132,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	if req.Options != nil {
 		a.Options = req.Options
 	}
+	setAgentModelRoute(a, req.ModelRoute)
 	if req.OutputSchema != nil {
 		a.OutputSchema = req.OutputSchema
 	}
@@ -136,6 +143,16 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, a)
+}
+
+func setAgentModelRoute(a *store.Agent, route *models.ModelInfo) {
+	if route == nil {
+		return
+	}
+	if a.Options == nil {
+		a.Options = map[string]any{}
+	}
+	a.Options[agentOptionModelRoute] = route
 }
 
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {

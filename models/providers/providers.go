@@ -67,12 +67,12 @@ func IsValid(id string) bool {
 	return ok
 }
 
-// Client resolves request model refs against the built-in catalog.
+// Client resolves catalog model refs and explicit custom model routes.
 type Client struct {
 	Auth map[string]string
 }
 
-// NewClient constructs a catalog-backed provider client.
+// NewClient constructs a route-backed provider client.
 func NewClient(auth map[string]string) *Client {
 	return &Client{Auth: auth}
 }
@@ -101,12 +101,9 @@ func (c *Client) Generate(ctx context.Context, req models.Request) (*models.Mess
 }
 
 func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
-	if ref.Provider == "" || ref.ID == "" {
-		return nil, fmt.Errorf("model ref is required")
-	}
-	info, ok := catalog.Get(ref.Provider, ref.ID)
-	if !ok {
-		return nil, fmt.Errorf("unknown model: %s", ref.Ref())
+	info, err := resolveModelInfo(ref)
+	if err != nil {
+		return nil, err
 	}
 	protocol, err := protocolFor(info.API)
 	if err != nil {
@@ -129,6 +126,28 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 		Protocol: protocol,
 		BaseURL:  info.BaseURL,
 		APIKey:   apiKey,
+	}, nil
+}
+
+func resolveModelInfo(ref models.ModelRef) (models.ModelInfo, error) {
+	if ref.Provider == "" || ref.ID == "" {
+		return models.ModelInfo{}, fmt.Errorf("model ref is required")
+	}
+	if info, ok := catalog.Get(ref.Provider, ref.ID); ok {
+		return info, nil
+	}
+	if ref.API == "" || ref.BaseURL == "" {
+		return models.ModelInfo{}, fmt.Errorf("unknown model: %s; provide api and base_url for custom models", ref.Ref())
+	}
+	return models.ModelInfo{
+		Provider:      ref.Provider,
+		ID:            ref.ID,
+		API:           ref.API,
+		BaseURL:       ref.BaseURL,
+		Env:           ref.Env,
+		ContextWindow: ref.ContextWindow,
+		MaxOutput:     ref.MaxOutput,
+		Capabilities:  ref.Capabilities,
 	}, nil
 }
 

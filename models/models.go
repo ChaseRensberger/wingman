@@ -302,10 +302,14 @@ type Request struct {
 // use provider-qualified model refs such as "openai/gpt-5.5" instead of
 // separate conceptual provider and model fields.
 type ModelRef struct {
-	Provider string `json:"provider,omitempty"`
-	ID       string `json:"id,omitempty"`
-	API      API    `json:"api,omitempty"`
-	BaseURL  string `json:"base_url,omitempty"`
+	Provider      string            `json:"provider,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	API           API               `json:"api,omitempty"`
+	BaseURL       string            `json:"base_url,omitempty"`
+	Env           []string          `json:"env,omitempty"`
+	ContextWindow int               `json:"context_window,omitempty"`
+	MaxOutput     int               `json:"max_output,omitempty"`
+	Capabilities  ModelCapabilities `json:"capabilities,omitempty"`
 }
 
 // Ref returns the provider-qualified model reference, if both parts are set.

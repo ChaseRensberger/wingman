@@ -11,7 +11,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
-	"github.com/chaserensberger/wingman/models/providers"
+	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 
@@ -228,6 +228,7 @@ type messageOutputSchema struct {
 type MessageSessionRequest struct {
 	AgentID      string               `json:"agent_id"`
 	ModelRef     string               `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo    `json:"model_route,omitempty"`
 	Message      string               `json:"message"`
 	OutputSchema *messageOutputSchema `json:"output_schema,omitempty"`
 }
@@ -246,6 +247,7 @@ type RunRequest struct {
 	AgentID          string               `json:"agent_id,omitempty"`
 	Agent            *store.Agent         `json:"agent,omitempty"`
 	ModelRef         string               `json:"model_ref,omitempty"`
+	ModelRoute       *models.ModelInfo    `json:"model_route,omitempty"`
 	Message          string               `json:"message"`
 	OutputSchema     *messageOutputSchema `json:"output_schema,omitempty"`
 	WorkingDirectory string               `json:"working_directory,omitempty"`
@@ -285,7 +287,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef), sess)
+	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute), sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -359,7 +361,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef), sess)
+	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute), sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -509,7 +511,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storedAgent = s.agentWithRequestModel(storedAgent, req.ModelRef)
+	storedAgent = s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
 	if storedAgent.ModelRef == "" {
 		writeError(w, http.StatusBadRequest, "model_ref is required when agent has no model_ref")
 		return
@@ -610,7 +612,7 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
 
-	modelRef, modelInfo, client, err := s.buildModelClient(stored.ModelRef)
+	modelRef, modelInfo, client, err := s.buildModelClient(stored)
 	if err != nil {
 		return nil, err
 	}
@@ -638,16 +640,17 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 	return session.New(opts...), nil
 }
 
-// buildModelClient resolves a model ref and returns a catalog-backed model client.
-func (s *Server) buildModelClient(modelRef string) (models.ModelRef, models.ModelInfo, models.Client, error) {
-	ref, ok := models.ParseModelRef(modelRef)
+// buildModelClient resolves a model ref and returns a route-backed model client.
+func (s *Server) buildModelClient(stored *store.Agent) (models.ModelRef, models.ModelInfo, models.Client, error) {
+	ref, ok := models.ParseModelRef(stored.ModelRef)
 	if !ok {
-		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("invalid model_ref: %s", modelRef)
+		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("invalid model_ref: %s", stored.ModelRef)
 	}
-	info, ok := catalog.Get(ref.Provider, ref.ID)
-	if !ok {
-		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("unknown model: %s", ref.Ref())
+	info, err := s.resolveModelInfo(ref, stored.Options)
+	if err != nil {
+		return models.ModelRef{}, models.ModelInfo{}, nil, err
 	}
+	ref = modelRefWithInfo(ref, info)
 	var auth *store.Auth
 	if s.store != nil {
 		var err error
@@ -670,12 +673,73 @@ func (s *Server) buildModelClient(modelRef string) (models.ModelRef, models.Mode
 	return ref, info, provider.NewClient(keys), nil
 }
 
-func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string) *store.Agent {
-	if modelRef == "" {
+func (s *Server) resolveModelInfo(ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
+	if info, ok := catalog.Get(ref.Provider, ref.ID); ok {
+		return info, nil
+	}
+	info, ok, err := modelRouteFromOptions(options)
+	if err != nil {
+		return models.ModelInfo{}, err
+	}
+	if !ok {
+		return models.ModelInfo{}, fmt.Errorf("unknown model: %s; provide model_route.api and model_route.base_url for custom models", ref.Ref())
+	}
+	if info.Provider == "" {
+		info.Provider = ref.Provider
+	}
+	if info.ID == "" {
+		info.ID = ref.ID
+	}
+	if info.Provider != ref.Provider || info.ID != ref.ID {
+		return models.ModelInfo{}, fmt.Errorf("model_route %s/%s does not match model_ref %s", info.Provider, info.ID, ref.Ref())
+	}
+	if info.API == "" || info.BaseURL == "" {
+		return models.ModelInfo{}, fmt.Errorf("model_route for %s requires api and base_url", ref.Ref())
+	}
+	return info, nil
+}
+
+func modelRouteFromOptions(options map[string]any) (models.ModelInfo, bool, error) {
+	raw, ok := options[agentOptionModelRoute]
+	if !ok || raw == nil {
+		return models.ModelInfo{}, false, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return models.ModelInfo{}, false, fmt.Errorf("invalid model_route: %w", err)
+	}
+	var info models.ModelInfo
+	if err := json.Unmarshal(b, &info); err != nil {
+		return models.ModelInfo{}, false, fmt.Errorf("invalid model_route: %w", err)
+	}
+	return info, true, nil
+}
+
+func modelRefWithInfo(ref models.ModelRef, info models.ModelInfo) models.ModelRef {
+	ref.API = info.API
+	ref.BaseURL = info.BaseURL
+	ref.Env = info.Env
+	ref.ContextWindow = info.ContextWindow
+	ref.MaxOutput = info.MaxOutput
+	ref.Capabilities = info.Capabilities
+	return ref
+}
+
+func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, route *models.ModelInfo) *store.Agent {
+	if modelRef == "" && route == nil {
 		return stored
 	}
 	cp := *stored
-	cp.ModelRef = modelRef
+	if modelRef != "" {
+		cp.ModelRef = modelRef
+	}
+	if stored.Options != nil {
+		cp.Options = map[string]any{}
+		for k, v := range stored.Options {
+			cp.Options[k] = v
+		}
+	}
+	setAgentModelRoute(&cp, route)
 	return &cp
 }
 

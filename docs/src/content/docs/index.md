@@ -33,4 +33,4 @@ Also as an aside, I Wingman (as I've already mentioned) is written in golang and
 - **Want to start using Wingman?** Check out the [Quickstart](/quickstart)
 - **Have an idea for how I can improve the project?** [Create an issue](https://github.com/chaserensberger/wingman/issues)
 - **Want to contribute?** [Open a PR](https://github.com/chaserensberger/wingman/pulls)
-- **Want to talk to the team behing Wingman directly/join the community?** [Join the discord](https://discord.gg/Mw4KURek3Q)
+<!-- - **Want to talk to the team behing Wingman directly/join the community?** [Join the discord]() -->

@@ -34,8 +34,7 @@ func main() {
 	if !ok {
 		log.Fatalf("model not found in catalog: %s", ref.Ref())
 	}
-	ref.API = info.API
-	ref.BaseURL = info.BaseURL
+	// For a custom non-catalog model, set ref.API/ref.BaseURL/ref.Env directly.
 
 	client := provider.NewClient(map[string]string{
 		// Optional. If omitted, the client falls back to the provider catalog env:

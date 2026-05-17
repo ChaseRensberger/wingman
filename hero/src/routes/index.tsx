@@ -22,7 +22,7 @@ function RouteComponent() {
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
-const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
+const DISCORD_URL = "";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
 const PROVIDERS = [
@@ -257,7 +257,7 @@ function Hero() {
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={DOCS_URL} />
-					<NavLink name="Discord" url={DISCORD_URL} />
+					{/* <NavLink name="Discord" url={DISCORD_URL} /> */}
 				</div>
 			</nav>
 			<section className="border-b p-12 space-y-8">

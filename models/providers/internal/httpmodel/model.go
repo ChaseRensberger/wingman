@@ -95,7 +95,16 @@ func (m *Model) Prepare(ctx context.Context, req models.Request) (*models.Prepar
 		headers["anthropic-version"] = "2023-06-01"
 	}
 	return &models.PreparedRequest{
-		Model:   models.ModelRef{Provider: m.Info_.Provider, ID: m.Info_.ID, API: m.Info_.API, BaseURL: m.BaseURL},
+		Model: models.ModelRef{
+			Provider:      m.Info_.Provider,
+			ID:            m.Info_.ID,
+			API:           m.Info_.API,
+			BaseURL:       m.BaseURL,
+			Env:           m.Info_.Env,
+			ContextWindow: m.Info_.ContextWindow,
+			MaxOutput:     m.Info_.MaxOutput,
+			Capabilities:  m.Info_.Capabilities,
+		},
 		API:     m.Info_.API,
 		URL:     m.url(),
 		Headers: headers,
