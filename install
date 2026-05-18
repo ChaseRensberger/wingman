@@ -4,7 +4,7 @@ set -euo pipefail
 APP="wingman"
 OWNER="chaserensberger"
 REPO="wingman"
-DEFAULT_VERSION="0.5.1"
+DEFAULT_VERSION="0.1.0"
 
 requested_version="${VERSION:-}"
 binary_path=""
