@@ -7,27 +7,7 @@ order: 300
 
 # Build a Coding TUI with Wingman
 
-Wingman is the agent harness, not the client. That split is the useful part: you can build a Claude Code or OpenCode shaped terminal UI without reimplementing model routing, agent sessions, persistence, tool execution, or streaming.
-
-This article outlines a small coding-agent TUI with Wingman as the backend and a simplified OpenTUI frontend. It borrows the shape of OpenCode's TUI, but strips it down to the smallest client that is still useful.
-
-## Target shape
-
-The client has three jobs:
-
-- Render the conversation in a terminal.
-- Capture user prompts and keybindings.
-- Translate UI actions into Wingman HTTP requests.
-
-Wingman owns the rest:
-
-- Provider auth and model calls.
-- Agent definitions.
-- Session history and working directory metadata.
-- Tool execution for `read`, `grep`, `glob`, `edit`, `write`, `bash`, and any other allowed tools.
-- Streaming run events over server-sent events.
-
-The result is a local app with this boundary:
+This is a tutorial on how to build a small terminal-native coding TUI on top of Wingman. It will be minimal and is meant to give some basic understanding on how to build a Wingman client.
 
 ```text
 OpenTUI client
@@ -39,43 +19,115 @@ Wingman server
   agents, sessions, tools, model routing, persistence
 ```
 
-## Backend contract
+By the end you will have a local TUI that can:
 
-Start Wingman first:
+- Connect to `http://localhost:2323`.
+- Create a Wingman client, coding agent, and session.
+- Stream assistant text and tool events into a terminal transcript.
+- Abort an in-flight run with `ctrl+c`.
+- Quit cleanly with `escape`.
+
+## Prerequisites
+
+Install these first:
+
+- Wingman, either from a release install or from this repository.
+- Go, if you run Wingman from the repository with `go run ./cmd/wingman serve`.
+- Bun, for `create-tui` and running the OpenTUI app.
+- `curl`, for HTTP setup commands.
+- `jq`, for extracting IDs from JSON responses.
+- An Anthropic API key in `ANTHROPIC_API_KEY`.
+
+Check the local tools:
+
+```bash
+bun --version
+curl --version
+jq --version
+```
+
+If you do not want to use Bun as the package manager, you can use `npm install` or `pnpm install` after project creation. Bun is still the recommended runtime for OpenTUI projects.
+
+## 1. Start Wingman
+
+Open one terminal for the Wingman server.
+
+From a release install, run Wingman as a foreground process:
 
 ```bash
 wingman serve
 ```
 
-During development from the repository:
+If you want Wingman managed by systemd instead:
+
+```bash
+wingman up
+wingman status
+```
+
+From this repository:
 
 ```bash
 go run ./cmd/wingman serve
 ```
 
+Verify the server is reachable:
+
+```bash
+curl -sS http://localhost:2323/health
+```
+
+Expected response:
+
+```json
+{ "status": "ok" }
+```
+
 The default base URL is `http://localhost:2323`.
 
-### Register a client
+## 2. Configure Provider Auth
 
-Client registration is optional, but a TUI should do it so its sessions can be listed separately from other apps using the same Wingman daemon.
+Wingman owns provider credentials. The TUI does not need to know the API key.
+
+Set your Anthropic API key in the shell where you run setup commands:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+Store it in Wingman's local auth store:
+
+```bash
+curl -sS -X PUT http://localhost:2323/provider/auth \
+  -H "Content-Type: application/json" \
+  -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
+```
+
+Confirm that Wingman has a configured Anthropic credential:
+
+```bash
+curl -sS http://localhost:2323/provider/auth | jq
+```
+
+You should see `"configured": true` for `anthropic`. Wingman does not return the secret.
+
+## 3. Create Wingman IDs
+
+Open a second terminal in the project directory you want the coding agent to work on. The session's `working_directory` will be this directory.
+
+Register a client for this TUI:
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
   -H "Content-Type: application/json" \
   -d '{"name":"wingman-tui"}' | jq -r .id)
+
+printf 'client: %s\n' "$CLIENT_ID"
 ```
 
-Send that value on later requests:
+Client registration is attribution and organization, not auth. It lets Wingman list sessions created by this TUI separately from sessions created by other apps.
 
-```http
-X-Wingman-Client: cli_...
-```
-
-This is attribution and organization, not auth.
-
-### Create a coding agent
-
-A coding TUI usually wants a broad tool set scoped to the user's current project:
+Create a coding agent:
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
@@ -83,42 +135,53 @@ AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d '{
     "name": "Coding Agent",
-    "instructions": "You are a concise coding agent. Inspect the codebase before editing. Make small, verifiable changes.",
+    "instructions": "You are a concise coding agent. Inspect the codebase before editing. Make small, verifiable changes. Explain what you changed and what you ran.",
     "tools": ["read", "glob", "grep", "edit", "write", "bash"],
     "provider": "anthropic",
     "model": "claude-haiku-4-5",
     "options": {"max_tokens": 4096}
   }' | jq -r .id)
+
+printf 'agent: %s\n' "$AGENT_ID"
 ```
 
-Provider auth still has to be configured separately through `/provider/auth`. The TUI can expose a setup screen later; the first version can assume the user already ran the Quick Start auth step.
-
-### Create a session
-
-Sessions hold conversation history and the working directory used by directory-scoped tools.
+Create a session in the current directory:
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
-  -d "{\"title\":\"$(basename "$PWD")\",\"working_directory\":\"$PWD\"}" | jq -r .id)
+  -d "{\"title\":\"$(basename \"$PWD\")\",\"working_directory\":\"$PWD\"}" | jq -r .id)
+
+printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must exist. Tools like `read`, `grep`, `glob`, `edit`, `write`, and `bash` run relative to that directory.
+The working directory must already exist. Directory-scoped tools such as `read`, `grep`, `glob`, `edit`, `write`, and `bash` run relative to this directory.
 
-### Stream a prompt
+Save the IDs for the TUI:
 
-Use the streaming endpoint for an interactive UI:
+```bash
+cat > .env.wingman-tui <<EOF
+WINGMAN_BASE_URL=http://localhost:2323
+WINGMAN_CLIENT_ID=$CLIENT_ID
+WINGMAN_AGENT_ID=$AGENT_ID
+WINGMAN_SESSION_ID=$SESSION_ID
+EOF
+```
+
+## 4. Test Streaming with Curl
+
+Before writing UI code, verify the backend loop works:
 
 ```bash
 curl -N -X POST "http://localhost:2323/sessions/${SESSION_ID}/message/stream" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
-  -d "{\"agent_id\":\"${AGENT_ID}\",\"message\":\"Summarize this project.\"}"
+  -d "{\"agent_id\":\"${AGENT_ID}\",\"message\":\"Summarize this project in one paragraph.\"}"
 ```
 
-Wingman returns server-sent events shaped like this:
+Wingman returns server-sent events:
 
 ```text
 event: stream_part
@@ -128,32 +191,27 @@ event: done
 data: {"type":"done","version":1,"data":{"usage":{...},"steps":2}}
 ```
 
-The important event types for a minimal TUI are:
+The minimal TUI will handle these event types:
 
 | Event | UI behavior |
 |---|---|
-| `stream_part` | Append assistant text or reasoning deltas to the in-progress message. |
+| `stream_part` | Append assistant text to the in-progress message. |
 | `tool_start` | Add a pending tool row. |
-| `tool_end` | Mark the tool row complete and show the result summary. |
-| `message` | Reconcile the final persisted message if present. |
+| `tool_end` | Mark the tool row complete and show a short result. |
+| `message` | Ignore for now, or use later to reconcile persisted history. |
 | `error` | Show an error block and unlock the prompt. |
-| `done` | Mark the run complete, store usage/step metadata, and unlock the prompt. |
+| `done` | Mark the run complete and unlock the prompt. |
 
-Use `POST /sessions/{id}/abort` for `ctrl+c` or an explicit stop keybinding.
+Use this endpoint for interrupts:
 
-## Frontend shape
+```bash
+curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/abort" \
+  -H "X-Wingman-Client: ${CLIENT_ID}" | jq
+```
 
-OpenCode's TUI is a full application: routes, dialogs, plugin slots, model selectors, permission prompts, session trees, prompt history, sidebars, and custom event plumbing. A first Wingman TUI does not need all of that.
+## 5. Create the TUI Project
 
-Start with one screen:
-
-- A header with the project name, current model, and session ID.
-- A scrollable transcript.
-- A footer with current run status.
-- A focused multiline prompt.
-- Keybindings for submit, abort, new session, and quit.
-
-Solid is a good fit with OpenTUI because signals map cleanly to streaming updates.
+Create a Solid OpenTUI app:
 
 ```bash
 bunx create-tui@latest -t solid wingman-tui
@@ -161,51 +219,73 @@ cd wingman-tui
 bun install
 ```
 
-Install whatever HTTP/SSE helpers you want, or keep it dependency-free and use `fetch` plus a small SSE parser.
+If you prefer another package manager after the app is created:
 
-## Minimal client module
+```bash
+npm install
+```
 
-This is intentionally small. It is a client-local wrapper around Wingman's HTTP API, not an official SDK.
+or:
+
+```bash
+pnpm install
+```
+
+Copy the Wingman environment file into the TUI project:
+
+```bash
+cp ../.env.wingman-tui .env
+```
+
+Add a start script if the generated `package.json` does not already have one:
+
+```json
+{
+  "scripts": {
+    "start": "bun run src/index.tsx"
+  }
+}
+```
+
+The generated project may already have equivalent `dev` or `start` scripts. Keep those if they work.
+
+## 6. Add a Wingman HTTP Client
+
+Create `src/wingman-client.ts`:
 
 ```ts
-type WingmanEvent = {
+export type WingmanEvent = {
   type: string
   version: number
   data: unknown
 }
 
 export function createWingmanClient(input: { baseURL: string; clientID?: string }) {
-  const headers = () => ({
+  const baseURL = input.baseURL.replace(/\/$/, "")
+
+  const jsonHeaders = () => ({
     "Content-Type": "application/json",
     ...(input.clientID ? { "X-Wingman-Client": input.clientID } : {}),
   })
 
   return {
-    async createSession(body: { title: string; working_directory: string }) {
-      const response = await fetch(`${input.baseURL}/sessions`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) throw new Error(await response.text())
-      return response.json() as Promise<{ id: string }>
-    },
-
     async abortSession(sessionID: string) {
-      await fetch(`${input.baseURL}/sessions/${sessionID}/abort`, {
+      const response = await fetch(`${baseURL}/sessions/${sessionID}/abort`, {
         method: "POST",
-        headers: headers(),
-      })
-    },
-
-    async *streamMessage(body: { sessionID: string; agentID: string; message: string }) {
-      const response = await fetch(`${input.baseURL}/sessions/${body.sessionID}/message/stream`, {
-        method: "POST",
-        headers: { ...headers(), Accept: "text/event-stream" },
-        body: JSON.stringify({ agent_id: body.agentID, message: body.message }),
+        headers: jsonHeaders(),
       })
       if (!response.ok) throw new Error(await response.text())
-      if (!response.body) return
+    },
+
+    async *streamMessage(input: { sessionID: string; agentID: string; message: string }) {
+      const response = await fetch(`${baseURL}/sessions/${input.sessionID}/message/stream`, {
+        method: "POST",
+        headers: { ...jsonHeaders(), Accept: "text/event-stream" },
+        body: JSON.stringify({ agent_id: input.agentID, message: input.message }),
+      })
+
+      if (!response.ok) throw new Error(await response.text())
+      if (!response.body) throw new Error("Wingman returned an empty stream")
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -214,58 +294,123 @@ export function createWingmanClient(input: { baseURL: string; clientID?: string 
       while (true) {
         const chunk = await reader.read()
         if (chunk.done) break
-        buffer += decoder.decode(chunk.value, { stream: true })
 
+        buffer += decoder.decode(chunk.value, { stream: true })
         const frames = buffer.split("\n\n")
         buffer = frames.pop() ?? ""
 
         for (const frame of frames) {
-          const data = frame
-            .split("\n")
-            .find((line) => line.startsWith("data: "))
-            ?.slice("data: ".length)
-          if (data) yield JSON.parse(data) as WingmanEvent
+          const event = parseSSEFrame(frame)
+          if (event) yield event
         }
       }
     },
   }
 }
+
+function parseSSEFrame(frame: string) {
+  const data = frame
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice("data: ".length))
+    .join("\n")
+
+  if (!data) return null
+  return JSON.parse(data) as WingmanEvent
+}
 ```
 
-For production, add reconnect behavior only for passive event feeds. Do not automatically replay a prompt stream unless you know the original request did not start a run.
+This is intentionally a tiny local wrapper, not an official SDK.
 
-## Minimal OpenTUI screen
+## 7. Add Runtime Config
 
-The UI state can be plain Solid signals:
+Create `src/config.ts`:
+
+```ts
+export function getConfig() {
+  const config = {
+    baseURL: process.env.WINGMAN_BASE_URL ?? "http://localhost:2323",
+    clientID: process.env.WINGMAN_CLIENT_ID,
+    agentID: process.env.WINGMAN_AGENT_ID,
+    sessionID: process.env.WINGMAN_SESSION_ID,
+  }
+
+  const missing = Object.entries(config)
+    .filter(([key, value]) => key !== "clientID" && !value)
+    .map(([key]) => key)
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment values: ${missing.join(", ")}`)
+  }
+
+  return config as {
+    baseURL: string
+    clientID?: string
+    agentID: string
+    sessionID: string
+  }
+}
+```
+
+The client ID is optional in Wingman, but this tutorial uses one so the TUI's sessions are easy to find later.
+
+## 8. Build the OpenTUI Screen
+
+Replace the generated entrypoint with `src/index.tsx`:
 
 ```tsx
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { For, createSignal } from "solid-js"
-import { createWingmanClient } from "./wingman-client"
+import { getConfig } from "./config"
+import { createWingmanClient, type WingmanEvent } from "./wingman-client"
 
 type Row =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string }
   | { kind: "tool"; text: string }
   | { kind: "error"; text: string }
+  | { kind: "system"; text: string }
 
+const config = getConfig()
 const wingman = createWingmanClient({
-  baseURL: "http://localhost:2323",
-  clientID: process.env.WINGMAN_CLIENT_ID,
+  baseURL: config.baseURL,
+  clientID: config.clientID,
 })
 
 function App() {
   const renderer = useRenderer()
-  const [rows, setRows] = createSignal<Row[]>([])
+  const [rows, setRows] = createSignal<Row[]>([
+    { kind: "system", text: `session ${config.sessionID}` },
+    { kind: "system", text: "ctrl+j submits, ctrl+c aborts, escape quits" },
+  ])
   const [prompt, setPrompt] = createSignal("")
   const [running, setRunning] = createSignal(false)
-  const sessionID = process.env.WINGMAN_SESSION_ID ?? "ses_..."
-  const agentID = process.env.WINGMAN_AGENT_ID ?? "agt_..."
 
   useKeyboard((key) => {
-    if (key.name === "escape") renderer.destroy()
-    if (key.ctrl && key.name === "c" && running()) void wingman.abortSession(sessionID)
+    if (key.name === "escape") {
+      renderer.destroy()
+      return
+    }
+
+    if (key.ctrl && key.name === "c") {
+      if (running()) void abortRun()
+      else renderer.destroy()
+      return
+    }
+
+    if (key.ctrl && key.name === "j") {
+      void submit()
+    }
   })
+
+  async function abortRun() {
+    try {
+      await wingman.abortSession(config.sessionID)
+      setRows((current) => [...current, { kind: "system", text: "abort requested" }])
+    } catch (error) {
+      setRows((current) => [...current, { kind: "error", text: String(error) }])
+    }
+  }
 
   async function submit() {
     const message = prompt().trim()
@@ -276,7 +421,11 @@ function App() {
     setRows((current) => [...current, { kind: "user", text: message }, { kind: "assistant", text: "" }])
 
     try {
-      for await (const event of wingman.streamMessage({ sessionID, agentID, message })) {
+      for await (const event of wingman.streamMessage({
+        sessionID: config.sessionID,
+        agentID: config.agentID,
+        message,
+      })) {
         applyEvent(event)
       }
     } catch (error) {
@@ -286,55 +435,75 @@ function App() {
     }
   }
 
-  function applyEvent(event: { type: string; data: unknown }) {
+  function applyEvent(event: WingmanEvent) {
+    if (event.type === "stream_part") {
+      const text = extractTextDelta(event.data)
+      if (text) appendAssistantText(text)
+      return
+    }
+
     if (event.type === "tool_start") {
-      setRows((current) => [...current, { kind: "tool", text: "Running tool..." }])
+      setRows((current) => [...current, { kind: "tool", text: formatToolEvent("running", event.data) }])
       return
     }
 
     if (event.type === "tool_end") {
-      setRows((current) => [...current, { kind: "tool", text: "Tool finished." }])
+      setRows((current) => [...current, { kind: "tool", text: formatToolEvent("finished", event.data) }])
       return
     }
 
-    if (event.type === "stream_part") {
-      const text = extractTextDelta(event.data)
-      if (!text) return
-      setRows((current) => {
-        const next = [...current]
-        const last = next[next.length - 1]
-        if (last?.kind === "assistant") last.text += text
-        return next
-      })
+    if (event.type === "error") {
+      setRows((current) => [...current, { kind: "error", text: formatEventData(event.data) }])
+      return
     }
+
+    if (event.type === "done") {
+      setRows((current) => [...current, { kind: "system", text: "run complete" }])
+    }
+  }
+
+  function appendAssistantText(text: string) {
+    setRows((current) => {
+      const next = [...current]
+      const last = next[next.length - 1]
+      if (last?.kind === "assistant") last.text += text
+      else next.push({ kind: "assistant", text })
+      return next
+    })
   }
 
   return (
     <box flexDirection="column" height="100%">
       <box borderBottom paddingLeft={1} paddingRight={1}>
-        <text>Wingman TUI {running() ? "running" : "idle"}</text>
+        <text>
+          <span fg="#8bd5ff">Wingman TUI</span>
+          {"  "}
+          <span fg={running() ? "#f9c74f" : "#90be6d"}>{running() ? "running" : "idle"}</span>
+        </text>
       </box>
 
       <scrollbox flexGrow={1} padding={1} focused>
         <For each={rows()}>
           {(row) => (
             <text>
-              <span fg={row.kind === "user" ? "#8bd5ff" : row.kind === "error" ? "#ff6b6b" : "#d6deeb"}>
-                {row.kind}: {row.text}
-              </span>
+              <span fg={colorFor(row.kind)}>{labelFor(row.kind)} </span>
+              {row.text}
             </text>
           )}
         </For>
       </scrollbox>
 
-      <box borderTop padding={1}>
+      <box borderTop padding={1} flexDirection="column">
+        <text>
+          <span fg="#6c7086">Prompt</span>
+        </text>
         <textarea
           value={prompt()}
           onInput={setPrompt}
           height={4}
           focused={!running()}
           placeholder="Ask Wingman to inspect, edit, test, or explain this project..."
-          onSubmit={submit}
+          wrapText
         />
       </box>
     </box>
@@ -342,83 +511,146 @@ function App() {
 }
 
 function extractTextDelta(data: unknown) {
+  if (typeof data === "string") return data
   if (typeof data !== "object" || data === null) return ""
   if ("text" in data && typeof data.text === "string") return data.text
   if ("delta" in data && typeof data.delta === "string") return data.delta
+  if ("content" in data && typeof data.content === "string") return data.content
   return ""
+}
+
+function formatToolEvent(status: string, data: unknown) {
+  if (typeof data !== "object" || data === null) return `tool ${status}`
+  const name = "tool_name" in data && typeof data.tool_name === "string" ? data.tool_name : "tool"
+  return `${name} ${status}`
+}
+
+function formatEventData(data: unknown) {
+  if (typeof data === "string") return data
+  if (typeof data !== "object" || data === null) return String(data)
+  if ("error" in data && typeof data.error === "string") return data.error
+  if ("message" in data && typeof data.message === "string") return data.message
+  return JSON.stringify(data)
+}
+
+function colorFor(kind: Row["kind"]) {
+  switch (kind) {
+    case "user":
+      return "#8bd5ff"
+    case "assistant":
+      return "#d6deeb"
+    case "tool":
+      return "#f9c74f"
+    case "error":
+      return "#ff6b6b"
+    case "system":
+      return "#6c7086"
+  }
+}
+
+function labelFor(kind: Row["kind"]) {
+  switch (kind) {
+    case "user":
+      return "you>"
+    case "assistant":
+      return "ai>"
+    case "tool":
+      return "tool>"
+    case "error":
+      return "error>"
+    case "system":
+      return "system>"
+  }
 }
 
 render(() => <App />, { exitOnCtrlC: false })
 ```
 
-This sketch leaves details open on purpose. The exact `stream_part` payload can evolve with Wingman's event model, so keep event translation isolated in a small function instead of scattering it through render components.
+This screen keeps all event translation in `applyEvent`, `extractTextDelta`, and `formatToolEvent`. That isolation matters because stream payloads can evolve without forcing changes throughout the render tree.
 
-## State model
+## 9. Run the TUI
 
-Keep two layers of state:
+Load the environment file and start the app:
 
-| State | Owner | Examples |
-|---|---|---|
-| Durable state | Wingman | sessions, messages, parts, working directory, client ID |
-| Display state | TUI | focused pane, draft prompt, scroll position, collapsed tool output, selected session |
+```bash
+set -a
+source .env
+set +a
+bun run start
+```
 
-On startup, the TUI should:
+Try these prompts:
 
-1. Register or load its Wingman client ID.
-2. List sessions with `X-Wingman-Client`.
-3. Resume the most recent session or create a new one for the current directory.
-4. Fetch the selected session to populate the transcript.
-5. Submit future prompts through the streaming endpoint.
+```text
+Summarize this project in five bullets.
+```
 
-Do not store another copy of the transcript as the source of truth. Cache enough for rendering, but let Wingman be the durable record.
+```text
+Find the docs entrypoint and explain how docs pages are organized.
+```
 
-## Useful keybindings
+```text
+Inspect the test setup and tell me the safest command to run before committing.
+```
 
-Start with a small keymap:
+Use these keys:
 
 | Key | Action |
 |---|---|
-| `enter` or `ctrl+j` | Submit prompt. |
-| `ctrl+c` | Abort current run if running; otherwise quit or clear input. |
+| `ctrl+j` | Submit the prompt. |
+| `ctrl+c` | Abort the current Wingman run. If idle, quit. |
 | `escape` | Quit. |
-| `ctrl+n` | New session in the same working directory. |
-| `ctrl+l` | Open session picker. |
-| `ctrl+t` | Toggle tool output visibility. |
 
-Avoid building a full command palette until the base loop feels good. A TUI lives or dies on the prompt, transcript, and interrupt path.
+## 10. Troubleshooting
 
-## What to copy from OpenCode
+If `curl http://localhost:2323/health` fails, Wingman is not running or is listening on a different host or port. Start it with `wingman serve` or `go run ./cmd/wingman serve`.
 
-Copy the architectural instincts, not the whole app.
+If the TUI says `Missing required environment values`, check that `.env` contains these values:
 
-Good ideas to borrow:
+```bash
+cat .env
+```
 
-- OpenTUI/Solid as the rendering layer.
-- A provider/context boundary around the HTTP client.
-- Batched event handling so streams do not rerender the whole app on every byte.
-- A transcript view that treats tool calls as first-class rows, not hidden logs.
-- A narrow prompt component with history, paste handling, and optional file references.
+You need:
 
-Things to skip in the first version:
+```text
+WINGMAN_BASE_URL=http://localhost:2323
+WINGMAN_CLIENT_ID=cli_...
+WINGMAN_AGENT_ID=agt_...
+WINGMAN_SESSION_ID=ses_...
+```
 
-- Plugin slots.
-- Workspace orchestration.
-- Theme galleries.
-- Session trees and forks.
-- Remote control endpoints.
-- Complex permission dialogs unless your Wingman setup has a policy layer that needs them.
+If Wingman returns an auth error, configure provider auth again:
 
-Wingman's value is that the client can stay thin. If your TUI starts implementing agent orchestration, tool dispatch, or transcript persistence itself, push that work back across the HTTP boundary.
+```bash
+curl -sS -X PUT http://localhost:2323/provider/auth \
+  -H "Content-Type: application/json" \
+  -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
+```
 
-## Next steps
+If the model cannot call tools, confirm the agent was created with the coding tools:
 
-Once the single-session loop works, add features in this order:
+```bash
+curl -sS "http://localhost:2323/agents/${AGENT_ID}" \
+  -H "X-Wingman-Client: ${CLIENT_ID}" | jq
+```
 
-1. Session picker scoped by `X-Wingman-Client`.
-2. Agent/model selector.
-3. Tool output expansion and collapse.
-4. Prompt history and draft persistence.
-5. File references that expand into prompt context before sending.
-6. A setup screen for provider auth.
+If `ctrl+c` kills the process instead of aborting the run, confirm the render call uses `exitOnCtrlC: false`:
 
-That gets you a practical coding agent without compromising the core idea: Wingman is the backend harness, and the terminal UI is just one client among many.
+```tsx
+render(() => <App />, { exitOnCtrlC: false })
+```
+
+## What to Add Next
+
+The single-session loop is the core. Add features in this order:
+
+1. List sessions filtered by `X-Wingman-Client` and resume the most recent one.
+2. Add a session picker.
+3. Add an agent/model selector.
+4. Expand and collapse tool output.
+5. Persist prompt history locally.
+6. Add file references that expand into prompt context before sending.
+7. Add a setup screen for provider auth.
+
+Keep the boundary intact: Wingman owns agents, sessions, model routing, tools, and persistence. The terminal UI owns rendering, input, keybindings, and display-only state.
