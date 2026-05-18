@@ -136,7 +136,7 @@ The working directory must already exist. Directory-scoped tools such as `read`,
 Save the IDs for the TUI:
 
 ```bash
-cat > .env.wingman-tui <<EOF
+cat > .env.wingcode <<EOF
 WINGMAN_BASE_URL=http://localhost:2323
 WINGMAN_CLIENT_ID=$CLIENT_ID
 WINGMAN_AGENT_ID=$AGENT_ID
@@ -189,8 +189,8 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/abort" \
 Create a Solid OpenTUI app:
 
 ```bash
-bunx create-tui@latest -t solid wingman-tui
-cd wingman-tui
+bunx create-tui@latest -t solid wingcode
+cd wingcode
 bun install
 ```
 
@@ -209,7 +209,7 @@ pnpm install
 Copy the Wingman environment file into the TUI project:
 
 ```bash
-cp ../.env.wingman-tui .env
+cp ../.env.wingcode .env
 ```
 
 Add a start script if the generated `package.json` does not already have one:
