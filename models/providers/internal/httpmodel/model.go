@@ -93,6 +93,7 @@ func (m *Model) Prepare(ctx context.Context, req models.Request) (*models.Prepar
 	}
 	if m.Protocol == AnthropicMessages {
 		headers["anthropic-version"] = "2023-06-01"
+		headers["anthropic-beta"] = "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 	}
 	return &models.PreparedRequest{
 		Model: models.ModelRef{
@@ -151,12 +152,15 @@ func (m *Model) url() string {
 }
 
 func (m *Model) auth(req *http.Request) {
-	if m.APIKey == "" {
+	if m.Protocol == AnthropicMessages {
+		req.Header.Set("anthropic-version", "2023-06-01")
+		req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14")
+		if m.APIKey != "" {
+			req.Header.Set("x-api-key", m.APIKey)
+		}
 		return
 	}
-	if m.Protocol == AnthropicMessages {
-		req.Header.Set("x-api-key", m.APIKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
+	if m.APIKey == "" {
 		return
 	}
 	req.Header.Set("authorization", "Bearer "+m.APIKey)
@@ -361,9 +365,30 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 	case "response.output_item.done":
 		item, _ := event["item"].(map[string]any)
 		if itemType, _ := item["type"].(string); itemType == "function_call" {
-			call := models.ToolCallPart{CallID: stringValue(item["call_id"]), Name: stringValue(item["name"]), Input: decodeArgs(stringValue(item["arguments"]))}
+			itemID := stringValue(item["id"])
+			arguments := stringValue(item["arguments"])
+			if arguments == "" && state.toolBuf != nil {
+				if acc := state.toolBuf[itemID]; acc != nil {
+					arguments = acc.args.String()
+				}
+			}
+			call := models.ToolCallPart{CallID: stringValue(item["call_id"]), Name: stringValue(item["name"]), Input: decodeArgs(arguments)}
 			pushTool(state, stream, call)
 		}
+	case "response.function_call_arguments.delta":
+		itemID := stringValue(event["item_id"])
+		if itemID == "" {
+			return
+		}
+		if state.toolBuf == nil {
+			state.toolBuf = map[string]*toolAccum{}
+		}
+		acc := state.toolBuf[itemID]
+		if acc == nil {
+			acc = &toolAccum{}
+			state.toolBuf[itemID] = acc
+		}
+		acc.args.WriteString(stringValue(event["delta"]))
 	case "response.completed", "response.incomplete":
 		state.reason = finishReason(stringValue(nested(event, "response", "incomplete_details", "reason")), len(state.tools) > 0)
 		state.usage = openAIResponsesUsage(nested(event, "response", "usage"))
@@ -414,12 +439,43 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 func parseAnthropic(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
 	typeName := stringValue(event["type"])
 	switch typeName {
+	case "content_block_start":
+		block, _ := event["content_block"].(map[string]any)
+		if stringValue(block["type"]) != "tool_use" {
+			return
+		}
+		if state.toolBuf == nil {
+			state.toolBuf = map[string]*toolAccum{}
+		}
+		idx := fmt.Sprint(intValue(event["index"]))
+		state.toolBuf[idx] = &toolAccum{id: stringValue(block["id"]), name: stringValue(block["name"])}
+		stream.Push(models.ToolInputStartPart{ID: stringValue(block["id"]), ToolName: stringValue(block["name"])})
 	case "content_block_delta":
 		delta, _ := event["delta"].(map[string]any)
 		if text := stringValue(delta["text"]); text != "" {
 			pushText(state, stream, fmt.Sprintf("text-%d", intValue(event["index"])), text)
+			return
+		}
+		if stringValue(delta["type"]) == "input_json_delta" {
+			idx := fmt.Sprint(intValue(event["index"]))
+			if state.toolBuf == nil || state.toolBuf[idx] == nil {
+				return
+			}
+			fragment := stringValue(delta["partial_json"])
+			state.toolBuf[idx].args.WriteString(fragment)
+			stream.Push(models.ToolInputDeltaPart{ID: state.toolBuf[idx].id, Delta: fragment})
 		}
 	case "content_block_stop":
+		idx := fmt.Sprint(intValue(event["index"]))
+		if state.toolBuf == nil || state.toolBuf[idx] == nil {
+			return
+		}
+		acc := state.toolBuf[idx]
+		stream.Push(models.ToolInputEndPart{ID: acc.id})
+		call := models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: decodeArgs(acc.args.String())}
+		state.tools = append(state.tools, call)
+		stream.Push(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input})
+		delete(state.toolBuf, idx)
 	case "message_delta":
 		delta, _ := event["delta"].(map[string]any)
 		state.reason = finishReason(stringValue(delta["stop_reason"]), len(state.tools) > 0)

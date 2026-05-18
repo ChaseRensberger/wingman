@@ -54,6 +54,8 @@ The command re-executes itself through `sudo` when needed. The service runs `win
 | `--log-format` | `json` | Log format: `json` or `text`. |
 | `--log-level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. |
 | `--ui-dev` | none | Proxy `/web` to a Vite dev server URL. |
+| `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
+| `--no-plugins` | `false` | Disable out-of-process plugin loading. |
 
 ### Examples
 
@@ -110,6 +112,8 @@ wingman serve [flags]
 | `--log-format` | `json` | Log format: `json` or `text`. |
 | `--log-level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. |
 | `--ui-dev` | none | Proxy `/web` to a Vite dev server URL. |
+| `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
+| `--no-plugins` | `false` | Disable out-of-process plugin loading. |
 
 ### Examples
 

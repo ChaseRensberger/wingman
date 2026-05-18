@@ -178,6 +178,7 @@ func (m *Manager) loadDirsLocked(ctx context.Context, dirs []string) {
 			}
 		}
 		if plugin.err != nil {
+			_ = client.close()
 			continue
 		}
 		for _, spec := range manifest.Tools {

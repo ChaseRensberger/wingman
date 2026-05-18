@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestManagerLoadsAndExecutesPluginTool(t *testing.T) {
@@ -58,7 +59,7 @@ func TestManagerLoadsAndExecutesPluginTool(t *testing.T) {
 }
 
 func TestPluginHostHelper(t *testing.T) {
-	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != "plugin-helper" {
+	if len(os.Args) == 0 || (os.Args[len(os.Args)-1] != "plugin-helper" && os.Args[len(os.Args)-1] != "plugin-helper-hang") {
 		return
 	}
 	defer os.Exit(0)
@@ -66,6 +67,9 @@ func TestPluginHostHelper(t *testing.T) {
 	var req rpcRequest
 	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
 		os.Exit(1)
+	}
+	if os.Args[len(os.Args)-1] == "plugin-helper-hang" {
+		select {}
 	}
 	var params toolExecuteParams
 	if data, err := json.Marshal(req.Params); err == nil {
@@ -75,6 +79,35 @@ func TestPluginHostHelper(t *testing.T) {
 	res := rpcResponse{JSONRPC: "2.0", ID: req.ID}
 	res.Result, _ = json.Marshal(toolExecuteResult{Text: text})
 	_ = json.NewEncoder(os.Stdout).Encode(res)
+}
+
+func TestRPCCallTimeoutClosesPlugin(t *testing.T) {
+	t.Parallel()
+
+	client, err := startRPC(context.Background(), []string{os.Args[0], "-test.run=TestPluginHostHelper", "--", "plugin-helper-hang"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := client.call(ctx, "tool.execute", toolExecuteParams{Tool: "hang"}, nil); err == nil {
+		t.Fatal("call succeeded, want timeout")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- client.call(context.Background(), "tool.execute", toolExecuteParams{Tool: "hang"}, nil)
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("second call succeeded after timeout")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second call blocked after timeout")
+	}
 }
 
 func quoteJSON(s string) string {

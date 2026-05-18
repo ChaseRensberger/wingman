@@ -11,12 +11,14 @@ import (
 )
 
 type rpcClient struct {
-	cmd    *exec.Cmd
-	enc    *json.Encoder
-	dec    *json.Decoder
-	stdin  io.WriteCloser
-	callMu sync.Mutex
-	nextID int64
+	cmd       *exec.Cmd
+	enc       *json.Encoder
+	dec       *json.Decoder
+	stdin     io.WriteCloser
+	callMu    sync.Mutex
+	closeOnce sync.Once
+	closeErr  error
+	nextID    int64
 }
 
 type rpcRequest struct {
@@ -88,6 +90,7 @@ func (c *rpcClient) call(ctx context.Context, method string, params any, out any
 
 	select {
 	case <-ctx.Done():
+		_ = c.close()
 		return ctx.Err()
 	case err := <-errCh:
 		return fmt.Errorf("read plugin response: %w", err)
@@ -109,9 +112,12 @@ func (c *rpcClient) call(ctx context.Context, method string, params any, out any
 }
 
 func (c *rpcClient) close() error {
-	_ = c.stdin.Close()
-	if c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
-	}
-	return c.cmd.Wait()
+	c.closeOnce.Do(func() {
+		_ = c.stdin.Close()
+		if c.cmd.Process != nil {
+			_ = c.cmd.Process.Kill()
+		}
+		c.closeErr = c.cmd.Wait()
+	})
+	return c.closeErr
 }

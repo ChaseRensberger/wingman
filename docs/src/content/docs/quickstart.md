@@ -68,7 +68,7 @@ The key is persisted in the server's SQLite database. Auth status responses only
 
 ## Create an agent
 
-An agent is a reusable definition: instructions, allowed tools, provider, model, and model options.
+An agent is a reusable definition: instructions, allowed tools, model, and model options.
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
@@ -77,8 +77,7 @@ AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
     "name": "Quickstart Assistant",
     "instructions": "You are concise and helpful.",
     "tools": ["read", "glob", "grep"],
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5",
+    "model_ref": "anthropic/claude-sonnet-4-6",
     "options": {"max_tokens": 1024}
   }' | jq -r .id)
 

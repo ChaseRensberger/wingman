@@ -79,8 +79,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
   "name": "Assistant",
   "instructions": "Be helpful and concise.",
   "tools": ["bash", "read", "write", "edit", "glob", "grep"],
-  "provider": "anthropic",
-  "model": "claude-haiku-4-5",
+  "model_ref": "anthropic/claude-sonnet-4-6",
   "options": {
     "max_tokens": 4096,
     "temperature": 0.7
@@ -101,6 +100,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
 | `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
 | `POST` | `/sessions/{id}/abort` | Cancel every in-flight Run for the session |
+| `POST` | `/run` | Run one ephemeral turn without persisting a session |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
 

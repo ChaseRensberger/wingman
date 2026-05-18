@@ -35,10 +35,10 @@ The session table intentionally does not have an `agent_id` or `model_ref` colum
 
 ## Run Ephemerally
 
-Perisistence is optional, many common llm tasks shouldn't be persisted. Maybe you want to build a client to automatically write git commit messages for you based on active changes. In this case you likely wouldn't need a session that is long running or save to disk. Think of this like your one-shot mode.
+Persistence is optional, many common llm tasks shouldn't be persisted. Maybe you want to build a client to automatically write git commit messages for you based on active changes. In this case you likely wouldn't need a session that is long running or save to disk. Think of this like your one-shot mode.
 
 ```bash
-curl -sS -X POST http://localhost:2323/sessions/run \
+curl -sS -X POST http://localhost:2323/run \
   -H "Content-Type: application/json" \
   -d '{
         "agent_id": "builder",
