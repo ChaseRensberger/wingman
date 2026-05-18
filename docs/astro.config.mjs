@@ -48,12 +48,6 @@ export default defineConfig({
           ],
         },
         {
-          label: "Concepts",
-          items: [
-            { label: "Context Handoff", slug: "concepts/context-handoff" },
-          ],
-        },
-        {
           label: "Editorial",
           items: [
             {
@@ -67,7 +61,6 @@ export default defineConfig({
           items: [
             { label: "CLI", slug: "reference/cli" },
             { label: "API", slug: "reference/referenceapi" },
-            { label: "Demos", slug: "reference/demos" },
           ],
         },
       ],
