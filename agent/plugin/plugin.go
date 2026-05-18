@@ -2,9 +2,9 @@
 // bundle of hook installations, custom tools, and custom Part type
 // registrations, packaged behind a single Install call.
 //
-// The motivation is opencode parity. Opencode's plugin system lets a
-// single npm package register tool gates, lifecycle observers, custom
-// tools, and compaction behavior together. Without an aggregating
+// The motivation is packaging related extension points together. A
+// single plugin can register tool gates, lifecycle observers, custom
+// tools, and compaction behavior. Without an aggregating
 // abstraction, equivalents in Go would each be wired separately into
 // loop config, tool slice, and the global part registry — easy to do
 // once, painful to compose across many plugins, and impossible to
@@ -29,7 +29,7 @@
 // v0.1 plugins are compile-time only: a Plugin is a Go value the
 // program builds and passes to session.WithPlugin. Future versions may
 // add MCP-style external plugins (for tools) and Yaegi-script plugins
-// (for hooks), matching opencode's npm/local file loading.
+// (for hooks), loaded from local files or package distributions.
 //
 // # Authoring
 //
