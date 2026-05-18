@@ -9,44 +9,21 @@ order: 300
 
 This is a tutorial on how to build a small terminal-native coding TUI on top of Wingman. It will be minimal and is meant to give some basic understanding on how to build a Wingman client.
 
-```text
-OpenTUI client
-  prompt, transcript, keybindings, display state
-        |
-        | HTTP + server-sent events
-        v
-Wingman server
-  agents, sessions, tools, model routing, persistence
-```
-
 By the end you will have a local TUI that can:
 
-- Connect to `http://localhost:2323`.
-- Create a Wingman client, coding agent, and session.
+- Connect to a Wingman base url (`http://localhost:2323`).
+- Create a Wingman client, register a coding agent, and start sessions.
 - Stream assistant text and tool events into a terminal transcript.
-- Abort an in-flight run with `ctrl+c`.
-- Quit cleanly with `escape`.
 
 ## Prerequisites
 
-Install these first:
+*obviously you can use whatever tools/package managers/providers you like, i'm just gonna be explicit though with the instruction*
 
-- Wingman, either from a release install or from this repository.
-- Go, if you run Wingman from the repository with `go run ./cmd/wingman serve`.
-- Bun, for `create-tui` and running the OpenTUI app.
-- `curl`, for HTTP setup commands.
-- `jq`, for extracting IDs from JSON responses.
-- An Anthropic API key in `ANTHROPIC_API_KEY`.
-
-Check the local tools:
-
-```bash
-bun --version
-curl --version
-jq --version
-```
-
-If you do not want to use Bun as the package manager, you can use `npm install` or `pnpm install` after project creation. Bun is still the recommended runtime for OpenTUI projects.
+- Wingman, either install manually from the release or via the install script `curl -fsSL https://wingman.actor/install | bash`
+- Bun
+- `curl`
+- `jq`
+- An Anthropic API key
 
 ## 1. Start Wingman
 
@@ -65,12 +42,6 @@ wingman up
 wingman status
 ```
 
-From this repository:
-
-```bash
-go run ./cmd/wingman serve
-```
-
 Verify the server is reachable:
 
 ```bash
@@ -87,20 +58,21 @@ The default base URL is `http://localhost:2323`.
 
 ## 2. Configure Provider Auth
 
-Wingman owns provider credentials. The TUI does not need to know the API key.
 
-Set your Anthropic API key in the shell where you run setup commands:
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-Store it in Wingman's local auth store:
+You can either store your api key in Wingman's local auth store:
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
   -H "Content-Type: application/json" \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
+```
+
+or 
+
+Set your Anthropic API key in the shell where you're running Wingman:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 Confirm that Wingman has a configured Anthropic credential:
@@ -109,25 +81,25 @@ Confirm that Wingman has a configured Anthropic credential:
 curl -sS http://localhost:2323/provider/auth | jq
 ```
 
-You should see `"configured": true` for `anthropic`. Wingman does not return the secret.
+You should see `"configured": true` for `anthropic`.
 
-## 3. Create Wingman IDs
+## 3. Create A Client
 
 Open a second terminal in the project directory you want the coding agent to work on. The session's `working_directory` will be this directory.
 
-Register a client for this TUI:
+Register a client for this new application (generally this can be done by the client itself but for understanding we will do it manually):
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
   -H "Content-Type: application/json" \
-  -d '{"name":"wingman-tui"}' | jq -r .id)
+  -d '{"name":"wingcode"}' | jq -r .id)
 
 printf 'client: %s\n' "$CLIENT_ID"
 ```
 
-Client registration is attribution and organization, not auth. It lets Wingman list sessions created by this TUI separately from sessions created by other apps.
+Client registration is currently just for attribution/organization. It lets Wingman list sessions created by this TUI separately from sessions created by other apps.
 
-Create a coding agent:
+Create a coding agent (again can generally be done by the client itself):
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
