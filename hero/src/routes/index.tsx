@@ -57,33 +57,33 @@ const FEATURES = [
 	{
 		title: "Client-agnostic runtime",
 		description:
-			"Run Wingman as the backend for CLIs, web apps, editors, automations, or your own custom client.",
+			"Run Wingman as the backend for any client that depends on LLM functionality.",
 	},
 	{
-		title: "Plugin-first harness",
+		title: "Extendable",
 		description:
-			"Extend session behavior with lifecycle hooks, custom tools, model contributions, and event sinks.",
+			"Strong plugin support so you can extend session behavior however you want.",
 	},
 	{
-		title: "Provider-neutral models",
+		title: "Provider-agnostic",
 		description:
-			"Use WingModels to route OpenAI, Anthropic, and OpenCode Zen through one Go-native SDK.",
+			"Wingman ships its own provider-agnostic model SDK (WingModels).",
 	},
 	{
-		title: "Durable sessions",
+		title: "Context handoff",
 		description:
-			"Persist session metadata, messages, and parts through swappable storage adapters.",
+			"Swap between provider/model combinations with minimal (and often zero) data loss."
 	},
 	{
-		title: "Formation-ready API",
+		title: "Bring your own storage",
 		description:
-			"Coordinate many sessions from any language over HTTP without baking orchestration into the core.",
+			"Wingman ships with a default sqlite3 adapter but the storage provider is also agnostic."
 	},
 	{
-		title: "Single binary deploy",
+		title: "HTTP API",
 		description:
-			"Ship the harness, HTTP API, and bundled client as a self-hostable Go binary.",
-	},
+			"Communicate with Wingman via HTTP. Stdio and other protocols coming later."
+	}
 ];
 
 function CopyCommand({ command, children }: { command: string; children: React.ReactNode }) {
@@ -190,15 +190,15 @@ function WhatIsWingmanSection() {
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
-					<span>Client agnostic - can run multiple clients/uis on a single machine that all use Wingman as a dependency. Wingman is decoupled from any specific use case, so it doesnt come bundled with a coding tui, but you can run a coding tui on top of it.</span>
+					<span>Client agnostic - can run multiple clients/UIs on a single machine that all use Wingman as a dependency. Wingman is decoupled from any specific use case, so it doesn't come bundled with a coding TUI, but you can run a coding TUI on top of it.</span>
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
-					<span>Doesn't rely on your usual harness dependencies. No vercel ai sdk, no models.dev, etc...making it ideal for running in secure or airgapped environements.</span>
+					<span>Doesn't rely on your usual harness dependencies. No Vercel AI SDK, no models.dev, etc...making it ideal for running in secure or airgapped environments.</span>
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
-					<span>Highly extendable - plugin support via in process go modules or out of process json rpc. Can register tools, attach to lifecycle events, rewrite history, etc...</span>
+					<span>Highly extensible - plugin support via in-process Go modules or out-of-process JSON-RPC. Can register tools, attach to lifecycle events, rewrite history, etc...</span>
 				</li>
 			</ul>
 			<a
@@ -238,7 +238,7 @@ function PluginsSection() {
 		<section className="px-12 py-8 border-b space-y-4">
 			<div>
 				<SectionHeader title="Plugins" markerId="05" />
-				<p className='text-sm text-muted-foreground'>Extend Wingman via in process go module or out of process json rpc. If you build one, open up a PR to add it to this section.</p>
+				<p className='text-sm text-muted-foreground'>Extend Wingman via in-process Go modules or out-of-process JSON-RPC. If you build one, open up a PR to add it to this section.</p>
 			</div>
 			<LinkCard
 				title="Compaction"
@@ -255,7 +255,7 @@ function ProvidersSection() {
 		<section className="px-12 py-8 border-b space-y-2">
 			<SectionHeader title="Multi-provider support via WingModels" markerId="04" markerTitle='WingModels' />
 			<p className='text-sm text-muted-foreground'>
-				Wingman ships its own provider agnostic model sdk (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
+				Wingman ships its own provider-agnostic model SDK (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
 			</p>
 			<Markdown>{WINGMODELS_EXAMPLE}</Markdown>
 			<div className="space-y-3">
