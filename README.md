@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="./assets/Wingman.png" alt="Wingman Logo" width="200"/>
+</p>
+
 # Wingman
 
 The open-source client-agnostic agent harness
