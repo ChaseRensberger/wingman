@@ -317,7 +317,7 @@ function ComingSoonSection() {
 					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it.</p>
 				</div>
 			</div>
-			<div className='flex gap-2'>
+			<div className='flex items-center gap-2'>
 				<span>Something missing?</span>
 				<a href={ISSUE_URL} target="_blank" rel="noreferrer" className="inline-block">
 					<Button>Open An Issue -&gt;</Button>
