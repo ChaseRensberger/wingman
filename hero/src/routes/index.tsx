@@ -21,7 +21,6 @@ const DOCS_URL = "https://docs.wingman.actor";
 const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 // const DISCORD_URL = "";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
-const WEB_CLIENT_URL = "https://github.com/ChaseRensberger/wingman/tree/main/web";
 const WINGMODELS_EXAMPLE = `
 
 \`\`\`go
@@ -286,11 +285,23 @@ function ClientsSection() {
 				<SectionHeader title="Clients" markerId="06" />
 				<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			</div>
-			<LinkCard
-				title="Web"
-				description="A browser client bundled into the Wingman binary."
-				href={WEB_CLIENT_URL}
-			/>
+			<div className="rounded-sm border bg-card p-4 space-y-4">
+				<div className="flex items-start gap-2">
+					<span className="text-primary">[*]</span>
+					<h3 className="font-semibold">Web</h3>
+				</div>
+				<div className="space-y-2">
+					<video
+						className="w-full rounded-sm border bg-background"
+						src="/wingman-web-demo-trimmed.mp4"
+						autoPlay
+						muted
+						loop
+						playsInline
+						controls
+					/>
+				</div>
+			</div>
 		</section>
 	);
 }
