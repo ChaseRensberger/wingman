@@ -2,84 +2,31 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"time"
 
 	"github.com/chaserensberger/wingman/models"
-	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
-
-	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/openai"
-	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	client := provider.NewClient(nil)
 
-	// Supported built-in catalog refs today:
-	//   - openai/gpt-5.5
-	//   - anthropic/claude-sonnet-4-6
-	//   - opencode/claude-sonnet-4-6
-	ref, ok := models.ParseModelRef("opencode/claude-sonnet-4-6")
-	if !ok {
-		log.Fatal("invalid model ref")
+	request := models.Request{
+		Model:      models.ModelRef{Provider: "opencode", ID: "claude-sonnet-4-6"},
+		System:     "You are concise.",
+		Messages:   []models.Message{models.NewUserText("Say hello in one short sentence.")},
+		Generation: models.Generation{MaxTokens: 40},
 	}
 
-	info, ok := catalog.Get(ref.Provider, ref.ID)
-	if !ok {
-		log.Fatalf("model not found in catalog: %s", ref.Ref())
-	}
-	// For a custom non-catalog model, set ref.API/ref.BaseURL/ref.Env directly.
-
-	client := provider.NewClient(map[string]string{
-		// Optional. If omitted, the client falls back to the provider catalog env:
-		// OPENAI_API_KEY, ANTHROPIC_API_KEY, or OPENCODE_API_KEY.
-		"opencode": os.Getenv("OPENCODE_API_KEY"),
-	})
-
-	req := models.Request{
-		Model:  ref,
-		System: "You are concise.",
-		Messages: []models.Message{
-			models.NewUserText("Say hello in one short sentence."),
-		},
-		Generation: models.Generation{MaxTokens: 80},
-	}
-
-	prepared, err := client.Prepare(ctx, req)
+	response, err := client.Generate(context.Background(), request)
 	if err != nil {
-		log.Fatalf("prepare: %v", err)
-	}
-	pretty, _ := json.MarshalIndent(prepared, "", "  ")
-	fmt.Printf("Prepared request:\n%s\n\n", pretty)
-
-	if missing := missingEnv(info.Env); missing != "" {
-		fmt.Printf("Set %s to run the live request.\n", missing)
-		return
+		log.Fatal(err)
 	}
 
-	msg, err := client.Generate(ctx, req)
-	if err != nil {
-		log.Fatalf("generate: %v", err)
-	}
-	fmt.Println("Response:")
-	for _, part := range msg.Content {
+	for _, part := range response.Content {
 		if text, ok := part.(models.TextPart); ok {
 			fmt.Println(text.Text)
 		}
 	}
-}
-
-func missingEnv(keys []string) string {
-	for _, key := range keys {
-		if os.Getenv(key) == "" {
-			return key
-		}
-	}
-	return ""
 }

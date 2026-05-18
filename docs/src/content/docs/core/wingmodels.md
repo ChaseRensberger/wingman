@@ -6,33 +6,27 @@ order: 103
 
 # WingModels
 
-WingModels is Wingman's Go-native model layer. It gives the agent runtime one request shape, one message shape, and one stream shape while keeping provider wire formats behind the model client.
+WingModels is Wingman's provider agnostic model sdk (written in Go). It gives the agent runtime one request shape, one message shape, and one stream shape while keeping provider wire formats behind the model curtain.
 
-The current implementation is intentionally small. It has built-in catalog metadata for three model refs:
+## Supported Providers 
 
-- `openai/gpt-5.5`
-- `anthropic/claude-sonnet-4-6`
-- `opencode/claude-sonnet-4-6`
+- Anthropic
+- OpenAI
+- OpenCode Zen
 
-OpenCode here means OpenCode Zen, exposed through provider ID `opencode`.
-
-WingModels can also run a non-catalog model when the caller supplies explicit route metadata (`api` and `base_url`) for one of the supported protocols. The catalog is the ergonomic/default path, not the only execution path.
+with many more coming soon.
 
 ## Why It Exists
-
-Provider APIs are similar enough to normalize, but not similar enough to hide carelessly.
 
 WingModels exists because the agent runtime needs:
 
 - One conversation shape for storage and replay.
 - One stream shape for UI, plugins, and HTTP events.
-- Provider-specific request lowering and SSE parsing behind one client.
-- Local model metadata without depending on a hosted metadata service.
-- Model refs that can change per message without binding a session to one provider.
+- Provider-specific request lowering and SSE parsing behind a single model client.
+- Local model metadata without depending on a hosted metadata service (Wingman's Catalog).
+- Model refs that can change per message without binding a session to one provider (Context handoff). 
 
-The goal is not a generic LLM proxy. The goal is a small model layer that lets Wingman run sessions without provider details leaking into the loop.
-
-## Public Shape
+## Shape
 
 The loop talks to a `models.Client`:
 
@@ -83,10 +77,6 @@ type ModelRef struct {
     Capabilities  ModelCapabilities
 }
 ```
-
-Use refs like `openai/gpt-5.5`, not separate conceptual provider and model choices in new code. For catalog models, `Provider` and `ID` are enough. For custom models, `API` and `BaseURL` are required and the remaining fields provide runtime metadata.
-
-## Messages And Parts
 
 `Message` is the provider-neutral stored conversation shape:
 
@@ -193,15 +183,6 @@ Current protocol support is deliberately narrow:
 - Anthropic Messages (`anthropic_messages`).
 
 The catalog currently uses OpenAI Responses and Anthropic Messages. OpenAI Chat Completions is available for explicit custom routes.
-
-Unsupported today:
-
-- Ollama.
-- `opencodezen` as a provider ID.
-- First-class generic OpenAI-compatible provider discovery/configuration.
-- Gemini.
-- Bedrock.
-- OpenRouter or other gateway providers.
 
 ## Catalog
 
