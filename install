@@ -19,7 +19,7 @@ Usage: install [options]
 
 Options:
   -h, --help              Show help
-  -v, --version <version> Install a specific version (default: v0.5.1)
+  -v, --version <version> Install a specific version (default: v0.1.0)
   -b, --binary <path>     Install from a local binary
       --install-dir <dir> Set install directory (default: ~/.wingman/bin)
       --no-modify-path    Do not modify shell config files
