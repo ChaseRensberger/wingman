@@ -390,9 +390,12 @@ function Hero() {
 			<PluginsSection />
 			<ClientsSection />
 			<ComingSoonSection />
-			<footer className="px-6 py-4 text-center">
+			<footer className="px-6 py-4 flex justify-between items-center">
 				<p className="text-sm text-muted-foreground font-mono">
 					Wingman
+				</p>
+				<p className='text-sm text-muted-foreground font-mono'>
+					Also I made<a href='https://news.wingman.actor'><Button variant="link">a hackernews client</Button></a>
 				</p>
 			</footer>
 		</main >
