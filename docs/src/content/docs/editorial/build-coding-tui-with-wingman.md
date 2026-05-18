@@ -2,6 +2,7 @@
 title: "Build a Coding TUI with Wingman"
 description: "Use Wingman as the backend for a terminal-native coding agent UI."
 group: "Editorial"
+draft: true
 order: 300
 ---
 
@@ -308,207 +309,207 @@ Replace the generated entrypoint with `src/index.tsx`:
 
 ```tsx
 import { render, useKeyboard, useRenderer } from "@opentui/solid"
+import type { TextareaRenderable } from "@opentui/core"
 import { For, createSignal } from "solid-js"
 import { getConfig } from "./config"
 import { createWingmanClient, type WingmanEvent } from "./wingman-client"
 
 type Row =
-  | { kind: "user"; text: string }
-  | { kind: "assistant"; text: string }
-  | { kind: "tool"; text: string }
-  | { kind: "error"; text: string }
-  | { kind: "system"; text: string }
+	| { kind: "user"; text: string }
+	| { kind: "assistant"; text: string }
+	| { kind: "tool"; text: string }
+	| { kind: "error"; text: string }
+	| { kind: "system"; text: string }
 
 const config = getConfig()
 const wingman = createWingmanClient({
-  baseURL: config.baseURL,
-  clientID: config.clientID,
+	baseURL: config.baseURL,
+	clientID: config.clientID,
 })
 
 function App() {
-  const renderer = useRenderer()
-  const [rows, setRows] = createSignal<Row[]>([
-    { kind: "system", text: `session ${config.sessionID}` },
-    { kind: "system", text: "ctrl+j submits, ctrl+c aborts, escape quits" },
-  ])
-  const [prompt, setPrompt] = createSignal("")
-  const [running, setRunning] = createSignal(false)
+	const renderer = useRenderer()
+	let promptInput: TextareaRenderable | undefined
+	const [rows, setRows] = createSignal<Row[]>([
+		{ kind: "system", text: `session ${config.sessionID}` },
+		{ kind: "system", text: "ctrl+j submits, ctrl+c aborts, escape quits" },
+	])
+	const [prompt, setPrompt] = createSignal("")
+	const [running, setRunning] = createSignal(false)
 
-  useKeyboard((key) => {
-    if (key.name === "escape") {
-      renderer.destroy()
-      return
-    }
+	useKeyboard((key) => {
+		if (key.name === "escape") {
+			renderer.destroy()
+			return
+		}
 
-    if (key.ctrl && key.name === "c") {
-      if (running()) void abortRun()
-      else renderer.destroy()
-      return
-    }
+		if (key.ctrl && key.name === "c") {
+			if (running()) void abortRun()
+			else renderer.destroy()
+			return
+		}
 
-    if (key.ctrl && key.name === "j") {
-      void submit()
-    }
-  })
+		if (key.ctrl && key.name === "j") {
+			void submit()
+		}
+	})
 
-  async function abortRun() {
-    try {
-      await wingman.abortSession(config.sessionID)
-      setRows((current) => [...current, { kind: "system", text: "abort requested" }])
-    } catch (error) {
-      setRows((current) => [...current, { kind: "error", text: String(error) }])
-    }
-  }
+	async function abortRun() {
+		try {
+			await wingman.abortSession(config.sessionID)
+			setRows((current) => [...current, { kind: "system", text: "abort requested" }])
+		} catch (error) {
+			setRows((current) => [...current, { kind: "error", text: String(error) }])
+		}
+	}
 
-  async function submit() {
-    const message = prompt().trim()
-    if (!message || running()) return
+	async function submit() {
+		const message = prompt().trim()
+		if (!message || running()) return
 
-    setPrompt("")
-    setRunning(true)
-    setRows((current) => [...current, { kind: "user", text: message }, { kind: "assistant", text: "" }])
+		setPrompt("")
+		promptInput?.setText("")
+		setRunning(true)
+		setRows((current) => [...current, { kind: "user", text: message }, { kind: "assistant", text: "" }])
 
-    try {
-      for await (const event of wingman.streamMessage({
-        sessionID: config.sessionID,
-        agentID: config.agentID,
-        message,
-      })) {
-        applyEvent(event)
-      }
-    } catch (error) {
-      setRows((current) => [...current, { kind: "error", text: String(error) }])
-    } finally {
-      setRunning(false)
-    }
-  }
+		try {
+			for await (const event of wingman.streamMessage({
+				sessionID: config.sessionID,
+				agentID: config.agentID,
+				message,
+			})) {
+				applyEvent(event)
+			}
+		} catch (error) {
+			setRows((current) => [...current, { kind: "error", text: String(error) }])
+		} finally {
+			setRunning(false)
+		}
+	}
 
-  function applyEvent(event: WingmanEvent) {
-    if (event.type === "stream_part") {
-      const text = extractTextDelta(event.data)
-      if (text) appendAssistantText(text)
-      return
-    }
+	function applyEvent(event: WingmanEvent) {
+		if (event.type === "stream_part") {
+			const text = extractTextDelta(event.data)
+			if (text) appendAssistantText(text)
+			return
+		}
 
-    if (event.type === "tool_start") {
-      setRows((current) => [...current, { kind: "tool", text: formatToolEvent("running", event.data) }])
-      return
-    }
+		if (event.type === "tool_start") {
+			setRows((current) => [...current, { kind: "tool", text: formatToolEvent("running", event.data) }])
+			return
+		}
 
-    if (event.type === "tool_end") {
-      setRows((current) => [...current, { kind: "tool", text: formatToolEvent("finished", event.data) }])
-      return
-    }
+		if (event.type === "tool_end") {
+			setRows((current) => [...current, { kind: "tool", text: formatToolEvent("finished", event.data) }])
+			return
+		}
 
-    if (event.type === "error") {
-      setRows((current) => [...current, { kind: "error", text: formatEventData(event.data) }])
-      return
-    }
+		if (event.type === "error") {
+			setRows((current) => [...current, { kind: "error", text: formatEventData(event.data) }])
+			return
+		}
 
-    if (event.type === "done") {
-      setRows((current) => [...current, { kind: "system", text: "run complete" }])
-    }
-  }
+		if (event.type === "done") {
+			setRows((current) => [...current, { kind: "system", text: "run complete" }])
+		}
+	}
 
-  function appendAssistantText(text: string) {
-    setRows((current) => {
-      const next = [...current]
-      const last = next[next.length - 1]
-      if (last?.kind === "assistant") last.text += text
-      else next.push({ kind: "assistant", text })
-      return next
-    })
-  }
+	function appendAssistantText(text: string) {
+		setRows((current) => {
+			const next = [...current]
+			const last = next[next.length - 1]
+			if (last?.kind === "assistant") last.text += text
+			else next.push({ kind: "assistant", text })
+			return next
+		})
+	}
 
-  return (
-    <box flexDirection="column" height="100%">
-      <box borderBottom paddingLeft={1} paddingRight={1}>
-        <text>
-          <span fg="#8bd5ff">Wingman TUI</span>
-          {"  "}
-          <span fg={running() ? "#f9c74f" : "#90be6d"}>{running() ? "running" : "idle"}</span>
-        </text>
-      </box>
+	return (
+		<box flexDirection="column" height="100%">
+			<box border={["bottom"]} paddingLeft={1} paddingRight={1} flexDirection="row">
+				<text fg="#8bd5ff">Wingman TUI</text>
+				<text>  </text>
+				<text fg={running() ? "#f9c74f" : "#90be6d"}>{running() ? "running" : "idle"}</text>
+			</box>
 
-      <scrollbox flexGrow={1} padding={1} focused>
-        <For each={rows()}>
-          {(row) => (
-            <text>
-              <span fg={colorFor(row.kind)}>{labelFor(row.kind)} </span>
-              {row.text}
-            </text>
-          )}
-        </For>
-      </scrollbox>
+			<scrollbox flexGrow={1} padding={1} focused>
+				<For each={rows()}>
+					{(row) => (
+						<box flexDirection="row">
+							<text fg={colorFor(row.kind)}>{labelFor(row.kind)} </text>
+							<text>{row.text}</text>
+						</box>
+					)}
+				</For>
+			</scrollbox>
 
-      <box borderTop padding={1} flexDirection="column">
-        <text>
-          <span fg="#6c7086">Prompt</span>
-        </text>
-        <textarea
-          value={prompt()}
-          onInput={setPrompt}
-          height={4}
-          focused={!running()}
-          placeholder="Ask Wingman to inspect, edit, test, or explain this project..."
-          wrapText
-        />
-      </box>
-    </box>
-  )
+			<box border={["top"]} padding={1} flexDirection="column">
+				<text fg="#6c7086">Prompt</text>
+				<textarea
+					ref={promptInput}
+					initialValue={prompt()}
+					onContentChange={() => setPrompt(promptInput?.plainText ?? "")}
+					height={4}
+					focused={!running()}
+					placeholder="Ask Wingman to inspect, edit, test, or explain this project..."
+					wrapMode="word"
+				/>
+			</box>
+		</box>
+	)
 }
 
 function extractTextDelta(data: unknown) {
-  if (typeof data === "string") return data
-  if (typeof data !== "object" || data === null) return ""
-  if ("text" in data && typeof data.text === "string") return data.text
-  if ("delta" in data && typeof data.delta === "string") return data.delta
-  if ("content" in data && typeof data.content === "string") return data.content
-  return ""
+	if (typeof data === "string") return data
+	if (typeof data !== "object" || data === null) return ""
+	if ("text" in data && typeof data.text === "string") return data.text
+	if ("delta" in data && typeof data.delta === "string") return data.delta
+	if ("content" in data && typeof data.content === "string") return data.content
+	return ""
 }
 
 function formatToolEvent(status: string, data: unknown) {
-  if (typeof data !== "object" || data === null) return `tool ${status}`
-  const name = "tool_name" in data && typeof data.tool_name === "string" ? data.tool_name : "tool"
-  return `${name} ${status}`
+	if (typeof data !== "object" || data === null) return `tool ${status}`
+	const name = "tool_name" in data && typeof data.tool_name === "string" ? data.tool_name : "tool"
+	return `${name} ${status}`
 }
 
 function formatEventData(data: unknown) {
-  if (typeof data === "string") return data
-  if (typeof data !== "object" || data === null) return String(data)
-  if ("error" in data && typeof data.error === "string") return data.error
-  if ("message" in data && typeof data.message === "string") return data.message
-  return JSON.stringify(data)
+	if (typeof data === "string") return data
+	if (typeof data !== "object" || data === null) return String(data)
+	if ("error" in data && typeof data.error === "string") return data.error
+	if ("message" in data && typeof data.message === "string") return data.message
+	return JSON.stringify(data)
 }
 
 function colorFor(kind: Row["kind"]) {
-  switch (kind) {
-    case "user":
-      return "#8bd5ff"
-    case "assistant":
-      return "#d6deeb"
-    case "tool":
-      return "#f9c74f"
-    case "error":
-      return "#ff6b6b"
-    case "system":
-      return "#6c7086"
-  }
+	switch (kind) {
+		case "user":
+			return "#8bd5ff"
+		case "assistant":
+			return "#d6deeb"
+		case "tool":
+			return "#f9c74f"
+		case "error":
+			return "#ff6b6b"
+		case "system":
+			return "#6c7086"
+	}
 }
 
 function labelFor(kind: Row["kind"]) {
-  switch (kind) {
-    case "user":
-      return "you>"
-    case "assistant":
-      return "ai>"
-    case "tool":
-      return "tool>"
-    case "error":
-      return "error>"
-    case "system":
-      return "system>"
-  }
+	switch (kind) {
+		case "user":
+			return "you>"
+		case "assistant":
+			return "ai>"
+		case "tool":
+			return "tool>"
+		case "error":
+			return "error>"
+		case "system":
+			return "system>"
+	}
 }
 
 render(() => <App />, { exitOnCtrlC: false })
