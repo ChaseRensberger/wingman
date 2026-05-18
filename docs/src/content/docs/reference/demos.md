@@ -1,10 +1,13 @@
 ---
 title: "Demos"
 group: "Overview"
+draft: true
 order: 3
 ---
 
 # Demos
+
+These are relics of the past. Wingman has changed fundamentally since I made these.
 
 ## WingResearch
 
