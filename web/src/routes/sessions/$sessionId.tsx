@@ -353,6 +353,13 @@ function SessionDetailPage() {
               if (!prev) return prev;
               return { ...prev, history: [...prev.history, message] };
             });
+            if (message.role === "assistant") {
+              textBuffer = "";
+              streamingTextRef.current = "";
+              visibleStreamingTextRef.current = "";
+              setStreamingText("");
+              setVisibleStreamingText("");
+            }
           }
         }
       }
