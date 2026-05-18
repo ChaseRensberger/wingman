@@ -271,7 +271,7 @@ Plugin tools are selected the same way as built-in tools: include the tool name 
 {
   "name": "Greeter",
   "instructions": "Use greet when the user asks for a greeting.",
-  "model_ref": "openai:gpt-4.1",
+  "model_ref": "openai/gpt-4.1",
   "tools": ["greet"]
 }
 ```

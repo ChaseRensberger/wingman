@@ -16,7 +16,7 @@ This distinction is load-bearing:
 - A session is not permanently bound to one model/`model_ref`.
 - Each message chooses the agent configuration for that turn.
 
-This enables [Context Handoff](/concepts/context-handoff) between different provider/model combinations.
+This enables context handoff between different provider/model combinations.
 
 ## Usage
 

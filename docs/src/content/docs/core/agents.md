@@ -6,7 +6,7 @@ order: 100
 
 # Agents
 
-An agent is a reusable definition for how a tasks should be completed (in the contect of a [session](/core/sessions)). It describes the runtime configuration for a turn.
+An agent is a reusable definition for how a tasks should be completed (in the context of a [session](/core/sessions)). It describes the runtime configuration for a turn.
 
 ```bash
 curl -sS -X POST http://localhost:2323/agents \

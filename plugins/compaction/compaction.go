@@ -12,9 +12,8 @@
 //     marker (if any) and the keep-tail boundary, then *append* a
 //     MarkerPart message into the running history. The original
 //     messages are NOT removed — they remain in the durable store and
-//     in the loop's running history. This is opencode's model: the
-//     transcript is append-only; markers act as bookmarks the read-side
-//     uses to elide stale context.
+//     in the loop's running history. The transcript is append-only;
+//     markers act as bookmarks the read-side uses to elide stale context.
 //
 //   - Read-side (TransformContext): walk the per-turn message slice;
 //     find the latest MarkerPart; build the model-facing view as
@@ -189,7 +188,7 @@ func WithThreshold(f float64) Option { return func(p *Plugin) { p.threshold = f 
 
 // WithKeepTail sets how many trailing messages survive compaction
 // untouched and disables token-budget tail selection. Prefer
-// WithKeepRecentTokens for Pi-style behavior.
+// WithKeepRecentTokens for token-budget tail selection.
 func WithKeepTail(n int) Option { return func(p *Plugin) { p.keepTail, p.keepRecent = n, 0 } }
 
 // WithKeepRecentTokens sets the approximate recent-token budget that survives
