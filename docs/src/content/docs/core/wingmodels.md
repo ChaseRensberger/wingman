@@ -192,11 +192,23 @@ Current files:
 
 ```text
 models/catalog/providers/anthropic/provider.toml
+models/catalog/providers/anthropic/claude-haiku-4-5.toml
+models/catalog/providers/anthropic/claude-opus-4-7.toml
 models/catalog/providers/anthropic/claude-sonnet-4-6.toml
 models/catalog/providers/openai/provider.toml
 models/catalog/providers/openai/GPT-5.5.toml
+models/catalog/providers/openai/gpt-5.3-codex.toml
+models/catalog/providers/openai/gpt-5.4-mini.toml
+models/catalog/providers/openai/gpt-5.4-nano.toml
+models/catalog/providers/openai/gpt-5.5-pro.toml
 models/catalog/providers/opencode/provider.toml
 models/catalog/providers/opencode/claude-sonnet-4-6.toml
+models/catalog/providers/opencode/claude-opus-4-7.toml
+models/catalog/providers/opencode/deepseek-v4-flash-free.toml
+models/catalog/providers/opencode/gpt-5.4-mini.toml
+models/catalog/providers/opencode/gpt-5.5.toml
+models/catalog/providers/opencode/gpt-5.5-pro.toml
+models/catalog/providers/opencode/kimi-k2.6.toml
 ```
 
 There is no generated snapshot and no lab/provider split. The catalog only contains fields that current code uses.
