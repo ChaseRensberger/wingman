@@ -109,8 +109,7 @@ AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
     "name": "Coding Agent",
     "instructions": "You are a concise coding agent. Inspect the codebase before editing. Make small, verifiable changes. Explain what you changed and what you ran.",
     "tools": ["read", "glob", "grep", "edit", "write", "bash"],
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5",
+    "model_ref": "anthropic/claude-sonnet-4-6",
     "options": {"max_tokens": 4096}
   }' | jq -r .id)
 
@@ -189,21 +188,9 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/abort" \
 Create a Solid OpenTUI app:
 
 ```bash
-bunx create-tui@latest -t solid wingcode
+bun create tui --name wingcode
 cd wingcode
 bun install
-```
-
-If you prefer another package manager after the app is created:
-
-```bash
-npm install
-```
-
-or:
-
-```bash
-pnpm install
 ```
 
 Copy the Wingman environment file into the TUI project:
@@ -211,18 +198,6 @@ Copy the Wingman environment file into the TUI project:
 ```bash
 cp ../.env.wingcode .env
 ```
-
-Add a start script if the generated `package.json` does not already have one:
-
-```json
-{
-  "scripts": {
-    "start": "bun run src/index.tsx"
-  }
-}
-```
-
-The generated project may already have equivalent `dev` or `start` scripts. Keep those if they work.
 
 ## 6. Add a Wingman HTTP Client
 
@@ -294,8 +269,6 @@ function parseSSEFrame(frame: string) {
   return JSON.parse(data) as WingmanEvent
 }
 ```
-
-This is intentionally a tiny local wrapper, not an official SDK.
 
 ## 7. Add Runtime Config
 
@@ -609,6 +582,8 @@ If the model cannot call tools, confirm the agent was created with the coding to
 curl -sS "http://localhost:2323/agents/${AGENT_ID}" \
   -H "X-Wingman-Client: ${CLIENT_ID}" | jq
 ```
+
+If streaming returns `model_ref is required when agent has no model_ref`, recreate the agent with the `model_ref` field from step 3 and update `WINGMAN_AGENT_ID` in `.env.wingman-tui`.
 
 If `ctrl+c` kills the process instead of aborting the run, confirm the render call uses `exitOnCtrlC: false`:
 
