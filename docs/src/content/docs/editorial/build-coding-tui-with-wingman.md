@@ -123,7 +123,10 @@ Create a session in the current directory:
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
-  -d "{\"title\":\"$(basename \"$PWD\")\",\"working_directory\":\"$PWD\"}" | jq -r .id)
+  -d "$(jq -n \
+    --arg title "$(basename "$PWD")" \
+    --arg working_directory "$PWD" \
+    '{title: $title, working_directory: $working_directory}')" | jq -r .id)
 
 printf 'session: %s\n' "$SESSION_ID"
 ```
