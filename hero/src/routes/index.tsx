@@ -327,6 +327,11 @@ function ComingSoonSection() {
 					<h3 className="font-semibold">More Providers</h3>
 					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it.</p>
 				</div>
+
+				<div className="rounded-sm border bg-card p-4">
+					<h3 className="font-semibold">TypeScript SDK</h3>
+					<p className="mt-1 text-sm text-muted-foreground">I want to make sure you can use Wingman in any language you would like.</p>
+				</div>
 			</div>
 			<div className='flex items-center gap-2'>
 				<span>Something missing?</span>
