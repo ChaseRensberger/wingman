@@ -1,7 +1,7 @@
-id = "claude-sonnet-4-6"
-provider = "opencode"
+id = "claude-haiku-4-5"
+provider = "anthropic"
 api = "anthropic_messages"
-context_window = 1000000
+context_window = 200000
 max_output = 64000
 
 [capabilities]

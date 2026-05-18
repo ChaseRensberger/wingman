@@ -1,0 +1,11 @@
+id = "gpt-5.5"
+provider = "openai"
+api = "openai_responses"
+context_window = 1050000
+max_output = 128000
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true

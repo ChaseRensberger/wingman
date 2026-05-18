@@ -1,8 +1,8 @@
-id = "gpt-5.5"
+id = "gpt-5.4-nano"
 provider = "openai"
 api = "openai_responses"
-context_window = 128000
-max_output = 8192
+context_window = 400000
+max_output = 128000
 
 [capabilities]
 tools = true

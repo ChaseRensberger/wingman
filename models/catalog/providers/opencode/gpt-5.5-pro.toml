@@ -1,8 +1,8 @@
-id = "claude-sonnet-4-6"
+id = "gpt-5.5-pro"
 provider = "opencode"
-api = "anthropic_messages"
-context_window = 1000000
-max_output = 64000
+api = "openai_responses"
+context_window = 1050000
+max_output = 128000
 
 [capabilities]
 tools = true

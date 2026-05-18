@@ -1,8 +1,8 @@
-id = "claude-sonnet-4-6"
+id = "kimi-k2.6"
 provider = "opencode"
-api = "anthropic_messages"
-context_window = 1000000
-max_output = 64000
+api = "openai_completions"
+context_window = 262144
+max_output = 65536
 
 [capabilities]
 tools = true

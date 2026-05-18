@@ -1,0 +1,11 @@
+id = "deepseek-v4-flash-free"
+provider = "opencode"
+api = "openai_completions"
+context_window = 200000
+max_output = 128000
+
+[capabilities]
+tools = true
+images = false
+reasoning = true
+structured_output = true

@@ -1,8 +1,8 @@
 id = "claude-sonnet-4-6"
 provider = "anthropic"
 api = "anthropic_messages"
-context_window = 200000
-max_output = 8192
+context_window = 1000000
+max_output = 64000
 
 [capabilities]
 tools = true
