@@ -325,7 +325,7 @@ function ComingSoonSection() {
 
 				<div className="rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">More Providers</h3>
-					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it.</p>
+					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it. Also cost tracking is on the way.</p>
 				</div>
 
 				<div className="rounded-sm border bg-card p-4">
