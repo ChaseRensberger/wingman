@@ -2,7 +2,7 @@
 title: "Build a Coding TUI with Wingman"
 description: "Use Wingman as the backend for a terminal-native coding agent UI."
 group: "Editorial"
-draft: false
+draft: true
 order: 300
 ---
 
