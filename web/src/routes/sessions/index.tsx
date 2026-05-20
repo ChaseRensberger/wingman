@@ -242,8 +242,6 @@ function SessionsPage() {
 					<TableHeader>
 						<TableRow>
 							<TableHead>Title</TableHead>
-							<TableHead>Model</TableHead>
-							<TableHead>Agent</TableHead>
 							<TableHead>Created</TableHead>
 							<TableHead>Workdir</TableHead>
 						</TableRow>
@@ -267,8 +265,6 @@ function SessionsPage() {
 									<TableCell className="font-medium">
 										{s.title || s.id}
 									</TableCell>
-									<TableCell className="text-muted-foreground">—</TableCell>
-									<TableCell className="text-muted-foreground">—</TableCell>
 									<TableCell className="text-muted-foreground">
 										{timeAgo(s.created_at)}
 									</TableCell>
