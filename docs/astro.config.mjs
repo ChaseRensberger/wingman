@@ -58,6 +58,7 @@ export default defineConfig({
           items: [
             { label: "CLI", slug: "reference/cli" },
             { label: "API", slug: "reference/referenceapi" },
+            { label: "Config Schema", slug: "reference/config-schema" },
           ],
         },
       ],

@@ -60,6 +60,8 @@ CLI flags override config values. Provider secrets stay in the provider auth sto
 
 The parser accepts JSON with `//` and `/* ... */` comments. Do not use trailing commas.
 
+See [Config Schema](/reference/config-schema) for the exact supported fields.
+
 ## Server Address
 
 By default, Wingman listens on `127.0.0.1:2323`.
