@@ -4,7 +4,7 @@ group: "Core"
 order: 104
 ---
 
-Plugins extend the behavior of Wingman. Plugins can add tools, attach functions to lifecycle hooks, register custom message types, observe session events, and hopefully much more over time.
+Plugins extend the behavior of Wingman. They are the main way to add tools, hook into session lifecycle events, transform model context, observe runs, and teach Wingman about custom message parts.
 
 Plugins are session-scoped. They do not create sessions, list other sessions, or orchestrate multi-agent workflows. If you need orchestration, build a client that uses the Wingman HTTP API.
 
@@ -13,7 +13,13 @@ Choose a plugin form based on where the plugin runs:
 - Go plugins linked into a Wingman binary or embedding application.
 - External RPC plugins discovered from global plugin directories and run as subprocesses.
 
-Go plugins are the first-class extension path today. External RPC plugins are beta: they can contribute custom tools to the stock server, but lifecycle hooks and richer state are still planned.
+Go plugins are the first-class lifecycle extension path. External RPC plugins contribute custom tools to the stock server.
+
+## Which Plugin Form Should I Use?
+
+Use a Go plugin when you control the Go process that creates sessions or can ship a custom Wingman binary. This is the stable, typed path.
+
+Use an external RPC plugin when you want to add a custom tool to the stock `wingman serve` binary without rebuilding Wingman.
 
 ## Go Plugins
 
@@ -115,13 +121,13 @@ sess := session.New(
 )
 ```
 
-Go plugins are not discovered from disk by the stock `wingman serve` binary. They must be linked into a binary or installed by an embedding application.
+Go plugins are not discovered from disk by the stock `wingman serve` binary. They must be linked into a binary or installed by an embedding application. See [Go Plugin Quickstart](/reference/plugin-quickstart) for a step-by-step example.
 
 ## External Plugins
 
 External plugins are discovered from global plugin directories, started as subprocesses, and called over stdio JSON-RPC.
 
-Use an external plugin when you want to add a tool to the stock `wingman serve` binary without rebuilding Wingman. External plugins currently contribute custom tools. Treat the lifecycle and state surface as beta until RPC hooks are implemented.
+Use an external plugin when you want to add a tool to the stock `wingman serve` binary without rebuilding Wingman. Lifecycle hooks and stateful runtime extensions use Go plugins.
 
 ### Discovery
 
@@ -272,7 +278,7 @@ Plugin tools are selected the same way as built-in tools: include the tool name 
 }
 ```
 
-If a plugin tool has the same name as a built-in tool, the plugin tool currently wins during session tool resolution. Avoid collisions unless you intentionally want to replace behavior.
+If a plugin tool has the same name as a built-in tool, the plugin tool wins during session tool resolution. Avoid collisions unless you intentionally want to replace behavior.
 
 ### HTTP API
 
@@ -288,17 +294,14 @@ Reload global plugins:
 curl -X POST http://127.0.0.1:2323/plugins/reload
 ```
 
-Project-local plugins are loaded when a session with that working directory is built. After reload, they are rediscovered on the next run for that working directory.
+See [RPC Plugin Protocol](/reference/rpc-plugin-protocol) for the manifest and JSON-RPC contract.
 
-### Current Limits
+### Supported RPC Surface
 
 External plugins run with the same operating-system permissions as the Wingman process that starts them. Only install plugins from sources you trust.
 
-External plugins currently have these limits:
+External RPC plugins support custom tools. Lifecycle hooks, event sinks, state APIs, and custom part decoders are Go-plugin capabilities.
 
-- Custom tools only.
-- No plugin hooks yet.
-- No plugin state API yet.
-- No TypeScript SDK package yet.
-- No plugin install command yet.
-- No sandboxing beyond process separation and normal OS permissions.
+## Parity Target
+
+Wingman's target is one plugin model with two transports: typed Go first, then RPC parity where the transport makes sense. See [Plugin Capabilities](/reference/plugin-capabilities) for the supported surface.

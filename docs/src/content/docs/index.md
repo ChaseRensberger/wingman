@@ -9,13 +9,13 @@ Wingman is an open-source client-agnostic agent harness. It is designed to be ex
 
 The mission of Wingman is to have:
 
-- The fastest agent harness
 - The most extendable agent harness
 - The most portable agent harness
+- The most performant agent harness
 
 I built Wingman because I wanted a performant agent harness that wasn't tied to any specific kind of application (like all the harnesses that are mostly just coding TUIs).
 
-Unsurprisingly, some non-negligible percentage of this project was built with assistance of Wingman itself. That being said, every feature, every loop, and every variable was designed with intention and I plan to maintain that level of quality as I iterate on the project and accept contributions from others.
+Perhaps unsurprisingly, some non-negligible percentage of this project was built with assistance of Wingman itself.
 
 I have taken inspiration from more projects than I can count but to name a few (that I reference daily):
 
