@@ -74,11 +74,6 @@ const FEATURES = [
 			"Swap between provider/model combinations with minimal (and often zero) data loss."
 	},
 	{
-		title: "Bring your own storage",
-		description:
-			"Wingman ships with a default sqlite3 adapter but the storage provider is also agnostic."
-	},
-	{
 		title: "HTTP API",
 		description:
 			"Communicate with Wingman via HTTP. Stdio and other protocols coming later."
