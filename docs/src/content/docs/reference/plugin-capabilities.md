@@ -10,7 +10,7 @@ order: 1004
 Wingman has one plugin model with two authoring paths:
 
 - Go plugins for typed lifecycle extensions in embedded applications or custom binaries.
-- RPC plugins for external custom tools in the stock server.
+- RPC plugins for out-of-process extensions loaded by the stock server.
 
 ## Capability Matrix
 
@@ -54,10 +54,4 @@ Hooks compose in install order. Transform hooks receive the previous hook's outp
 
 RPC plugins declare tools in a manifest and implement `tool.execute` over stdio JSON-RPC.
 
-The RPC path is intentionally narrow: it lets users extend the stock server without compiling Go. Use Go plugins when you need lifecycle hooks, event sinks, custom part decoders, or typed access to runtime structures.
-
-## Design Target
-
-Wingman's long-term target is parity where transport boundaries allow it: custom tools, lifecycle events, context transforms, permission hooks, commands, and provider/model contributions should share one vocabulary across Go and RPC.
-
-Go comes first because it defines the typed lifecycle. RPC follows once the hook contracts are proven by real Go plugins and can be exposed without weakening the model.
+The RPC protocol page documents the tool execution surface exposed by the stock server.

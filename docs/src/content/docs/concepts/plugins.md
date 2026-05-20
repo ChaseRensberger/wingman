@@ -13,13 +13,13 @@ Choose a plugin form based on where the plugin runs:
 - Go plugins linked into a Wingman binary or embedding application.
 - External RPC plugins discovered from global plugin directories and run as subprocesses.
 
-Go plugins are the first-class lifecycle extension path. External RPC plugins contribute custom tools to the stock server.
+Wingman is designed around one plugin model with multiple loading paths. The Go path is the typed in-process path. The RPC path is the out-of-process path used by the stock server.
 
 ## Which Plugin Form Should I Use?
 
 Use a Go plugin when you control the Go process that creates sessions or can ship a custom Wingman binary. This is the stable, typed path.
 
-Use an external RPC plugin when you want to add a custom tool to the stock `wingman serve` binary without rebuilding Wingman.
+Use an external RPC plugin when you want a separate process that the stock `wingman serve` binary can load from disk.
 
 ## Go Plugins
 
@@ -127,7 +127,7 @@ Go plugins are not discovered from disk by the stock `wingman serve` binary. The
 
 External plugins are discovered from global plugin directories, started as subprocesses, and called over stdio JSON-RPC.
 
-Use an external plugin when you want to add a tool to the stock `wingman serve` binary without rebuilding Wingman. Lifecycle hooks and stateful runtime extensions use Go plugins.
+Use an external plugin when you want the stock `wingman serve` binary to load an extension without rebuilding Wingman.
 
 ### Discovery
 
@@ -296,12 +296,12 @@ curl -X POST http://127.0.0.1:2323/plugins/reload
 
 See [RPC Plugin Protocol](/reference/rpc-plugin-protocol) for the manifest and JSON-RPC contract.
 
-### Supported RPC Surface
+### RPC Surface
 
 External plugins run with the same operating-system permissions as the Wingman process that starts them. Only install plugins from sources you trust.
 
-External RPC plugins support custom tools. Lifecycle hooks, event sinks, state APIs, and custom part decoders are Go-plugin capabilities.
+The documented RPC protocol covers tool execution. The plugin model is intended to use the same capability vocabulary across Go and RPC as those protocol surfaces are added.
 
-## Parity Target
+## Capability Reference
 
-Wingman's target is one plugin model with two transports: typed Go first, then RPC parity where the transport makes sense. See [Plugin Capabilities](/reference/plugin-capabilities) for the supported surface.
+See [Plugin Capabilities](/reference/plugin-capabilities) for the supported extension surface.

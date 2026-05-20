@@ -7,7 +7,7 @@ order: 1002
 
 # Go Plugin Quickstart
 
-Go plugins are normal Go packages that implement Wingman's `plugin.Plugin` interface. Use this path when you embed Wingman, ship a custom binary, or need typed lifecycle hooks.
+Go plugins are normal Go packages that implement Wingman's `plugin.Plugin` interface. Use this path when you embed Wingman or ship a custom binary.
 
 This guide creates a plugin that observes session events through a sink.
 
@@ -91,4 +91,4 @@ Use Go plugins for:
 - Custom message-part decoders.
 - Performance-sensitive extensions.
 
-Use [RPC plugins](/reference/rpc-plugin-protocol) when you only need to add a custom tool to the stock server without rebuilding Wingman.
+Use [RPC plugins](/reference/rpc-plugin-protocol) when you want the stock server to load an out-of-process plugin from disk.

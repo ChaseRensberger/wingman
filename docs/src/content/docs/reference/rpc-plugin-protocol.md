@@ -9,7 +9,7 @@ order: 1003
 
 RPC plugins are external executables started by Wingman. They are discovered from global plugin directories and communicate with Wingman over newline-delimited JSON-RPC on stdio.
 
-RPC plugins are the right fit when you want to add a custom tool to the stock `wingman serve` binary without rebuilding Wingman.
+RPC plugins are the right fit when you want the stock `wingman serve` binary to load an out-of-process plugin from disk.
 
 ## Discovery
 
