@@ -91,7 +91,7 @@ There are two extension paths:
 
 Use Go tools when you control the embedding process and need typed hooks. Use external plugin tools when you want to extend the stock `wingman serve` binary without rebuilding it.
 
-See [Plugins](/core/plugins) for plugin installation and manifest details.
+See [Plugins](/concepts/plugins) for plugin installation and manifest details.
 
 ## Tool Results
 

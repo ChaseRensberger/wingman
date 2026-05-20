@@ -147,7 +147,7 @@ provider/model
 
 Examples include `anthropic/claude-sonnet-4-6`, `openai/gpt-5.5`, and `opencode/claude-sonnet-4-6`.
 
-For custom or not-yet-cataloged models, pass `model_route` when creating or updating an agent, or when sending a message. See [WingModels](/core/wingmodels#custom-models) for the supported route shape.
+For custom or not-yet-cataloged models, pass `model_route` when creating or updating an agent, or when sending a message. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
 
 ## Plugins
 
@@ -184,7 +184,7 @@ Disable external plugin loading entirely with:
 wingman serve --no-plugins
 ```
 
-See [Plugins](/core/plugins) for plugin manifest and protocol details.
+See [Plugins](/concepts/plugins) for plugin manifest and protocol details.
 
 ## Logs
 
