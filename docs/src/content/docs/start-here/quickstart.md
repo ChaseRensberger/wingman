@@ -132,6 +132,6 @@ Each event is sent as server-sent events with an `event:` type and a JSON `data:
 
 ## Next steps
 
-- Read [Architecture](/architecture) for the high-level runtime shape.
-- Read [Server](/server) for server flags, persistence, and route families.
-- Read [SDK](/sdk) if you want to embed Wingman directly in a Go program.
+- Read [Configure Wingman](/start-here/config) for server flags, provider auth, storage, and plugins.
+- Read [Sessions](/core/sessions) for the session lifecycle and ephemeral runs.
+- Read [API](/reference/referenceapi) if you are building your own client.

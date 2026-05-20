@@ -20,6 +20,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Run GoReleaser Snapshot
         uses: goreleaser/goreleaser-action@v6
         with:

@@ -100,9 +100,20 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
 | `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
 | `POST` | `/sessions/{id}/abort` | Cancel every in-flight Run for the session |
-| `POST` | `/run` | Run one ephemeral turn without persisting a session |
+| `POST` | `/run` | Run one ephemeral session without persisting it |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
+
+`POST /sessions/{id}/message` and `POST /sessions/{id}/message/stream` require the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly.
+
+### Create request
+
+```json
+{
+  "title": "Explore repo",
+  "working_directory": "/home/me/project"
+}
+```
 
 ### Message request
 
@@ -158,3 +169,31 @@ See [Streaming](./agent/streaming) for the envelope reference and the per-type `
 ```
 
 `aborted` is the number of in-flight runs cancelled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
+
+### Ephemeral run request
+
+`POST /run` creates an in-memory session, streams the run, and does not persist the session or its messages.
+
+In normal persistent mode, pass either `agent_id` or an inline `agent`:
+
+```json
+{
+  "agent_id": "agt_...",
+  "message": "Summarize this project",
+  "working_directory": "/home/me/project"
+}
+```
+
+When the server is started with `--ephemeral`, persisted agents are unavailable, so pass an inline agent:
+
+```json
+{
+  "agent": {
+    "name": "One-shot Assistant",
+    "instructions": "Be concise.",
+    "tools": ["webfetch"],
+    "model_ref": "anthropic/claude-sonnet-4-6"
+  },
+  "message": "Explain Wingman in one paragraph."
+}
+```

@@ -86,11 +86,11 @@ Wingman configures SQLite for local daemon use:
 | `busy_timeout` | `5000` | Waits briefly on lock contention. |
 | `MaxOpenConns` | `1` | Serializes writes through one connection. |
 
-This is intentionally single-process storage. If Wingman grows a remote/multi-tenant deployment mode, Postgres or another external store can sit behind the same store interface.
+This is intentionally single-process storage. The storage boundary is adapter-shaped, but SQLite is the only supported durable adapter today. Do not assume Postgres, Mongo, RDS, or another external store is supported until an adapter exists.
 
 ## Store Interface
 
-Embedding applications can provide their own implementation of `store.Store`:
+Embedding applications can provide their own implementation of `store.Store`. This is a Go adapter boundary, not a plugin hook:
 
 ```go
 type Store interface {

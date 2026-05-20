@@ -237,7 +237,7 @@ func (s *Server) mountWebUI() {
 		return
 	}
 
-	dist, err := fs.Sub(webui.Dist, "dist")
+	dist, err := fs.Sub(webui.Dist, webui.DistRoot)
 	if err != nil {
 		s.logger.Error("web UI unavailable", "error", err)
 		return

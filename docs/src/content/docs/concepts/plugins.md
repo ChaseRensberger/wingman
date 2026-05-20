@@ -11,7 +11,9 @@ Plugins are session-scoped. They do not create sessions, list other sessions, or
 Choose a plugin form based on where the plugin runs:
 
 - Go plugins linked into a Wingman binary or embedding application.
-- External plugins discovered from disk and run as subprocesses.
+- External RPC plugins discovered from global plugin directories and run as subprocesses.
+
+Go plugins are the first-class extension path today. External RPC plugins are beta: they can contribute custom tools to the stock server, but lifecycle hooks and richer state are still planned.
 
 ## Go Plugins
 
@@ -117,9 +119,9 @@ Go plugins are not discovered from disk by the stock `wingman serve` binary. The
 
 ## External Plugins
 
-External plugins are discovered from disk, started as subprocesses, and called over stdio JSON-RPC.
+External plugins are discovered from global plugin directories, started as subprocesses, and called over stdio JSON-RPC.
 
-Use an external plugin when you want to add a tool to the stock `wingman serve` binary without rebuilding Wingman. External plugins currently contribute custom tools.
+Use an external plugin when you want to add a tool to the stock `wingman serve` binary without rebuilding Wingman. External plugins currently contribute custom tools. Treat the lifecycle and state surface as beta until RPC hooks are implemented.
 
 ### Discovery
 
@@ -127,12 +129,6 @@ Wingman loads global plugins from:
 
 ```text
 ~/.config/wingman/plugins/
-```
-
-Each session also loads project-local plugins from its working directory:
-
-```text
-<working-directory>/.wingman/plugins/
 ```
 
 You can add more global plugin directories when starting the server:

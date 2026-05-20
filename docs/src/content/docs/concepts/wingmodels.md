@@ -14,7 +14,7 @@ WingModels is Wingman's provider agnostic model sdk (written in Go). It gives th
 - OpenAI
 - OpenCode Zen
 
-with many more coming soon.
+Custom routes may target endpoints that speak one of the supported protocols. Other provider families are deferred until the current route/protocol/client boundary proves itself.
 
 ## Why It Exists
 
@@ -23,7 +23,7 @@ WingModels exists because the agent runtime needs:
 - One conversation shape for storage and replay.
 - One stream shape for UI, plugins, and HTTP events.
 - Provider-specific request lowering and SSE parsing behind a single model client.
-- Local model metadata without depending on a hosted metadata service (Wingman's Catalog).
+- Local model metadata without depending on a hosted metadata service.
 - Model refs that can change per message without binding a session to one provider (Context handoff). 
 
 ## Shape
@@ -185,6 +185,8 @@ Current protocol support is deliberately narrow:
 The catalog currently uses OpenAI Responses and Anthropic Messages. OpenAI Chat Completions is available for explicit custom routes.
 
 ## Catalog
+
+The catalog is intentionally small. It exists for defaults, capability gating, provider/API responses, and docs. It is not the execution gate: callers can use explicit route metadata for custom or not-yet-cataloged models.
 
 The catalog is embedded TOML under `models/catalog/providers`.
 

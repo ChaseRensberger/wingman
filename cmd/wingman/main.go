@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -34,7 +35,165 @@ var (
 
 const systemdServicePath = "/etc/systemd/system/wingman.service"
 
+type fileConfig struct {
+	Server struct {
+		Host      string `json:"host"`
+		Port      int    `json:"port"`
+		DB        string `json:"db"`
+		LogLevel  string `json:"log_level"`
+		LogFormat string `json:"log_format"`
+	} `json:"server"`
+	Plugins struct {
+		Dirs []string `json:"dirs"`
+	} `json:"plugins"`
+	Models struct {
+		Default string `json:"default"`
+	} `json:"models"`
+}
+
+func loadConfig() (fileConfig, error) {
+	var cfg fileConfig
+	configDir, err := configDir()
+	if err != nil {
+		return cfg, fmt.Errorf("resolve config directory: %w", err)
+	}
+	path := filepath.Join(configDir, "wingman", "wingman.jsonc")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return cfg, fmt.Errorf("read config %s: %w", path, err)
+	}
+	if err := json.Unmarshal(stripJSONComments(data), &cfg); err != nil {
+		return cfg, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+func configDir() (string, error) {
+	if os.Geteuid() == 0 && os.Getenv("SUDO_USER") != "" {
+		u, err := user.Lookup(os.Getenv("SUDO_USER"))
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(u.HomeDir, ".config"), nil
+	}
+	return os.UserConfigDir()
+}
+
+func stripJSONComments(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	inString := false
+	escaped := false
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+		if inString {
+			out = append(out, ch)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inString = true
+			out = append(out, ch)
+			continue
+		}
+		if ch == '/' && i+1 < len(data) && data[i+1] == '/' {
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+			if i < len(data) {
+				out = append(out, data[i])
+			}
+			continue
+		}
+		if ch == '/' && i+1 < len(data) && data[i+1] == '*' {
+			i += 2
+			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				i++
+			}
+			i++
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
+func (c fileConfig) host() string {
+	if c.Server.Host != "" {
+		return c.Server.Host
+	}
+	return "127.0.0.1"
+}
+
+func (c fileConfig) port() int {
+	if c.Server.Port != 0 {
+		return c.Server.Port
+	}
+	return 2323
+}
+
+func (c fileConfig) db() string {
+	return expandHome(c.Server.DB)
+}
+
+func (c fileConfig) logLevel() string {
+	if c.Server.LogLevel != "" {
+		return c.Server.LogLevel
+	}
+	return "info"
+}
+
+func (c fileConfig) logFormat() string {
+	if c.Server.LogFormat != "" {
+		return c.Server.LogFormat
+	}
+	return "json"
+}
+
+func (c fileConfig) pluginDirs() []string {
+	if len(c.Plugins.Dirs) == 0 {
+		return nil
+	}
+	dirs := make([]string, len(c.Plugins.Dirs))
+	for i, dir := range c.Plugins.Dirs {
+		dirs[i] = expandHome(dir)
+	}
+	return dirs
+}
+
+func expandHome(path string) string {
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		}
+	}
+	return path
+}
+
 func main() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	cmd := &cli.Command{
 		Name:  "wingman",
 		Usage: "AI agent framework",
@@ -42,13 +201,13 @@ func main() {
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
-				Flags:  serveFlags(),
+				Flags:  serveFlags(cfg),
 				Action: runServe,
 			},
 			{
 				Name:   "up",
 				Usage:  "Install and start Wingman as a systemd service",
-				Flags:  serveFlags(),
+				Flags:  serveFlags(cfg),
 				Action: runUp,
 			},
 			{
@@ -78,30 +237,31 @@ func main() {
 	}
 }
 
-func serveFlags() []cli.Flag {
+func serveFlags(cfg fileConfig) []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:  "log-format",
-			Value: "json",
+			Value: cfg.logFormat(),
 			Usage: "Log format: json or text",
 		},
 		&cli.StringFlag{
 			Name:  "log-level",
-			Value: "info",
+			Value: cfg.logLevel(),
 			Usage: "Log level: debug, info, warn, or error",
 		},
 		&cli.IntFlag{
 			Name:  "port",
-			Value: 2323,
+			Value: cfg.port(),
 			Usage: "Port to listen on",
 		},
 		&cli.StringFlag{
 			Name:  "host",
-			Value: "127.0.0.1",
+			Value: cfg.host(),
 			Usage: "Host to bind to",
 		},
 		&cli.StringFlag{
 			Name:  "db",
+			Value: cfg.db(),
 			Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 		},
 		&cli.StringFlag{
@@ -114,6 +274,7 @@ func serveFlags() []cli.Flag {
 		},
 		&cli.StringSliceFlag{
 			Name:  "plugin-dir",
+			Value: cfg.pluginDirs(),
 			Usage: "Additional global plugin directory (can be repeated)",
 		},
 		&cli.BoolFlag{
