@@ -99,7 +99,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `DELETE` | `/sessions/{id}` | Delete session |
 | `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
 | `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
-| `POST` | `/sessions/{id}/abort` | Cancel every in-flight Run for the session |
+| `POST` | `/sessions/{id}/abort` | Cancel every in-flight run for the session |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
@@ -160,7 +160,7 @@ event: done
 data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
 ```
 
-See [Streaming](./agent/streaming) for the envelope reference and the per-type `data` shapes.
+See [Streaming Events](/build-clients/streaming-events) for client-side streaming guidance.
 
 ### Abort response
 

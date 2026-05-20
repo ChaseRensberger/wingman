@@ -116,8 +116,6 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 
 Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, plugins can introduce custom content, and future streaming persistence can update individual parts without rewriting an entire message.
 
-## Session Lineage
+## Creating Related Sessions
 
-Wingman does not currently store parent/child session links or session trees. If a client wants to create another session, it calls the same HTTP API any other client uses and passes whatever context it wants in the seed message.
-
-A future lineage field such as `parent_session_id` may be useful once real clients need attribution or grouping. It is intentionally deferred until there is a concrete use case.
+If a client wants one session to inform another, it creates a new session through the same HTTP API and passes the relevant context in the first message. Wingman does not implicitly copy parent context into new sessions.

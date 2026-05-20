@@ -18,7 +18,7 @@ Wingman gives builders:
 
 - A local agent server with persistent agents, sessions, messages, and provider auth.
 - A provider-neutral model layer for OpenAI, Anthropic, and OpenCode Zen routes.
-- A session API for persistent conversations and ephemeral one-shot runs.
+- A session API for persistent conversations and ephemeral in-memory runs.
 - A plugin model for tools, hooks, context transforms, event sinks, and custom content.
 - A small Go core that can be embedded, customized, and shipped as a single binary.
 

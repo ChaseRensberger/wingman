@@ -51,7 +51,7 @@ POST /sessions
 POST /sessions/{id}/message
 ```
 
-Use an ephemeral run when you want one in-memory session and no transcript:
+Use an ephemeral session when you want one in-memory run and no transcript:
 
 ```text
 POST /run
