@@ -19,7 +19,7 @@ Wingman is yet another agent harness, but this one is:
 
 ## Install
 
-I'll provide better package manager support soon but for now you'll need to grab from the releases page or use the install script.
+Grab a binary from the releases page or use the install script.
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
@@ -37,8 +37,8 @@ sudo wingman up
 - **Extendable** - Strong plugin support so you can extend session behavior however you want.
 - **Provider-agnostic** - Wingman ships its own provider-agnostic model SDK, WingModels.
 - **Context handoff** - Swap between provider/model combinations with minimal, and often zero, data loss.
-- **Bring your own storage** - Wingman ships with a default SQLite adapter, but the storage provider is also agnostic.
-- **HTTP API** - Communicate with Wingman via HTTP. Stdio and other protocols are coming later.
+- **SQLite-backed sessions** - Store agents, sessions, messages, parts, and provider auth in a local SQLite database.
+- **HTTP API** - Communicate with Wingman via HTTP from your own clients.
 
 **Want to learn more?** [Check out the site](https://wingman.actor) & [Read the docs](https://docs.wingman.actor)
 
