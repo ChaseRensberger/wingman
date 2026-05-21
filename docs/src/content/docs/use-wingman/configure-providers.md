@@ -5,7 +5,7 @@ description: "Store provider API keys for model calls."
 
 # Configure Providers
 
-Wingman stores model provider credentials in its local auth store. API keys do not belong in `wingman.jsonc`.
+Wingman stores model provider credentials in its local auth store.
 
 Provider metadata and routes come from the WingModels catalog plus optional `wingman.jsonc` provider overlays. Only credentials are persisted in SQLite.
 

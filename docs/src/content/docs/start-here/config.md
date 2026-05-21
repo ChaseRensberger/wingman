@@ -12,7 +12,7 @@ Wingman is configured globally for the current user. The user config directory i
 ~/.config/wingman/
 ```
 
-Use that directory for settings that apply across clients and projects. Project-local `.wingman/` config is intentionally deferred; do not rely on it for current installs.
+Use that directory for settings that apply across clients and projects.
 
 ## Current Configuration Surfaces
 
@@ -81,7 +81,7 @@ Change the bind address with `--host` and `--port`:
 wingman serve --host 0.0.0.0 --port 2424
 ```
 
-Use `127.0.0.1` for local-only access. Use `0.0.0.0` only when you intentionally want other machines on the network to reach the server. Wingman does not currently provide inbound auth or multi-tenant isolation.
+Use `127.0.0.1` for local-only access. Use `0.0.0.0` only on trusted networks; Wingman does not provide inbound auth or multi-tenant isolation.
 
 ## Storage
 
@@ -183,7 +183,7 @@ provider/model
 
 Examples include `anthropic/claude-sonnet-4-6`, `openai/gpt-5.5`, and `opencode/claude-sonnet-4-6`.
 
-For custom or not-yet-cataloged models, pass `model_route` when creating or updating an agent, or when sending a message. Prefer provider route overlays for cataloged providers; `model_route` is the per-agent/per-request escape hatch. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
+For custom models, pass `model_route` when creating or updating an agent, or when sending a message. Prefer provider route overlays for cataloged providers; `model_route` is the per-agent/per-request override. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
 
 ## Plugins
 

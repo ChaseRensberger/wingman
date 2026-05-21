@@ -10,7 +10,7 @@ Wingman is an open-source client-agnostic agent harness.
 
 ## Why Wingman Exists
 
-I built Wingman because I wanted a performant agent harness that wasn't tied to any specific kind of application (like all the harnesses that are mostly just coding TUIs). What this means practically is that Wingman is not tied to one interface; a Wingman client can be a web app, terminal UI, editor extension, internal tool, automation script, eval framework, etc. Most agentic tools in this space ship as a finished application first and an extension surface second. Wingman starts one layer lower, with the idea that the harness is the product.
+Wingman provides the agent runtime layer without tying it to one interface. A Wingman client can be a web app, terminal UI, editor extension, internal tool, automation script, eval framework, or another application.
 
 Wingman gives builders:
 
@@ -37,20 +37,3 @@ If you are new to Wingman, follow this path:
 - **Tool:** canonical function definition the model can use during a session.
 - **Plugin:** session-scoped extension that contributes tools, hooks, event sinks, or custom content.
 - **Client:** any app or integration that consumes the Wingman HTTP API.
-
-## Inspiration
-
-I have taken inspiration from more projects than I can count but to name a few (that I reference daily):
-
-- [Pi](https://pi.dev)
-- [OpenCode](https://opencode.ai/)
-- [Shelley](https://github.com/boldsoftware/shelley)
-- [Vercel's entire AI stack](https://open-agents.dev/)
-
-and many many more...
-
-## Notes
-
-- Perhaps unsurprisingly, some non-negligible percentage of this project was built with coding agents and eventually Wingman itself.
-
-- Wingman is written in golang and can thus has serveral features (like [WingModels](/core/wingmodels)) that can be imported and used as an SDK for your go application. This documentation is focused largely on the complete Wingman runtime but I suspect there will be people that want to use just the SDK without all the extra fluff. I will update the documentation in time to streamline that process.

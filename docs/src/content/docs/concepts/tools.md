@@ -10,7 +10,7 @@ Tools are functions the model can call during a session turn. An agent stores an
 
 ## Built-In Tools
 
-Wingman currently ships these built-ins:
+Wingman ships these built-ins:
 
 | Name | Purpose | Requires `work_dir` |
 |---|---|---|

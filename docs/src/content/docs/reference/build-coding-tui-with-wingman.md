@@ -98,7 +98,7 @@ CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
 printf 'client: %s\n' "$CLIENT_ID"
 ```
 
-Client registration is currently just for attribution/organization. It lets Wingman list sessions created by this TUI separately from sessions created by other apps.
+Client registration attributes sessions to this TUI. It lets Wingman list sessions created by this TUI separately from sessions created by other apps.
 
 Create a coding agent (again can generally be done by the client itself):
 
@@ -173,7 +173,7 @@ The minimal TUI will handle these event types:
 | `stream_part` | Append assistant text to the in-progress message. |
 | `tool_start` | Add a pending tool row. |
 | `tool_end` | Mark the tool row complete and show a short result. |
-| `message` | Ignore for now, or use later to reconcile persisted history. |
+| `message` | Ignore in this tutorial, or use it to reconcile persisted history. |
 | `error` | Show an error block and unlock the prompt. |
 | `done` | Mark the run complete and unlock the prompt. |
 
@@ -301,7 +301,7 @@ export function getConfig() {
 }
 ```
 
-The client ID is optional in Wingman, but this tutorial uses one so the TUI's sessions are easy to find later.
+The client ID is optional in Wingman, but this tutorial uses one so the TUI's sessions are easy to find.
 
 ## 8. Build the OpenTUI Screen
 

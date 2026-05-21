@@ -278,7 +278,7 @@ Plugin tools are selected the same way as built-in tools: include the tool name 
 }
 ```
 
-If a plugin tool has the same name as a built-in tool, the plugin tool wins during session tool resolution. Avoid collisions unless you intentionally want to replace behavior.
+If a plugin tool has the same name as a built-in tool, the plugin tool wins during session tool resolution. Avoid collisions unless you want to replace behavior.
 
 ### HTTP API
 

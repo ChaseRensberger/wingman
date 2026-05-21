@@ -30,7 +30,7 @@ Run without persistence:
 wingman serve --ephemeral
 ```
 
-Ephemeral mode is for one-shot or embedding scenarios where durable agents and sessions are not needed. Some persisted HTTP endpoints intentionally return not-implemented responses in that mode.
+Ephemeral mode is for one-shot or embedding scenarios where durable agents and sessions are not needed. Persisted HTTP endpoints return not-implemented responses in that mode.
 
 ## What Is Stored
 
@@ -86,7 +86,7 @@ Wingman configures SQLite for local daemon use:
 | `busy_timeout` | `5000` | Waits briefly on lock contention. |
 | `MaxOpenConns` | `1` | Serializes writes through one connection. |
 
-This is intentionally single-process storage. The storage boundary is adapter-shaped, but SQLite is the only supported durable adapter today. Do not assume Postgres, Mongo, RDS, or another external store is supported until an adapter exists.
+SQLite is the durable store provided by Wingman. The storage boundary is adapter-shaped for embedded Go applications.
 
 ## Store Interface
 

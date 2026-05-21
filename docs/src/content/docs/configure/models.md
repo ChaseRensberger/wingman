@@ -29,6 +29,6 @@ Agents can define a default `model_ref`. Message requests can override that mode
 }
 ```
 
-For custom or not-yet-cataloged models, provide `model_route` with the protocol, base URL, and capability metadata Wingman needs to make the request.
+For custom models, provide `model_route` with the protocol, base URL, and capability metadata Wingman needs to make the request.
 
 See [WingModels](/concepts/wingmodels) for the model SDK and catalog details.

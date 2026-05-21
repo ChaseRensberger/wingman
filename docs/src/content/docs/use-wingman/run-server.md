@@ -55,7 +55,7 @@ Change the bind address with `--host` and `--port`:
 wingman serve --host 127.0.0.1 --port 2424
 ```
 
-Use `127.0.0.1` for local-only access. Bind to `0.0.0.0` only on trusted networks; Wingman does not currently provide inbound auth or multi-tenant isolation.
+Use `127.0.0.1` for local-only access. Bind to `0.0.0.0` only on trusted networks; Wingman does not provide inbound auth or multi-tenant isolation.
 
 ## Ephemeral Mode
 

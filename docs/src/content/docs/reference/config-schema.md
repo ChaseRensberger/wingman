@@ -13,7 +13,7 @@ Wingman reads global configuration from:
 ~/.config/wingman/wingman.jsonc
 ```
 
-This file is for settings that apply across clients. It is not for agents, provider API keys, project-local behavior, or per-client preferences.
+This file is for daemon-wide settings that apply across clients.
 
 ## Precedence
 
@@ -67,7 +67,7 @@ The file is parsed as JSON with comments:
 | `plugins` | object | no | External plugin discovery defaults. |
 | `models` | object | no | Model-related defaults. |
 
-Unknown fields are ignored today. Do not rely on ignored fields becoming supported later.
+Only the documented fields are supported.
 
 ## `server`
 
@@ -99,7 +99,7 @@ Example:
 |---|---:|---|---|---|
 | `dirs` | string array | `[]` | `--plugin-dir` | Extra global plugin directories. Each path supports `~` and `~/...` expansion. |
 
-Wingman still includes the default global plugin directory:
+Wingman includes the default global plugin directory:
 
 ```text
 ~/.config/wingman/plugins/
@@ -126,19 +126,19 @@ Disable external plugin loading entirely with the CLI flag:
 wingman serve --no-plugins
 ```
 
-There is no config-file equivalent for `--no-plugins` yet.
+There is no config-file equivalent for `--no-plugins`.
 
 ## `provider`
 
 `provider` is a map keyed by provider ID. It overlays WingModels catalog provider routes at daemon startup. It is not persisted in SQLite and does not store credentials.
 
-Supported provider fields today:
+Supported provider fields:
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
 | `options` | object | no | Runtime route options for this provider. |
 
-Supported `options` fields today:
+Supported `options` fields:
 
 | Field | Type | Default | Description |
 |---|---:|---|---|
@@ -166,9 +166,9 @@ Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways
 
 | Field | Type | Default | Description |
 |---|---:|---|---|
-| `default` | string | empty | Reserved default model ref for clients and future server defaults. |
+| `default` | string | empty | Default model ref for clients. |
 
-`models.default` is parsed and documented, but the server does not currently apply it to agent creation or message execution. Agents should still set `model_ref`, or callers should pass `model_ref` on message requests.
+`models.default` is parsed by the server. Agents set `model_ref`, and callers can pass `model_ref` on message requests.
 
 Example:
 
@@ -179,18 +179,3 @@ Example:
   }
 }
 ```
-
-## Intentionally Excluded
-
-These do not belong in `wingman.jsonc` today:
-
-| Concern | Where it lives |
-|---|---|
-| Agents | SQLite via `/agents` API. |
-| Provider API keys | Provider auth store via `/provider/auth`. |
-| Provider definitions | WingModels catalog TOML. |
-| Sessions and message history | SQLite via session APIs. |
-| Project-specific config | Deferred; no project-local config is supported yet. |
-| Per-client preferences | Client-owned state. |
-
-Keeping agents out of JSON avoids ambiguous behavior once multiple clients use the same Wingman daemon. The config file is reserved for daemon-wide defaults.

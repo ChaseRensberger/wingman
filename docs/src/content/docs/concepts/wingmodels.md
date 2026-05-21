@@ -14,7 +14,7 @@ WingModels is Wingman's provider agnostic model sdk (written in Go). It gives th
 - OpenAI
 - OpenCode Zen
 
-Custom routes may target endpoints that speak one of the supported protocols. Other provider families are deferred until the current route/protocol/client boundary proves itself.
+Custom routes may target endpoints that speak one of the supported protocols.
 
 ## Why It Exists
 
@@ -176,17 +176,17 @@ The provider client resolves `Request.Model` through `models/catalog` first. If 
 
 ## Supported Protocols
 
-Current protocol support is deliberately narrow:
+Supported protocols:
 
 - OpenAI Responses (`openai_responses`).
 - OpenAI Chat Completions (`openai_completions`).
 - Anthropic Messages (`anthropic_messages`).
 
-The catalog currently uses OpenAI Responses and Anthropic Messages. OpenAI Chat Completions is available for explicit custom routes.
+The embedded catalog uses OpenAI Responses and Anthropic Messages. OpenAI Chat Completions is available for explicit custom routes.
 
 ## Catalog
 
-The catalog is intentionally small. It exists for defaults, capability gating, provider/API responses, and docs. It is not the execution gate: callers can use explicit route metadata for custom or not-yet-cataloged models.
+The catalog provides defaults, capability gating, provider/API responses, and docs. It is not the execution gate: callers can use explicit route metadata for custom models.
 
 The catalog is embedded TOML under `models/catalog/providers`.
 
@@ -213,7 +213,7 @@ models/catalog/providers/opencode/models/gpt-5.5-pro.toml
 models/catalog/providers/opencode/models/kimi-k2.6.toml
 ```
 
-There is no generated snapshot and no lab/provider split. The catalog only contains fields that current code uses.
+The catalog only contains fields used by the runtime, API responses, or docs.
 
 Example provider entry:
 
@@ -255,8 +255,6 @@ Model fields:
 - `context_window`: coarse context limit used by runtime gates/plugins.
 - `max_output`: default maximum output tokens where needed.
 - `capabilities`: booleans used for runtime/API capability checks.
-
-Do not add catalog fields speculatively. A field belongs here only when runtime code, API responses, or docs use it now.
 
 ## Provider Route Overlays
 
@@ -347,13 +345,11 @@ fmt.Println(prepared.URL)
 fmt.Println(prepared.Body)
 ```
 
-This is the main inspection seam while the protocol layer is still small.
-
 ## Sessions And Model Switching
 
-Wingman sessions are still not bound to one model. The server stores agent defaults, but the loop itself receives a `models.ModelRef` for the current run. That keeps the architecture open for per-message model switching.
+Wingman sessions are not bound to one model. The server stores agent defaults, and each run receives a `models.ModelRef` for the current request.
 
-The loop no longer owns provider-specific model objects. It only knows:
+The loop uses provider-neutral model types:
 
 - `models.Client`
 - `models.ModelRef`
@@ -362,15 +358,13 @@ The loop no longer owns provider-specific model objects. It only knows:
 
 ## Current Limitations
 
-WingModels is usable for the narrow supported path, but it is not a broad provider SDK yet.
+WingModels is not a broad provider SDK.
 
 Known limitations:
 
 - The protocol implementation handles the common text/tool/usage streaming paths, not every provider event type.
 - There is no first-class generic OpenAI-compatible provider catalog or discovery flow; explicit OpenAI-compatible routes can be supplied manually.
-- There is no `CountTokens` API. Compaction currently uses a local approximation.
-- There is no separate `models/transform` package for cross-provider replay normalization yet.
-- Catalog metadata is intentionally tiny and should stay that way until fields have direct consumers.
-- Structured output support is represented in metadata, but provider-specific response-format behavior is still minimal.
+- There is no `CountTokens` API. Compaction uses a local approximation.
+- Structured output support is represented in metadata; provider-specific response-format behavior is limited.
 
 The important boundary is already in place: the agent loop depends on `models.Client` and `models.ModelRef`, not provider-owned model implementations.

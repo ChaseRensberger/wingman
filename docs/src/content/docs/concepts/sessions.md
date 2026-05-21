@@ -45,7 +45,7 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
 
 ## Per-Message Agent And Model
 
-The `sessions` table intentionally does not store `agent_id` or `model_ref`. Agents and models are selected per message:
+Agents and models are selected per message:
 
 ```json
 {
@@ -92,7 +92,7 @@ curl -N -X POST http://localhost:2323/run \
   }'
 ```
 
-Conceptually, this is still a session: it has a runtime, tools, model calls, and events. It just is not written to the store.
+An ephemeral run has a runtime, tools, model calls, and events. It is not written to the store.
 
 When the server is started with `--ephemeral`, persisted endpoints such as `/sessions`, `/agents`, `/clients`, and `/provider/auth` return `501 Not Implemented`. Use inline agent specs with `/run` in that mode.
 
@@ -114,7 +114,7 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 - Structured output.
 - Plugin-defined opaque content.
 
-Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, plugins can introduce custom content, and future streaming persistence can update individual parts without rewriting an entire message.
+Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, and plugins can introduce custom content.
 
 ## Creating Related Sessions
 

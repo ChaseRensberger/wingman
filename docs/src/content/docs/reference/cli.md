@@ -39,7 +39,7 @@ Installs `/etc/systemd/system/wingman.service`, reloads systemd, enables the ser
 wingman up [flags]
 ```
 
-The command re-executes itself through `sudo` when needed. The service runs `wingman serve` as the user that invoked it, so the default database stays under that user's home directory. Linux/systemd is the only supported service manager for now.
+The command re-executes itself through `sudo` when needed. The service runs `wingman serve` as the user that invoked it, so the default database stays under that user's home directory. Linux/systemd is the supported service manager.
 
 ### Flags
 

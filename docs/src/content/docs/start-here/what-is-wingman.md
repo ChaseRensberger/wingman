@@ -20,7 +20,7 @@ You can use Wingman as:
 
 Wingman is not only a coding TUI, editor plugin, or hosted chat product. Those can all be built on top of Wingman, but they are clients of the harness.
 
-This distinction matters because the core API should stay useful to many clients:
+The core API supports many client types:
 
 - A web UI can manage providers, agents, and sessions.
 - A terminal UI can stream events into a transcript.
@@ -42,4 +42,4 @@ client or app
       -> storage
 ```
 
-The default path is intentionally simple: run the server locally, configure provider auth, create an agent, create a session, send messages. The extension path is intentionally deep: write clients, embed the runtime, add tools, and hook into the lifecycle.
+The default path is to run the server locally, configure provider auth, create an agent, create a session, and send messages. To extend Wingman, write clients, embed the runtime, add tools, or hook into the lifecycle.
