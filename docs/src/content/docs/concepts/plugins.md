@@ -4,6 +4,8 @@ group: "Core"
 order: 104
 ---
 
+# Plugins
+
 Plugins extend the behavior of Wingman. They are the main way to add tools, hook into session lifecycle events, transform model context, observe runs, and teach Wingman about custom message parts.
 
 Plugins are session-scoped. They do not create sessions, list other sessions, or orchestrate multi-agent workflows. If you need orchestration, build a client that uses the Wingman HTTP API.

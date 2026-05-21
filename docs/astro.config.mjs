@@ -41,8 +41,6 @@ export default defineConfig({
           items: [
             { label: "Run the Server", slug: "use-wingman/run-server" },
             { label: "Configure Providers", slug: "use-wingman/configure-providers" },
-            { label: "Create Agents", slug: "concepts/agents" },
-            { label: "Run Sessions", slug: "concepts/sessions" },
             { label: "Use the Web UI", slug: "use-wingman/web-ui" },
           ],
         },
@@ -51,8 +49,6 @@ export default defineConfig({
           items: [
             { label: "HTTP API Basics", slug: "build-clients/http-api-basics" },
             { label: "Streaming Events", slug: "build-clients/streaming-events" },
-            { label: "Clients", slug: "concepts/clients" },
-            { label: "Session Lifecycle", slug: "concepts/sessions" },
           ],
         },
         {
@@ -60,18 +56,14 @@ export default defineConfig({
           items: [
             { label: "Global Config", slug: "start-here/config" },
             { label: "Models", slug: "configure/models" },
-            { label: "WingModels", slug: "concepts/wingmodels" },
-            { label: "Storage", slug: "concepts/storage" },
           ],
         },
         {
           label: "Extend",
           items: [
-            { label: "Plugins", slug: "concepts/plugins" },
             { label: "Go Plugin Quickstart", slug: "reference/plugin-quickstart" },
             { label: "RPC Plugin Protocol", slug: "reference/rpc-plugin-protocol" },
             { label: "Plugin Capabilities", slug: "reference/plugin-capabilities" },
-            { label: "Tools", slug: "concepts/tools" },
           ],
         },
         {
