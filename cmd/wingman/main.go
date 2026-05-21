@@ -218,6 +218,11 @@ func main() {
 				Action: runDown,
 			},
 			{
+				Name:   "restart",
+				Usage:  "Restart the Wingman systemd service",
+				Action: runRestart,
+			},
+			{
 				Name:   "status",
 				Usage:  "Show Wingman's systemd service status",
 				Action: runStatus,
@@ -432,6 +437,23 @@ func runDown(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Println("Wingman service stopped and removed")
+	return nil
+}
+
+func runRestart(ctx context.Context, cmd *cli.Command) error {
+	ok, err := ensureSystemdRoot(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
+		return err
+	}
+
+	fmt.Println("Wingman service restarted")
 	return nil
 }
 

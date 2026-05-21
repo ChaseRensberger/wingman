@@ -232,6 +232,12 @@ Pass server flags to bake them into the service:
 sudo wingman up --host 127.0.0.1 --port 2323 --db /var/lib/wingman/wingman.db
 ```
 
+Restart the service after editing `~/.config/wingman/wingman.jsonc`:
+
+```bash
+wingman restart
+```
+
 Check and remove the service with:
 
 ```bash

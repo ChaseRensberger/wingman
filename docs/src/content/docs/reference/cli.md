@@ -28,6 +28,7 @@ go run ./cmd/wingman <command> [flags]
 | `serve` | Start the HTTP server. |
 | `up` | Install, enable, and start Wingman as a systemd service. |
 | `down` | Stop, disable, and remove the Wingman systemd service. |
+| `restart` | Restart the Wingman systemd service. |
 | `status` | Show the Wingman systemd service status. |
 | `version` | Print version information. |
 
@@ -92,6 +93,16 @@ Shows `systemctl status wingman.service`.
 ```bash
 wingman status
 ```
+
+## `wingman restart`
+
+Restarts `wingman.service` without regenerating the systemd unit. Use this after editing `~/.config/wingman/wingman.jsonc`.
+
+```bash
+wingman restart
+```
+
+To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`, run `wingman up` again with the new flags.
 
 ## `wingman serve`
 
