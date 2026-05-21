@@ -132,6 +132,7 @@ Each event is sent as server-sent events with an `event:` type and a JSON `data:
 
 ## Next steps
 
-- Read [Configure Wingman](/start-here/config) for server flags, provider auth, storage, and plugins.
+- Read [Global Config](/start-here/config) for server flags, storage, logs, and plugins.
+- Read [Providers](/configure/providers) for provider auth and gateway routing.
 - Read [Sessions](/concepts/sessions) for the session lifecycle and ephemeral runs.
 - Read [API](/reference/referenceapi) if you are building your own client.

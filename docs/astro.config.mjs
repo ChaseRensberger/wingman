@@ -40,7 +40,6 @@ export default defineConfig({
           label: "Use Wingman",
           items: [
             { label: "Run the Server", slug: "use-wingman/run-server" },
-            { label: "Configure Providers", slug: "use-wingman/configure-providers" },
             { label: "Use the Web UI", slug: "use-wingman/web-ui" },
           ],
         },
@@ -55,6 +54,7 @@ export default defineConfig({
           label: "Configure",
           items: [
             { label: "Global Config", slug: "start-here/config" },
+            { label: "Providers", slug: "configure/providers" },
             { label: "Models", slug: "configure/models" },
           ],
         },

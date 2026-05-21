@@ -1,10 +1,10 @@
 ---
-title: "Configure Wingman"
-description: "Configure the local server, provider auth, plugins, and storage."
+title: "Global Config"
+description: "Configure the local server, storage, logging, plugins, and provider route defaults."
 order: 3
 ---
 
-# Configure Wingman
+# Global Config
 
 Wingman is configured globally for the current user. The user config directory is:
 
@@ -65,7 +65,7 @@ CLI flags override config values. Provider secrets stay in the provider auth sto
 
 The parser accepts JSON with `//` and `/* ... */` comments. Do not use trailing commas.
 
-See [Config Schema](/reference/config-schema) for the exact supported fields.
+Use [Providers](/configure/providers) for provider auth and route behavior. Use [Config Schema](/reference/config-schema) for the exact supported fields.
 
 ## Server Address
 
@@ -107,7 +107,7 @@ Ephemeral mode does not persist sessions, messages, agents, clients, or provider
 
 ## Provider Auth
 
-Model providers need credentials before Wingman can call them. Store API keys in Wingman's local auth store with `PUT /provider/auth`:
+Model providers need credentials before Wingman can call them. Provider API keys are stored in SQLite through `/provider/auth`, not in `wingman.jsonc`.
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
@@ -121,19 +121,11 @@ Check configured provider status:
 curl -sS http://localhost:2323/provider/auth | jq
 ```
 
-The status response reports whether a provider is configured, but it does not return the secret.
-
-Remove a provider credential with:
-
-```bash
-curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic
-```
-
-When using WingModels directly as a Go SDK, provider clients can also read provider keys from environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `OPENCODE_API_KEY`. The Wingman server path should prefer the local auth store so clients do not need access to your shell environment.
+The status response reports whether a provider is configured, but it does not return the secret. See [Providers](/configure/providers) for deleting credentials, environment fallback, and gateway routing.
 
 ## Provider Route Overlays
 
-Provider route overlays change where a cataloged provider sends requests. They are process configuration, not SQLite data. They do not create provider records and do not change persisted agents.
+Provider route overlays change where a cataloged provider sends requests. They are process configuration, not SQLite data. They do not create provider records, store secrets, or change persisted agents.
 
 For example, this routes `openai/*` model refs through the exe.dev LLM Gateway and disables stored/env auth for that provider route:
 
@@ -150,17 +142,7 @@ For example, this routes `openai/*` model refs through the exe.dev LLM Gateway a
 }
 ```
 
-With that config, an agent can keep a normal catalog model ref:
-
-```json
-{
-  "name": "Assistant",
-  "instructions": "Be helpful and concise.",
-  "model_ref": "openai/gpt-5.5"
-}
-```
-
-Omitting `auth` uses Wingman's normal auth resolution: stored `/provider/auth` credentials first, then catalog environment variables. Set `auth` to `false` only for unauthenticated gateways or local endpoints where Wingman should not send any provider credential.
+With that config, agents can keep normal catalog model refs such as `openai/gpt-5.5`. See [Providers](/configure/providers#auth-behavior) for `auth` behavior and gateway examples.
 
 ## Model Selection
 
@@ -183,7 +165,7 @@ provider/model
 
 Examples include `anthropic/claude-sonnet-4-6`, `openai/gpt-5.5`, and `opencode/claude-sonnet-4-6`.
 
-For custom models, pass `model_route` when creating or updating an agent, or when sending a message. Prefer provider route overlays for cataloged providers; `model_route` is the per-agent/per-request override. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
+For custom models, pass `model_route` when creating or updating an agent, or when sending a message. Prefer provider route overlays for cataloged providers; `model_route` is the per-agent/per-request override. See [Models](/configure/models) for choosing between provider overlays and `model_route`.
 
 ## Plugins
 

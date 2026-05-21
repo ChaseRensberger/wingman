@@ -25,7 +25,7 @@ Wingman gives builders:
 If you are new to Wingman, follow this path:
 
 1. [Quick Start](/start-here/quickstart): run the server and send the first message.
-2. [Configure Providers](/use-wingman/configure-providers): store your model provider credentials.
+2. [Configure Providers](/configure/providers): store provider credentials and route models through gateways.
 3. [Run Sessions](/concepts/sessions): understand persistent and ephemeral session flows.
 4. [HTTP API Basics](/build-clients/http-api-basics): call Wingman from your own client.
 5. [Plugins](/concepts/plugins): extend Wingman with tools and lifecycle behavior.
