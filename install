@@ -4,7 +4,6 @@ set -euo pipefail
 APP="wingman"
 OWNER="chaserensberger"
 REPO="wingman"
-DEFAULT_VERSION="0.1.1"
 
 requested_version="${VERSION:-}"
 binary_path=""
@@ -19,14 +18,14 @@ Usage: install [options]
 
 Options:
   -h, --help              Show help
-  -v, --version <version> Install a specific version (default: v0.1.0)
+  -v, --version <version> Install a specific version (default: latest stable release)
   -b, --binary <path>     Install from a local binary
       --install-dir <dir> Set install directory (default: ~/.wingman/bin)
       --no-modify-path    Do not modify shell config files
 
 Examples:
   curl -fsSL https://wingman.actor/install | bash
-  curl -fsSL https://wingman.actor/install | bash -s -- --version 0.1.0
+  curl -fsSL https://wingman.actor/install | bash -s -- --version 0.1.1
   ./install --binary ./wingman
 EOF
 }
@@ -103,7 +102,16 @@ resolve_version() {
     return
   fi
 
-  echo "${DEFAULT_VERSION#v}"
+  local api latest
+  api="https://api.github.com/repos/${OWNER}/${REPO}/releases/latest"
+  latest=$(curl -fsSL "$api" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)
+
+  if [[ -z "$latest" ]]; then
+    echo "Failed to resolve latest ${APP} release" >&2
+    exit 1
+  fi
+
+  echo "$latest"
 }
 
 resolve_asset_url() {
