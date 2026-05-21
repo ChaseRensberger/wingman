@@ -69,12 +69,30 @@ func IsValid(id string) bool {
 
 // Client resolves catalog model refs and explicit custom model routes.
 type Client struct {
-	Auth map[string]string
+	Auth      map[string]string
+	Providers map[string]ProviderConfig
+}
+
+// ProviderConfig overlays catalog provider behavior for one process.
+type ProviderConfig struct {
+	Options ProviderOptions `json:"options,omitempty"`
+}
+
+// ProviderOptions are runtime options for a provider route.
+type ProviderOptions struct {
+	BaseURL string `json:"baseURL,omitempty"`
+	Auth    *bool  `json:"auth,omitempty"`
 }
 
 // NewClient constructs a route-backed provider client.
 func NewClient(auth map[string]string) *Client {
 	return &Client{Auth: auth}
+}
+
+// NewClientWithConfig constructs a route-backed provider client with
+// process-local provider overlays.
+func NewClientWithConfig(auth map[string]string, providers map[string]ProviderConfig) *Client {
+	return &Client{Auth: auth, Providers: providers}
 }
 
 // Prepare lowers a request into provider-native JSON without sending it.
@@ -105,19 +123,30 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg, ok := c.Providers[info.Provider]; ok {
+		if cfg.Options.BaseURL != "" {
+			info.BaseURL = cfg.Options.BaseURL
+		}
+	}
 	protocol, err := protocolFor(info.API)
 	if err != nil {
 		return nil, err
 	}
 	apiKey := ""
-	if c.Auth != nil {
-		apiKey = c.Auth[info.Provider]
+	useAuth := true
+	if cfg, ok := c.Providers[info.Provider]; ok && cfg.Options.Auth != nil {
+		useAuth = *cfg.Options.Auth
 	}
-	if apiKey == "" {
-		for _, env := range info.Env {
-			if v := os.Getenv(env); v != "" {
-				apiKey = v
-				break
+	if useAuth {
+		if c.Auth != nil {
+			apiKey = c.Auth[info.Provider]
+		}
+		if apiKey == "" {
+			for _, env := range info.Env {
+				if v := os.Getenv(env); v != "" {
+					apiKey = v
+					break
+				}
 			}
 		}
 	}

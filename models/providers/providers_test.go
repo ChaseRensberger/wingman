@@ -39,3 +39,19 @@ func TestClientPrepareRequiresRouteForUnknownModel(t *testing.T) {
 		t.Fatal("prepare unknown model succeeded without api/base_url")
 	}
 }
+
+func TestClientPrepareAppliesProviderBaseURLOverride(t *testing.T) {
+	client := NewClientWithConfig(nil, map[string]ProviderConfig{
+		"openai": {Options: ProviderOptions{BaseURL: "https://gateway.test/v1"}},
+	})
+	prepared, err := client.Prepare(context.Background(), models.Request{
+		Model:    models.ModelRef{Provider: "openai", ID: "gpt-5.5"},
+		Messages: []models.Message{models.NewUserText("hello")},
+	})
+	if err != nil {
+		t.Fatalf("prepare catalog route: %v", err)
+	}
+	if prepared.URL != "https://gateway.test/v1/responses" {
+		t.Fatalf("url = %q, want provider base URL override", prepared.URL)
+	}
+}

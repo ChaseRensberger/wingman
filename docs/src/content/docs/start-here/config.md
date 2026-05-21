@@ -20,7 +20,7 @@ Wingman has three configuration surfaces:
 
 | Concern | Where it lives |
 |---|---|
-| Server bind address, database path, logging, plugin dirs | `~/.config/wingman/wingman.jsonc` and CLI flags |
+| Server bind address, database path, logging, plugin dirs, provider route overlays | `~/.config/wingman/wingman.jsonc` and CLI flags |
 | Provider API keys | `PUT /provider/auth` |
 | Global external plugin manifests | `~/.config/wingman/plugins/` |
 
@@ -34,7 +34,7 @@ The config file is:
 ~/.config/wingman/wingman.jsonc
 ```
 
-It contains values that do not change between clients: server defaults, storage path, logging, plugin directories, and simple defaults such as a preferred model.
+It contains values that do not change between clients: server defaults, storage path, logging, plugin directories, and provider route overlays.
 
 Example:
 
@@ -47,8 +47,13 @@ Example:
     "log_level": "info",
     "log_format": "json"
   },
-  "models": {
-    "default": "anthropic/claude-sonnet-4-6"
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
   },
   "plugins": {
     "dirs": ["~/.config/wingman/plugins"]
@@ -126,6 +131,37 @@ curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic
 
 When using WingModels directly as a Go SDK, provider clients can also read provider keys from environment variables such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `OPENCODE_API_KEY`. The Wingman server path should prefer the local auth store so clients do not need access to your shell environment.
 
+## Provider Route Overlays
+
+Provider route overlays change where a cataloged provider sends requests. They are process configuration, not SQLite data. They do not create provider records and do not change persisted agents.
+
+For example, this routes `openai/*` model refs through the exe.dev LLM Gateway and disables stored/env auth for that provider route:
+
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
+  }
+}
+```
+
+With that config, an agent can keep a normal catalog model ref:
+
+```json
+{
+  "name": "Assistant",
+  "instructions": "Be helpful and concise.",
+  "model_ref": "openai/gpt-5.5"
+}
+```
+
+Omitting `auth` uses Wingman's normal auth resolution: stored `/provider/auth` credentials first, then catalog environment variables. Set `auth` to `false` only for unauthenticated gateways or local endpoints where Wingman should not send any provider credential.
+
 ## Model Selection
 
 Agents usually select a model with `model_ref`:
@@ -147,7 +183,7 @@ provider/model
 
 Examples include `anthropic/claude-sonnet-4-6`, `openai/gpt-5.5`, and `opencode/claude-sonnet-4-6`.
 
-For custom or not-yet-cataloged models, pass `model_route` when creating or updating an agent, or when sending a message. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
+For custom or not-yet-cataloged models, pass `model_route` when creating or updating an agent, or when sending a message. Prefer provider route overlays for cataloged providers; `model_route` is the per-agent/per-request escape hatch. See [WingModels](/concepts/wingmodels#custom-models) for the supported route shape.
 
 ## Plugins
 

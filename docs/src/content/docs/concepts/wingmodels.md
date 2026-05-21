@@ -194,23 +194,23 @@ Current files:
 
 ```text
 models/catalog/providers/anthropic/provider.toml
-models/catalog/providers/anthropic/claude-haiku-4-5.toml
-models/catalog/providers/anthropic/claude-opus-4-7.toml
-models/catalog/providers/anthropic/claude-sonnet-4-6.toml
+models/catalog/providers/anthropic/models/claude-haiku-4-5.toml
+models/catalog/providers/anthropic/models/claude-opus-4-7.toml
+models/catalog/providers/anthropic/models/claude-sonnet-4-6.toml
 models/catalog/providers/openai/provider.toml
-models/catalog/providers/openai/gpt-5.5.toml
-models/catalog/providers/openai/gpt-5.3-codex.toml
-models/catalog/providers/openai/gpt-5.4-mini.toml
-models/catalog/providers/openai/gpt-5.4-nano.toml
-models/catalog/providers/openai/gpt-5.5-pro.toml
+models/catalog/providers/openai/models/gpt-5.5.toml
+models/catalog/providers/openai/models/gpt-5.3-codex.toml
+models/catalog/providers/openai/models/gpt-5.4-mini.toml
+models/catalog/providers/openai/models/gpt-5.4-nano.toml
+models/catalog/providers/openai/models/gpt-5.5-pro.toml
 models/catalog/providers/opencode/provider.toml
-models/catalog/providers/opencode/claude-sonnet-4-6.toml
-models/catalog/providers/opencode/claude-opus-4-7.toml
-models/catalog/providers/opencode/deepseek-v4-flash-free.toml
-models/catalog/providers/opencode/gpt-5.4-mini.toml
-models/catalog/providers/opencode/gpt-5.5.toml
-models/catalog/providers/opencode/gpt-5.5-pro.toml
-models/catalog/providers/opencode/kimi-k2.6.toml
+models/catalog/providers/opencode/models/claude-sonnet-4-6.toml
+models/catalog/providers/opencode/models/claude-opus-4-7.toml
+models/catalog/providers/opencode/models/deepseek-v4-flash-free.toml
+models/catalog/providers/opencode/models/gpt-5.4-mini.toml
+models/catalog/providers/opencode/models/gpt-5.5.toml
+models/catalog/providers/opencode/models/gpt-5.5-pro.toml
+models/catalog/providers/opencode/models/kimi-k2.6.toml
 ```
 
 There is no generated snapshot and no lab/provider split. The catalog only contains fields that current code uses.
@@ -257,6 +257,25 @@ Model fields:
 - `capabilities`: booleans used for runtime/API capability checks.
 
 Do not add catalog fields speculatively. A field belongs here only when runtime code, API responses, or docs use it now.
+
+## Provider Route Overlays
+
+Wingman's config can overlay catalog provider routes for the running daemon. The overlay is process configuration, not persisted model metadata.
+
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
+  }
+}
+```
+
+This keeps persisted agents simple: `model_ref` remains `openai/gpt-5.5`, while the daemon decides where OpenAI requests are routed.
 
 ## Custom Models
 

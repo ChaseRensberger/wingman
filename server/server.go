@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/chaserensberger/wingman/internal/observability"
+	"github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
 	webui "github.com/chaserensberger/wingman/web"
@@ -32,6 +33,7 @@ type Server struct {
 	logger    *slog.Logger
 	logs      *observability.LogBuffer
 	plugins   *pluginhost.Manager
+	providers map[string]provider.ProviderConfig
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -53,6 +55,7 @@ type Config struct {
 	Logger    *slog.Logger
 	Logs      *observability.LogBuffer
 	Plugins   *pluginhost.Manager
+	Providers map[string]provider.ProviderConfig
 }
 
 func New(cfg Config) *Server {
@@ -69,6 +72,7 @@ func New(cfg Config) *Server {
 		logger:         logger,
 		logs:           cfg.Logs,
 		plugins:        cfg.Plugins,
+		providers:      cfg.Providers,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 	}

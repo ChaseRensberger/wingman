@@ -44,8 +44,13 @@ The file is parsed as JSON with comments:
     "log_level": "info",
     "log_format": "json"
   },
-  "models": {
-    "default": "anthropic/claude-sonnet-4-6"
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
   },
   "plugins": {
     "dirs": ["~/.config/wingman/plugins"]
@@ -58,6 +63,7 @@ The file is parsed as JSON with comments:
 | Field | Type | Required | Description |
 |---|---:|---:|---|
 | `server` | object | no | Server defaults used by `wingman serve` and `wingman up`. |
+| `provider` | object | no | Provider route overlays for cataloged providers. |
 | `plugins` | object | no | External plugin discovery defaults. |
 | `models` | object | no | Model-related defaults. |
 
@@ -122,6 +128,40 @@ wingman serve --no-plugins
 
 There is no config-file equivalent for `--no-plugins` yet.
 
+## `provider`
+
+`provider` is a map keyed by provider ID. It overlays WingModels catalog provider routes at daemon startup. It is not persisted in SQLite and does not store credentials.
+
+Supported provider fields today:
+
+| Field | Type | Required | Description |
+|---|---:|---:|---|
+| `options` | object | no | Runtime route options for this provider. |
+
+Supported `options` fields today:
+
+| Field | Type | Default | Description |
+|---|---:|---|---|
+| `baseURL` | string | catalog default | Base URL used for model requests for this provider. |
+| `auth` | boolean | `true` | When `false`, Wingman sends no stored or environment credential for this provider route. |
+
+Example:
+
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
+  }
+}
+```
+
+Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways or local endpoints.
+
 ## `models`
 
 | Field | Type | Default | Description |
@@ -148,6 +188,7 @@ These do not belong in `wingman.jsonc` today:
 |---|---|
 | Agents | SQLite via `/agents` API. |
 | Provider API keys | Provider auth store via `/provider/auth`. |
+| Provider definitions | WingModels catalog TOML. |
 | Sessions and message history | SQLite via session APIs. |
 | Project-specific config | Deferred; no project-local config is supported yet. |
 | Per-client preferences | Client-owned state. |

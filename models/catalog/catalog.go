@@ -15,7 +15,7 @@ import (
 	"github.com/chaserensberger/wingman/models"
 )
 
-//go:embed providers/**/*.toml
+//go:embed providers/*/provider.toml providers/*/models/*.toml
 var fs embed.FS
 
 type modelFile struct {
@@ -65,16 +65,16 @@ func load() error {
 				loadErr = err
 				return
 			}
-			files, err := fs.ReadDir(filepath.Join("providers", provider))
+			files, err := fs.ReadDir(filepath.Join("providers", provider, "models"))
 			if err != nil {
 				loadErr = err
 				return
 			}
 			for _, file := range files {
-				if file.IsDir() || file.Name() == "provider.toml" || !strings.HasSuffix(file.Name(), ".toml") {
+				if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
 					continue
 				}
-				path := filepath.Join("providers", provider, file.Name())
+				path := filepath.Join("providers", provider, "models", file.Name())
 				b, err := fs.ReadFile(path)
 				if err != nil {
 					loadErr = err

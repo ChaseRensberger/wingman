@@ -57,6 +57,10 @@ func (s *Server) providerToDTO(meta provider.ProviderMeta) ProviderDTO {
 }
 
 func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
+	if cfg, ok := s.providers[providerID]; ok && cfg.Options.Auth != nil && !*cfg.Options.Auth {
+		return ProviderAuthStatusDTO{Configured: false, Source: "disabled"}
+	}
+
 	if s.store != nil {
 		auth, err := s.store.GetAuth()
 		if err == nil {

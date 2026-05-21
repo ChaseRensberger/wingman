@@ -19,6 +19,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/chaserensberger/wingman/internal/observability"
+	provider "github.com/chaserensberger/wingman/models/providers"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
@@ -49,6 +50,7 @@ type fileConfig struct {
 	Models struct {
 		Default string `json:"default"`
 	} `json:"models"`
+	Provider map[string]provider.ProviderConfig `json:"provider"`
 }
 
 func loadConfig() (fileConfig, error) {
@@ -202,7 +204,7 @@ func main() {
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
 				Flags:  serveFlags(cfg),
-				Action: runServe,
+				Action: runServe(cfg),
 			},
 			{
 				Name:   "up",
@@ -284,87 +286,90 @@ func serveFlags(cfg fileConfig) []cli.Flag {
 	}
 }
 
-func runServe(ctx context.Context, cmd *cli.Command) error {
-	logs := observability.NewLogBuffer(500)
-	logger, err := observability.ConfigureDefaultWithBuffer(cmd.String("log-format"), cmd.String("log-level"), logs)
-	if err != nil {
-		return err
-	}
+func runServe(cfg fileConfig) cli.ActionFunc {
+	return func(ctx context.Context, cmd *cli.Command) error {
+		logs := observability.NewLogBuffer(500)
+		logger, err := observability.ConfigureDefaultWithBuffer(cmd.String("log-format"), cmd.String("log-level"), logs)
+		if err != nil {
+			return err
+		}
 
-	var st store.Store
-	if cmd.Bool("ephemeral") {
-		logger.Info("persistence disabled", "mode", "ephemeral")
-	} else {
-		dbPath := cmd.String("db")
-		if dbPath == "" {
-			dbPath, err = store.DefaultDBPath()
-			if err != nil {
-				return fmt.Errorf("failed to get default database path: %w", err)
+		var st store.Store
+		if cmd.Bool("ephemeral") {
+			logger.Info("persistence disabled", "mode", "ephemeral")
+		} else {
+			dbPath := cmd.String("db")
+			if dbPath == "" {
+				dbPath, err = store.DefaultDBPath()
+				if err != nil {
+					return fmt.Errorf("failed to get default database path: %w", err)
+				}
 			}
+			sqliteStore, err := store.NewSQLiteStore(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to initialize storage: %w", err)
+			}
+			defer sqliteStore.Close()
+			st = sqliteStore
+			logger.Info("storage initialized", "db_path", dbPath)
 		}
-		sqliteStore, err := store.NewSQLiteStore(dbPath)
-		if err != nil {
-			return fmt.Errorf("failed to initialize storage: %w", err)
+
+		var plugins *pluginhost.Manager
+		if !cmd.Bool("no-plugins") {
+			dirs := []string{}
+			defaultPluginDir, err := pluginhost.DefaultGlobalDir()
+			if err != nil {
+				return fmt.Errorf("failed to get default plugin directory: %w", err)
+			}
+			dirs = append(dirs, defaultPluginDir)
+			dirs = append(dirs, cmd.StringSlice("plugin-dir")...)
+			plugins, err = pluginhost.New(ctx, dirs)
+			if err != nil {
+				return fmt.Errorf("failed to initialize plugins: %w", err)
+			}
+			defer plugins.Close()
+			logger.Info("plugins initialized", "dirs", dirs)
 		}
-		defer sqliteStore.Close()
-		st = sqliteStore
-		logger.Info("storage initialized", "db_path", dbPath)
-	}
 
-	var plugins *pluginhost.Manager
-	if !cmd.Bool("no-plugins") {
-		dirs := []string{}
-		defaultPluginDir, err := pluginhost.DefaultGlobalDir()
-		if err != nil {
-			return fmt.Errorf("failed to get default plugin directory: %w", err)
+		srv := server.New(server.Config{
+			Store:     st,
+			WebDevURL: cmd.String("ui-dev"),
+			Logger:    logger,
+			Logs:      logs,
+			Plugins:   plugins,
+			Providers: cfg.Provider,
+		})
+
+		host := cmd.String("host")
+		port := cmd.Int("port")
+		addr := fmt.Sprintf("%s:%d", host, port)
+
+		httpSrv := &http.Server{Addr: addr}
+
+		// SIGINT/SIGTERM → graceful shutdown. Drain has a 30s budget;
+		// after that we return with the deadline error and let the
+		// process exit (defers still run).
+		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stopSig()
+
+		serveErr := make(chan error, 1)
+		go func() { serveErr <- srv.Serve(httpSrv) }()
+
+		select {
+		case err := <-serveErr:
+			return err
+		case <-sigCtx.Done():
+			logger.Info("shutdown signal received", "budget", "30s")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutdownCtx, httpSrv); err != nil {
+				return fmt.Errorf("shutdown: %w", err)
+			}
+			// Wait for Serve to return so we don't race the defer-store-Close.
+			<-serveErr
+			logger.Info("shutdown complete")
+			return nil
 		}
-		dirs = append(dirs, defaultPluginDir)
-		dirs = append(dirs, cmd.StringSlice("plugin-dir")...)
-		plugins, err = pluginhost.New(ctx, dirs)
-		if err != nil {
-			return fmt.Errorf("failed to initialize plugins: %w", err)
-		}
-		defer plugins.Close()
-		logger.Info("plugins initialized", "dirs", dirs)
-	}
-
-	srv := server.New(server.Config{
-		Store:     st,
-		WebDevURL: cmd.String("ui-dev"),
-		Logger:    logger,
-		Logs:      logs,
-		Plugins:   plugins,
-	})
-
-	host := cmd.String("host")
-	port := cmd.Int("port")
-	addr := fmt.Sprintf("%s:%d", host, port)
-
-	httpSrv := &http.Server{Addr: addr}
-
-	// SIGINT/SIGTERM → graceful shutdown. Drain has a 30s budget;
-	// after that we return with the deadline error and let the
-	// process exit (defers still run).
-	sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stopSig()
-
-	serveErr := make(chan error, 1)
-	go func() { serveErr <- srv.Serve(httpSrv) }()
-
-	select {
-	case err := <-serveErr:
-		return err
-	case <-sigCtx.Done():
-		logger.Info("shutdown signal received", "budget", "30s")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx, httpSrv); err != nil {
-			return fmt.Errorf("shutdown: %w", err)
-		}
-		// Wait for Serve to return so we don't race the defer-store-Close.
-		<-serveErr
-		logger.Info("shutdown complete")
-		return nil
 	}
 }
 

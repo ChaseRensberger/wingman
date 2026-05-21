@@ -673,7 +673,7 @@ func (s *Server) buildModelClient(stored *store.Agent) (models.ModelRef, models.
 	if cred, ok := auth.Providers[ref.Provider]; ok && cred.Key != "" {
 		keys[ref.Provider] = cred.Key
 	}
-	return ref, info, provider.NewClient(keys), nil
+	return ref, info, provider.NewClientWithConfig(keys, s.providers), nil
 }
 
 func (s *Server) resolveModelInfo(ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
