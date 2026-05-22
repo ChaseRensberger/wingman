@@ -96,7 +96,7 @@ wingman status
 
 ## `wingman restart`
 
-Restarts `wingman.service` without regenerating the systemd unit. Use this after editing `~/.config/wingman/wingman.jsonc`.
+Restarts `wingman.service` without regenerating the systemd unit. Use this after editing `~/.config/wingman/wingman.json`.
 
 ```bash
 wingman restart

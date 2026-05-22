@@ -57,7 +57,7 @@ Provider route overlays change where cataloged model refs are sent. They do not 
 
 For example, this config routes `openai/*` refs through a gateway:
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {

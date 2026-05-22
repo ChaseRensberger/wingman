@@ -260,7 +260,7 @@ Model fields:
 
 Wingman's config can overlay catalog provider routes for the running daemon. The overlay is process configuration, not persisted model metadata.
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {

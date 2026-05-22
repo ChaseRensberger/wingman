@@ -13,7 +13,7 @@ Provider configuration has three separate pieces:
 |---|---|---|
 | Provider metadata | WingModels catalog | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
 | Provider credentials | SQLite auth store through `/provider/auth` | API keys used by the Wingman server. |
-| Provider route overlays | `~/.config/wingman/wingman.jsonc` | Runtime routing changes, such as sending `openai/*` refs through a gateway. |
+| Provider route overlays | `~/.config/wingman/wingman.json` | Runtime routing changes, such as sending `openai/*` refs through a gateway. |
 
 Agents store `model_ref` values such as `openai/gpt-5.5`. Provider route overlays can change where that ref is sent without changing the agent.
 
@@ -59,7 +59,7 @@ Use `provider.<id>.options.baseURL` when a cataloged provider should send reques
 
 For example, this routes `openai/*` refs through the exe.dev LLM Gateway:
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {
@@ -100,7 +100,7 @@ Set `auth: false` only for unauthenticated gateways or local endpoints where Win
 
 exe.dev boxes expose provider-compatible LLM gateways at `http://169.254.169.254/gateway/llm/{provider}`.
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {
@@ -130,7 +130,7 @@ anthropic/claude-sonnet-4-6
 
 Provider config does not:
 
-- Store provider API keys in `wingman.jsonc`.
+- Store provider API keys in `wingman.json`.
 - Create provider records in SQLite.
 - Add new model protocols.
 - Mutate persisted agents.

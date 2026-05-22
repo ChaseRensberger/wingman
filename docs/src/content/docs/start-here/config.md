@@ -20,7 +20,7 @@ Wingman has three configuration surfaces:
 
 | Concern | Where it lives |
 |---|---|
-| Server bind address, database path, logging, plugin dirs, provider route overlays | `~/.config/wingman/wingman.jsonc` and CLI flags |
+| Server bind address, database path, logging, plugin dirs, provider route overlays | `~/.config/wingman/wingman.json` and CLI flags |
 | Provider API keys | `PUT /provider/auth` |
 | Global external plugin manifests | `~/.config/wingman/plugins/` |
 
@@ -31,14 +31,14 @@ Agents are stored in SQLite through the HTTP API. They do not live in a JSON con
 The config file is:
 
 ```text
-~/.config/wingman/wingman.jsonc
+~/.config/wingman/wingman.json
 ```
 
 It contains values that do not change between clients: server defaults, storage path, logging, plugin directories, and provider route overlays.
 
 Example:
 
-```jsonc
+```json
 {
   "server": {
     "host": "127.0.0.1",
@@ -63,7 +63,7 @@ Example:
 
 CLI flags override config values. Provider secrets stay in the provider auth store, not in JSON config.
 
-The parser accepts JSON with `//` and `/* ... */` comments. Do not use trailing commas.
+The file must be valid JSON. Comments and trailing commas are not allowed.
 
 Use [Providers](/configure/providers) for provider auth and route behavior. Use [Config Schema](/reference/config-schema) for the exact supported fields.
 
@@ -107,7 +107,7 @@ Ephemeral mode does not persist sessions, messages, agents, clients, or provider
 
 ## Provider Auth
 
-Model providers need credentials before Wingman can call them. Provider API keys are stored in SQLite through `/provider/auth`, not in `wingman.jsonc`.
+Model providers need credentials before Wingman can call them. Provider API keys are stored in SQLite through `/provider/auth`, not in `wingman.json`.
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
@@ -129,7 +129,7 @@ Provider route overlays change where a cataloged provider sends requests. They a
 
 For example, this routes `openai/*` model refs through the exe.dev LLM Gateway and disables stored/env auth for that provider route:
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {
@@ -232,7 +232,7 @@ Pass server flags to bake them into the service:
 sudo wingman up --host 127.0.0.1 --port 2323 --db /var/lib/wingman/wingman.db
 ```
 
-Restart the service after editing `~/.config/wingman/wingman.jsonc`:
+Restart the service after editing `~/.config/wingman/wingman.json`:
 
 ```bash
 wingman restart

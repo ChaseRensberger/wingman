@@ -1,6 +1,6 @@
 ---
 title: "Config Schema"
-description: "Reference for ~/.config/wingman/wingman.jsonc."
+description: "Reference for ~/.config/wingman/wingman.json."
 group: "Reference"
 order: 1001
 ---
@@ -10,7 +10,7 @@ order: 1001
 Wingman reads global configuration from:
 
 ```text
-~/.config/wingman/wingman.jsonc
+~/.config/wingman/wingman.json
 ```
 
 This file is for daemon-wide settings that apply across clients.
@@ -20,22 +20,21 @@ This file is for daemon-wide settings that apply across clients.
 Configuration is resolved in this order:
 
 1. Built-in defaults.
-2. `~/.config/wingman/wingman.jsonc`.
+2. `~/.config/wingman/wingman.json`.
 3. CLI flags passed to `wingman serve` or `wingman up`.
 
 CLI flags always win.
 
 ## Format
 
-The file is parsed as JSON with comments:
+The file is parsed as strict JSON:
 
-- `// line comments` are allowed.
-- `/* block comments */` are allowed.
+- Comments are not allowed.
 - Trailing commas are not allowed.
 
 ## Example
 
-```jsonc
+```json
 {
   "server": {
     "host": "127.0.0.1",
@@ -81,7 +80,7 @@ Only the documented fields are supported.
 
 Example:
 
-```jsonc
+```json
 {
   "server": {
     "host": "127.0.0.1",
@@ -109,7 +108,7 @@ Wingman includes the default global plugin directory:
 
 Example:
 
-```jsonc
+```json
 {
   "plugins": {
     "dirs": [
@@ -147,7 +146,7 @@ Supported `options` fields:
 
 Example:
 
-```jsonc
+```json
 {
   "provider": {
     "openai": {
@@ -172,7 +171,7 @@ Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways
 
 Example:
 
-```jsonc
+```json
 {
   "models": {
     "default": "anthropic/claude-sonnet-4-6"

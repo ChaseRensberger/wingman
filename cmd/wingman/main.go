@@ -59,7 +59,7 @@ func loadConfig() (fileConfig, error) {
 	if err != nil {
 		return cfg, fmt.Errorf("resolve config directory: %w", err)
 	}
-	path := filepath.Join(configDir, "wingman", "wingman.jsonc")
+	path := filepath.Join(configDir, "wingman", "wingman.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -67,7 +67,7 @@ func loadConfig() (fileConfig, error) {
 		}
 		return cfg, fmt.Errorf("read config %s: %w", path, err)
 	}
-	if err := json.Unmarshal(stripJSONComments(data), &cfg); err != nil {
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	return cfg, nil
@@ -82,54 +82,6 @@ func configDir() (string, error) {
 		return filepath.Join(u.HomeDir, ".config"), nil
 	}
 	return os.UserConfigDir()
-}
-
-func stripJSONComments(data []byte) []byte {
-	out := make([]byte, 0, len(data))
-	inString := false
-	escaped := false
-	for i := 0; i < len(data); i++ {
-		ch := data[i]
-		if inString {
-			out = append(out, ch)
-			if escaped {
-				escaped = false
-				continue
-			}
-			if ch == '\\' {
-				escaped = true
-				continue
-			}
-			if ch == '"' {
-				inString = false
-			}
-			continue
-		}
-		if ch == '"' {
-			inString = true
-			out = append(out, ch)
-			continue
-		}
-		if ch == '/' && i+1 < len(data) && data[i+1] == '/' {
-			for i < len(data) && data[i] != '\n' {
-				i++
-			}
-			if i < len(data) {
-				out = append(out, data[i])
-			}
-			continue
-		}
-		if ch == '/' && i+1 < len(data) && data[i+1] == '*' {
-			i += 2
-			for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
-				i++
-			}
-			i++
-			continue
-		}
-		out = append(out, ch)
-	}
-	return out
 }
 
 func (c fileConfig) host() string {
