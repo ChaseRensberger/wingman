@@ -39,6 +39,7 @@ type ProviderDTO struct {
 	Name      string                `json:"name"`
 	AuthTypes []provider.AuthType   `json:"auth_types,omitempty"`
 	Auth      ProviderAuthStatusDTO `json:"auth"`
+	Route     ProviderRouteDTO      `json:"route"`
 }
 
 type ProviderAuthStatusDTO struct {
@@ -47,13 +48,42 @@ type ProviderAuthStatusDTO struct {
 	Env        string `json:"env,omitempty"`
 }
 
+type ProviderRouteDTO struct {
+	BaseURL       string `json:"base_url,omitempty"`
+	BaseURLSource string `json:"base_url_source"`
+	AuthEnabled   bool   `json:"auth_enabled"`
+	AuthSource    string `json:"auth_source"`
+}
+
 func (s *Server) providerToDTO(meta provider.ProviderMeta) ProviderDTO {
 	return ProviderDTO{
 		ID:        meta.ID,
 		Name:      meta.Name,
 		AuthTypes: meta.AuthTypes,
 		Auth:      s.providerAuthStatus(meta.ID),
+		Route:     s.providerRoute(meta.ID),
 	}
+}
+
+func (s *Server) providerRoute(providerID string) ProviderRouteDTO {
+	baseURL, _ := catalog.GetProviderBaseURL(providerID)
+	route := ProviderRouteDTO{
+		BaseURL:       baseURL,
+		BaseURLSource: "catalog",
+		AuthEnabled:   true,
+		AuthSource:    "default",
+	}
+	if cfg, ok := s.providers[providerID]; ok {
+		if cfg.Options.BaseURL != "" {
+			route.BaseURL = cfg.Options.BaseURL
+			route.BaseURLSource = "config"
+		}
+		if cfg.Options.Auth != nil {
+			route.AuthEnabled = *cfg.Options.Auth
+			route.AuthSource = "config"
+		}
+	}
+	return route
 }
 
 func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {

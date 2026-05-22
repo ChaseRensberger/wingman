@@ -15,6 +15,14 @@ export interface Provider {
   name: string;
   auth_types: ProviderAuthType[];
   auth: ProviderAuthStatus;
+  route: ProviderRoute;
+}
+
+export interface ProviderRoute {
+  base_url?: string;
+  base_url_source: "catalog" | "config";
+  auth_enabled: boolean;
+  auth_source: "default" | "config";
 }
 
 export interface ProviderAuthType {
@@ -24,7 +32,7 @@ export interface ProviderAuthType {
 
 export interface ProviderAuthStatus {
   configured: boolean;
-  source: "stored" | "env" | "none";
+  source: "stored" | "env" | "none" | "disabled";
   env?: string;
 }
 

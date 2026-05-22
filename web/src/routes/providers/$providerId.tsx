@@ -104,14 +104,40 @@ function ProviderDetailPage() {
                 <div className="text-sm font-medium">{provider.name}</div>
                 <div className="font-mono text-xs text-muted-foreground">{provider.id}</div>
               </div>
-              <Badge variant={configured ? "default" : "secondary"}>
-                {provider.auth.source === "env" ? "Configured via env" : configured ? "Configured" : "Needs key"}
+              <Badge variant={configured || provider.auth.source === "disabled" ? "default" : "secondary"}>
+                {configured || provider.auth.source === "disabled" ? "Configured" : "Unconfigured"}
               </Badge>
+            </div>
+            <div className="grid gap-3 rounded-md border bg-muted/25 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Effective route</div>
+                  <div className="mt-1 break-all font-mono text-sm">{provider.route.base_url || "-"}</div>
+                </div>
+                <Badge variant={provider.route.base_url_source === "config" ? "default" : "ghost"}>
+                  {provider.route.base_url_source === "config" ? "Configured URL" : "Catalog URL"}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                <span>
+                  Request auth: <span className="text-foreground">
+                    {provider.route.auth_enabled ? "enabled" : "disabled"}
+                  </span>
+                </span>
+                <span>
+                  Source: <span className="text-foreground">{provider.route.auth_source}</span>
+                </span>
+              </div>
             </div>
             {provider.auth.source === "env" && (
               <div className="text-sm text-muted-foreground">
                 Using server environment variable {provider.auth.env ? <code>{provider.auth.env}</code> : "for this provider"}.
                 Save a key here to override it.
+              </div>
+            )}
+            {provider.auth.source === "disabled" && (
+              <div className="text-sm text-muted-foreground">
+                Stored and environment credentials are disabled for this provider route by server config.
               </div>
             )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">

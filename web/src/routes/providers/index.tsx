@@ -12,9 +12,7 @@ function formatAuthType(authType: Provider["auth_types"][number]) {
 }
 
 function authStatusLabel(provider: Provider) {
-  if (provider.auth.source === "env") return "Env key";
-  if (provider.auth.configured) return "Configured";
-  return "Needs key";
+  return provider.auth.configured || provider.auth.source === "disabled" ? "Configured" : "Unconfigured";
 }
 
 export const Route = createFileRoute("/providers/")({
@@ -60,17 +58,6 @@ function ProvidersPage() {
     return haystack.includes(filter.toLowerCase());
   });
 
-  function providerCapabilities(provider: Provider) {
-    const providerModels = models[provider.id] ?? [];
-    const capabilities = [
-      providerModels.some((model) => model.tools) && "tools",
-      providerModels.some((model) => model.images) && "images",
-      providerModels.some((model) => model.reasoning) && "reasoning",
-      providerModels.some((model) => model.structured_output) && "structured",
-    ].filter(Boolean) as string[];
-    return capabilities;
-  }
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-4 flex flex-col gap-4">
@@ -108,14 +95,13 @@ function ProvidersPage() {
             <TableRow>
               <TableHead>Provider</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Route</TableHead>
               <TableHead>Auth</TableHead>
               <TableHead>Models</TableHead>
-              <TableHead>Capabilities</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredProviders.map((provider) => {
-              const capabilities = providerCapabilities(provider);
               return (
                 <TableRow
                   key={provider.id}
@@ -127,23 +113,19 @@ function ProvidersPage() {
                     <div className="text-xs text-muted-foreground">{provider.id}</div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={provider.auth.configured ? "default" : "secondary"}>
+                    <Badge variant={authStatusLabel(provider) === "Configured" ? "default" : "secondary"}>
                       {authStatusLabel(provider)}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
+                      {provider.route.base_url || "-"}
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {provider.auth_types.map(formatAuthType).join(", ") || "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{models[provider.id]?.length ?? 0}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {capabilities.length > 0 ? capabilities.map((capability) => (
-                        <Badge key={capability} variant="outline">
-                          {capability}
-                        </Badge>
-                      )) : <span className="text-muted-foreground">-</span>}
-                    </div>
-                  </TableCell>
                 </TableRow>
               );
             })}

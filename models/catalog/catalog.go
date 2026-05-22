@@ -40,16 +40,18 @@ type providerFile struct {
 }
 
 var (
-	loadOnce sync.Once
-	loadErr  error
-	byRef    map[string]models.ModelInfo
-	byProv   map[string]map[string]models.ModelInfo
+	loadOnce  sync.Once
+	loadErr   error
+	byRef     map[string]models.ModelInfo
+	byProv    map[string]map[string]models.ModelInfo
+	byDefault map[string]providerFile
 )
 
 func load() error {
 	loadOnce.Do(func() {
 		byRef = map[string]models.ModelInfo{}
 		byProv = map[string]map[string]models.ModelInfo{}
+		byDefault = map[string]providerFile{}
 		entries, err := fs.ReadDir("providers")
 		if err != nil {
 			loadErr = err
@@ -65,6 +67,7 @@ func load() error {
 				loadErr = err
 				return
 			}
+			byDefault[provider] = providerDefaults
 			files, err := fs.ReadDir(filepath.Join("providers", provider, "models"))
 			if err != nil {
 				loadErr = err
@@ -158,4 +161,16 @@ func GetModels(provider string) (map[string]models.ModelInfo, bool) {
 // Get returns a single model's metadata.
 func Get(provider, modelID string) (models.ModelInfo, bool) {
 	return GetRef(provider + "/" + modelID)
+}
+
+// GetProviderBaseURL returns the catalog default base URL for a provider.
+func GetProviderBaseURL(provider string) (string, bool) {
+	if err := load(); err != nil {
+		return "", false
+	}
+	defaults, ok := byDefault[provider]
+	if !ok || defaults.BaseURL == "" {
+		return "", false
+	}
+	return defaults.BaseURL, true
 }
