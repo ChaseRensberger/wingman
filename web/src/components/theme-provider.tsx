@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
-export type Theme = "dark" | "light" | "system"
+type Theme = "dark" | "light" | "system"
 
 type ThemeProviderProps = {
 	children: React.ReactNode
@@ -23,7 +23,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 export function ThemeProvider({
 	children,
 	defaultTheme = "system",
-	storageKey = "wingman-ui-theme",
+	storageKey = "wingman-theme",
 	...props
 }: ThemeProviderProps) {
 	const [theme, setTheme] = useState<Theme>(
@@ -50,9 +50,9 @@ export function ThemeProvider({
 
 	const value = {
 		theme,
-		setTheme: (newTheme: Theme) => {
-			localStorage.setItem(storageKey, newTheme)
-			setTheme(newTheme)
+		setTheme: (theme: Theme) => {
+			localStorage.setItem(storageKey, theme)
+			setTheme(theme)
 		},
 	}
 
