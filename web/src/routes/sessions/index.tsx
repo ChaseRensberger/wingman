@@ -36,6 +36,13 @@ import {
 	ContextMenuTrigger,
 } from "@/components/core/context-menu";
 import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/core/dropdown-menu";
+import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -44,6 +51,7 @@ import {
 	DialogTitle,
 } from "@/components/core/dialog";
 import {
+	DotsThreeVerticalIcon,
 	FolderOpenIcon,
 	MagnifyingGlassIcon,
 	PencilSimpleIcon,
@@ -244,6 +252,9 @@ function SessionsPage() {
 							<TableHead>Title</TableHead>
 							<TableHead>Created</TableHead>
 							<TableHead>Workdir</TableHead>
+							<TableHead className="w-0">
+								<span className="sr-only">Actions</span>
+							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -270,6 +281,37 @@ function SessionsPage() {
 									</TableCell>
 									<TableCell className="max-w-[200px] truncate text-muted-foreground">
 										{s.work_dir || "—"}
+									</TableCell>
+									<TableCell className="w-0 text-right">
+										<DropdownMenu>
+											<DropdownMenuTrigger
+												render={
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														onClick={(e) => e.stopPropagation()}
+														aria-label="Session actions"
+													/>
+												}
+											>
+												<DotsThreeVerticalIcon className="size-4" />
+											</DropdownMenuTrigger>
+											<DropdownMenuContent align="end" className="w-44">
+												<DropdownMenuItem onClick={() => openEdit(s)}>
+													<PencilSimpleIcon className="size-4" />
+													Edit session
+												</DropdownMenuItem>
+												<DropdownMenuSeparator />
+												<DropdownMenuItem
+													variant="destructive"
+													disabled={deletingSessionId === s.id}
+													onClick={() => setDeleteSession(s)}
+												>
+													<TrashIcon className="size-4" />
+													{deletingSessionId === s.id ? "Deleting..." : "Delete session"}
+												</DropdownMenuItem>
+											</DropdownMenuContent>
+										</DropdownMenu>
 									</TableCell>
 								</ContextMenuTrigger>
 								<ContextMenuContent className="w-44">
