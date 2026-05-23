@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import WingmanIcon from "@/assets/icon-128.png";
+import { Button } from "@/components/core/button";
 import { FileTextIcon, GearIcon, LightningIcon, SolarRoofIcon, StackIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
@@ -17,18 +18,18 @@ function NavLink({
 		location.pathname === to || location.pathname.startsWith(to + "/");
 
 	return (
-		<Link
-			to={to}
+		<Button
+			render={<Link to={to} />}
+			variant={isActive ? "default" : "outline"}
+			size="lg"
 			className={cn(
-				"flex items-center gap-2 rounded-md border shadow-sm p-2 text-xs transition-colors",
-				isActive
-					? "bg-primary text-primary-foreground border-primary"
-					: "bg-card text-muted-foreground hover:text-foreground hover:bg-accent"
+				"gap-2 text-xs",
+				!isActive && "text-muted-foreground"
 			)}
 		>
 			<Icon size={16} />
 			{label}
-		</Link>
+		</Button>
 	);
 }
 
