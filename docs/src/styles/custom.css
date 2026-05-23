@@ -1,7 +1,7 @@
 @import "@fontsource-variable/fira-code";
 
 :root {
-  --radius: 0.4rem;
+  --radius: 0.3rem;
   --font-mono: "Fira Code Variable", ui-monospace, monospace;
   --sl-font: var(--font-mono);
   --sl-font-mono: var(--font-mono);
@@ -227,7 +227,11 @@ starlight-theme-select select:focus-visible {
 .card:hover,
 .sl-link-card:hover,
 .pagination-links a:hover {
-  border-color: color-mix(in oklch, var(--primary) 55%, var(--border)) !important;
+  border-color: color-mix(
+    in oklch,
+    var(--primary) 55%,
+    var(--border)
+  ) !important;
 }
 
 .hero {
@@ -241,8 +245,16 @@ starlight-theme-select select:focus-visible {
   height: 18rem;
   content: "";
   background:
-    radial-gradient(circle at 24% 20%, color-mix(in oklch, var(--primary) 24%, transparent), transparent 32%),
-    radial-gradient(circle at 74% 10%, color-mix(in oklch, var(--secondary) 62%, transparent), transparent 36%);
+    radial-gradient(
+      circle at 24% 20%,
+      color-mix(in oklch, var(--primary) 24%, transparent),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 74% 10%,
+      color-mix(in oklch, var(--secondary) 62%, transparent),
+      transparent 36%
+    );
   filter: blur(12px);
 }
 
