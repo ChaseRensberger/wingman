@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-// import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
-import { DesktopIcon, MoonIcon } from "@phosphor-icons/react";
+import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/core/card";
 import { RadioGroup, RadioGroupItem } from "@/components/core/radio-group";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -14,7 +13,7 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const options = [
-    // { value: "light", label: "Light", icon: SunIcon },
+    { value: "light", label: "Light", icon: SunIcon },
     { value: "dark", label: "Dark", icon: MoonIcon },
     { value: "system", label: "System", icon: DesktopIcon },
   ] as const;
@@ -33,7 +32,7 @@ function SettingsPage() {
           <RadioGroup
             value={theme}
             onValueChange={(value) => setTheme(value as Theme)}
-            className="inline-grid w-full max-w-md grid-cols-2 rounded-xl border bg-muted/45 p-1"
+            className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
           >
             {options.map((option) => {
               const Icon = option.icon;

@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react"
-import { loadOverrides, clearAllOverrides } from "@/components/theme-customizer"
 
-type Theme = "dark" | "light" | "system"
+export type Theme = "dark" | "light" | "system"
 
 type ThemeProviderProps = {
 	children: React.ReactNode
@@ -24,7 +23,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 export function ThemeProvider({
 	children,
 	defaultTheme = "system",
-	storageKey = "vite-ui-theme",
+	storageKey = "wingman-ui-theme",
 	...props
 }: ThemeProviderProps) {
 	const [theme, setTheme] = useState<Theme>(
@@ -52,11 +51,6 @@ export function ThemeProvider({
 	const value = {
 		theme,
 		setTheme: (newTheme: Theme) => {
-			// Clear all theme overrides when switching light/dark/system
-			const overrides = loadOverrides()
-			clearAllOverrides(overrides)
-			localStorage.removeItem("ui-theme-overrides")
-
 			localStorage.setItem(storageKey, newTheme)
 			setTheme(newTheme)
 		},

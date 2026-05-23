@@ -53,7 +53,6 @@ import { NavigationMenuShowcase } from './showcases/navigation-menu-showcase'
 import { InputOTPShowcase } from './showcases/input-otp-showcase'
 import { SidebarShowcase } from './showcases/sidebar-showcase'
 import WingmanLogo from '@/assets/WingmanBlue.png'
-import { ThemeCustomizer } from './components/theme-customizer'
 import { Button } from './components/core/button'
 import { GithubLogoIcon } from '@phosphor-icons/react'
 
@@ -66,7 +65,6 @@ export default function App() {
 					<span className='font-medium'> WingUI</span>
 				</div>
 				<div className='flex items-center gap-2'>
-					<ThemeCustomizer />
 					<ThemeToggle />
 					<a href="https://github.com/wingman-actor/ui">
 						<Button variant="outline" className="w-8 h-8">

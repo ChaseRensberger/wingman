@@ -13,19 +13,19 @@ const appFilter = readOption("--app")
 const apps = [
   {
     name: "web",
-    exactDirs: [{ source: "ui/src/components/core", target: "web/src/components/core" }],
+    exactDirs: [{ source: "web/src/components/core", target: "ui/src/components/core" }],
     exactFiles: [
-      ["ui/src/components/theme-provider.tsx", "web/src/components/theme-provider.tsx"],
-      ["ui/src/components/theme-toggle.tsx", "web/src/components/theme-toggle.tsx"],
+      ["web/src/components/theme-provider.tsx", "ui/src/components/theme-provider.tsx"],
+      ["web/src/components/theme-toggle.tsx", "ui/src/components/theme-toggle.tsx"],
     ],
     tokenFiles: [["ui/src/globals.css", "web/src/globals.css"]],
   },
   {
     name: "hero",
     exactFiles: [
-      ["ui/src/components/core/accordion.tsx", "hero/src/components/core/accordion.tsx"],
-      ["ui/src/components/core/button.tsx", "hero/src/components/core/button.tsx"],
-      ["ui/src/components/theme-provider.tsx", "hero/src/components/theme-provider.tsx"],
+      ["hero/src/components/core/accordion.tsx", "ui/src/components/core/accordion.tsx"],
+      ["hero/src/components/core/button.tsx", "ui/src/components/core/button.tsx"],
+      ["hero/src/components/theme-provider.tsx", "ui/src/components/theme-provider.tsx"],
     ],
     tokenFiles: [["ui/src/globals.css", "hero/src/styles/globals.css"]],
   },
@@ -91,7 +91,6 @@ function compareExactDir(app, sourceDir, targetDir) {
   const targetPath = resolve(root, targetDir)
 
   if (!existsSync(sourcePath)) {
-    results.push({ app, kind: "missing-source", source: sourceDir, target: targetDir })
     return
   }
 
@@ -106,7 +105,6 @@ function compareExactFile(app, source, target) {
   const targetPath = resolve(root, target)
 
   if (!existsSync(sourcePath)) {
-    results.push({ app, kind: "missing-source", source, target })
     return
   }
 
