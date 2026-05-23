@@ -160,7 +160,7 @@ function extractCssTokens(css, file) {
   const isDocs = file.includes("docs/src/styles/custom.css")
 
   for (const block of blocks) {
-    const selector = block[1].trim()
+    const selector = normalizeSelector(block[1])
     const body = block[2]
     const modes = tokenModes(selector, isDocs)
 
@@ -181,6 +181,14 @@ function extractCssTokens(css, file) {
   }
 
   return tokens
+}
+
+function normalizeSelector(selector) {
+  return selector
+    .trim()
+    .split(";")
+    .at(-1)
+    .trim()
 }
 
 function tokenModes(selector, isDocs) {
