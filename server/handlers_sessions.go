@@ -113,16 +113,23 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	latestCall, err := s.store.LatestModelCall(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusOK, SessionDetailResponse{
-		Session: sess,
-		History: history,
+		Session:         sess,
+		History:         history,
+		LatestModelCall: latestCall,
 	})
 }
 
 type SessionDetailResponse struct {
 	*store.Session
-	History []models.Message `json:"history"`
+	History         []models.Message `json:"history"`
+	LatestModelCall *store.ModelCall `json:"latest_model_call,omitempty"`
 }
 
 func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models.Message, error) {
@@ -133,26 +140,26 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 		}
 		return nil, fmt.Errorf("list messages: %w", err)
 	}
+	calls, err := s.store.ListModelCalls(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list model calls: %w", err)
+	}
+	callsByMessageID := make(map[string]store.ModelCall, len(calls))
+	for _, call := range calls {
+		if call.AssistantMessageID != "" {
+			callsByMessageID[call.AssistantMessageID] = call
+		}
+	}
 
 	history := make([]models.Message, len(storedMsgs))
 	for i, sm := range storedMsgs {
-		msg := models.Message{Role: models.Role(sm.Role)}
-		if len(sm.MetadataJSON) > 0 {
-			var meta models.Meta
-			if err := json.Unmarshal(sm.MetadataJSON, &meta); err != nil {
-				return nil, fmt.Errorf("unmarshal message metadata: %w", err)
-			}
-			msg.Metadata = meta
+		msg, err := session.StoredMessageToModel(sm)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal message: %w", err)
 		}
-		content := make(models.Content, len(sm.Parts))
-		for j, sp := range sm.Parts {
-			part, err := models.UnmarshalPart(sp.PayloadJSON)
-			if err != nil {
-				return nil, fmt.Errorf("unmarshal message part: %w", err)
-			}
-			content[j] = part
+		if call, ok := callsByMessageID[sm.ID]; ok {
+			session.ApplyModelCall(&msg, call)
 		}
-		msg.Content = content
 		history[i] = msg
 	}
 	if history == nil {

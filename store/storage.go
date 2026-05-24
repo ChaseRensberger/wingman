@@ -32,6 +32,12 @@ type Store interface {
 	// ASC. Returns ErrSessionNotFound if the session does not exist.
 	// Returns an empty slice (not nil) when the session has no messages.
 	ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
+	// UpsertModelCall inserts or updates one upstream model-call record.
+	UpsertModelCall(ctx context.Context, call ModelCall) error
+	// LatestModelCall returns the latest call with context usage for a session.
+	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
+	// ListModelCalls returns all model calls for the session ordered by step.
+	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
 
 	// CreateClient registers a Wingman API consumer identity.
 	CreateClient(name string) (*Client, error)

@@ -29,6 +29,7 @@ type Message struct {
 	Content      Content        `json:"content"`
 	FinishReason FinishReason   `json:"finish_reason,omitempty"`
 	Origin       *MessageOrigin `json:"origin,omitempty"`
+	Usage        *Usage         `json:"usage,omitempty"`
 	Metadata     Meta           `json:"metadata,omitempty"`
 }
 
@@ -387,6 +388,47 @@ type Usage struct {
 	ReasoningTokens   int `json:"reasoning_tokens,omitempty"`
 	CachedInputTokens int `json:"cached_input_tokens,omitempty"`
 	CacheWriteTokens  int `json:"cache_write_tokens,omitempty"`
+}
+
+func (u Usage) Empty() bool {
+	return u.InputTokens == 0 && u.OutputTokens == 0 && u.TotalTokens == 0 && u.ReasoningTokens == 0 && u.CachedInputTokens == 0 && u.CacheWriteTokens == 0
+}
+
+func (u Usage) ContextTokens() int {
+	computed := u.BillableInputTokens() + u.VisibleOutputTokens() + safeTokenCount(u.ReasoningTokens) + safeTokenCount(u.CachedInputTokens) + safeTokenCount(u.CacheWriteTokens)
+	if computed == 0 && u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return computed
+}
+
+func (u Usage) TotalOrComputed() int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.ContextTokens()
+}
+
+func (u Usage) BillableInputTokens() int {
+	return safeTokenCount(u.InputTokens - u.CachedInputTokens - u.CacheWriteTokens)
+}
+
+func (u Usage) VisibleOutputTokens() int {
+	return safeTokenCount(u.OutputTokens - u.ReasoningTokens)
+}
+
+func (u Usage) ContextPercent(contextWindow int) float64 {
+	if contextWindow <= 0 {
+		return 0
+	}
+	return float64(u.ContextTokens()) / float64(contextWindow) * 100
+}
+
+func safeTokenCount(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // ------------------------------------------------------------------

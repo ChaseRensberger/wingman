@@ -69,6 +69,9 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 	go func() {
 		defer resp.Body.Close()
 		msg, usage, reason, err := m.readSSE(resp.Body, stream)
+		if msg != nil && !usage.Empty() {
+			msg.Usage = &usage
+		}
 		if err != nil {
 			stream.Push(models.ErrorPart{Error: err.Error()})
 			stream.Close(msg, err)

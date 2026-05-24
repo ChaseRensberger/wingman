@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
-import type { Session, Agent, Message, Part, Provider, ProviderModel } from "@/lib/types";
+import type { Session, Agent, Message, Part, Provider, ProviderModel, Usage } from "@/lib/types";
+import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
 import { Textarea } from "@/components/core/textarea";
@@ -107,12 +108,6 @@ function formatSessionError(err: unknown): string {
   return message.replace(/^Error:\s*/, "");
 }
 
-function splitModelRef(modelRef?: string) {
-  const index = modelRef?.indexOf("/") ?? -1;
-  if (!modelRef || index <= 0 || index === modelRef.length - 1) return { provider: "", model: "" };
-  return { provider: modelRef.slice(0, index), model: modelRef.slice(index + 1) };
-}
-
 export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionDetailPage,
 });
@@ -131,6 +126,7 @@ function SessionDetailPage() {
   const [streamingText, setStreamingText] = useState("");
   const [visibleStreamingText, setVisibleStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
   const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -285,6 +281,7 @@ function SessionDetailPage() {
     setIsStreaming(true);
     setStreamingText("");
     setVisibleStreamingText("");
+    setLatestRunUsage(undefined);
     let completed = false;
 
     try {
@@ -322,6 +319,15 @@ function SessionDetailPage() {
           throw new Error(message || "Stream failed");
         }
         if (ev.event === "done") {
+          const envelope = ev.data as {
+            data?: unknown;
+            Data?: unknown;
+          };
+          const data = envelope.data ?? envelope.Data;
+          const usage = eventField<Usage>(data, "usage", "Usage");
+          if (usage) {
+            setLatestRunUsage(usage);
+          }
           completed = true;
           break;
         }
@@ -391,9 +397,21 @@ function SessionDetailPage() {
 
   const selectedAgentName = agents.find((a) => a.id === selectedAgent)?.name;
   const selectedProviderName = providers.find((provider) => provider.id === selectedProvider)?.name;
+  const selectedModelInfo = (models[selectedProvider] ?? []).find((model) => model.id === selectedModel);
   const modelSelectValue = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
   const modelSelectLabel = selectedProviderName && selectedModel ? `${selectedProviderName} / ${selectedModel}` : undefined;
   const hasModels = Object.values(models).some((providerModels) => providerModels.length > 0);
+  const latestUsage = latestAssistantUsage(session?.history ?? []) ?? latestRunUsage;
+  const persistedCall = session?.latest_model_call;
+  const contextTokens = persistedCall?.context_tokens ?? contextTokenCount(latestUsage);
+  const contextWindow = persistedCall?.context_window || selectedModelInfo?.context_window;
+  const contextPercent = persistedCall?.context_percent
+    ? `${Math.round(persistedCall.context_percent)}%`
+    : formatContextPercent(contextTokens, contextWindow);
+  const contextFill = contextWindow
+    ? Math.min(100, (contextTokens / contextWindow) * 100)
+    : 0;
+  const contextTokenLabel = contextTokens > 0 ? formatTokenCount(contextTokens) : "0k";
 
   if (loading) {
     return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
@@ -420,7 +438,20 @@ function SessionDetailPage() {
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>{new Date(session.created_at).toLocaleString()}</span>
               <span className="max-w-full truncate">{session.work_dir || "-"}</span>
+              <span>
+                {contextWindow
+                  ? `${contextTokenLabel} / ${formatTokenCount(contextWindow)} context${contextPercent ? ` (${contextPercent})` : ""}`
+                  : `${contextTokenLabel} context`}
+              </span>
             </div>
+            {contextWindow ? (
+              <div className="mt-3 h-1.5 max-w-sm overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${contextFill}%` }}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

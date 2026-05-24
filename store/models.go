@@ -35,6 +35,50 @@ type StoredMessage struct {
 	Parts        []StoredPart
 }
 
+const (
+	ModelCallStatusStarted   = "started"
+	ModelCallStatusCompleted = "completed"
+	ModelCallStatusFailed    = "failed"
+	ModelCallStatusAborted   = "aborted"
+)
+
+// ModelCall records one upstream model request/response attempt. It is
+// the durable source of model provenance, finish state, token usage, and
+// context-window fullness for assistant turns.
+type ModelCall struct {
+	ID                   string    `json:"id"`
+	SessionID            string    `json:"session_id"`
+	AssistantMessageID   string    `json:"assistant_message_id,omitempty"`
+	Step                 int       `json:"step"`
+	Attempt              int       `json:"attempt"`
+	Status               string    `json:"status"`
+	AgentID              string    `json:"agent_id,omitempty"`
+	ModelRef             string    `json:"model_ref,omitempty"`
+	Provider             string    `json:"provider,omitempty"`
+	API                  string    `json:"api,omitempty"`
+	ModelID              string    `json:"model_id,omitempty"`
+	FinishReason         string    `json:"finish_reason,omitempty"`
+	StopReason           string    `json:"stop_reason,omitempty"`
+	ErrorType            string    `json:"error_type,omitempty"`
+	ErrorMessage         string    `json:"error_message,omitempty"`
+	InputTokens          int       `json:"input_tokens"`
+	OutputTokens         int       `json:"output_tokens"`
+	ReasoningTokens      int       `json:"reasoning_tokens,omitempty"`
+	CachedInputTokens    int       `json:"cached_input_tokens,omitempty"`
+	CacheWriteTokens     int       `json:"cache_write_tokens,omitempty"`
+	TotalTokens          int       `json:"total_tokens"`
+	ContextTokens        int       `json:"context_tokens"`
+	ContextWindow        int       `json:"context_window,omitempty"`
+	ContextPercent       float64   `json:"context_percent,omitempty"`
+	Cost                 float64   `json:"cost,omitempty"`
+	StructuredOutputJSON []byte    `json:"-"`
+	MetadataJSON         []byte    `json:"-"`
+	StartedAt            time.Time `json:"-"`
+	CompletedAt          time.Time `json:"-"`
+	CreatedAt            time.Time `json:"-"`
+	UpdatedAt            time.Time `json:"-"`
+}
+
 // StoredPart is a single content part belonging to a message.
 // PayloadJSON is opaque to the store: serialization and interpretation
 // belong to the agent/session layer; Kind is a free-form discriminator

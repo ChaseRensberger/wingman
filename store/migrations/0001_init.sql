@@ -62,6 +62,45 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, idx);
 
+CREATE TABLE IF NOT EXISTS model_calls (
+    id                   TEXT PRIMARY KEY,
+    session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    assistant_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    step                 INTEGER NOT NULL,
+    attempt              INTEGER NOT NULL DEFAULT 1,
+    status               TEXT NOT NULL,
+    agent_id             TEXT,
+    model_ref            TEXT,
+    provider             TEXT,
+    api                  TEXT,
+    model_id             TEXT,
+    finish_reason        TEXT,
+    stop_reason          TEXT,
+    error_type           TEXT,
+    error_message        TEXT,
+    input_tokens         INTEGER NOT NULL DEFAULT 0,
+    output_tokens        INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens     INTEGER NOT NULL DEFAULT 0,
+    cached_input_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens   INTEGER NOT NULL DEFAULT 0,
+    total_tokens         INTEGER NOT NULL DEFAULT 0,
+    context_tokens       INTEGER NOT NULL DEFAULT 0,
+    context_window       INTEGER NOT NULL DEFAULT 0,
+    context_percent      REAL,
+    cost                 REAL NOT NULL DEFAULT 0,
+    structured_output_json TEXT,
+    metadata_json        TEXT,
+    started_at           TEXT NOT NULL,
+    completed_at         TEXT,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL,
+    UNIQUE(session_id, step, attempt)
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_calls_session_step ON model_calls(session_id, step DESC, attempt DESC);
+CREATE INDEX IF NOT EXISTS idx_model_calls_assistant_message ON model_calls(assistant_message_id);
+CREATE INDEX IF NOT EXISTS idx_model_calls_session_status ON model_calls(session_id, status);
+
 CREATE TABLE IF NOT EXISTS parts (
     id           TEXT PRIMARY KEY,
     message_id   TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,

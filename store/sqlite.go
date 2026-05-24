@@ -565,6 +565,136 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 	return msgs, nil
 }
 
+// UpsertModelCall inserts or updates one upstream model-call record.
+func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error {
+	if call.ID == "" {
+		call.ID = NewID(PrefixModelCall)
+	}
+	if call.Attempt == 0 {
+		call.Attempt = 1
+	}
+	now := time.Now().UTC()
+	if call.StartedAt.IsZero() {
+		call.StartedAt = now
+	}
+	if call.CreatedAt.IsZero() {
+		call.CreatedAt = now
+	}
+	if call.UpdatedAt.IsZero() {
+		call.UpdatedAt = now
+	}
+	startedAt := call.StartedAt.UTC().Format(time.RFC3339)
+	var completedAt *string
+	if !call.CompletedAt.IsZero() {
+		v := call.CompletedAt.UTC().Format(time.RFC3339)
+		completedAt = &v
+	}
+	createdAt := call.CreatedAt.UTC().Format(time.RFC3339)
+	updatedAt := call.UpdatedAt.UTC().Format(time.RFC3339)
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO model_calls (
+			id, session_id, assistant_message_id, step, attempt, status,
+			agent_id, model_ref, provider, api, model_id,
+			finish_reason, stop_reason, error_type, error_message,
+			input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens,
+			context_tokens, context_window, context_percent, cost,
+			structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at
+		)
+		VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(session_id, step, attempt) DO UPDATE SET
+			assistant_message_id = excluded.assistant_message_id,
+			status = excluded.status,
+			agent_id = excluded.agent_id,
+			model_ref = excluded.model_ref,
+			provider = excluded.provider,
+			api = excluded.api,
+			model_id = excluded.model_id,
+			finish_reason = excluded.finish_reason,
+			stop_reason = excluded.stop_reason,
+			error_type = excluded.error_type,
+			error_message = excluded.error_message,
+			input_tokens = excluded.input_tokens,
+			output_tokens = excluded.output_tokens,
+			reasoning_tokens = excluded.reasoning_tokens,
+			cached_input_tokens = excluded.cached_input_tokens,
+			cache_write_tokens = excluded.cache_write_tokens,
+			total_tokens = excluded.total_tokens,
+			context_tokens = excluded.context_tokens,
+			context_window = excluded.context_window,
+			context_percent = excluded.context_percent,
+			cost = excluded.cost,
+			structured_output_json = excluded.structured_output_json,
+			metadata_json = excluded.metadata_json,
+			completed_at = excluded.completed_at,
+			updated_at = excluded.updated_at
+	`, call.ID, call.SessionID, call.AssistantMessageID, call.Step, call.Attempt, call.Status,
+		call.AgentID, call.ModelRef, call.Provider, call.API, call.ModelID,
+		call.FinishReason, call.StopReason, call.ErrorType, call.ErrorMessage,
+		call.InputTokens, call.OutputTokens, call.ReasoningTokens, call.CachedInputTokens, call.CacheWriteTokens, call.TotalTokens,
+		call.ContextTokens, call.ContextWindow, call.ContextPercent, call.Cost,
+		nullableBytes(call.StructuredOutputJSON), nullableBytes(call.MetadataJSON), startedAt, completedAt, createdAt, updatedAt)
+	if err != nil {
+		return fmt.Errorf("upsert model call: %w", err)
+	}
+	return nil
+}
+
+// LatestModelCall returns the latest call with context usage for a session.
+func (s *SQLiteStore) LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	row := s.db.QueryRowContext(ctx, `
+		SELECT `+modelCallColumns+`
+		FROM model_calls
+		WHERE session_id = ? AND context_tokens > 0
+		ORDER BY step DESC, attempt DESC
+		LIMIT 1
+	`, sessionID)
+	call, err := scanModelCall(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &call, nil
+}
+
+// ListModelCalls returns all model calls for the session ordered by step.
+func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+modelCallColumns+`
+		FROM model_calls
+		WHERE session_id = ?
+		ORDER BY step ASC, attempt ASC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query model calls: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ModelCall
+	for rows.Next() {
+		call, err := scanModelCall(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, call)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []ModelCall{}
+	}
+	return out, nil
+}
+
 // ---- auth ----------------------------------------------------------------
 
 // GetAuth returns the singleton auth row, or an empty Auth if unset.
@@ -602,10 +732,61 @@ func (s *SQLiteStore) SetAuth(auth *Auth) error {
 
 // ---- helpers -------------------------------------------------------------
 
+const modelCallColumns = `
+	id, session_id, assistant_message_id, step, attempt, status,
+	COALESCE(agent_id, ''), COALESCE(model_ref, ''), COALESCE(provider, ''), COALESCE(api, ''), COALESCE(model_id, ''),
+	COALESCE(finish_reason, ''), COALESCE(stop_reason, ''), COALESCE(error_type, ''), COALESCE(error_message, ''),
+	input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens,
+	context_tokens, context_window, COALESCE(context_percent, 0), cost,
+	structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at`
+
+func (s *SQLiteStore) sessionExists(ctx context.Context, sessionID string) error {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
 // rowScanner is the common subset of *sql.Row and *sql.Rows used by
 // scanAgent. Lets us reuse one scan path for QueryRow and rows.Next.
 type rowScanner interface {
 	Scan(dest ...any) error
+}
+
+func scanModelCall(r rowScanner) (ModelCall, error) {
+	var call ModelCall
+	var assistantMessageID, completedAt, structuredOutputJSON, metadataJSON sql.NullString
+	var startedAt, createdAt, updatedAt string
+	if err := r.Scan(
+		&call.ID, &call.SessionID, &assistantMessageID, &call.Step, &call.Attempt, &call.Status,
+		&call.AgentID, &call.ModelRef, &call.Provider, &call.API, &call.ModelID,
+		&call.FinishReason, &call.StopReason, &call.ErrorType, &call.ErrorMessage,
+		&call.InputTokens, &call.OutputTokens, &call.ReasoningTokens, &call.CachedInputTokens, &call.CacheWriteTokens, &call.TotalTokens,
+		&call.ContextTokens, &call.ContextWindow, &call.ContextPercent, &call.Cost,
+		&structuredOutputJSON, &metadataJSON, &startedAt, &completedAt, &createdAt, &updatedAt,
+	); err != nil {
+		return ModelCall{}, err
+	}
+	if assistantMessageID.Valid {
+		call.AssistantMessageID = assistantMessageID.String
+	}
+	if structuredOutputJSON.Valid {
+		call.StructuredOutputJSON = []byte(structuredOutputJSON.String)
+	}
+	if metadataJSON.Valid {
+		call.MetadataJSON = []byte(metadataJSON.String)
+	}
+	call.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+	if completedAt.Valid {
+		call.CompletedAt, _ = time.Parse(time.RFC3339, completedAt.String)
+	}
+	call.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	call.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return call, nil
 }
 
 // scanAgent reads one agent row from any rowScanner.
@@ -656,4 +837,12 @@ func marshalNullable(v any) (*string, error) {
 	}
 	str := string(b)
 	return &str, nil
+}
+
+func nullableBytes(b []byte) *string {
+	if len(b) == 0 {
+		return nil
+	}
+	s := string(b)
+	return &s
 }

@@ -60,6 +60,7 @@ export interface Session {
   work_dir?: string;
   client_id?: string;
   history: Message[];
+  latest_model_call?: ModelCall;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +75,41 @@ export interface Message {
     model_id: string;
   };
   finish_reason?: string;
+  usage?: Usage;
+}
+
+export interface Usage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  reasoning_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_tokens?: number;
+}
+
+export interface ModelCall {
+  id: string;
+  session_id: string;
+  assistant_message_id?: string;
+  step: number;
+  attempt: number;
+  status: string;
+  model_ref?: string;
+  provider?: string;
+  api?: string;
+  model_id?: string;
+  finish_reason?: string;
+  stop_reason?: string;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_tokens?: number;
+  total_tokens: number;
+  context_tokens: number;
+  context_window?: number;
+  context_percent?: number;
+  cost?: number;
 }
 
 export type Part =

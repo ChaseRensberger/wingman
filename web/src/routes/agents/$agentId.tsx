@@ -18,6 +18,7 @@ import { Textarea } from "@/components/core/textarea";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
+import { splitModelRef } from "@/lib/utils";
 
 const builtInTools = ["bash", "read", "write", "edit", "glob", "grep", "webfetch"];
 
@@ -28,12 +29,6 @@ interface AgentForm {
   model: string;
   tools: string[];
   outputSchema: string;
-}
-
-function splitModelRef(modelRef?: string) {
-  const index = modelRef?.indexOf("/") ?? -1;
-  if (!modelRef || index <= 0 || index === modelRef.length - 1) return { provider: "", model: "" };
-  return { provider: modelRef.slice(0, index), model: modelRef.slice(index + 1) };
 }
 
 function formFromAgent(agent: Agent): AgentForm {

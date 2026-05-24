@@ -398,6 +398,97 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		}
 	})
 
+	t.Run("ModelCallsRoundTripAndLatest", func(t *testing.T) {
+		s := factory(t)
+		ctx := context.Background()
+
+		sess := &store.Session{Title: "model-calls", WorkDir: "/tmp"}
+		if err := s.CreateSession(sess); err != nil {
+			t.Fatalf("create session failed: %v", err)
+		}
+		msg := store.StoredMessage{
+			ID:        store.NewID(store.PrefixMessage),
+			SessionID: sess.ID,
+			Idx:       0,
+			Role:      "assistant",
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		if err := s.UpsertMessage(ctx, msg); err != nil {
+			t.Fatalf("upsert message failed: %v", err)
+		}
+
+		now := time.Now().UTC()
+		call := store.ModelCall{
+			ID:                 store.NewID(store.PrefixModelCall),
+			SessionID:          sess.ID,
+			AssistantMessageID: msg.ID,
+			Step:               1,
+			Attempt:            1,
+			Status:             store.ModelCallStatusCompleted,
+			ModelRef:           "openai/gpt-5.5",
+			Provider:           "openai",
+			API:                "openai_responses",
+			ModelID:            "gpt-5.5",
+			FinishReason:       "stop",
+			StopReason:         "end_turn",
+			InputTokens:        100,
+			OutputTokens:       20,
+			TotalTokens:        120,
+			ContextTokens:      120,
+			ContextWindow:      1000,
+			ContextPercent:     12,
+			StartedAt:          now,
+			CompletedAt:        now,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		}
+		if err := s.UpsertModelCall(ctx, call); err != nil {
+			t.Fatalf("upsert model call failed: %v", err)
+		}
+
+		calls, err := s.ListModelCalls(ctx, sess.ID)
+		if err != nil {
+			t.Fatalf("list model calls failed: %v", err)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("expected 1 model call, got %d", len(calls))
+		}
+		if calls[0].AssistantMessageID != msg.ID {
+			t.Errorf("expected assistant message id %q, got %q", msg.ID, calls[0].AssistantMessageID)
+		}
+		if calls[0].ContextTokens != 120 || calls[0].ContextWindow != 1000 || calls[0].ContextPercent != 12 {
+			t.Errorf("unexpected context values: %+v", calls[0])
+		}
+
+		latest, err := s.LatestModelCall(ctx, sess.ID)
+		if err != nil {
+			t.Fatalf("latest model call failed: %v", err)
+		}
+		if latest == nil || latest.ID != call.ID {
+			t.Fatalf("expected latest call %q, got %+v", call.ID, latest)
+		}
+
+		call.StopReason = "max_steps"
+		call.OutputTokens = 30
+		call.TotalTokens = 130
+		call.ContextTokens = 130
+		call.ContextPercent = 13
+		if err := s.UpsertModelCall(ctx, call); err != nil {
+			t.Fatalf("second upsert model call failed: %v", err)
+		}
+		calls, err = s.ListModelCalls(ctx, sess.ID)
+		if err != nil {
+			t.Fatalf("list model calls after update failed: %v", err)
+		}
+		if len(calls) != 1 {
+			t.Fatalf("expected updated model call, got %d rows", len(calls))
+		}
+		if calls[0].StopReason != "max_steps" || calls[0].ContextTokens != 130 {
+			t.Errorf("expected updated call, got %+v", calls[0])
+		}
+	})
+
 	t.Run("DeleteSessionCascadesToMessagesAndParts", func(t *testing.T) {
 		s := factory(t)
 

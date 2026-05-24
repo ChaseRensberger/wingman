@@ -346,6 +346,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	if assistantMsg == nil {
 		return Turn{}, errors.New("model returned nil assistant message without error")
 	}
+	if !turnUsage.Empty() {
+		assistantMsg.Usage = &turnUsage
+	}
 
 	// Cumulative usage across the loop. Providers report cumulative
 	// per-call counts; we sum because each turn is a fresh call.

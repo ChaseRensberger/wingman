@@ -185,7 +185,6 @@ function SessionsPage() {
 				<PageBreadcrumb items={[{ label: "Sessions" }]} />
 				<div className="mt-4 flex items-center justify-between gap-3">
 					<Button size="sm" onClick={handleCreate} disabled={creating}>
-						<PlusIcon className="size-4" />
 						{creating ? "Creating..." : "New"}
 					</Button>
 
@@ -240,7 +239,6 @@ function SessionsPage() {
 					<EmptyDescription>Start a new session to begin chatting.</EmptyDescription>
 					<EmptyActions>
 						<Button size="sm" onClick={handleCreate} disabled={creating}>
-							<PlusIcon className="size-4" />
 							{creating ? "Creating..." : "New"}
 						</Button>
 					</EmptyActions>

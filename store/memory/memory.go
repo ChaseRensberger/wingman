@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/chaserensberger/wingman/store"
 )
@@ -16,23 +17,25 @@ import (
 // Store is an in-memory implementation of store.Store protected by a
 // single sync.RWMutex.
 type Store struct {
-	mu       sync.RWMutex
-	agents   map[string]*store.Agent
-	sessions map[string]*store.Session
-	clients  map[string]*store.Client
-	messages map[string]*store.StoredMessage
-	parts    map[string]*store.StoredPart
-	auth     *store.Auth
+	mu         sync.RWMutex
+	agents     map[string]*store.Agent
+	sessions   map[string]*store.Session
+	clients    map[string]*store.Client
+	messages   map[string]*store.StoredMessage
+	parts      map[string]*store.StoredPart
+	modelCalls map[string]*store.ModelCall
+	auth       *store.Auth
 }
 
 // NewStore returns a fresh empty in-memory store.
 func NewStore() *Store {
 	return &Store{
-		agents:   make(map[string]*store.Agent),
-		sessions: make(map[string]*store.Session),
-		clients:  make(map[string]*store.Client),
-		messages: make(map[string]*store.StoredMessage),
-		parts:    make(map[string]*store.StoredPart),
+		agents:     make(map[string]*store.Agent),
+		sessions:   make(map[string]*store.Session),
+		clients:    make(map[string]*store.Client),
+		messages:   make(map[string]*store.StoredMessage),
+		parts:      make(map[string]*store.StoredPart),
+		modelCalls: make(map[string]*store.ModelCall),
 	}
 }
 
@@ -97,6 +100,19 @@ func copyPart(p *store.StoredPart) store.StoredPart {
 	if p.PayloadJSON != nil {
 		cp.PayloadJSON = make([]byte, len(p.PayloadJSON))
 		copy(cp.PayloadJSON, p.PayloadJSON)
+	}
+	return cp
+}
+
+func copyModelCall(c *store.ModelCall) store.ModelCall {
+	cp := *c
+	if c.StructuredOutputJSON != nil {
+		cp.StructuredOutputJSON = make([]byte, len(c.StructuredOutputJSON))
+		copy(cp.StructuredOutputJSON, c.StructuredOutputJSON)
+	}
+	if c.MetadataJSON != nil {
+		cp.MetadataJSON = make([]byte, len(c.MetadataJSON))
+		copy(cp.MetadataJSON, c.MetadataJSON)
 	}
 	return cp
 }
@@ -325,6 +341,11 @@ func (s *Store) DeleteSession(id string) error {
 			delete(s.parts, partID)
 		}
 	}
+	for callID, call := range s.modelCalls {
+		if call.SessionID == id {
+			delete(s.modelCalls, callID)
+		}
+	}
 
 	delete(s.sessions, id)
 	return nil
@@ -407,6 +428,88 @@ func (s *Store) ListMessages(ctx context.Context, sessionID string) ([]store.Sto
 	}
 
 	return msgs, nil
+}
+
+func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.sessions[call.SessionID]; !ok {
+		return store.ErrSessionNotFound
+	}
+	if call.ID == "" {
+		call.ID = store.NewID(store.PrefixModelCall)
+	}
+	if call.Attempt == 0 {
+		call.Attempt = 1
+	}
+	now := time.Now().UTC()
+	if call.StartedAt.IsZero() {
+		call.StartedAt = now
+	}
+	if call.CreatedAt.IsZero() {
+		call.CreatedAt = now
+	}
+	if call.UpdatedAt.IsZero() {
+		call.UpdatedAt = now
+	}
+	for id, existing := range s.modelCalls {
+		if existing.SessionID == call.SessionID && existing.Step == call.Step && existing.Attempt == call.Attempt {
+			delete(s.modelCalls, id)
+			break
+		}
+	}
+	cp := copyModelCall(&call)
+	s.modelCalls[call.ID] = &cp
+	return nil
+}
+
+func (s *Store) LatestModelCall(ctx context.Context, sessionID string) (*store.ModelCall, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	var latest *store.ModelCall
+	for _, call := range s.modelCalls {
+		if call.SessionID != sessionID || call.ContextTokens == 0 {
+			continue
+		}
+		if latest == nil || call.Step > latest.Step || (call.Step == latest.Step && call.Attempt > latest.Attempt) {
+			latest = call
+		}
+	}
+	if latest == nil {
+		return nil, nil
+	}
+	cp := copyModelCall(latest)
+	return &cp, nil
+}
+
+func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.ModelCall, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	var out []store.ModelCall
+	for _, call := range s.modelCalls {
+		if call.SessionID == sessionID {
+			out = append(out, copyModelCall(call))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Step == out[j].Step {
+			return out[i].Attempt < out[j].Attempt
+		}
+		return out[i].Step < out[j].Step
+	})
+	if out == nil {
+		out = []store.ModelCall{}
+	}
+	return out, nil
 }
 
 // ---- auth ----------------------------------------------------------------

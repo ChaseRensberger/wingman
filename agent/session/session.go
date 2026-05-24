@@ -424,7 +424,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		Content: models.Content{models.TextPart{Text: message}},
 	})
 	userMsgIdx := len(s.history) - 1
-	if err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx); err != nil {
+	if _, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx); err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
@@ -478,6 +478,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	// collected from res.Turns after the loop returns.
 	var persistErr error
 	nextMsgIdx := len(historySnap)
+	assistantMessageIDs := make(map[int]string)
 	if logger != nil {
 		logger = logger.With(
 			"session_id", s.id,
@@ -492,8 +493,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		logLoopEvent(logger, e)
 		if me, ok := e.(loop.MessageEvent); ok {
 			if s.store != nil {
-				if err := s.persistMessage(ctx, me.Message, nextMsgIdx); err != nil && persistErr == nil {
+				msgID, err := s.persistMessage(ctx, me.Message, nextMsgIdx)
+				if err != nil && persistErr == nil {
 					persistErr = err
+				}
+				if err == nil && me.Message.Role == models.RoleAssistant {
+					assistantMessageIDs[len(assistantMessageIDs)+1] = msgID
 				}
 				nextMsgIdx++
 			}
@@ -506,6 +511,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		}
 		if extraSink != nil {
 			extraSink.OnEvent(e)
+		}
+		if ie, ok := e.(loop.IterationEndEvent); ok && s.store != nil {
+			msgID := assistantMessageIDs[ie.Step]
+			if err := s.persistModelCall(ctx, msgID, ie.Step, ie.Turn.Assistant, model, modelInfo, ""); err != nil && persistErr == nil {
+				persistErr = err
+			}
 		}
 	})
 
@@ -575,6 +586,17 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		// Extract response text from the last assistant message, if any.
 		if last := lastAssistant(res.Messages); last != nil {
 			out.Response = textOf(*last)
+		}
+		if s.store != nil {
+			for _, turn := range res.Turns {
+				stopReason := ""
+				if turn.Step == res.Steps {
+					stopReason = string(res.StopReason)
+				}
+				if err := s.persistModelCall(ctx, assistantMessageIDs[turn.Step], turn.Step, turn.Assistant, model, modelInfo, stopReason); err != nil && persistErr == nil {
+					persistErr = err
+				}
+			}
 		}
 	}
 	if logger != nil {

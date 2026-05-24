@@ -42,11 +42,23 @@ The SQLite schema stores:
 | `clients` | Optional API consumer identities. |
 | `sessions` | Session metadata: title, working directory, client ID, timestamps. |
 | `messages` | Ordered message rows for each session. |
+| `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
 | `auth` | Local provider credentials, stored as JSON. |
 | `schema_migrations` | Applied migration versions. |
 
-Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message, so historical messages are the durable record of what happened.
+Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
+
+## Model Calls
+
+`model_calls` stores normalized accounting for each upstream model request:
+
+- Provider, API, model ID, and requested model ref.
+- Status, finish reason, stop reason, and error fields.
+- Input, output, reasoning, cached-input, cache-write, total, and context token counts.
+- Context window and computed context percentage.
+
+The latest model call for a session lets clients show token count and context-window fullness after a page reload without estimating from transcript text.
 
 ## Message Parts
 
@@ -110,6 +122,10 @@ type Store interface {
     UpsertMessage(ctx context.Context, msg StoredMessage) error
     UpsertPart(ctx context.Context, part StoredPart) error
     ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
+
+    UpsertModelCall(ctx context.Context, call ModelCall) error
+    LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
+    ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
 
     CreateClient(name string) (*Client, error)
     GetClient(id string) (*Client, error)
