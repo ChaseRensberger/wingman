@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Button } from "@/components/core/button"
 import { cn } from "@/lib/utils"
 
 interface SidebarContextValue {
@@ -169,11 +170,14 @@ function SidebarItemLabel({ className, ...props }: React.ComponentProps<"span">)
 function SidebarTrigger({ className, ...props }: React.ComponentProps<"button">) {
   const { open, setOpen } = useSidebar()
   return (
-    <button
+    <Button
       data-slot="sidebar-trigger"
+      type="button"
+      variant="ghost"
+      size="icon-sm"
       onClick={() => setOpen(!open)}
       className={cn(
-        "inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors",
+        "text-muted-foreground hover:bg-accent hover:text-foreground",
         className
       )}
       aria-label={open ? "Collapse sidebar" : "Expand sidebar"}

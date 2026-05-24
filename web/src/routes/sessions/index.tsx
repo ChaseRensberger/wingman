@@ -55,7 +55,6 @@ import {
 	FolderOpenIcon,
 	MagnifyingGlassIcon,
 	PencilSimpleIcon,
-	PlusIcon,
 	TrashIcon,
 	XIcon,
 } from "@phosphor-icons/react";
@@ -192,14 +191,16 @@ function SessionsPage() {
 						className={`flex h-9 items-center rounded-md border bg-card text-muted-foreground shadow-sm transition-all duration-200 focus-within:text-foreground hover:bg-accent hover:text-foreground ${filterOpen || filter ? "w-64 gap-2 px-2" : "w-9 justify-center"
 							}`}
 					>
-						<button
+						<Button
 							type="button"
-							className="grid size-4 shrink-0 place-items-center"
+							variant="ghost"
+							size="icon-xs"
+							className="size-4 shrink-0 rounded-sm p-0"
 							onClick={() => setFilterOpen(true)}
 							aria-label="Filter sessions"
 						>
 							<MagnifyingGlassIcon className="size-4" />
-						</button>
+						</Button>
 						<input
 							ref={filterInputRef}
 							placeholder="Filter sessions..."
@@ -210,9 +211,11 @@ function SessionsPage() {
 								}`}
 						/>
 						{(filterOpen || filter) && (
-							<button
+							<Button
 								type="button"
-								className="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+								variant="ghost"
+								size="icon-xs"
+								className="size-4 shrink-0 rounded-sm p-0 text-muted-foreground hover:text-foreground"
 								onClick={() => {
 									setFilter("");
 									setFilterOpen(false);
@@ -220,7 +223,7 @@ function SessionsPage() {
 								aria-label="Close filter"
 							>
 								<XIcon className="size-3" />
-							</button>
+							</Button>
 						)}
 					</div>
 				</div>

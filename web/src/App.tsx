@@ -20,6 +20,7 @@ function NavLink({
 	return (
 		<Button
 			render={<Link to={to} />}
+			nativeButton={false}
 			variant={isActive ? "default" : "outline"}
 			size="lg"
 			className={cn(

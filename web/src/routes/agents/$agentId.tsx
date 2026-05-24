@@ -227,14 +227,15 @@ function AgentDetailPage() {
             <label className="text-xs font-medium">Tools</label>
             <div className="flex flex-wrap gap-2">
               {builtInTools.map((tool) => (
-                <button
+                <Button
                   key={tool}
                   type="button"
                   onClick={() => toggleTool(tool)}
-                  className="rounded-md"
+                  variant="ghost"
+                  className="h-auto rounded-md p-0"
                 >
                   <Badge variant={form.tools.includes(tool) ? "default" : "outline"}>{tool}</Badge>
-                </button>
+                </Button>
               ))}
             </div>
           </div>

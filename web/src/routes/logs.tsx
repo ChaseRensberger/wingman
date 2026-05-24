@@ -82,17 +82,19 @@ function LogsPage() {
 						/>
 						<div className="flex rounded-lg border bg-muted/45 p-1">
 							{levels.map((item) => (
-								<button
+								<Button
 									key={item}
 									type="button"
 									onClick={() => setLevel(item)}
+									variant="ghost"
+									size="xs"
 									className={cn(
-										"rounded-md px-2 py-1 text-xs font-medium uppercase transition-colors",
+										"h-auto rounded-md px-2 py-1 text-xs font-medium uppercase",
 										level === item ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
 									)}
 								>
 									{item.toLowerCase()}
-								</button>
+								</Button>
 							))}
 						</div>
 					</div>

@@ -155,14 +155,16 @@ function AgentsPage() {
               filterOpen || filter ? "w-64 gap-2 px-2" : "w-9 justify-center"
             }`}
           >
-            <button
+            <Button
               type="button"
-              className="grid size-4 shrink-0 place-items-center"
+              variant="ghost"
+              size="icon-xs"
+              className="size-4 shrink-0 rounded-sm p-0"
               onClick={() => setFilterOpen(true)}
               aria-label="Filter agents"
             >
               <MagnifyingGlassIcon className="size-4" />
-            </button>
+            </Button>
             <input
               ref={filterInputRef}
               placeholder="Filter agents..."
@@ -174,9 +176,11 @@ function AgentsPage() {
               }`}
             />
             {(filterOpen || filter) && (
-              <button
+              <Button
                 type="button"
-                className="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+                variant="ghost"
+                size="icon-xs"
+                className="size-4 shrink-0 rounded-sm p-0 text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   setFilter("");
                   setFilterOpen(false);
@@ -184,7 +188,7 @@ function AgentsPage() {
                 aria-label="Close filter"
               >
                 <XIcon className="size-3" />
-              </button>
+              </Button>
             )}
           </div>
         </div>

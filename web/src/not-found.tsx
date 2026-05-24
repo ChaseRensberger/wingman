@@ -15,7 +15,7 @@ export default function NotFoundPage() {
           The page you are looking for does not exist or has been moved.
         </EmptyDescription>
         <EmptyActions>
-          <Button render={<Link to="/" />}>Go home</Button>
+          <Button render={<Link to="/" />} nativeButton={false}>Go home</Button>
         </EmptyActions>
       </Empty>
     </div>
