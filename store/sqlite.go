@@ -44,6 +44,12 @@ type SQLiteStore struct {
 //   - busy_timeout=5000: wait up to 5s on lock contention before erroring.
 //     Smooths over short writer queues.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
+	_, statErr := os.Stat(dbPath)
+	dbExists := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("stat database %s: %w", dbPath, statErr)
+	}
+
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create directory %s: %w", dir, err)
@@ -75,7 +81,15 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("migrations: %w", err)
 	}
 
-	return &SQLiteStore{db: db}, nil
+	store := &SQLiteStore{db: db}
+	if !dbExists {
+		if err := store.seedDefaultAgents(); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("seed default agents: %w", err)
+		}
+	}
+
+	return store, nil
 }
 
 // Close releases the underlying database handle.
@@ -95,6 +109,15 @@ func DefaultDBPath() (string, error) {
 func Now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // ---- agents --------------------------------------------------------------
+
+func (s *SQLiteStore) seedDefaultAgents() error {
+	for _, agent := range DefaultAgents() {
+		if err := s.CreateAgent(agent); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // CreateAgent inserts a new agent row. If agent.ID is empty, a fresh
 // KSUID is minted. CreatedAt/UpdatedAt are always overwritten with Now().
