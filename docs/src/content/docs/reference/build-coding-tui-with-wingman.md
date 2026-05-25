@@ -109,7 +109,7 @@ AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
   -d '{
     "name": "Coding Agent",
     "instructions": "You are a concise coding agent. Inspect the codebase before editing. Make small, verifiable changes. Explain what you changed and what you ran.",
-    "tools": ["read", "glob", "grep", "edit", "write", "bash"],
+    "tools": ["read", "glob", "grep", "edit", "write", "apply_patch", "bash"],
     "model_ref": "anthropic/claude-sonnet-4-6",
     "options": {"max_tokens": 4096}
   }' | jq -r .id)
@@ -131,7 +131,7 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must already exist. Directory-scoped tools such as `read`, `grep`, `glob`, `edit`, `write`, and `bash` run relative to this directory.
+The working directory must already exist. Directory-scoped tools such as `read`, `grep`, `glob`, `edit`, `write`, `apply_patch`, and `bash` run relative to this directory.
 
 Save the IDs for the TUI:
 

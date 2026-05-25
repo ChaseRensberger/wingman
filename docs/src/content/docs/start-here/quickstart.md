@@ -96,7 +96,7 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must already exist. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, and `bash` run relative to this session directory.
+The working directory must already exist. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` run relative to this session directory.
 
 ## Send a message
 

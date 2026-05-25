@@ -15,9 +15,10 @@ Wingman ships these built-ins:
 | Name | Purpose | Requires `work_dir` |
 |---|---|---|
 | `bash` | Execute a shell command with an optional timeout. | Yes |
-| `read` | Read a file and return its contents as text. | Yes |
-| `write` | Write or overwrite a file, creating parent directories as needed. | Yes |
-| `edit` | Replace one exact string in an existing file. | Yes |
+| `read` | Read a file or directory with `filePath`, optional `offset`, and optional `limit`. | Yes |
+| `write` | Write or overwrite `filePath`, creating parent directories as needed. | Yes |
+| `edit` | Replace `oldString` with `newString` in `filePath`; optionally use `replaceAll`. | Yes |
+| `apply_patch` | Apply a file-oriented patch described by `patchText`. | Yes |
 | `glob` | List files matching a glob pattern. | Yes |
 | `grep` | Search text files with a regular expression. | Yes |
 | `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
@@ -56,11 +57,18 @@ type Tool interface {
     Name() string
     Description() string
     Definition() Definition
-    Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
+    Execute(ctx context.Context, params map[string]any, workDir string) (Result, error)
+}
+
+type Result struct {
+    Text     string
+    Metadata map[string]any
 }
 ```
 
-`Definition()` returns the JSON-Schema-shaped declaration sent to the model. `Execute` runs after the model emits a matching tool call.
+`Definition()` returns the JSON-Schema-shaped declaration sent to the model. `Execute` runs after the model emits a matching tool call. `Result.Text` is returned to the model as the tool result. `Result.Metadata` is persisted for clients that want richer rendering, such as file diff cards in the web UI.
+
+File-oriented tools use OpenCode-style model-facing argument names: `filePath`, `oldString`, `newString`, `replaceAll`, `content`, and `patchText`. Search-scoped tools use `path` where it means the base path for a search (`glob`, `grep`).
 
 Tools that touch the working directory implement `DirectoryScopedTool`:
 
@@ -95,4 +103,4 @@ See [Plugins](/concepts/plugins) for plugin installation and manifest details.
 
 ## Tool Results
 
-Tool outputs are returned to the model as text. Tool errors become error-shaped tool results for the model to react to; they do not automatically fail the whole session turn unless the surrounding loop or request is cancelled.
+Tool outputs are returned to the model as text. Optional metadata is stored on the tool result part but is not sent as model-visible output. Tool errors become error-shaped tool results for the model to react to; they do not automatically fail the whole session turn unless the surrounding loop or request is cancelled.

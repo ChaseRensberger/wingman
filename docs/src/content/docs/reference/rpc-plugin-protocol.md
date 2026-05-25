@@ -110,10 +110,20 @@ Response:
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "text": "Hello, Chase"
+    "text": "Hello, Chase",
+    "metadata": {
+      "source": "greet-plugin"
+    }
   }
 }
 ```
+
+| Result field | Type | Required | Description |
+|---|---:|---:|---|
+| `text` | string | yes | Model-facing tool output. This is sent back to the provider in the next tool-result message. |
+| `metadata` | object | no | Client-facing data persisted with the tool result part. Use it for render hints, identifiers, counts, and similar structured data. |
+
+Do not put model instructions in `metadata`; providers do not receive it as tool output.
 
 Error response:
 

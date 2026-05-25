@@ -98,7 +98,7 @@ When the server is started with `--ephemeral`, persisted endpoints such as `/ses
 
 ## Working Directory
 
-A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, and `bash` use that directory as their base.
+A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` use that directory as their base.
 
 Sessions without a working directory are valid if the selected agent only uses tools that do not need one, such as `webfetch`.
 
@@ -114,7 +114,7 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 - Structured output.
 - Plugin-defined opaque content.
 
-Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, and plugins can introduce custom content.
+Tool result parts contain model-facing text and may also contain metadata for clients. File-editing tools use this metadata to expose changed files, patches, and addition/deletion counts so UIs can render diffs without parsing prose. Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, and plugins can introduce custom content.
 
 ## Usage And Context
 

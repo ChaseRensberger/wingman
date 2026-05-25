@@ -215,10 +215,15 @@ Tool execution response:
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "text": "Hello, Chase"
+    "text": "Hello, Chase",
+    "metadata": {
+      "source": "greet-plugin"
+    }
   }
 }
 ```
+
+`text` is the tool result sent back to the model. `metadata` is optional and is persisted with the tool result part for clients that want richer rendering. Do not put instructions for the model in metadata; use `text` for model-visible output.
 
 Error response:
 
