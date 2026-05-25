@@ -5,21 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 )
 
 type WriteTool struct{}
 
-func NewWriteTool() *WriteTool {
-	return &WriteTool{}
-}
+func NewWriteTool() *WriteTool { return &WriteTool{} }
 
-func (t *WriteTool) Name() string {
-	return "write"
-}
+func (t *WriteTool) Name() string { return "write" }
 
 func (t *WriteTool) Description() string {
-	return "Write content to a file. Creates the file if it doesn't exist, or overwrites if it does. Creates parent directories as needed."
+	return "Write content to a file. Creates parent directories as needed and returns diff metadata for UI rendering."
 }
 
 func (t *WriteTool) Definition() Definition {
@@ -29,7 +24,7 @@ func (t *WriteTool) Definition() Definition {
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"path": {
+				"filePath": {
 					Type:        "string",
 					Description: "The path to the file to write (relative to working directory or absolute)",
 				},
@@ -38,42 +33,55 @@ func (t *WriteTool) Definition() Definition {
 					Description: "The content to write to the file",
 				},
 			},
-			Required: []string{"path", "content"},
+			Required: []string{"filePath", "content"},
 		},
 	}
 }
 
 func (t *WriteTool) DirectoryScoped() {}
 
-func (t *WriteTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
-	path, ok := params["path"].(string)
-	if !ok || path == "" {
-		return "", fmt.Errorf("path is required")
+func (t *WriteTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
+	filePath, ok := params["filePath"].(string)
+	if !ok || filePath == "" {
+		return Result{}, fmt.Errorf("filePath is required")
 	}
-
 	content, ok := params["content"].(string)
 	if !ok {
-		return "", fmt.Errorf("content is required")
+		return Result{}, fmt.Errorf("content is required")
 	}
-
 	if workDir == "" {
-		return "", fmt.Errorf("workDir is required for write tool")
+		return Result{}, fmt.Errorf("workDir is required for write tool")
 	}
 
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(workDir, path)
+	path, rel, err := resolveWorkPath(workDir, filePath)
+	if err != nil {
+		return Result{}, err
+	}
+	select {
+	case <-ctx.Done():
+		return Result{}, ctx.Err()
+	default:
 	}
 
-	path = filepath.Clean(path)
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create directory: %w", err)
+	oldBytes, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return Result{}, fmt.Errorf("failed to read existing file: %w", err)
 	}
-
+	oldContent := string(oldBytes)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return Result{}, fmt.Errorf("failed to create directory: %w", err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
+		return Result{}, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return fmt.Sprintf("Successfully wrote %d bytes to %s", len(content), path), nil
+	patch, additions, deletions := unifiedPatch(rel, oldContent, content)
+	kind := "update"
+	if oldBytes == nil {
+		kind = "add"
+	}
+	return Result{
+		Text:     fmt.Sprintf("Successfully wrote %d bytes to %s", len(content), path),
+		Metadata: fileDiffMetadata(path, rel, kind, patch, additions, deletions),
+	}, nil
 }

@@ -4,23 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
-
 )
 
 type EditTool struct{}
 
-func NewEditTool() *EditTool {
-	return &EditTool{}
-}
+func NewEditTool() *EditTool { return &EditTool{} }
 
-func (t *EditTool) Name() string {
-	return "edit"
-}
+func (t *EditTool) Name() string { return "edit" }
 
 func (t *EditTool) Description() string {
-	return "Edit an existing file by replacing a specific string with new content. The old_string must match exactly (including whitespace and indentation)."
+	return "Edit an existing file by replacing oldString with newString. Returns diff metadata for UI rendering."
 }
 
 func (t *EditTool) Definition() Definition {
@@ -30,73 +24,85 @@ func (t *EditTool) Definition() Definition {
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]Property{
-				"path": {
+				"filePath": {
 					Type:        "string",
 					Description: "The path to the file to edit",
 				},
-				"old_string": {
+				"oldString": {
 					Type:        "string",
-					Description: "The exact string to find and replace (must match exactly)",
+					Description: "The exact string to find and replace",
 				},
-				"new_string": {
+				"newString": {
 					Type:        "string",
-					Description: "The string to replace it with",
+					Description: "The string to replace oldString with",
+				},
+				"replaceAll": {
+					Type:        "boolean",
+					Description: "Replace all occurrences of oldString instead of requiring a unique match",
 				},
 			},
-			Required: []string{"path", "old_string", "new_string"},
+			Required: []string{"filePath", "oldString", "newString"},
 		},
 	}
 }
 
 func (t *EditTool) DirectoryScoped() {}
 
-func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
-	path, ok := params["path"].(string)
-	if !ok || path == "" {
-		return "", fmt.Errorf("path is required")
+func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
+	filePath, ok := params["filePath"].(string)
+	if !ok || filePath == "" {
+		return Result{}, fmt.Errorf("filePath is required")
 	}
-
-	oldString, ok := params["old_string"].(string)
+	oldString, ok := params["oldString"].(string)
 	if !ok {
-		return "", fmt.Errorf("old_string is required")
+		return Result{}, fmt.Errorf("oldString is required")
 	}
-
-	newString, ok := params["new_string"].(string)
+	newString, ok := params["newString"].(string)
 	if !ok {
-		return "", fmt.Errorf("new_string is required")
+		return Result{}, fmt.Errorf("newString is required")
 	}
-
+	if oldString == newString {
+		return Result{}, fmt.Errorf("oldString and newString are identical")
+	}
 	if workDir == "" {
-		return "", fmt.Errorf("workDir is required for edit tool")
+		return Result{}, fmt.Errorf("workDir is required for edit tool")
 	}
 
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(workDir, path)
+	path, rel, err := resolveWorkPath(workDir, filePath)
+	if err != nil {
+		return Result{}, err
 	}
-
-	path = filepath.Clean(path)
+	select {
+	case <-ctx.Done():
+		return Result{}, ctx.Err()
+	default:
+	}
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
+		return Result{}, fmt.Errorf("failed to read file: %w", err)
 	}
-
-	contentStr := string(content)
-	count := strings.Count(contentStr, oldString)
-
+	oldContent := string(content)
+	count := strings.Count(oldContent, oldString)
 	if count == 0 {
-		return "", fmt.Errorf("old_string not found in file")
+		return Result{}, fmt.Errorf("oldString not found in file")
 	}
-
-	if count > 1 {
-		return "", fmt.Errorf("old_string found %d times, must be unique (add more context)", count)
+	replaceAll, _ := params["replaceAll"].(bool)
+	if count > 1 && !replaceAll {
+		return Result{}, fmt.Errorf("oldString found %d times, must be unique or replaceAll must be true", count)
 	}
-
-	newContent := strings.Replace(contentStr, oldString, newString, 1)
-
+	replacements := 1
+	if replaceAll {
+		replacements = -1
+	}
+	newContent := strings.Replace(oldContent, oldString, newString, replacements)
 	if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
+		return Result{}, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return fmt.Sprintf("Successfully edited %s", path), nil
+	patch, additions, deletions := unifiedPatch(rel, oldContent, newContent)
+	return Result{
+		Text:     fmt.Sprintf("Successfully edited %s", path),
+		Metadata: fileDiffMetadata(path, rel, "update", patch, additions, deletions),
+	}, nil
 }

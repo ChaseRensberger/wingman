@@ -156,6 +156,7 @@ export interface ToolResultPart {
   call_id: string;
   output: Part[];
   is_error?: boolean;
+  metadata?: Record<string, unknown>;
   provider_options?: unknown;
 }
 

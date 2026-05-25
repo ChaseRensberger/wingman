@@ -504,14 +504,15 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	// Real execution. Tool errors become result text with IsError=true;
 	// only hook errors fail the loop.
 	start := time.Now()
-	output, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
+	toolResult, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
 	duration := time.Since(start)
 
 	res := ToolResult{
 		CallID:   call.ID,
 		Name:     call.Name,
 		Args:     call.Args,
-		Output:   output,
+		Output:   toolResult.Text,
+		Metadata: toolResult.Metadata,
 		IsError:  execErr != nil,
 		Duration: duration,
 	}
@@ -694,9 +695,10 @@ func buildToolResultMessage(results []ToolResult) models.Message {
 	content := make(models.Content, 0, len(results))
 	for _, r := range results {
 		content = append(content, models.ToolResultPart{
-			CallID:  r.CallID,
-			Output:  []models.Part{models.TextPart{Text: r.Output}},
-			IsError: r.IsError,
+			CallID:   r.CallID,
+			Output:   []models.Part{models.TextPart{Text: r.Output}},
+			IsError:  r.IsError,
+			Metadata: r.Metadata,
 		})
 	}
 	return models.Message{Role: models.RoleTool, Content: content}

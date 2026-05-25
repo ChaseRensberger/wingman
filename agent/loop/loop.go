@@ -385,11 +385,12 @@ type ToolCall struct {
 
 // ToolResult is the outcome of a single tool execution.
 type ToolResult struct {
-	CallID  string
-	Name    string
-	Args    map[string]any
-	Output  string
-	IsError bool
+	CallID   string
+	Name     string
+	Args     map[string]any
+	Output   string
+	Metadata map[string]any
+	IsError  bool
 	// Duration is the wall-clock time spent in Tool.Execute (excluding
 	// hook overhead). Zero for skipped or unknown-tool calls.
 	Duration time.Duration

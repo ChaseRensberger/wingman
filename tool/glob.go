@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
 )
 
 type GlobTool struct{}
@@ -46,14 +45,14 @@ func (t *GlobTool) Definition() Definition {
 
 func (t *GlobTool) DirectoryScoped() {}
 
-func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
+func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
 	pattern, ok := params["pattern"].(string)
 	if !ok || pattern == "" {
-		return "", fmt.Errorf("pattern is required")
+		return Result{}, fmt.Errorf("pattern is required")
 	}
 
 	if workDir == "" {
-		return "", fmt.Errorf("workDir is required for glob tool")
+		return Result{}, fmt.Errorf("workDir is required for glob tool")
 	}
 
 	baseDir := workDir
@@ -87,13 +86,13 @@ func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir s
 			return nil
 		})
 		if err != nil {
-			return "", fmt.Errorf("failed to walk directory: %w", err)
+			return Result{}, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	} else {
 		fullPattern := filepath.Join(baseDir, pattern)
 		results, err := filepath.Glob(fullPattern)
 		if err != nil {
-			return "", fmt.Errorf("invalid glob pattern: %w", err)
+			return Result{}, fmt.Errorf("invalid glob pattern: %w", err)
 		}
 		for _, path := range results {
 			relPath, err := filepath.Rel(baseDir, path)
@@ -104,10 +103,10 @@ func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir s
 	}
 
 	if len(matches) == 0 {
-		return "No files found matching pattern: " + pattern, nil
+		return Result{Text: "No files found matching pattern: " + pattern}, nil
 	}
 
-	return strings.Join(matches, "\n"), nil
+	return Result{Text: strings.Join(matches, "\n")}, nil
 }
 
 func matchDoubleGlob(pattern, path string) bool {

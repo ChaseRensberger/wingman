@@ -26,7 +26,7 @@ import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
-const builtInTools = ["bash", "read", "write", "edit", "glob", "grep", "webfetch"];
+const builtInTools = ["apply_patch", "bash", "read", "write", "edit", "glob", "grep", "webfetch"];
 
 interface AgentForm {
   name: string;

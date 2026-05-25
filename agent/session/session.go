@@ -353,10 +353,11 @@ type Result struct {
 // Wire format: handlers JSON-encode this into HTTP responses, so the
 // field names matter.
 type ToolCallResult struct {
-	ToolName string `json:"tool_name"`
-	Input    any    `json:"input,omitempty"`
-	Output   string `json:"output,omitempty"`
-	Error    string `json:"error,omitempty"`
+	ToolName string         `json:"tool_name"`
+	Input    any            `json:"input,omitempty"`
+	Output   string         `json:"output,omitempty"`
+	Error    string         `json:"error,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // Sentinel errors. ErrNoModel is returned when Run is called before a
@@ -570,6 +571,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 					Input:    tr.Args,
 					Output:   tr.Output,
 					Error:    errStringIf(tr.IsError, tr.Output),
+					Metadata: tr.Metadata,
 				})
 			}
 		}

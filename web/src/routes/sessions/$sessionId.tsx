@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
-import type { Session, Agent, Message, Part, Provider, ProviderModel, Usage } from "@/lib/types";
+import type { Session, Agent, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
@@ -412,6 +412,15 @@ function SessionDetailPage() {
     ? Math.min(100, (contextTokens / contextWindow) * 100)
     : 0;
   const contextTokenLabel = contextTokens > 0 ? formatTokenCount(contextTokens) : "0k";
+  const toolCallsById = new Map<string, ToolCallPart>();
+  for (const msg of session?.history ?? []) {
+    for (const part of msg.content) {
+      if (part.type === "tool_call") {
+        const toolCall = part as ToolCallPart;
+        toolCallsById.set(toolCall.call_id, toolCall);
+      }
+    }
+  }
 
   if (loading) {
     return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
@@ -480,7 +489,7 @@ function SessionDetailPage() {
         ) : (
           <div>
             {session.history.map((msg, idx) => (
-              <ChatMessage key={idx} message={msg} />
+              <ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} />
             ))}
             {visibleStreamingText && (
               <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />

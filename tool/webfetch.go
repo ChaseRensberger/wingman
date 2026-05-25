@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
 )
 
 const (
@@ -57,14 +56,14 @@ func (t *WebFetchTool) Definition() Definition {
 	}
 }
 
-func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
+func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
 	url, ok := params["url"].(string)
 	if !ok || url == "" {
-		return "", fmt.Errorf("url is required")
+		return Result{}, fmt.Errorf("url is required")
 	}
 
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return "", fmt.Errorf("URL must start with http:// or https://")
+		return Result{}, fmt.Errorf("URL must start with http:// or https://")
 	}
 
 	format := "markdown"
@@ -87,7 +86,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workD
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return Result{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
@@ -97,7 +96,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workD
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return Result{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -108,23 +107,23 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workD
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 		resp, err = client.Do(req)
 		if err != nil {
-			return "", fmt.Errorf("retry request failed: %w", err)
+			return Result{}, fmt.Errorf("retry request failed: %w", err)
 		}
 		defer resp.Body.Close()
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("request failed with status code: %d", resp.StatusCode)
+		return Result{}, fmt.Errorf("request failed with status code: %d", resp.StatusCode)
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxResponseSize+1)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return Result{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if len(body) > maxResponseSize {
-		return "", fmt.Errorf("response too large (exceeds 5MB limit)")
+		return Result{}, fmt.Errorf("response too large (exceeds 5MB limit)")
 	}
 
 	content := string(body)
@@ -133,21 +132,21 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workD
 	switch format {
 	case "markdown":
 		if strings.Contains(contentType, "text/html") {
-			return convertHTMLToMarkdown(content), nil
+			return Result{Text: convertHTMLToMarkdown(content)}, nil
 		}
-		return content, nil
+		return Result{Text: content}, nil
 
 	case "text":
 		if strings.Contains(contentType, "text/html") {
-			return extractTextFromHTML(content), nil
+			return Result{Text: extractTextFromHTML(content)}, nil
 		}
-		return content, nil
+		return Result{Text: content}, nil
 
 	case "html":
-		return content, nil
+		return Result{Text: content}, nil
 
 	default:
-		return content, nil
+		return Result{Text: content}, nil
 	}
 }
 

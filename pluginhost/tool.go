@@ -24,6 +24,7 @@ func (t *rpcTool) Definition() tool.Definition {
 	}
 }
 
-func (t *rpcTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
-	return t.manager.executeTool(ctx, t.pluginID, t.spec.Name, params, workDir)
+func (t *rpcTool) Execute(ctx context.Context, params map[string]any, workDir string) (tool.Result, error) {
+	text, metadata, err := t.manager.executeToolResult(ctx, t.pluginID, t.spec.Name, params, workDir)
+	return tool.Result{Text: text, Metadata: metadata}, err
 }

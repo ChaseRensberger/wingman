@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
-
 )
 
 type BashTool struct {
@@ -50,14 +49,14 @@ func (t *BashTool) Definition() Definition {
 
 func (t *BashTool) DirectoryScoped() {}
 
-func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
+func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
 	command, ok := params["command"].(string)
 	if !ok || command == "" {
-		return "", fmt.Errorf("command is required")
+		return Result{}, fmt.Errorf("command is required")
 	}
 
 	if workDir == "" {
-		return "", fmt.Errorf("workDir is required for bash tool")
+		return Result{}, fmt.Errorf("workDir is required for bash tool")
 	}
 
 	timeout := t.timeout
@@ -89,10 +88,10 @@ func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir s
 
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return output, fmt.Errorf("command timed out after %v", timeout)
+			return Result{Text: output}, fmt.Errorf("command timed out after %v", timeout)
 		}
-		return output, fmt.Errorf("command failed: %w", err)
+		return Result{Text: output}, fmt.Errorf("command failed: %w", err)
 	}
 
-	return output, nil
+	return Result{Text: output}, nil
 }

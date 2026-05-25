@@ -53,8 +53,8 @@ func TestManagerLoadsAndExecutesPluginTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "hello" {
-		t.Fatalf("unexpected output: %q", out)
+	if out.Text != "hello" {
+		t.Fatalf("unexpected output: %q", out.Text)
 	}
 }
 

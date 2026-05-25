@@ -129,9 +129,10 @@ func (ToolCallPart) Type() string { return "tool_call" }
 
 // ToolResultPart is the outcome of a tool execution.
 type ToolResultPart struct {
-	CallID  string `json:"call_id"`
-	Output  []Part `json:"output"`
-	IsError bool   `json:"is_error"`
+	CallID   string `json:"call_id"`
+	Output   []Part `json:"output"`
+	IsError  bool   `json:"is_error"`
+	Metadata Meta   `json:"metadata,omitempty"`
 }
 
 func (ToolResultPart) Type() string { return "tool_result" }
@@ -146,23 +147,26 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		raw[i] = b
 	}
 	return json.Marshal(struct {
-		CallID  string            `json:"call_id"`
-		Output  []json.RawMessage `json:"output"`
-		IsError bool              `json:"is_error"`
-	}{p.CallID, raw, p.IsError})
+		CallID   string            `json:"call_id"`
+		Output   []json.RawMessage `json:"output"`
+		IsError  bool              `json:"is_error"`
+		Metadata Meta              `json:"metadata,omitempty"`
+	}{p.CallID, raw, p.IsError, p.Metadata})
 }
 
 func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		CallID  string            `json:"call_id"`
-		Output  []json.RawMessage `json:"output"`
-		IsError bool              `json:"is_error"`
+		CallID   string            `json:"call_id"`
+		Output   []json.RawMessage `json:"output"`
+		IsError  bool              `json:"is_error"`
+		Metadata Meta              `json:"metadata,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	p.CallID = raw.CallID
 	p.IsError = raw.IsError
+	p.Metadata = raw.Metadata
 	p.Output = make([]Part, len(raw.Output))
 	for i, b := range raw.Output {
 		part, err := UnmarshalPart(b)

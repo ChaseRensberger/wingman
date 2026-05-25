@@ -35,7 +35,14 @@ type Tool interface {
 	Name() string
 	Description() string
 	Definition() Definition
-	Execute(ctx context.Context, params map[string]any, workDir string) (string, error)
+	Execute(ctx context.Context, params map[string]any, workDir string) (Result, error)
+}
+
+// Result is the structured outcome a tool returns. Text is model-facing output;
+// Metadata is optional client-facing data for richer renderers.
+type Result struct {
+	Text     string         `json:"text"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // SequentialTool is an optional interface a Tool can implement to force
@@ -194,20 +201,20 @@ func (b BaseTool) Definition() Definition { return b.definition }
 // defined inline in user code without declaring a new type.
 type FuncTool struct {
 	BaseTool
-	fn func(ctx context.Context, params map[string]any, workDir string) (string, error)
+	fn func(ctx context.Context, params map[string]any, workDir string) (Result, error)
 }
 
 // NewFuncTool returns a FuncTool. The Definition's Name should match the
 // passed name to avoid a mismatch between the LLM's tool schema view and
 // the registry's lookup key.
 func NewFuncTool(name, description string, def Definition,
-	fn func(ctx context.Context, params map[string]any, workDir string) (string, error),
+	fn func(ctx context.Context, params map[string]any, workDir string) (Result, error),
 ) *FuncTool {
 	return &FuncTool{BaseTool: NewBaseTool(name, description, def), fn: fn}
 }
 
 // Execute delegates to the wrapped function.
-func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir string) (string, error) {
+func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
 	return f.fn(ctx, params, workDir)
 }
 
@@ -217,6 +224,7 @@ func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir s
 // satisfying the (then-mutated) Tool interface.
 var (
 	_ Tool                = (*BashTool)(nil)
+	_ Tool                = (*ApplyPatchTool)(nil)
 	_ Tool                = (*EditTool)(nil)
 	_ Tool                = (*GlobTool)(nil)
 	_ Tool                = (*GrepTool)(nil)
@@ -224,6 +232,7 @@ var (
 	_ Tool                = (*WebFetchTool)(nil)
 	_ Tool                = (*WriteTool)(nil)
 	_ Tool                = (*FuncTool)(nil)
+	_ DirectoryScopedTool = (*ApplyPatchTool)(nil)
 	_ DirectoryScopedTool = (*BashTool)(nil)
 	_ DirectoryScopedTool = (*EditTool)(nil)
 	_ DirectoryScopedTool = (*GlobTool)(nil)
