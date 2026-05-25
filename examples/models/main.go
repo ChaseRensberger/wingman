@@ -5,16 +5,29 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
+	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 )
 
 func main() {
 	client := provider.NewClient(nil)
+	// automatic model resolution
 	model := models.ModelRef{Provider: "opencode", ID: "claude-sonnet-4-6"}
+	run(context.Background(), client, model)
 
+	anthropicClient := provider.NewClient(map[string]string{
+		"anthropic": os.Getenv("ANTHROPIC_API_KEY"),
+	})
+	// direct provider model resolution
+	model = models.ModelRef{Provider: "anthropic", ID: "claude-sonnet-4-6"}
+	run(context.Background(), anthropicClient, model)
+}
+
+func run(ctx context.Context, client *provider.Client, model models.ModelRef) {
 	request := models.Request{
 		Model:      model,
 		System:     "You are concise.",
@@ -22,7 +35,7 @@ func main() {
 		Generation: models.Generation{MaxTokens: 40},
 	}
 
-	response, err := client.Generate(context.Background(), request)
+	response, err := client.Generate(ctx, request)
 	if err != nil {
 		log.Fatal(err)
 	}
