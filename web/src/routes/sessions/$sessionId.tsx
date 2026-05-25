@@ -408,9 +408,6 @@ function SessionDetailPage() {
   const contextPercent = persistedCall?.context_percent
     ? `${Math.round(persistedCall.context_percent)}%`
     : formatContextPercent(contextTokens, contextWindow);
-  const contextFill = contextWindow
-    ? Math.min(100, (contextTokens / contextWindow) * 100)
-    : 0;
   const contextTokenLabel = contextTokens > 0 ? formatTokenCount(contextTokens) : "0k";
   const toolCallsById = new Map<string, ToolCallPart>();
   for (const msg of session?.history ?? []) {
@@ -453,14 +450,6 @@ function SessionDetailPage() {
                   : `${contextTokenLabel} context`}
               </span>
             </div>
-            {contextWindow ? (
-              <div className="mt-3 h-1.5 max-w-sm overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-300"
-                  style={{ width: `${contextFill}%` }}
-                />
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
