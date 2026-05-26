@@ -18,6 +18,17 @@ type Session struct {
 	ID        string `json:"id"`
 	Title     string `json:"title,omitempty"`
 	WorkDir   string `json:"work_dir,omitempty"`
+	BaseID    string `json:"base_id,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// Base is a saved working directory used to start related sessions.
+type Base struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
 	ClientID  string `json:"client_id,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -100,6 +111,11 @@ type Client struct {
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
 }
+
+const (
+	DefaultClientID   = "cli_wingman"
+	DefaultClientName = "Wingman"
+)
 
 // Fleet and Formation types are archived; their definitions live in
 // _archive/ for reference. Do not add new consumers.

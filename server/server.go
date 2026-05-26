@@ -212,6 +212,15 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}", s.handleGetClient)
 	})
 
+	s.router.Route("/bases", func(r chi.Router) {
+		r.Get("/", s.handleListBases)
+		r.Post("/", s.handleCreateBase)
+		r.Get("/{id}", s.handleGetBase)
+		r.Put("/{id}", s.handleUpdateBase)
+		r.Delete("/{id}", s.handleDeleteBase)
+		r.Get("/{id}/sessions", s.handleListBaseSessions)
+	})
+
 	s.router.Route("/sessions", func(r chi.Router) {
 		r.Post("/", s.handleCreateSession)
 		r.Get("/", s.handleListSessions)

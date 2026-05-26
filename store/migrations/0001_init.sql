@@ -2,7 +2,7 @@
 --
 -- Design notes:
 --   * IDs are KSUID strings prefixed with a typed tag (agt_, ses_, msg_,
---     prt_, cli_) for human readability in logs. The tag is part of the
+--     prt_, cli_, bas_) for human readability in logs. The tag is part of the
 --     primary key; we never strip it.
 --   * Sessions carry metadata (title, work_dir, client_id) but no inline
 --     history. Messages are rows in the `messages` table; their content
@@ -38,16 +38,29 @@ CREATE TABLE IF NOT EXISTS clients (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE IF NOT EXISTS bases (
     id         TEXT PRIMARY KEY,
-    title      TEXT NOT NULL DEFAULT '',
-    work_dir   TEXT,
+    name       TEXT NOT NULL,
+    path       TEXT NOT NULL,
     client_id  TEXT REFERENCES clients(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_bases_client_id ON bases(client_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+	id         TEXT PRIMARY KEY,
+	title      TEXT NOT NULL DEFAULT '',
+	work_dir   TEXT,
+	base_id    TEXT REFERENCES bases(id) ON DELETE SET NULL,
+	client_id  TEXT REFERENCES clients(id) ON DELETE SET NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_client_id ON sessions(client_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_base_id ON sessions(base_id);
 
 CREATE TABLE IF NOT EXISTS messages (
     id            TEXT PRIMARY KEY,

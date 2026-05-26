@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type Store struct {
 	agents     map[string]*store.Agent
 	sessions   map[string]*store.Session
 	clients    map[string]*store.Client
+	bases      map[string]*store.Base
 	messages   map[string]*store.StoredMessage
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
@@ -33,6 +35,7 @@ func NewStore() *Store {
 		agents:     make(map[string]*store.Agent),
 		sessions:   make(map[string]*store.Session),
 		clients:    make(map[string]*store.Client),
+		bases:      make(map[string]*store.Base),
 		messages:   make(map[string]*store.StoredMessage),
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
@@ -79,6 +82,14 @@ func copyClient(c *store.Client) *store.Client {
 		return nil
 	}
 	cp := *c
+	return &cp
+}
+
+func copyBase(base *store.Base) *store.Base {
+	if base == nil {
+		return nil
+	}
+	cp := *base
 	return &cp
 }
 
@@ -205,6 +216,19 @@ func (s *Store) CreateClient(name string) (*store.Client, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("client name is required")
+	}
+	if strings.EqualFold(name, store.DefaultClientName) {
+		return nil, store.ErrClientNameExists
+	}
+	for _, existing := range s.clients {
+		if strings.EqualFold(existing.Name, name) {
+			return nil, store.ErrClientNameExists
+		}
+	}
+
 	client := &store.Client{
 		ID:        store.NewID(store.PrefixClient),
 		Name:      name,
@@ -212,6 +236,22 @@ func (s *Store) CreateClient(name string) (*store.Client, error) {
 	}
 	s.clients[client.ID] = copyClient(client)
 	return client, nil
+}
+
+func (s *Store) EnsureDefaultClient() (*store.Client, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if client, ok := s.clients[store.DefaultClientID]; ok {
+		return copyClient(client), nil
+	}
+	client := &store.Client{
+		ID:        store.DefaultClientID,
+		Name:      store.DefaultClientName,
+		CreatedAt: store.Now(),
+	}
+	s.clients[client.ID] = copyClient(client)
+	return copyClient(client), nil
 }
 
 func (s *Store) GetClient(id string) (*store.Client, error) {
@@ -239,6 +279,106 @@ func (s *Store) ListClients() ([]*store.Client, error) {
 	return out, nil
 }
 
+// ---- bases ---------------------------------------------------------------
+
+func (s *Store) CreateBase(base *store.Base) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if base.ID == "" {
+		base.ID = store.NewID(store.PrefixBase)
+	}
+	now := store.Now()
+	base.CreatedAt = now
+	base.UpdatedAt = now
+
+	if base.ClientID != "" {
+		if _, ok := s.clients[base.ClientID]; !ok {
+			return fmt.Errorf("client not found: %s", base.ClientID)
+		}
+	}
+
+	s.bases[base.ID] = copyBase(base)
+	return nil
+}
+
+func (s *Store) GetBase(id string) (*store.Base, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	base, ok := s.bases[id]
+	if !ok {
+		return nil, fmt.Errorf("base not found: %s", id)
+	}
+	return copyBase(base), nil
+}
+
+func (s *Store) ListBases() ([]*store.Base, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]*store.Base, 0, len(s.bases))
+	for _, base := range s.bases {
+		out = append(out, copyBase(base))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt > out[j].CreatedAt
+	})
+	return out, nil
+}
+
+func (s *Store) ListBasesByClient(clientID string) ([]*store.Base, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]*store.Base, 0)
+	for _, base := range s.bases {
+		if base.ClientID == clientID {
+			out = append(out, copyBase(base))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt > out[j].CreatedAt
+	})
+	return out, nil
+}
+
+func (s *Store) UpdateBase(base *store.Base) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, ok := s.bases[base.ID]
+	if !ok {
+		return fmt.Errorf("base not found: %s", base.ID)
+	}
+	if base.ClientID != "" {
+		if _, ok := s.clients[base.ClientID]; !ok {
+			return fmt.Errorf("client not found: %s", base.ClientID)
+		}
+	}
+
+	base.UpdatedAt = store.Now()
+	base.CreatedAt = existing.CreatedAt
+	s.bases[base.ID] = copyBase(base)
+	return nil
+}
+
+func (s *Store) DeleteBase(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.bases[id]; !ok {
+		return fmt.Errorf("base not found: %s", id)
+	}
+	delete(s.bases, id)
+	for _, sess := range s.sessions {
+		if sess.BaseID == id {
+			sess.BaseID = ""
+		}
+	}
+	return nil
+}
+
 // ---- sessions ------------------------------------------------------------
 
 func (s *Store) CreateSession(session *store.Session) error {
@@ -255,6 +395,11 @@ func (s *Store) CreateSession(session *store.Session) error {
 	if session.ClientID != "" {
 		if _, ok := s.clients[session.ClientID]; !ok {
 			return fmt.Errorf("client not found: %s", session.ClientID)
+		}
+	}
+	if session.BaseID != "" {
+		if _, ok := s.bases[session.BaseID]; !ok {
+			return fmt.Errorf("base not found: %s", session.BaseID)
 		}
 	}
 
@@ -303,6 +448,22 @@ func (s *Store) ListSessionsByClient(clientID string) ([]*store.Session, error) 
 	return out, nil
 }
 
+func (s *Store) ListSessionsByBase(baseID string) ([]*store.Session, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]*store.Session, 0)
+	for _, sess := range s.sessions {
+		if sess.BaseID == baseID {
+			out = append(out, copySession(sess))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt > out[j].CreatedAt
+	})
+	return out, nil
+}
+
 func (s *Store) UpdateSession(session *store.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -315,6 +476,11 @@ func (s *Store) UpdateSession(session *store.Session) error {
 	session.UpdatedAt = store.Now()
 	session.ClientID = existing.ClientID
 	session.CreatedAt = existing.CreatedAt
+	if session.BaseID != "" {
+		if _, ok := s.bases[session.BaseID]; !ok {
+			return fmt.Errorf("base not found: %s", session.BaseID)
+		}
+	}
 	s.sessions[session.ID] = copySession(session)
 	return nil
 }

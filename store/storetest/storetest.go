@@ -654,6 +654,103 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		}
 	})
 
+	t.Run("BaseCRUDRoundTrip", func(t *testing.T) {
+		s := factory(t)
+
+		client, err := s.CreateClient("base-client")
+		if err != nil {
+			t.Fatalf("create client failed: %v", err)
+		}
+
+		base := &store.Base{Name: "Wingman", Path: "/tmp", ClientID: client.ID}
+		if err := s.CreateBase(base); err != nil {
+			t.Fatalf("create base failed: %v", err)
+		}
+		if base.ID == "" {
+			t.Fatal("expected base ID to be set")
+		}
+		if !strings.HasPrefix(base.ID, "bas_") {
+			t.Errorf("expected ID prefix 'bas_', got %q", base.ID)
+		}
+
+		got, err := s.GetBase(base.ID)
+		if err != nil {
+			t.Fatalf("get base failed: %v", err)
+		}
+		if got.Name != base.Name || got.Path != base.Path || got.ClientID != client.ID {
+			t.Fatalf("base mismatch: got %#v, want %#v", got, base)
+		}
+
+		base.Name = "Updated"
+		base.Path = "/var/tmp"
+		if err := s.UpdateBase(base); err != nil {
+			t.Fatalf("update base failed: %v", err)
+		}
+		got, err = s.GetBase(base.ID)
+		if err != nil {
+			t.Fatalf("get updated base failed: %v", err)
+		}
+		if got.Name != "Updated" || got.Path != "/var/tmp" {
+			t.Fatalf("updated base mismatch: got %#v", got)
+		}
+
+		bases, err := s.ListBasesByClient(client.ID)
+		if err != nil {
+			t.Fatalf("list bases by client failed: %v", err)
+		}
+		if len(bases) != 1 || bases[0].ID != base.ID {
+			t.Fatalf("expected base in client list, got %#v", bases)
+		}
+
+		if err := s.DeleteBase(base.ID); err != nil {
+			t.Fatalf("delete base failed: %v", err)
+		}
+		if _, err := s.GetBase(base.ID); err == nil {
+			t.Fatal("expected error getting deleted base")
+		}
+	})
+
+	t.Run("SessionCreatedWithBaseRoundTripsAndLists", func(t *testing.T) {
+		s := factory(t)
+
+		base := &store.Base{Name: "Wingman", Path: "/tmp"}
+		if err := s.CreateBase(base); err != nil {
+			t.Fatalf("create base failed: %v", err)
+		}
+
+		sess := &store.Session{Title: "base session", WorkDir: base.Path, BaseID: base.ID}
+		if err := s.CreateSession(sess); err != nil {
+			t.Fatalf("create session failed: %v", err)
+		}
+
+		got, err := s.GetSession(sess.ID)
+		if err != nil {
+			t.Fatalf("get session failed: %v", err)
+		}
+		if got.BaseID != base.ID {
+			t.Errorf("expected base_id %q, got %q", base.ID, got.BaseID)
+		}
+
+		list, err := s.ListSessionsByBase(base.ID)
+		if err != nil {
+			t.Fatalf("list sessions by base failed: %v", err)
+		}
+		if len(list) != 1 || list[0].ID != sess.ID {
+			t.Fatalf("expected linked session in base list, got %#v", list)
+		}
+	})
+
+	t.Run("SessionCreatedWithNonexistentBaseIDErrors", func(t *testing.T) {
+		s := factory(t)
+
+		sess := &store.Session{Title: "bad base", BaseID: "bas_doesnotexist"}
+		if err := s.CreateSession(sess); err == nil {
+			t.Fatal("expected error creating session with non-existent base")
+		} else if !strings.Contains(err.Error(), "base not found") {
+			t.Fatalf("expected 'base not found' error, got %v", err)
+		}
+	})
+
 	t.Run("ListSessionsByClientReturnsOnlyMatchingSessions", func(t *testing.T) {
 		s := factory(t)
 

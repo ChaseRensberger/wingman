@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -26,13 +28,22 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if _, err := s.store.EnsureDefaultClient(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	client, err := s.store.CreateClient(req.Name)
 	if err != nil {
+		if errors.Is(err, store.ErrClientNameExists) {
+			writeError(w, http.StatusConflict, "client name already exists")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -43,6 +54,10 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
+		return
+	}
+	if _, err := s.store.EnsureDefaultClient(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	clients, err := s.store.ListClients()

@@ -58,9 +58,19 @@ export interface Session {
   id: string;
   title?: string;
   work_dir?: string;
+  base_id?: string;
   client_id?: string;
   history: Message[];
   latest_model_call?: ModelCall;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Base {
+  id: string;
+  name: string;
+  path: string;
+  client_id?: string;
   created_at: string;
   updated_at: string;
 }

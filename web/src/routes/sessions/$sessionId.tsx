@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
-import type { Session, Agent, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
+import type { Session, Agent, Base, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
@@ -115,6 +115,7 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
   const [session, setSession] = useState<Session | null>(null);
+  const [base, setBase] = useState<Base | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -138,6 +139,11 @@ function SessionDetailPage() {
     try {
       const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
       setSession(data);
+      if (data.base_id) {
+        setBase((await wfetch(`/bases/${data.base_id}`)) as Base);
+      } else {
+        setBase(null);
+      }
     } catch (err) {
       console.error("Failed to load session", err);
       alert(String(err));
@@ -167,6 +173,15 @@ function SessionDetailPage() {
         );
         if (!cancelled) {
           setSession(sessData);
+          if (sessData.base_id) {
+            try {
+              setBase((await wfetch(`/bases/${sessData.base_id}`)) as Base);
+            } catch {
+              setBase(null);
+            }
+          } else {
+            setBase(null);
+          }
           setAgents(agentsData);
           setProviders(providerData);
           setModels(Object.fromEntries(modelEntries));
@@ -431,7 +446,11 @@ function SessionDetailPage() {
     <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
       <div className="border-b py-4">
         <PageBreadcrumb
-          items={[
+          items={base ? [
+            { label: "Sessions", to: "/sessions" },
+            { label: base.name, to: "/sessions" },
+            { label: session.title || session.id.slice(0, 8) },
+          ] : [
             { label: "Sessions", to: "/sessions" },
             { label: session.title || session.id.slice(0, 8) },
           ]}

@@ -15,9 +15,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -245,16 +247,55 @@ func (s *SQLiteStore) DeleteAgent(id string) error {
 // CreateClient inserts a new Wingman API client row with a fresh KSUID and the
 // current RFC3339 timestamp.
 func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("client name is required")
+	}
+	if strings.EqualFold(name, DefaultClientName) {
+		return nil, ErrClientNameExists
+	}
+	clients, err := s.ListClients()
+	if err != nil {
+		return nil, err
+	}
+	for _, existing := range clients {
+		if strings.EqualFold(existing.Name, name) {
+			return nil, ErrClientNameExists
+		}
+	}
+
 	client := &Client{
 		ID:        NewID(PrefixClient),
 		Name:      name,
 		CreatedAt: Now(),
 	}
-	_, err := s.db.Exec(`
+	_, err = s.db.Exec(`
 		INSERT INTO clients (id, name, created_at) VALUES (?, ?, ?)
 	`, client.ID, client.Name, client.CreatedAt)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return nil, ErrClientNameExists
+		}
 		return nil, fmt.Errorf("insert client: %w", err)
+	}
+	return client, nil
+}
+
+// EnsureDefaultClient creates the built-in Wingman client if needed and returns it.
+func (s *SQLiteStore) EnsureDefaultClient() (*Client, error) {
+	now := Now()
+	if _, err := s.db.Exec(`
+		INSERT INTO clients (id, name, created_at) VALUES (?, ?, ?)
+		ON CONFLICT(id) DO NOTHING
+	`, DefaultClientID, DefaultClientName, now); err != nil {
+		return nil, fmt.Errorf("ensure default client: %w", err)
+	}
+	client, err := s.GetClient(DefaultClientID)
+	if err != nil {
+		return nil, err
+	}
+	if client.Name != DefaultClientName {
+		return nil, errors.New("default client name is reserved")
 	}
 	return client, nil
 }
@@ -292,6 +333,147 @@ func (s *SQLiteStore) ListClients() ([]*Client, error) {
 	return out, rows.Err()
 }
 
+// ---- bases ---------------------------------------------------------------
+
+// CreateBase inserts a saved working directory. If base.ID is empty, a
+// fresh KSUID is minted. CreatedAt/UpdatedAt are always overwritten with Now().
+func (s *SQLiteStore) CreateBase(base *Base) error {
+	if base.ID == "" {
+		base.ID = NewID(PrefixBase)
+	}
+	now := Now()
+	base.CreatedAt = now
+	base.UpdatedAt = now
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if base.ClientID != "" {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM clients WHERE id = ?`, base.ClientID).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("client not found: %s", base.ClientID)
+			}
+			return fmt.Errorf("verify client: %w", err)
+		}
+	}
+
+	var clientIDPtr *string
+	if base.ClientID != "" {
+		clientIDPtr = &base.ClientID
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO bases (id, name, path, client_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, base.ID, base.Name, base.Path, clientIDPtr, base.CreatedAt, base.UpdatedAt); err != nil {
+		return fmt.Errorf("insert base: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// GetBase returns the base with the given ID, or an error if not found.
+func (s *SQLiteStore) GetBase(id string) (*Base, error) {
+	var base Base
+	var clientID sql.NullString
+	err := s.db.QueryRow(`
+		SELECT id, name, path, client_id, created_at, updated_at FROM bases WHERE id = ?
+	`, id).Scan(&base.ID, &base.Name, &base.Path, &clientID, &base.CreatedAt, &base.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("base not found: %s", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	base.ClientID = clientID.String
+	return &base, nil
+}
+
+// ListBases returns every base, newest first by created_at.
+func (s *SQLiteStore) ListBases() ([]*Base, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, path, client_id, created_at, updated_at FROM bases ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanBases(rows)
+}
+
+// ListBasesByClient returns every base attributed to a specific client.
+func (s *SQLiteStore) ListBasesByClient(clientID string) ([]*Base, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, path, client_id, created_at, updated_at FROM bases WHERE client_id = ? ORDER BY created_at DESC
+	`, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanBases(rows)
+}
+
+func scanBases(rows *sql.Rows) ([]*Base, error) {
+	var out []*Base
+	for rows.Next() {
+		var base Base
+		var clientID sql.NullString
+		if err := rows.Scan(&base.ID, &base.Name, &base.Path, &clientID, &base.CreatedAt, &base.UpdatedAt); err != nil {
+			return nil, err
+		}
+		base.ClientID = clientID.String
+		out = append(out, &base)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// UpdateBase overwrites the base's mutable fields.
+func (s *SQLiteStore) UpdateBase(base *Base) error {
+	base.UpdatedAt = Now()
+	var clientIDPtr *string
+	if base.ClientID != "" {
+		clientIDPtr = &base.ClientID
+	}
+
+	res, err := s.db.Exec(`
+		UPDATE bases SET name = ?, path = ?, client_id = ?, updated_at = ? WHERE id = ?
+	`, base.Name, base.Path, clientIDPtr, base.UpdatedAt, base.ID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("base not found: %s", base.ID)
+	}
+	return nil
+}
+
+// DeleteBase removes the base. Linked sessions keep their work_dir and
+// have base_id set to NULL by the foreign key.
+func (s *SQLiteStore) DeleteBase(id string) error {
+	res, err := s.db.Exec(`DELETE FROM bases WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("base not found: %s", id)
+	}
+	return nil
+}
+
 // ---- sessions ------------------------------------------------------------
 
 // CreateSession inserts a session row. Runs in a single transaction so
@@ -319,19 +501,32 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 			return fmt.Errorf("verify client: %w", err)
 		}
 	}
+	if session.BaseID != "" {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM bases WHERE id = ?`, session.BaseID).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("base not found: %s", session.BaseID)
+			}
+			return fmt.Errorf("verify base: %w", err)
+		}
+	}
 
 	var workDirPtr *string
 	if session.WorkDir != "" {
 		workDirPtr = &session.WorkDir
+	}
+	var baseIDPtr *string
+	if session.BaseID != "" {
+		baseIDPtr = &session.BaseID
 	}
 	var clientIDPtr *string
 	if session.ClientID != "" {
 		clientIDPtr = &session.ClientID
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO sessions (id, title, work_dir, client_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, session.ID, session.Title, workDirPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
+		INSERT INTO sessions (id, title, work_dir, base_id, client_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, session.ID, session.Title, workDirPtr, baseIDPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
@@ -342,10 +537,11 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var session Session
 	var workDir sql.NullString
+	var baseID sql.NullString
 	var clientID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.Title, &workDir, &clientID, &session.CreatedAt, &session.UpdatedAt)
+		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.Title, &workDir, &baseID, &clientID, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -353,6 +549,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 		return nil, err
 	}
 	session.WorkDir = workDir.String
+	session.BaseID = baseID.String
 	session.ClientID = clientID.String
 	return &session, nil
 }
@@ -361,7 +558,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 // loaded automatically; use ListMessages for message retrieval.
 func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
+		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -372,11 +569,13 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	for rows.Next() {
 		var sess Session
 		var workDir sql.NullString
+		var baseID sql.NullString
 		var clientID sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &baseID, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
+		sess.BaseID = baseID.String
 		sess.ClientID = clientID.String
 		out = append(out, &sess)
 	}
@@ -390,7 +589,7 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 // Wingman API client, newest first. Sessions with no client are excluded.
 func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
+		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
 	`, clientID)
 	if err != nil {
 		return nil, err
@@ -401,11 +600,43 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 	for rows.Next() {
 		var sess Session
 		var workDir sql.NullString
+		var baseID sql.NullString
 		var cid sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &baseID, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
+		sess.BaseID = baseID.String
+		sess.ClientID = cid.String
+		out = append(out, &sess)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListSessionsByBase returns every session linked to a base, newest first.
+func (s *SQLiteStore) ListSessionsByBase(baseID string) ([]*Session, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE base_id = ? ORDER BY created_at DESC
+	`, baseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Session
+	for rows.Next() {
+		var sess Session
+		var workDir sql.NullString
+		var sid sql.NullString
+		var cid sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &sid, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sess.WorkDir = workDir.String
+		sess.BaseID = sid.String
 		sess.ClientID = cid.String
 		out = append(out, &sess)
 	}
@@ -418,14 +649,27 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 // UpdateSession overwrites the session's mutable metadata.
 func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
+	if session.BaseID != "" {
+		var exists int
+		if err := s.db.QueryRow(`SELECT 1 FROM bases WHERE id = ?`, session.BaseID).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("base not found: %s", session.BaseID)
+			}
+			return fmt.Errorf("verify base: %w", err)
+		}
+	}
 	var workDirPtr *string
 	if session.WorkDir != "" {
 		workDirPtr = &session.WorkDir
 	}
+	var baseIDPtr *string
+	if session.BaseID != "" {
+		baseIDPtr = &session.BaseID
+	}
 
 	res, err := s.db.Exec(`
-		UPDATE sessions SET title = ?, work_dir = ?, updated_at = ? WHERE id = ?
-	`, session.Title, workDirPtr, session.UpdatedAt, session.ID)
+		UPDATE sessions SET title = ?, work_dir = ?, base_id = ?, updated_at = ? WHERE id = ?
+	`, session.Title, workDirPtr, baseIDPtr, session.UpdatedAt, session.ID)
 	if err != nil {
 		return err
 	}

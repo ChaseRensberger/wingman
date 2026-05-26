@@ -6,6 +6,7 @@ import (
 )
 
 var ErrSessionNotFound = errors.New("session not found")
+var ErrClientNameExists = errors.New("client name already exists")
 
 type Store interface {
 	CreateAgent(agent *Agent) error
@@ -41,8 +42,17 @@ type Store interface {
 
 	// CreateClient registers a Wingman API consumer identity.
 	CreateClient(name string) (*Client, error)
+	EnsureDefaultClient() (*Client, error)
 	GetClient(id string) (*Client, error)
 	ListClients() ([]*Client, error)
+
+	CreateBase(base *Base) error
+	GetBase(id string) (*Base, error)
+	ListBases() ([]*Base, error)
+	ListBasesByClient(clientID string) ([]*Base, error)
+	UpdateBase(base *Base) error
+	DeleteBase(id string) error
+	ListSessionsByBase(baseID string) ([]*Session, error)
 
 	GetAuth() (*Auth, error)
 	SetAuth(auth *Auth) error

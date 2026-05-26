@@ -23,6 +23,7 @@ import (
 type CreateSessionRequest struct {
 	Title            string `json:"title,omitempty"`
 	WorkingDirectory string `json:"working_directory,omitempty"`
+	BaseID           string `json:"base_id,omitempty"`
 }
 
 const defaultSessionTitle = "New session"
@@ -43,7 +44,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		title = defaultSessionTitle
 	}
 
-	workDir, err := session.ResolveWorkDir(req.WorkingDirectory)
+	workDir, baseID, err := s.resolveSessionLocation(req.WorkingDirectory, req.BaseID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -52,16 +53,15 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	sess := &store.Session{
 		Title:   title,
 		WorkDir: workDir,
+		BaseID:  baseID,
 	}
 
-	clientID := r.Header.Get("X-Wingman-Client")
-	if clientID != "" {
-		if _, err := s.store.GetClient(clientID); err != nil {
-			writeError(w, http.StatusBadRequest, "client not found: "+clientID)
-			return
-		}
-		sess.ClientID = clientID
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	sess.ClientID = clientID
 
 	if err := s.store.CreateSession(sess); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -79,12 +79,12 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	var sessions []*store.Session
 	var err error
 
-	clientID := r.Header.Get("X-Wingman-Client")
-	if clientID != "" {
-		sessions, err = s.store.ListSessionsByClient(clientID)
-	} else {
-		sessions, err = s.store.ListSessions()
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+	sessions, err = s.store.ListSessionsByClient(clientID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -171,6 +171,7 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 type UpdateSessionRequest struct {
 	Title            *string `json:"title,omitempty"`
 	WorkingDirectory *string `json:"working_directory,omitempty"`
+	BaseID           *string `json:"base_id,omitempty"`
 }
 
 func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -195,13 +196,28 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Title != nil {
 		sess.Title = *req.Title
 	}
-	if req.WorkingDirectory != nil {
-		workDir, err := session.ResolveWorkDir(*req.WorkingDirectory)
+	if req.WorkingDirectory != nil || req.BaseID != nil {
+		workingDirectory := sess.WorkDir
+		baseID := sess.BaseID
+		if req.WorkingDirectory != nil {
+			workingDirectory = *req.WorkingDirectory
+			if req.BaseID == nil {
+				baseID = ""
+			}
+		}
+		if req.BaseID != nil {
+			baseID = *req.BaseID
+			if baseID != "" {
+				workingDirectory = ""
+			}
+		}
+		workDir, resolvedBaseID, err := s.resolveSessionLocation(workingDirectory, baseID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		sess.WorkDir = workDir
+		sess.BaseID = resolvedBaseID
 	}
 
 	if err := s.store.UpdateSession(sess); err != nil {
@@ -210,6 +226,24 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, sess)
+}
+
+func (s *Server) resolveSessionLocation(workingDirectory, baseID string) (workDir string, resolvedBaseID string, err error) {
+	if baseID != "" {
+		if workingDirectory != "" {
+			return "", "", fmt.Errorf("working_directory and base_id cannot both be set")
+		}
+		base, err := s.store.GetBase(baseID)
+		if err != nil {
+			return "", "", err
+		}
+		return base.Path, base.ID, nil
+	}
+	workDir, err = session.ResolveWorkDir(workingDirectory)
+	if err != nil {
+		return "", "", err
+	}
+	return workDir, "", nil
 }
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
@@ -270,6 +304,15 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.store.GetSession(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if sess.ClientID != clientID {
+		writeError(w, http.StatusForbidden, "session belongs to another client")
 		return
 	}
 
@@ -344,6 +387,15 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	sess, err := s.store.GetSession(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if sess.ClientID != clientID {
+		writeError(w, http.StatusForbidden, "session belongs to another client")
 		return
 	}
 

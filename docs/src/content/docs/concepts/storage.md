@@ -39,7 +39,7 @@ The SQLite schema stores:
 | Table | Purpose |
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
-| `clients` | Optional API consumer identities. |
+| `clients` | API consumer identities, including the built-in `Wingman` default client. |
 | `sessions` | Session metadata: title, working directory, client ID, timestamps. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
