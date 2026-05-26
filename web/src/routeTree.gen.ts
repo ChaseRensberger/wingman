@@ -18,6 +18,7 @@ import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as SessionsBaseSlugRouteImport } from './routes/sessions/$baseSlug'
 import { Route as ProvidersProviderIdRouteImport } from './routes/providers/$providerId'
 import { Route as AgentsAgentIdRouteImport } from './routes/agents/$agentId'
+import { Route as SessionsBaseSlugIndexRouteImport } from './routes/sessions/$baseSlug/index'
 import { Route as SessionsBaseSlugSessionIdRouteImport } from './routes/sessions/$baseSlug/$sessionId'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -65,6 +66,11 @@ const AgentsAgentIdRoute = AgentsAgentIdRouteImport.update({
   path: '/agents/$agentId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsBaseSlugIndexRoute = SessionsBaseSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SessionsBaseSlugRoute,
+} as any)
 const SessionsBaseSlugSessionIdRoute =
   SessionsBaseSlugSessionIdRouteImport.update({
     id: '/$sessionId',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
   '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
+  '/sessions/$baseSlug/': typeof SessionsBaseSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -90,11 +97,11 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
   '/agents': typeof AgentsIndexRoute
   '/providers': typeof ProvidersIndexRoute
   '/sessions': typeof SessionsIndexRoute
   '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
+  '/sessions/$baseSlug': typeof SessionsBaseSlugIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -108,6 +115,7 @@ export interface FileRoutesById {
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
   '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
+  '/sessions/$baseSlug/': typeof SessionsBaseSlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -122,6 +130,7 @@ export interface FileRouteTypes {
     | '/providers/'
     | '/sessions/'
     | '/sessions/$baseSlug/$sessionId'
+    | '/sessions/$baseSlug/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -129,11 +138,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$baseSlug'
     | '/agents'
     | '/providers'
     | '/sessions'
     | '/sessions/$baseSlug/$sessionId'
+    | '/sessions/$baseSlug'
   id:
     | '__root__'
     | '/'
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/providers/'
     | '/sessions/'
     | '/sessions/$baseSlug/$sessionId'
+    | '/sessions/$baseSlug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -225,6 +235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/$baseSlug/': {
+      id: '/sessions/$baseSlug/'
+      path: '/'
+      fullPath: '/sessions/$baseSlug/'
+      preLoaderRoute: typeof SessionsBaseSlugIndexRouteImport
+      parentRoute: typeof SessionsBaseSlugRoute
+    }
     '/sessions/$baseSlug/$sessionId': {
       id: '/sessions/$baseSlug/$sessionId'
       path: '/$sessionId'
@@ -237,10 +254,12 @@ declare module '@tanstack/react-router' {
 
 interface SessionsBaseSlugRouteChildren {
   SessionsBaseSlugSessionIdRoute: typeof SessionsBaseSlugSessionIdRoute
+  SessionsBaseSlugIndexRoute: typeof SessionsBaseSlugIndexRoute
 }
 
 const SessionsBaseSlugRouteChildren: SessionsBaseSlugRouteChildren = {
   SessionsBaseSlugSessionIdRoute: SessionsBaseSlugSessionIdRoute,
+  SessionsBaseSlugIndexRoute: SessionsBaseSlugIndexRoute,
 }
 
 const SessionsBaseSlugRouteWithChildren =

@@ -176,14 +176,14 @@ function SessionsPage() {
 							Bases
 						</div>
 					</div>
-					<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+					<div className="grid grid-cols-[repeat(auto-fill,14rem)] gap-4">
 						{bases.map((base, index) => {
 							const sessions = sessionsByBase[base.id] ?? [];
 							const latest = latestSession(sessions);
 							return (
 								<div
 									key={base.id}
-									className={`group relative min-h-56 cursor-pointer rounded-xl border border-border/80 border-l-4 ${baseColors[index % baseColors.length]} bg-card p-5 shadow-sm transition-colors hover:bg-accent/35`}
+									className={`group relative h-56 w-56 cursor-pointer rounded-xl border border-border/80 border-l-4 ${baseColors[index % baseColors.length]} bg-card p-5 shadow-sm transition-colors hover:bg-accent/35`}
 									onClick={() => navigate({ to: "/sessions/$baseSlug", params: { baseSlug: baseSlug(base) } })}
 								>
 									<div className="flex items-start justify-between gap-3">
@@ -218,7 +218,7 @@ function SessionsPage() {
 						})}
 						<button
 							type="button"
-							className="flex min-h-56 items-center justify-center rounded-xl border border-dashed border-border bg-background/40 font-mono text-sm text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+							className="flex h-56 w-56 items-center justify-center rounded-xl border border-dashed border-border bg-background/40 font-mono text-sm text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
 							onClick={openCreateBase}
 						>
 							<PlusIcon className="mr-2 size-4" /> New base
