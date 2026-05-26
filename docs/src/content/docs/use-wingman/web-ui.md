@@ -19,7 +19,13 @@ Open:
 http://localhost:2323/web
 ```
 
-The web UI is a client of the same HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, and sessions without writing `curl` requests by hand.
+The web UI is a client of the same HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Bases, and sessions without writing `curl` requests by hand.
+
+## Sessions And Bases
+
+The Sessions page starts with Base cards. A Base is a named directory workspace; clicking one opens the sessions created for that Base.
+
+The default `Wingman` Base is created automatically for the built-in client. Create, edit, and delete Bases from the Sessions page. Session detail pages include the Base in the breadcrumb, for example `Home > Sessions > Wingman > New session`.
 
 ## Development Proxy
 

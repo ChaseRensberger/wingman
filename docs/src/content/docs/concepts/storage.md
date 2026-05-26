@@ -6,7 +6,7 @@ order: 105
 
 # Storage
 
-Storage is a core Wingman primitive. It persists agents, clients, sessions, message history, content parts, and provider auth credentials. Persistence is not implemented as a plugin because session history must be durable by default and storage failures should be surfaced directly by the runtime.
+Storage is a core Wingman primitive. It persists agents, clients, Bases, sessions, message history, content parts, and provider auth credentials. Persistence is not implemented as a plugin because session history must be durable by default and storage failures should be surfaced directly by the runtime.
 
 ## Default Store
 
@@ -40,7 +40,8 @@ The SQLite schema stores:
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
-| `sessions` | Session metadata: title, working directory, client ID, timestamps. |
+| `bases` | Client-owned directory workspaces used to group sessions and seed working directories. |
+| `sessions` | Session metadata: title, working directory, client ID, optional Base ID, timestamps. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
@@ -48,6 +49,8 @@ The SQLite schema stores:
 | `schema_migrations` | Applied migration versions. |
 
 Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
+
+Sessions created with `base_id` store both the Base relationship and a working-directory snapshot. Later Base path changes do not rewrite existing sessions.
 
 ## Model Calls
 
@@ -116,6 +119,7 @@ type Store interface {
     GetSession(id string) (*Session, error)
     ListSessions() ([]*Session, error)
     ListSessionsByClient(clientID string) ([]*Session, error)
+    ListSessionsByBase(baseID string) ([]*Session, error)
     UpdateSession(session *Session) error
     DeleteSession(id string) error
 
@@ -128,8 +132,16 @@ type Store interface {
     ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
 
     CreateClient(name string) (*Client, error)
+    EnsureDefaultClient() (*Client, error)
     GetClient(id string) (*Client, error)
     ListClients() ([]*Client, error)
+
+    CreateBase(base *Base) error
+    GetBase(id string) (*Base, error)
+    ListBases() ([]*Base, error)
+    ListBasesByClient(clientID string) ([]*Base, error)
+    UpdateBase(base *Base) error
+    DeleteBase(id string) error
 
     GetAuth() (*Auth, error)
     SetAuth(auth *Auth) error

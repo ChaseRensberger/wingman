@@ -15,7 +15,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 - Request bodies are JSON.
 - Standard request timeout is 60 seconds.
 - `POST /sessions/{id}/message/stream` bypasses the standard timeout and returns `text/event-stream`.
-- ID prefixes are stable: `agt_` (agent), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
+- ID prefixes are stable: `agt_` (agent), `bas_` (Base), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Health
 
@@ -115,6 +115,17 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 }
 ```
 
+Or create the session from a Base:
+
+```json
+{
+  "title": "Explore repo",
+  "base_id": "bas_..."
+}
+```
+
+`working_directory` and `base_id` are mutually exclusive. When `base_id` is set, Wingman copies the Base path into `work_dir` and records `base_id` on the session.
+
 ### Message request
 
 ```json
@@ -170,7 +181,29 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 
 `aborted` is the number of in-flight runs cancelled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
 
-### Ephemeral run request
+## Base endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/bases` | Create Base |
+| `GET` | `/bases` | List Bases for the active client, ensuring the default `Wingman` Base exists |
+| `GET` | `/bases/{id}` | Get Base |
+| `PUT` | `/bases/{id}` | Update Base metadata (name, path) |
+| `DELETE` | `/bases/{id}` | Delete Base |
+| `GET` | `/bases/{id}/sessions` | List sessions in a Base |
+
+### Create Base request
+
+```json
+{
+  "name": "Wingman",
+  "path": "/home/me/project"
+}
+```
+
+Bases are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
+
+## Ephemeral run endpoint
 
 `POST /run` creates an in-memory session, streams the run, and does not persist the session or its messages.
 
