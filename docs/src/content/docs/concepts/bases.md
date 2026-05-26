@@ -35,4 +35,10 @@ Do not send both `working_directory` and `base_id` when creating or updating a s
 
 ## Web UI
 
-The Sessions page is Base-first. It shows Base cards, opens a Base-specific session list when you click one, and keeps Base create/edit/delete controls on the Sessions page instead of a separate top-level Base page.
+The Sessions page is Base-first and URL-backed:
+
+- `/web/sessions` shows Base cards.
+- `/web/sessions/{base-slug}` shows sessions for one Base.
+- `/web/sessions/{base-slug}/{session-id}` opens a session in that Base.
+
+The `Sessions` breadcrumb returns to `/web/sessions` so you can select another Base. Base create/edit/delete controls stay on the Sessions page instead of a separate top-level Base page.

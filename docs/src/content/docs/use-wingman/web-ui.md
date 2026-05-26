@@ -25,7 +25,15 @@ The web UI is a client of the same HTTP API documented in [HTTP API](/reference/
 
 The Sessions page starts with Base cards. A Base is a named directory workspace; clicking one opens the sessions created for that Base.
 
-The default `Wingman` Base is created automatically for the built-in client. Create, edit, and delete Bases from the Sessions page. Session detail pages include the Base in the breadcrumb, for example `Home > Sessions > Wingman > New session`.
+The default `Wingman` Base is created automatically for the built-in client. Create, edit, and delete Bases from the Sessions page.
+
+Base selection is reflected in the URL:
+
+- `/web/sessions` shows all Bases.
+- `/web/sessions/wingman` shows sessions for the default Base.
+- `/web/sessions/wingman/ses_...` opens a session in that Base.
+
+Session detail pages include the Base in the breadcrumb, for example `Home > Sessions > Wingman > New session`. The `Sessions` breadcrumb returns to the Base overview.
 
 ## Development Proxy
 

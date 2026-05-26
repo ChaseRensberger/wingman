@@ -108,12 +108,12 @@ function formatSessionError(err: unknown): string {
   return message.replace(/^Error:\s*/, "");
 }
 
-export const Route = createFileRoute("/sessions/$sessionId")({
+export const Route = createFileRoute("/sessions/$baseSlug/$sessionId")({
   component: SessionDetailPage,
 });
 
 function SessionDetailPage() {
-  const { sessionId } = Route.useParams();
+  const { baseSlug, sessionId } = Route.useParams();
   const [session, setSession] = useState<Session | null>(null);
   const [base, setBase] = useState<Base | null>(null);
   const [loading, setLoading] = useState(true);
@@ -448,7 +448,7 @@ function SessionDetailPage() {
         <PageBreadcrumb
           items={base ? [
             { label: "Sessions", to: "/sessions" },
-            { label: base.name, to: "/sessions" },
+            { label: base.name, to: `/sessions/${baseSlug}` },
             { label: session.title || session.id.slice(0, 8) },
           ] : [
             { label: "Sessions", to: "/sessions" },

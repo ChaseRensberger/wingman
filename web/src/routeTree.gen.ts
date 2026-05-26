@@ -15,9 +15,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
-import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
+import { Route as SessionsBaseSlugRouteImport } from './routes/sessions/$baseSlug'
 import { Route as ProvidersProviderIdRouteImport } from './routes/providers/$providerId'
 import { Route as AgentsAgentIdRouteImport } from './routes/agents/$agentId'
+import { Route as SessionsBaseSlugSessionIdRouteImport } from './routes/sessions/$baseSlug/$sessionId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -49,9 +50,9 @@ const AgentsIndexRoute = AgentsIndexRouteImport.update({
   path: '/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
-  id: '/sessions/$sessionId',
-  path: '/sessions/$sessionId',
+const SessionsBaseSlugRoute = SessionsBaseSlugRouteImport.update({
+  id: '/sessions/$baseSlug',
+  path: '/sessions/$baseSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersProviderIdRoute = ProvidersProviderIdRouteImport.update({
@@ -64,6 +65,12 @@ const AgentsAgentIdRoute = AgentsAgentIdRouteImport.update({
   path: '/agents/$agentId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsBaseSlugSessionIdRoute =
+  SessionsBaseSlugSessionIdRouteImport.update({
+    id: '/$sessionId',
+    path: '/$sessionId',
+    getParentRoute: () => SessionsBaseSlugRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -71,10 +78,11 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
+  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,10 +90,11 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
   '/agents': typeof AgentsIndexRoute
   '/providers': typeof ProvidersIndexRoute
   '/sessions': typeof SessionsIndexRoute
+  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,10 +103,11 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$sessionId': typeof SessionsSessionIdRoute
+  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
+  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,10 +117,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$sessionId'
+    | '/sessions/$baseSlug'
     | '/agents/'
     | '/providers/'
     | '/sessions/'
+    | '/sessions/$baseSlug/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -118,10 +129,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$sessionId'
+    | '/sessions/$baseSlug'
     | '/agents'
     | '/providers'
     | '/sessions'
+    | '/sessions/$baseSlug/$sessionId'
   id:
     | '__root__'
     | '/'
@@ -129,10 +141,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$sessionId'
+    | '/sessions/$baseSlug'
     | '/agents/'
     | '/providers/'
     | '/sessions/'
+    | '/sessions/$baseSlug/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -141,7 +154,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   AgentsAgentIdRoute: typeof AgentsAgentIdRoute
   ProvidersProviderIdRoute: typeof ProvidersProviderIdRoute
-  SessionsSessionIdRoute: typeof SessionsSessionIdRoute
+  SessionsBaseSlugRoute: typeof SessionsBaseSlugRouteWithChildren
   AgentsIndexRoute: typeof AgentsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
@@ -191,11 +204,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$sessionId': {
-      id: '/sessions/$sessionId'
-      path: '/sessions/$sessionId'
-      fullPath: '/sessions/$sessionId'
-      preLoaderRoute: typeof SessionsSessionIdRouteImport
+    '/sessions/$baseSlug': {
+      id: '/sessions/$baseSlug'
+      path: '/sessions/$baseSlug'
+      fullPath: '/sessions/$baseSlug'
+      preLoaderRoute: typeof SessionsBaseSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers/$providerId': {
@@ -212,8 +225,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/$baseSlug/$sessionId': {
+      id: '/sessions/$baseSlug/$sessionId'
+      path: '/$sessionId'
+      fullPath: '/sessions/$baseSlug/$sessionId'
+      preLoaderRoute: typeof SessionsBaseSlugSessionIdRouteImport
+      parentRoute: typeof SessionsBaseSlugRoute
+    }
   }
 }
+
+interface SessionsBaseSlugRouteChildren {
+  SessionsBaseSlugSessionIdRoute: typeof SessionsBaseSlugSessionIdRoute
+}
+
+const SessionsBaseSlugRouteChildren: SessionsBaseSlugRouteChildren = {
+  SessionsBaseSlugSessionIdRoute: SessionsBaseSlugSessionIdRoute,
+}
+
+const SessionsBaseSlugRouteWithChildren =
+  SessionsBaseSlugRoute._addFileChildren(SessionsBaseSlugRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -221,7 +252,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   AgentsAgentIdRoute: AgentsAgentIdRoute,
   ProvidersProviderIdRoute: ProvidersProviderIdRoute,
-  SessionsSessionIdRoute: SessionsSessionIdRoute,
+  SessionsBaseSlugRoute: SessionsBaseSlugRouteWithChildren,
   AgentsIndexRoute: AgentsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,
