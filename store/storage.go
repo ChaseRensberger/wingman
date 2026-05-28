@@ -7,6 +7,7 @@ import (
 
 var ErrSessionNotFound = errors.New("session not found")
 var ErrClientNameExists = errors.New("client name already exists")
+var ErrWorkspaceNameExists = errors.New("workspace name already exists")
 
 type Store interface {
 	CreateAgent(agent *Agent) error

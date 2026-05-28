@@ -347,7 +347,7 @@ function SessionsPage() {
 												<span className="flex min-w-0 items-center gap-2">
 													<span className={cn("size-2 rounded-sm", color)} />
 													<span className="truncate">{workspace.name}</span>
-													{!workspace.path && <span className="text-xs italic text-muted-foreground">dirless</span>}
+													{!workspace.path && <span className="text-xs italic text-muted-foreground">no directory</span>}
 												</span>
 												<span className="flex items-center gap-2 text-muted-foreground"><span>{workspaceCounts.get(workspace.id) ?? 0}</span>{workspaceFilter === workspace.id && <CheckIcon className="size-4 text-primary" />}</span>
 											</DropdownMenuItem>
@@ -469,7 +469,7 @@ function SessionsPage() {
 									<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="/path/to/project" disabled={workspaceHasNoDirectory} />
 									<Button type="button" variant="outline" onClick={() => chooseWorkingDirectory(setWorkspacePath)} disabled={workspaceHasNoDirectory}><FolderOpenIcon className="size-4" />Choose</Button>
 								</div>
-								<p className="text-xs text-muted-foreground">Leave empty for inbox/research-style workspaces that do not imply a working directory.</p>
+								<p className="text-xs text-muted-foreground">Sessions created in this workspace will not start with a working directory.</p>
 							</div>
 						</div>
 						<DialogFooter className="items-center sm:justify-between">

@@ -96,6 +96,43 @@ func TestCreateClientRejectsWingmanName(t *testing.T) {
 	}
 }
 
+func TestListWorkspacesDoesNotCreateDefault(t *testing.T) {
+	st := memory.NewStore()
+	srv := New(Config{Store: st})
+
+	req := httptest.NewRequest(http.MethodGet, "/workspaces/", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+	var workspaces []store.Workspace
+	if err := json.NewDecoder(rec.Body).Decode(&workspaces); err != nil {
+		t.Fatalf("decode workspaces: %v", err)
+	}
+	if len(workspaces) != 0 {
+		t.Fatalf("expected no workspaces, got %#v", workspaces)
+	}
+}
+
+func TestCreateWorkspaceRejectsDuplicateName(t *testing.T) {
+	st := memory.NewStore()
+	srv := New(Config{Store: st})
+
+	for _, body := range []string{`{"name":"Wingman"}`, `{"name":"wingman"}`} {
+		req := httptest.NewRequest(http.MethodPost, "/workspaces/", bytes.NewBufferString(body))
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if body == `{"name":"Wingman"}` && rec.Code != http.StatusCreated {
+			t.Fatalf("expected first create status %d, got %d: %s", http.StatusCreated, rec.Code, rec.Body.String())
+		}
+		if body == `{"name":"wingman"}` && rec.Code != http.StatusConflict {
+			t.Fatalf("expected duplicate status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestMessageSessionRejectsWrongClient(t *testing.T) {
 	st := memory.NewStore()
 	srv := New(Config{Store: st})

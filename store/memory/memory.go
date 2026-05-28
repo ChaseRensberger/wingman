@@ -297,6 +297,9 @@ func (s *Store) CreateWorkspace(workspace *store.Workspace) error {
 			return fmt.Errorf("client not found: %s", workspace.ClientID)
 		}
 	}
+	if s.workspaceNameExists(workspace.ClientID, workspace.Name, "") {
+		return store.ErrWorkspaceNameExists
+	}
 
 	s.workspaces[workspace.ID] = copyWorkspace(workspace)
 	return nil
@@ -356,11 +359,23 @@ func (s *Store) UpdateWorkspace(workspace *store.Workspace) error {
 			return fmt.Errorf("client not found: %s", workspace.ClientID)
 		}
 	}
+	if s.workspaceNameExists(workspace.ClientID, workspace.Name, workspace.ID) {
+		return store.ErrWorkspaceNameExists
+	}
 
 	workspace.UpdatedAt = store.Now()
 	workspace.CreatedAt = existing.CreatedAt
 	s.workspaces[workspace.ID] = copyWorkspace(workspace)
 	return nil
+}
+
+func (s *Store) workspaceNameExists(clientID, name, excludeID string) bool {
+	for _, existing := range s.workspaces {
+		if existing.ID != excludeID && existing.ClientID == clientID && strings.EqualFold(existing.Name, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) DeleteWorkspace(id string) error {

@@ -2,45 +2,14 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/store"
 )
-
-const defaultWorkspaceName = "Wingman"
-
-func (s *Server) ensureDefaultWorkspace(clientID string) (*store.Workspace, error) {
-	var workspaces []*store.Workspace
-	var err error
-	if clientID != "" {
-		workspaces, err = s.store.ListWorkspacesByClient(clientID)
-	} else {
-		workspaces, err = s.store.ListWorkspaces()
-	}
-	if err != nil {
-		return nil, err
-	}
-	for _, workspace := range workspaces {
-		if workspace.Name == defaultWorkspaceName {
-			return workspace, nil
-		}
-	}
-
-	path, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("default workspace path: %w", err)
-	}
-	workspace := &store.Workspace{Name: defaultWorkspaceName, Path: path, ClientID: clientID}
-	if err := s.store.CreateWorkspace(workspace); err != nil {
-		return nil, err
-	}
-	return workspace, nil
-}
 
 type CreateWorkspaceRequest struct {
 	Name string `json:"name"`
@@ -76,6 +45,10 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	workspace.ClientID = clientID
 
 	if err := s.store.CreateWorkspace(workspace); err != nil {
+		if errors.Is(err, store.ErrWorkspaceNameExists) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -92,10 +65,6 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if _, err := s.ensureDefaultWorkspace(clientID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	workspaces, err = s.store.ListWorkspacesByClient(clientID)
@@ -160,6 +129,10 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.UpdateWorkspace(workspace); err != nil {
+		if errors.Is(err, store.ErrWorkspaceNameExists) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

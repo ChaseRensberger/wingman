@@ -2,6 +2,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -707,6 +708,29 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		}
 		if _, err := s.GetWorkspace(workspace.ID); err == nil {
 			t.Fatal("expected error getting deleted workspace")
+		}
+	})
+
+	t.Run("WorkspaceNamesAreUniquePerClient", func(t *testing.T) {
+		s := factory(t)
+
+		client, err := s.CreateClient("workspace-unique-client")
+		if err != nil {
+			t.Fatalf("create client failed: %v", err)
+		}
+		if err := s.CreateWorkspace(&store.Workspace{Name: "Wingman", ClientID: client.ID}); err != nil {
+			t.Fatalf("create workspace failed: %v", err)
+		}
+		if err := s.CreateWorkspace(&store.Workspace{Name: "wingman", ClientID: client.ID}); !errors.Is(err, store.ErrWorkspaceNameExists) {
+			t.Fatalf("expected duplicate workspace name error, got %v", err)
+		}
+
+		other, err := s.CreateClient("workspace-unique-other")
+		if err != nil {
+			t.Fatalf("create other client failed: %v", err)
+		}
+		if err := s.CreateWorkspace(&store.Workspace{Name: "Wingman", ClientID: other.ID}); err != nil {
+			t.Fatalf("expected same workspace name in another client to succeed, got %v", err)
 		}
 	})
 

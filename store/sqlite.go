@@ -360,6 +360,9 @@ func (s *SQLiteStore) CreateWorkspace(workspace *Workspace) error {
 			return fmt.Errorf("verify client: %w", err)
 		}
 	}
+	if err := verifyWorkspaceNameAvailable(tx, workspace.ClientID, workspace.Name, ""); err != nil {
+		return err
+	}
 
 	var clientIDPtr *string
 	if workspace.ClientID != "" {
@@ -436,6 +439,9 @@ func scanWorkspaces(rows *sql.Rows) ([]*Workspace, error) {
 // UpdateWorkspace overwrites the workspace's mutable fields.
 func (s *SQLiteStore) UpdateWorkspace(workspace *Workspace) error {
 	workspace.UpdatedAt = Now()
+	if err := verifyWorkspaceNameAvailable(s.db, workspace.ClientID, workspace.Name, workspace.ID); err != nil {
+		return err
+	}
 	var clientIDPtr *string
 	if workspace.ClientID != "" {
 		clientIDPtr = &workspace.ClientID
@@ -455,6 +461,27 @@ func (s *SQLiteStore) UpdateWorkspace(workspace *Workspace) error {
 		return fmt.Errorf("workspace not found: %s", workspace.ID)
 	}
 	return nil
+}
+
+type queryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func verifyWorkspaceNameAvailable(q queryer, clientID, name, excludeID string) error {
+	var exists int
+	err := q.QueryRow(`
+		SELECT 1 FROM workspaces
+		WHERE COALESCE(client_id, '') = COALESCE(?, '')
+			AND name = ? COLLATE NOCASE
+			AND id != ?
+	`, clientID, name, excludeID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return ErrWorkspaceNameExists
 }
 
 // DeleteWorkspace removes the workspace. Linked sessions keep their work_dir and
