@@ -25,7 +25,7 @@ The web UI is a client of the same HTTP API documented in [HTTP API](/reference/
 
 The Sessions page shows all sessions by default. Use the Workspace dropdown to filter to a saved Workspace or to sessions with no Workspace.
 
-The default `Wingman` Workspace is created automatically for the built-in client. Create, edit, and delete Workspaces from the Sessions page.
+Create, edit, and delete Workspaces from the Sessions page. Wingman does not create a default Workspace automatically.
 
 Workspace filters and session detail are reflected in the URL:
 

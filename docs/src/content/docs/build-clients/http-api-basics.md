@@ -45,7 +45,7 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 ## Workspaces
 
-Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client and creates the default `Wingman` Workspace if needed.
+Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client; create one with `POST /workspaces` when needed.
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \

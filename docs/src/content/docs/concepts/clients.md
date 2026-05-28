@@ -23,4 +23,4 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 Omitting the header is equivalent to using `X-Wingman-Client: cli_wingman`.
 
-Client identity also scopes Workspaces. `GET /workspaces` returns Workspaces for the active client and ensures that client's default `Wingman` Workspace exists.
+Client identity also scopes Workspaces. `GET /workspaces` returns the Workspaces for the active client; it does not create any Workspaces automatically.

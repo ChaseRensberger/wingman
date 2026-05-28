@@ -6,7 +6,7 @@ order: 103
 
 # Workspaces
 
-A Workspace is a saved session context. It can point at a directory, or it can be dirless for inbox/research-style work.
+A Workspace is a saved session context. It can point at a directory, or it can have no directory and act only as a label/filter.
 
 Each Workspace stores:
 
@@ -15,7 +15,7 @@ Each Workspace stores:
 - An optional filesystem path.
 - The owning Wingman client.
 
-The built-in default client always has a default Workspace named `Wingman`. If you omit `X-Wingman-Client`, `GET /workspaces` uses the built-in `Wingman` client and creates that default Workspace if it does not already exist.
+Workspaces are user-created. If you omit `X-Wingman-Client`, `GET /workspaces` lists Workspaces for the built-in `Wingman` client, but it does not create a default Workspace.
 
 ## Create A Session In A Workspace
 

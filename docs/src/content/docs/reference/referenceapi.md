@@ -186,7 +186,7 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/workspaces` | Create Workspace |
-| `GET` | `/workspaces` | List Workspaces for the active client, ensuring the default `Wingman` Workspace exists |
+| `GET` | `/workspaces` | List Workspaces for the active client |
 | `GET` | `/workspaces/{id}` | Get Workspace |
 | `PUT` | `/workspaces/{id}` | Update Workspace metadata (name, optional path) |
 | `DELETE` | `/workspaces/{id}` | Delete Workspace |
@@ -201,7 +201,7 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 }
 ```
 
-Use an empty `path` for a dirless Workspace.
+Use an empty `path` for a Workspace that should not provide a working directory.
 
 Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
 
