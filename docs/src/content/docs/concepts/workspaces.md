@@ -6,13 +6,13 @@ order: 103
 
 # Workspaces
 
-A Workspace is a persisted directory context. It gives a client a named place to start and optionally group sessions.
+A Workspace is a saved session context. It can point at a directory, or it can be dirless for inbox/research-style work.
 
 Each Workspace stores:
 
 - A stable `wsp_` ID.
 - A display name.
-- A filesystem path.
+- An optional filesystem path.
 - The owning Wingman client.
 
 The built-in default client always has a default Workspace named `Wingman`. If you omit `X-Wingman-Client`, `GET /workspaces` uses the built-in `Wingman` client and creates that default Workspace if it does not already exist.
@@ -29,16 +29,17 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
-Wingman copies the Workspace path into the session's `work_dir` and records `workspace_id` on the session. Later Workspace path edits do not rewrite existing sessions.
+Wingman records `workspace_id` on the session and copies the Workspace path into the session's `work_dir` when the Workspace has one. Dirless Workspaces create sessions without a working directory. Later Workspace path edits do not rewrite existing sessions.
 
-Do not send both `working_directory` and `workspace_id` when creating or updating a session. Use `workspace_id` when the session belongs to a persisted workspace; use `working_directory` for an ad hoc directory.
+Do not send both `working_directory` and `workspace_id` when creating or updating a session. Use `workspace_id` when the session belongs to a saved context; use `working_directory` for an ad hoc directory.
 
 ## Web UI
 
 The Sessions page treats Workspaces as optional filters, not as required session parents:
 
-- `/web/sessions` shows recent sessions and Workspace cards.
-- `/web/sessions/workspaces/{workspace-slug}` shows sessions for one Workspace.
+- `/web/sessions` shows all sessions.
+- `/web/sessions?workspace=wsp_...` filters sessions to one Workspace.
+- `/web/sessions?workspace=none` filters sessions without a Workspace.
 - `/web/sessions/{session-id}` opens a session, whether or not it belongs to a Workspace.
 
-The `Sessions` breadcrumb returns to `/web/sessions` so you can switch context. Workspace create/edit/delete controls stay on the Sessions page instead of a separate top-level Workspace page.
+Workspace create/edit/delete controls stay on the Sessions page instead of a separate top-level Workspace page.

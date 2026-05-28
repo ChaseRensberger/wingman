@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { workspaceSlug } from "@/lib/workspace-slug";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
@@ -116,7 +115,7 @@ export const Route = createFileRoute("/sessions/$sessionId")({
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
   const [session, setSession] = useState<Session | null>(null);
-  const [workspace, setBase] = useState<Workspace | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -141,9 +140,9 @@ function SessionDetailPage() {
       const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
       setSession(data);
       if (data.workspace_id) {
-        setBase((await wfetch(`/workspaces/${data.workspace_id}`)) as Workspace);
+        setWorkspace((await wfetch(`/workspaces/${data.workspace_id}`)) as Workspace);
       } else {
-        setBase(null);
+        setWorkspace(null);
       }
     } catch (err) {
       console.error("Failed to load session", err);
@@ -176,12 +175,12 @@ function SessionDetailPage() {
           setSession(sessData);
           if (sessData.workspace_id) {
             try {
-              setBase((await wfetch(`/workspaces/${sessData.workspace_id}`)) as Workspace);
+              setWorkspace((await wfetch(`/workspaces/${sessData.workspace_id}`)) as Workspace);
             } catch {
-              setBase(null);
+              setWorkspace(null);
             }
           } else {
-            setBase(null);
+            setWorkspace(null);
           }
           setAgents(agentsData);
           setProviders(providerData);
@@ -449,7 +448,7 @@ function SessionDetailPage() {
         <PageBreadcrumb
           items={workspace ? [
             { label: "Sessions", to: "/sessions" },
-            { label: workspace.name, to: `/sessions/workspaces/${workspaceSlug(workspace)}` },
+            { label: workspace.name, to: `/sessions?workspace=${workspace.id}` },
             { label: session.title || session.id.slice(0, 8) },
           ] : [
             { label: "Sessions", to: "/sessions" },

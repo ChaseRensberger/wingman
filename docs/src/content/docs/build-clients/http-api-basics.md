@@ -20,7 +20,7 @@ Most clients follow this sequence:
 1. Check health with `GET /health`.
 2. Configure provider auth with `PUT /provider/auth`.
 3. Create or reuse an agent with `/agents`.
-4. Create or reuse a Workspace with `/workspaces` if the session should belong to a persisted directory workspace.
+4. Create or reuse a Workspace with `/workspaces` if the session should belong to a saved context.
 5. Create a session with `POST /sessions`.
 6. Send messages with `POST /sessions/{id}/message` or `POST /sessions/{id}/message/stream`.
 
@@ -45,7 +45,7 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 ## Workspaces
 
-Workspaces are client-scoped directory workspaces. `GET /workspaces` lists Workspaces for the active client and creates the default `Wingman` Workspace if needed.
+Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client and creates the default `Wingman` Workspace if needed.
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \

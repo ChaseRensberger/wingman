@@ -66,10 +66,6 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if path == "" {
-		writeError(w, http.StatusBadRequest, "path is required")
-		return
-	}
 
 	workspace := &store.Workspace{Name: req.Name, Path: path}
 	clientID, err := s.resolveClientID(r)
@@ -154,10 +150,6 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		path, err := session.ResolveWorkDir(*req.Path)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if path == "" {
-			writeError(w, http.StatusBadRequest, "path is required")
 			return
 		}
 		workspace.Path = path

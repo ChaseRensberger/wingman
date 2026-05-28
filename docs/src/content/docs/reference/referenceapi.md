@@ -124,7 +124,7 @@ Or create the session from a Workspace:
 }
 ```
 
-`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is set, Wingman copies the Workspace path into `work_dir` and records `workspace_id` on the session.
+`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is set, Wingman records `workspace_id` on the session and copies the Workspace path into `work_dir` if the Workspace has one.
 
 ### Message request
 
@@ -188,7 +188,7 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 | `POST` | `/workspaces` | Create Workspace |
 | `GET` | `/workspaces` | List Workspaces for the active client, ensuring the default `Wingman` Workspace exists |
 | `GET` | `/workspaces/{id}` | Get Workspace |
-| `PUT` | `/workspaces/{id}` | Update Workspace metadata (name, path) |
+| `PUT` | `/workspaces/{id}` | Update Workspace metadata (name, optional path) |
 | `DELETE` | `/workspaces/{id}` | Delete Workspace |
 | `GET` | `/workspaces/{id}/sessions` | List sessions in a Workspace |
 
@@ -200,6 +200,8 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
   "path": "/home/me/project"
 }
 ```
+
+Use an empty `path` for a dirless Workspace.
 
 Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
 

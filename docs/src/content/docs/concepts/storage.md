@@ -40,7 +40,7 @@ The SQLite schema stores:
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
-| `workspaces` | Client-owned directory workspaces used to group sessions and seed working directories. |
+| `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
 | `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, timestamps. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
@@ -50,7 +50,7 @@ The SQLite schema stores:
 
 Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
 
-Sessions created with `workspace_id` store both the Workspace relationship and a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
+Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
 ## Model Calls
 

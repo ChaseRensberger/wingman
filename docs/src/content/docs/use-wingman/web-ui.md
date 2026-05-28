@@ -23,17 +23,18 @@ The web UI is a client of the same HTTP API documented in [HTTP API](/reference/
 
 ## Sessions And Workspaces
 
-The Sessions page starts with Workspace cards. A Workspace is a named directory workspace; clicking one opens the sessions created for that Workspace.
+The Sessions page shows all sessions by default. Use the Workspace dropdown to filter to a saved Workspace or to sessions with no Workspace.
 
 The default `Wingman` Workspace is created automatically for the built-in client. Create, edit, and delete Workspaces from the Sessions page.
 
 Workspace filters and session detail are reflected in the URL:
 
-- `/web/sessions` shows recent sessions and Workspace cards.
-- `/web/sessions/workspaces/wingman` shows sessions for the default Workspace.
+- `/web/sessions` shows all sessions.
+- `/web/sessions?workspace=wsp_...` shows sessions for one Workspace.
+- `/web/sessions?workspace=none` shows sessions without a Workspace.
 - `/web/sessions/ses_...` opens a session, whether or not it belongs to a Workspace.
 
-Session detail pages include the Workspace in the breadcrumb when present, for example `Home > Sessions > Wingman > New session`. The `Sessions` breadcrumb returns to the sessions hub.
+Session detail pages include the Workspace in the breadcrumb when present, for example `Home > Sessions > Wingman > New session`. The Workspace breadcrumb returns to the filtered sessions hub.
 
 ## Development Proxy
 

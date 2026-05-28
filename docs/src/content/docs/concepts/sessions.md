@@ -18,7 +18,7 @@ This distinction is load-bearing:
 
 That shape lets one session hand off between agents or models without creating a new conversation record.
 
-Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a persisted directory workspace that groups sessions and seeds their working directory.
+Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 
 ## Create Then Send
 
@@ -42,7 +42,7 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
-`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is used, Wingman copies the Workspace path into the session's `work_dir` and keeps `workspace_id` for grouping.
+`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is used, Wingman keeps `workspace_id` for grouping and copies the Workspace path into the session's `work_dir` when it has one.
 
 Send a message:
 
