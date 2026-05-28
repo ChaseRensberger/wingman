@@ -93,7 +93,7 @@ function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 export function Markdown({ text, isStreaming = false }: { text: string; isStreaming?: boolean }) {
   return (
-    <div className="space-y-2 text-sm leading-relaxed [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted [&_blockquote]:pl-3 [&_blockquote]:italic [&_hr]:my-3 [&_table]:w-full [&_table]:text-left [&_td]:py-1 [&_th]:border-b [&_th]:py-1">
+    <div className="space-y-2 text-sm leading-relaxed [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li::marker]:text-[var(--markdown-list-marker)] [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-[var(--markdown-heading)] [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-[var(--markdown-heading)] [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-[var(--markdown-heading)] [&_strong]:font-semibold [&_strong]:text-[var(--markdown-strong)] [&_b]:font-semibold [&_b]:text-[var(--markdown-strong)] [&_em]:text-[var(--markdown-emph)] [&_i]:text-[var(--markdown-emph)] [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[color:var(--markdown-quote)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--markdown-quote)] [&_blockquote]:italic [&_hr]:my-3 [&_table]:w-full [&_table]:text-left [&_td]:py-1 [&_th]:border-b [&_th]:py-1">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -105,7 +105,7 @@ export function Markdown({ text, isStreaming = false }: { text: string; isStream
             const code = String(children).replace(/\n$/, "");
             if (!match) {
               return (
-                <code className="rounded-md border bg-muted/55 px-1.5 py-0.5 text-[0.82em] font-medium text-foreground">
+                <code className="rounded-md border bg-muted/55 px-1.5 py-0.5 text-[0.82em] font-medium text-[var(--markdown-code)]">
                   {children}
                 </code>
               );

@@ -64,6 +64,12 @@
   --ring: oklch(0.708 0 0);
   --overlay: oklch(0 0 0 / 0.05);
   --subtle-foreground: oklch(0.552 0.016 285.938 / 0.5);
+  --markdown-heading: #d68c27;
+  --markdown-code: #3d9a57;
+  --markdown-emph: #b0851f;
+  --markdown-strong: #d68c27;
+  --markdown-list-marker: #3b7dd8;
+  --markdown-quote: #b0851f;
 }
 
 .dark {
@@ -89,6 +95,12 @@
   --popover-foreground: oklch(0.985 0 0);
   --overlay: oklch(0.141 0.005 285.823 / 0.05);
   --subtle-foreground: oklch(0.985 0 0 / 0.2);
+  --markdown-heading: #9d7cd8;
+  --markdown-code: #7fd88f;
+  --markdown-emph: #e5c07b;
+  --markdown-strong: #f5a742;
+  --markdown-list-marker: #fab283;
+  --markdown-quote: #e5c07b;
 }
 
 @layer base {
