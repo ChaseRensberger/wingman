@@ -172,6 +172,7 @@ func jsonContentType(next http.Handler) http.Handler {
 			strings.HasPrefix(path, "/clients") ||
 			strings.HasPrefix(path, "/logs") ||
 			strings.HasPrefix(path, "/plugins") ||
+			strings.HasPrefix(path, "/workspaces") ||
 			strings.HasPrefix(path, "/sessions") ||
 			strings.HasPrefix(path, "/run") {
 			w.Header().Set("Content-Type", "application/json")
@@ -212,13 +213,13 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}", s.handleGetClient)
 	})
 
-	s.router.Route("/bases", func(r chi.Router) {
-		r.Get("/", s.handleListBases)
-		r.Post("/", s.handleCreateBase)
-		r.Get("/{id}", s.handleGetBase)
-		r.Put("/{id}", s.handleUpdateBase)
-		r.Delete("/{id}", s.handleDeleteBase)
-		r.Get("/{id}/sessions", s.handleListBaseSessions)
+	s.router.Route("/workspaces", func(r chi.Router) {
+		r.Get("/", s.handleListWorkspaces)
+		r.Post("/", s.handleCreateWorkspace)
+		r.Get("/{id}", s.handleGetWorkspace)
+		r.Put("/{id}", s.handleUpdateWorkspace)
+		r.Delete("/{id}", s.handleDeleteWorkspace)
+		r.Get("/{id}/sessions", s.handleListWorkspaceSessions)
 	})
 
 	s.router.Route("/sessions", func(r chi.Router) {

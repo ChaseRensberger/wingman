@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { workspaceSlug } from "@/lib/workspace-slug";
 import { wfetch, getClientId } from "@/lib/client";
-import type { Session, Agent, Base, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
+import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
@@ -108,14 +109,14 @@ function formatSessionError(err: unknown): string {
   return message.replace(/^Error:\s*/, "");
 }
 
-export const Route = createFileRoute("/sessions/$baseSlug/$sessionId")({
+export const Route = createFileRoute("/sessions/$sessionId")({
   component: SessionDetailPage,
 });
 
 function SessionDetailPage() {
-  const { baseSlug, sessionId } = Route.useParams();
+  const { sessionId } = Route.useParams();
   const [session, setSession] = useState<Session | null>(null);
-  const [base, setBase] = useState<Base | null>(null);
+  const [workspace, setBase] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -139,8 +140,8 @@ function SessionDetailPage() {
     try {
       const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
       setSession(data);
-      if (data.base_id) {
-        setBase((await wfetch(`/bases/${data.base_id}`)) as Base);
+      if (data.workspace_id) {
+        setBase((await wfetch(`/workspaces/${data.workspace_id}`)) as Workspace);
       } else {
         setBase(null);
       }
@@ -173,9 +174,9 @@ function SessionDetailPage() {
         );
         if (!cancelled) {
           setSession(sessData);
-          if (sessData.base_id) {
+          if (sessData.workspace_id) {
             try {
-              setBase((await wfetch(`/bases/${sessData.base_id}`)) as Base);
+              setBase((await wfetch(`/workspaces/${sessData.workspace_id}`)) as Workspace);
             } catch {
               setBase(null);
             }
@@ -446,9 +447,9 @@ function SessionDetailPage() {
     <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
       <div className="border-b py-4">
         <PageBreadcrumb
-          items={base ? [
+          items={workspace ? [
             { label: "Sessions", to: "/sessions" },
-            { label: base.name, to: `/sessions/${baseSlug}` },
+            { label: workspace.name, to: `/sessions/workspaces/${workspaceSlug(workspace)}` },
             { label: session.title || session.id.slice(0, 8) },
           ] : [
             { label: "Sessions", to: "/sessions" },

@@ -19,21 +19,21 @@ Open:
 http://localhost:2323/web
 ```
 
-The web UI is a client of the same HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Bases, and sessions without writing `curl` requests by hand.
+The web UI is a client of the same HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Workspaces, and sessions without writing `curl` requests by hand.
 
-## Sessions And Bases
+## Sessions And Workspaces
 
-The Sessions page starts with Base cards. A Base is a named directory workspace; clicking one opens the sessions created for that Base.
+The Sessions page starts with Workspace cards. A Workspace is a named directory workspace; clicking one opens the sessions created for that Workspace.
 
-The default `Wingman` Base is created automatically for the built-in client. Create, edit, and delete Bases from the Sessions page.
+The default `Wingman` Workspace is created automatically for the built-in client. Create, edit, and delete Workspaces from the Sessions page.
 
-Base selection is reflected in the URL:
+Workspace filters and session detail are reflected in the URL:
 
-- `/web/sessions` shows all Bases.
-- `/web/sessions/wingman` shows sessions for the default Base.
-- `/web/sessions/wingman/ses_...` opens a session in that Base.
+- `/web/sessions` shows recent sessions and Workspace cards.
+- `/web/sessions/workspaces/wingman` shows sessions for the default Workspace.
+- `/web/sessions/ses_...` opens a session, whether or not it belongs to a Workspace.
 
-Session detail pages include the Base in the breadcrumb, for example `Home > Sessions > Wingman > New session`. The `Sessions` breadcrumb returns to the Base overview.
+Session detail pages include the Workspace in the breadcrumb when present, for example `Home > Sessions > Wingman > New session`. The `Sessions` breadcrumb returns to the sessions hub.
 
 ## Development Proxy
 

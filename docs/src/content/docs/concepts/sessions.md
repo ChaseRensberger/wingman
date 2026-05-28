@@ -18,7 +18,7 @@ This distinction is load-bearing:
 
 That shape lets one session hand off between agents or models without creating a new conversation record.
 
-Sessions can belong to a [Base](/concepts/bases). A Base is a persisted directory workspace that groups sessions and seeds their working directory.
+Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a persisted directory workspace that groups sessions and seeds their working directory.
 
 ## Create Then Send
 
@@ -32,17 +32,17 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Explore repo\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 ```
 
-Create a session in a Base:
+Create a session in a Workspace:
 
 ```bash
-BASE_ID=$(curl -sS http://localhost:2323/bases | jq -r '.[0].id')
+WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces | jq -r '.[0].id')
 
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -H "Content-Type: application/json" \
-  -d "{\"title\":\"Explore repo\",\"base_id\":\"${BASE_ID}\"}" | jq -r .id)
+  -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
-`working_directory` and `base_id` are mutually exclusive. When `base_id` is used, Wingman copies the Base path into the session's `work_dir` and keeps `base_id` for grouping.
+`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is used, Wingman copies the Workspace path into the session's `work_dir` and keeps `workspace_id` for grouping.
 
 Send a message:
 
@@ -108,15 +108,15 @@ curl -N -X POST http://localhost:2323/run \
 
 An ephemeral run has a runtime, tools, model calls, and events. It is not written to the store.
 
-When the server is started with `--ephemeral`, persisted endpoints such as `/sessions`, `/agents`, `/clients`, `/bases`, and `/provider/auth` return `501 Not Implemented`. Use inline agent specs with `/run` in that mode.
+When the server is started with `--ephemeral`, persisted endpoints such as `/sessions`, `/agents`, `/clients`, `/workspaces`, and `/provider/auth` return `501 Not Implemented`. Use inline agent specs with `/run` in that mode.
 
 ## Working Directory
 
-A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` use that directory as their base.
+A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` use that directory as their workspace.
 
 Sessions without a working directory are valid if the selected agent only uses tools that do not need one, such as `webfetch`.
 
-A session created with `base_id` stores a snapshot of that Base's path as `work_dir`. Changing the Base later affects future sessions, not existing session history or existing `work_dir` values.
+A session created with `workspace_id` stores a snapshot of that Workspace's path as `work_dir`. Changing the Workspace later affects future sessions, not existing session history or existing `work_dir` values.
 
 ## Message Parts
 

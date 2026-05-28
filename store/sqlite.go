@@ -333,17 +333,17 @@ func (s *SQLiteStore) ListClients() ([]*Client, error) {
 	return out, rows.Err()
 }
 
-// ---- bases ---------------------------------------------------------------
+// ---- workspaces ---------------------------------------------------------------
 
-// CreateBase inserts a saved working directory. If base.ID is empty, a
+// CreateWorkspace inserts a saved working directory. If workspace.ID is empty, a
 // fresh KSUID is minted. CreatedAt/UpdatedAt are always overwritten with Now().
-func (s *SQLiteStore) CreateBase(base *Base) error {
-	if base.ID == "" {
-		base.ID = NewID(PrefixBase)
+func (s *SQLiteStore) CreateWorkspace(workspace *Workspace) error {
+	if workspace.ID == "" {
+		workspace.ID = NewID(PrefixWorkspace)
 	}
 	now := Now()
-	base.CreatedAt = now
-	base.UpdatedAt = now
+	workspace.CreatedAt = now
+	workspace.UpdatedAt = now
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -351,81 +351,81 @@ func (s *SQLiteStore) CreateBase(base *Base) error {
 	}
 	defer tx.Rollback()
 
-	if base.ClientID != "" {
+	if workspace.ClientID != "" {
 		var exists int
-		if err := tx.QueryRow(`SELECT 1 FROM clients WHERE id = ?`, base.ClientID).Scan(&exists); err != nil {
+		if err := tx.QueryRow(`SELECT 1 FROM clients WHERE id = ?`, workspace.ClientID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
-				return fmt.Errorf("client not found: %s", base.ClientID)
+				return fmt.Errorf("client not found: %s", workspace.ClientID)
 			}
 			return fmt.Errorf("verify client: %w", err)
 		}
 	}
 
 	var clientIDPtr *string
-	if base.ClientID != "" {
-		clientIDPtr = &base.ClientID
+	if workspace.ClientID != "" {
+		clientIDPtr = &workspace.ClientID
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO bases (id, name, path, client_id, created_at, updated_at)
+		INSERT INTO workspaces (id, name, path, client_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, base.ID, base.Name, base.Path, clientIDPtr, base.CreatedAt, base.UpdatedAt); err != nil {
-		return fmt.Errorf("insert base: %w", err)
+	`, workspace.ID, workspace.Name, workspace.Path, clientIDPtr, workspace.CreatedAt, workspace.UpdatedAt); err != nil {
+		return fmt.Errorf("insert workspace: %w", err)
 	}
 
 	return tx.Commit()
 }
 
-// GetBase returns the base with the given ID, or an error if not found.
-func (s *SQLiteStore) GetBase(id string) (*Base, error) {
-	var base Base
+// GetWorkspace returns the workspace with the given ID, or an error if not found.
+func (s *SQLiteStore) GetWorkspace(id string) (*Workspace, error) {
+	var workspace Workspace
 	var clientID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, name, path, client_id, created_at, updated_at FROM bases WHERE id = ?
-	`, id).Scan(&base.ID, &base.Name, &base.Path, &clientID, &base.CreatedAt, &base.UpdatedAt)
+		SELECT id, name, path, client_id, created_at, updated_at FROM workspaces WHERE id = ?
+	`, id).Scan(&workspace.ID, &workspace.Name, &workspace.Path, &clientID, &workspace.CreatedAt, &workspace.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("base not found: %s", id)
+		return nil, fmt.Errorf("workspace not found: %s", id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	base.ClientID = clientID.String
-	return &base, nil
+	workspace.ClientID = clientID.String
+	return &workspace, nil
 }
 
-// ListBases returns every base, newest first by created_at.
-func (s *SQLiteStore) ListBases() ([]*Base, error) {
+// ListWorkspaces returns every workspace, newest first by created_at.
+func (s *SQLiteStore) ListWorkspaces() ([]*Workspace, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, path, client_id, created_at, updated_at FROM bases ORDER BY created_at DESC
+		SELECT id, name, path, client_id, created_at, updated_at FROM workspaces ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanBases(rows)
+	return scanWorkspaces(rows)
 }
 
-// ListBasesByClient returns every base attributed to a specific client.
-func (s *SQLiteStore) ListBasesByClient(clientID string) ([]*Base, error) {
+// ListWorkspacesByClient returns every workspace attributed to a specific client.
+func (s *SQLiteStore) ListWorkspacesByClient(clientID string) ([]*Workspace, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, path, client_id, created_at, updated_at FROM bases WHERE client_id = ? ORDER BY created_at DESC
+		SELECT id, name, path, client_id, created_at, updated_at FROM workspaces WHERE client_id = ? ORDER BY created_at DESC
 	`, clientID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanBases(rows)
+	return scanWorkspaces(rows)
 }
 
-func scanBases(rows *sql.Rows) ([]*Base, error) {
-	var out []*Base
+func scanWorkspaces(rows *sql.Rows) ([]*Workspace, error) {
+	var out []*Workspace
 	for rows.Next() {
-		var base Base
+		var workspace Workspace
 		var clientID sql.NullString
-		if err := rows.Scan(&base.ID, &base.Name, &base.Path, &clientID, &base.CreatedAt, &base.UpdatedAt); err != nil {
+		if err := rows.Scan(&workspace.ID, &workspace.Name, &workspace.Path, &clientID, &workspace.CreatedAt, &workspace.UpdatedAt); err != nil {
 			return nil, err
 		}
-		base.ClientID = clientID.String
-		out = append(out, &base)
+		workspace.ClientID = clientID.String
+		out = append(out, &workspace)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -433,17 +433,17 @@ func scanBases(rows *sql.Rows) ([]*Base, error) {
 	return out, nil
 }
 
-// UpdateBase overwrites the base's mutable fields.
-func (s *SQLiteStore) UpdateBase(base *Base) error {
-	base.UpdatedAt = Now()
+// UpdateWorkspace overwrites the workspace's mutable fields.
+func (s *SQLiteStore) UpdateWorkspace(workspace *Workspace) error {
+	workspace.UpdatedAt = Now()
 	var clientIDPtr *string
-	if base.ClientID != "" {
-		clientIDPtr = &base.ClientID
+	if workspace.ClientID != "" {
+		clientIDPtr = &workspace.ClientID
 	}
 
 	res, err := s.db.Exec(`
-		UPDATE bases SET name = ?, path = ?, client_id = ?, updated_at = ? WHERE id = ?
-	`, base.Name, base.Path, clientIDPtr, base.UpdatedAt, base.ID)
+		UPDATE workspaces SET name = ?, path = ?, client_id = ?, updated_at = ? WHERE id = ?
+	`, workspace.Name, workspace.Path, clientIDPtr, workspace.UpdatedAt, workspace.ID)
 	if err != nil {
 		return err
 	}
@@ -452,15 +452,15 @@ func (s *SQLiteStore) UpdateBase(base *Base) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("base not found: %s", base.ID)
+		return fmt.Errorf("workspace not found: %s", workspace.ID)
 	}
 	return nil
 }
 
-// DeleteBase removes the base. Linked sessions keep their work_dir and
-// have base_id set to NULL by the foreign key.
-func (s *SQLiteStore) DeleteBase(id string) error {
-	res, err := s.db.Exec(`DELETE FROM bases WHERE id = ?`, id)
+// DeleteWorkspace removes the workspace. Linked sessions keep their work_dir and
+// have workspace_id set to NULL by the foreign key.
+func (s *SQLiteStore) DeleteWorkspace(id string) error {
+	res, err := s.db.Exec(`DELETE FROM workspaces WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -469,7 +469,7 @@ func (s *SQLiteStore) DeleteBase(id string) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("base not found: %s", id)
+		return fmt.Errorf("workspace not found: %s", id)
 	}
 	return nil
 }
@@ -501,13 +501,13 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 			return fmt.Errorf("verify client: %w", err)
 		}
 	}
-	if session.BaseID != "" {
+	if session.WorkspaceID != "" {
 		var exists int
-		if err := tx.QueryRow(`SELECT 1 FROM bases WHERE id = ?`, session.BaseID).Scan(&exists); err != nil {
+		if err := tx.QueryRow(`SELECT 1 FROM workspaces WHERE id = ?`, session.WorkspaceID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
-				return fmt.Errorf("base not found: %s", session.BaseID)
+				return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 			}
-			return fmt.Errorf("verify base: %w", err)
+			return fmt.Errorf("verify workspace: %w", err)
 		}
 	}
 
@@ -515,18 +515,18 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	if session.WorkDir != "" {
 		workDirPtr = &session.WorkDir
 	}
-	var baseIDPtr *string
-	if session.BaseID != "" {
-		baseIDPtr = &session.BaseID
+	var workspaceIDPtr *string
+	if session.WorkspaceID != "" {
+		workspaceIDPtr = &session.WorkspaceID
 	}
 	var clientIDPtr *string
 	if session.ClientID != "" {
 		clientIDPtr = &session.ClientID
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO sessions (id, title, work_dir, base_id, client_id, created_at, updated_at)
+		INSERT INTO sessions (id, title, work_dir, workspace_id, client_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, session.ID, session.Title, workDirPtr, baseIDPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
+	`, session.ID, session.Title, workDirPtr, workspaceIDPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
@@ -537,11 +537,11 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var session Session
 	var workDir sql.NullString
-	var baseID sql.NullString
+	var workspaceID sql.NullString
 	var clientID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.Title, &workDir, &baseID, &clientID, &session.CreatedAt, &session.UpdatedAt)
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.Title, &workDir, &workspaceID, &clientID, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -549,7 +549,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 		return nil, err
 	}
 	session.WorkDir = workDir.String
-	session.BaseID = baseID.String
+	session.WorkspaceID = workspaceID.String
 	session.ClientID = clientID.String
 	return &session, nil
 }
@@ -558,7 +558,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 // loaded automatically; use ListMessages for message retrieval.
 func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -569,13 +569,13 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	for rows.Next() {
 		var sess Session
 		var workDir sql.NullString
-		var baseID sql.NullString
+		var workspaceID sql.NullString
 		var clientID sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &baseID, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
-		sess.BaseID = baseID.String
+		sess.WorkspaceID = workspaceID.String
 		sess.ClientID = clientID.String
 		out = append(out, &sess)
 	}
@@ -589,7 +589,7 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 // Wingman API client, newest first. Sessions with no client are excluded.
 func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
 	`, clientID)
 	if err != nil {
 		return nil, err
@@ -600,13 +600,13 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 	for rows.Next() {
 		var sess Session
 		var workDir sql.NullString
-		var baseID sql.NullString
+		var workspaceID sql.NullString
 		var cid sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &baseID, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
-		sess.BaseID = baseID.String
+		sess.WorkspaceID = workspaceID.String
 		sess.ClientID = cid.String
 		out = append(out, &sess)
 	}
@@ -616,11 +616,11 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 	return out, nil
 }
 
-// ListSessionsByBase returns every session linked to a base, newest first.
-func (s *SQLiteStore) ListSessionsByBase(baseID string) ([]*Session, error) {
+// ListSessionsByWorkspace returns every session linked to a workspace, newest first.
+func (s *SQLiteStore) ListSessionsByWorkspace(workspaceID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, base_id, client_id, created_at, updated_at FROM sessions WHERE base_id = ? ORDER BY created_at DESC
-	`, baseID)
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE workspace_id = ? ORDER BY created_at DESC
+	`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +636,7 @@ func (s *SQLiteStore) ListSessionsByBase(baseID string) ([]*Session, error) {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
-		sess.BaseID = sid.String
+		sess.WorkspaceID = sid.String
 		sess.ClientID = cid.String
 		out = append(out, &sess)
 	}
@@ -649,27 +649,27 @@ func (s *SQLiteStore) ListSessionsByBase(baseID string) ([]*Session, error) {
 // UpdateSession overwrites the session's mutable metadata.
 func (s *SQLiteStore) UpdateSession(session *Session) error {
 	session.UpdatedAt = Now()
-	if session.BaseID != "" {
+	if session.WorkspaceID != "" {
 		var exists int
-		if err := s.db.QueryRow(`SELECT 1 FROM bases WHERE id = ?`, session.BaseID).Scan(&exists); err != nil {
+		if err := s.db.QueryRow(`SELECT 1 FROM workspaces WHERE id = ?`, session.WorkspaceID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
-				return fmt.Errorf("base not found: %s", session.BaseID)
+				return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 			}
-			return fmt.Errorf("verify base: %w", err)
+			return fmt.Errorf("verify workspace: %w", err)
 		}
 	}
 	var workDirPtr *string
 	if session.WorkDir != "" {
 		workDirPtr = &session.WorkDir
 	}
-	var baseIDPtr *string
-	if session.BaseID != "" {
-		baseIDPtr = &session.BaseID
+	var workspaceIDPtr *string
+	if session.WorkspaceID != "" {
+		workspaceIDPtr = &session.WorkspaceID
 	}
 
 	res, err := s.db.Exec(`
-		UPDATE sessions SET title = ?, work_dir = ?, base_id = ?, updated_at = ? WHERE id = ?
-	`, session.Title, workDirPtr, baseIDPtr, session.UpdatedAt, session.ID)
+		UPDATE sessions SET title = ?, work_dir = ?, workspace_id = ?, updated_at = ? WHERE id = ?
+	`, session.Title, workDirPtr, workspaceIDPtr, session.UpdatedAt, session.ID)
 	if err != nil {
 		return err
 	}

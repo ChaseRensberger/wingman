@@ -22,7 +22,7 @@ type Store struct {
 	agents     map[string]*store.Agent
 	sessions   map[string]*store.Session
 	clients    map[string]*store.Client
-	bases      map[string]*store.Base
+	workspaces map[string]*store.Workspace
 	messages   map[string]*store.StoredMessage
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
@@ -35,7 +35,7 @@ func NewStore() *Store {
 		agents:     make(map[string]*store.Agent),
 		sessions:   make(map[string]*store.Session),
 		clients:    make(map[string]*store.Client),
-		bases:      make(map[string]*store.Base),
+		workspaces: make(map[string]*store.Workspace),
 		messages:   make(map[string]*store.StoredMessage),
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
@@ -85,11 +85,11 @@ func copyClient(c *store.Client) *store.Client {
 	return &cp
 }
 
-func copyBase(base *store.Base) *store.Base {
-	if base == nil {
+func copyWorkspace(workspace *store.Workspace) *store.Workspace {
+	if workspace == nil {
 		return nil
 	}
-	cp := *base
+	cp := *workspace
 	return &cp
 }
 
@@ -279,47 +279,47 @@ func (s *Store) ListClients() ([]*store.Client, error) {
 	return out, nil
 }
 
-// ---- bases ---------------------------------------------------------------
+// ---- workspaces ---------------------------------------------------------------
 
-func (s *Store) CreateBase(base *store.Base) error {
+func (s *Store) CreateWorkspace(workspace *store.Workspace) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if base.ID == "" {
-		base.ID = store.NewID(store.PrefixBase)
+	if workspace.ID == "" {
+		workspace.ID = store.NewID(store.PrefixWorkspace)
 	}
 	now := store.Now()
-	base.CreatedAt = now
-	base.UpdatedAt = now
+	workspace.CreatedAt = now
+	workspace.UpdatedAt = now
 
-	if base.ClientID != "" {
-		if _, ok := s.clients[base.ClientID]; !ok {
-			return fmt.Errorf("client not found: %s", base.ClientID)
+	if workspace.ClientID != "" {
+		if _, ok := s.clients[workspace.ClientID]; !ok {
+			return fmt.Errorf("client not found: %s", workspace.ClientID)
 		}
 	}
 
-	s.bases[base.ID] = copyBase(base)
+	s.workspaces[workspace.ID] = copyWorkspace(workspace)
 	return nil
 }
 
-func (s *Store) GetBase(id string) (*store.Base, error) {
+func (s *Store) GetWorkspace(id string) (*store.Workspace, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	base, ok := s.bases[id]
+	workspace, ok := s.workspaces[id]
 	if !ok {
-		return nil, fmt.Errorf("base not found: %s", id)
+		return nil, fmt.Errorf("workspace not found: %s", id)
 	}
-	return copyBase(base), nil
+	return copyWorkspace(workspace), nil
 }
 
-func (s *Store) ListBases() ([]*store.Base, error) {
+func (s *Store) ListWorkspaces() ([]*store.Workspace, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make([]*store.Base, 0, len(s.bases))
-	for _, base := range s.bases {
-		out = append(out, copyBase(base))
+	out := make([]*store.Workspace, 0, len(s.workspaces))
+	for _, workspace := range s.workspaces {
+		out = append(out, copyWorkspace(workspace))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].CreatedAt > out[j].CreatedAt
@@ -327,14 +327,14 @@ func (s *Store) ListBases() ([]*store.Base, error) {
 	return out, nil
 }
 
-func (s *Store) ListBasesByClient(clientID string) ([]*store.Base, error) {
+func (s *Store) ListWorkspacesByClient(clientID string) ([]*store.Workspace, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make([]*store.Base, 0)
-	for _, base := range s.bases {
-		if base.ClientID == clientID {
-			out = append(out, copyBase(base))
+	out := make([]*store.Workspace, 0)
+	for _, workspace := range s.workspaces {
+		if workspace.ClientID == clientID {
+			out = append(out, copyWorkspace(workspace))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -343,37 +343,37 @@ func (s *Store) ListBasesByClient(clientID string) ([]*store.Base, error) {
 	return out, nil
 }
 
-func (s *Store) UpdateBase(base *store.Base) error {
+func (s *Store) UpdateWorkspace(workspace *store.Workspace) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	existing, ok := s.bases[base.ID]
+	existing, ok := s.workspaces[workspace.ID]
 	if !ok {
-		return fmt.Errorf("base not found: %s", base.ID)
+		return fmt.Errorf("workspace not found: %s", workspace.ID)
 	}
-	if base.ClientID != "" {
-		if _, ok := s.clients[base.ClientID]; !ok {
-			return fmt.Errorf("client not found: %s", base.ClientID)
+	if workspace.ClientID != "" {
+		if _, ok := s.clients[workspace.ClientID]; !ok {
+			return fmt.Errorf("client not found: %s", workspace.ClientID)
 		}
 	}
 
-	base.UpdatedAt = store.Now()
-	base.CreatedAt = existing.CreatedAt
-	s.bases[base.ID] = copyBase(base)
+	workspace.UpdatedAt = store.Now()
+	workspace.CreatedAt = existing.CreatedAt
+	s.workspaces[workspace.ID] = copyWorkspace(workspace)
 	return nil
 }
 
-func (s *Store) DeleteBase(id string) error {
+func (s *Store) DeleteWorkspace(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.bases[id]; !ok {
-		return fmt.Errorf("base not found: %s", id)
+	if _, ok := s.workspaces[id]; !ok {
+		return fmt.Errorf("workspace not found: %s", id)
 	}
-	delete(s.bases, id)
+	delete(s.workspaces, id)
 	for _, sess := range s.sessions {
-		if sess.BaseID == id {
-			sess.BaseID = ""
+		if sess.WorkspaceID == id {
+			sess.WorkspaceID = ""
 		}
 	}
 	return nil
@@ -397,9 +397,9 @@ func (s *Store) CreateSession(session *store.Session) error {
 			return fmt.Errorf("client not found: %s", session.ClientID)
 		}
 	}
-	if session.BaseID != "" {
-		if _, ok := s.bases[session.BaseID]; !ok {
-			return fmt.Errorf("base not found: %s", session.BaseID)
+	if session.WorkspaceID != "" {
+		if _, ok := s.workspaces[session.WorkspaceID]; !ok {
+			return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 		}
 	}
 
@@ -448,13 +448,13 @@ func (s *Store) ListSessionsByClient(clientID string) ([]*store.Session, error) 
 	return out, nil
 }
 
-func (s *Store) ListSessionsByBase(baseID string) ([]*store.Session, error) {
+func (s *Store) ListSessionsByWorkspace(workspaceID string) ([]*store.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	out := make([]*store.Session, 0)
 	for _, sess := range s.sessions {
-		if sess.BaseID == baseID {
+		if sess.WorkspaceID == workspaceID {
 			out = append(out, copySession(sess))
 		}
 	}
@@ -476,9 +476,9 @@ func (s *Store) UpdateSession(session *store.Session) error {
 	session.UpdatedAt = store.Now()
 	session.ClientID = existing.ClientID
 	session.CreatedAt = existing.CreatedAt
-	if session.BaseID != "" {
-		if _, ok := s.bases[session.BaseID]; !ok {
-			return fmt.Errorf("base not found: %s", session.BaseID)
+	if session.WorkspaceID != "" {
+		if _, ok := s.workspaces[session.WorkspaceID]; !ok {
+			return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 		}
 	}
 	s.sessions[session.ID] = copySession(session)

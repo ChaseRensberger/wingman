@@ -6,7 +6,7 @@ order: 1000
 
 # API
 
-Base URL: `http://localhost:2323` (configurable via `--host` and `--port`).
+Workspace URL: `http://localhost:2323` (configurable via `--host` and `--port`).
 
 All endpoints accept and return JSON unless noted. Error responses use the shape `{"error": "..."}`.
 
@@ -15,7 +15,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 - Request bodies are JSON.
 - Standard request timeout is 60 seconds.
 - `POST /sessions/{id}/message/stream` bypasses the standard timeout and returns `text/event-stream`.
-- ID prefixes are stable: `agt_` (agent), `bas_` (Base), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
+- ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Health
 
@@ -115,16 +115,16 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 }
 ```
 
-Or create the session from a Base:
+Or create the session from a Workspace:
 
 ```json
 {
   "title": "Explore repo",
-  "base_id": "bas_..."
+  "workspace_id": "wsp_..."
 }
 ```
 
-`working_directory` and `base_id` are mutually exclusive. When `base_id` is set, Wingman copies the Base path into `work_dir` and records `base_id` on the session.
+`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is set, Wingman copies the Workspace path into `work_dir` and records `workspace_id` on the session.
 
 ### Message request
 
@@ -181,18 +181,18 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 
 `aborted` is the number of in-flight runs cancelled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
 
-## Base endpoints
+## Workspace endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/bases` | Create Base |
-| `GET` | `/bases` | List Bases for the active client, ensuring the default `Wingman` Base exists |
-| `GET` | `/bases/{id}` | Get Base |
-| `PUT` | `/bases/{id}` | Update Base metadata (name, path) |
-| `DELETE` | `/bases/{id}` | Delete Base |
-| `GET` | `/bases/{id}/sessions` | List sessions in a Base |
+| `POST` | `/workspaces` | Create Workspace |
+| `GET` | `/workspaces` | List Workspaces for the active client, ensuring the default `Wingman` Workspace exists |
+| `GET` | `/workspaces/{id}` | Get Workspace |
+| `PUT` | `/workspaces/{id}` | Update Workspace metadata (name, path) |
+| `DELETE` | `/workspaces/{id}` | Delete Workspace |
+| `GET` | `/workspaces/{id}/sessions` | List sessions in a Workspace |
 
-### Create Base request
+### Create Workspace request
 
 ```json
 {
@@ -201,7 +201,7 @@ See [Streaming Events](/build-clients/streaming-events) for client-side streamin
 }
 ```
 
-Bases are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
+Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
 
 ## Ephemeral run endpoint
 

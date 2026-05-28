@@ -48,20 +48,20 @@ func loadMigrations() ([]migration, error) {
 			continue
 		}
 		// Filename: NNNN_some_name.sql
-		base := strings.TrimSuffix(e.Name(), ".sql")
-		idx := strings.IndexByte(base, '_')
+		stem := strings.TrimSuffix(e.Name(), ".sql")
+		idx := strings.IndexByte(stem, '_')
 		if idx <= 0 {
 			return nil, fmt.Errorf("migration %q: expected NNNN_name.sql", e.Name())
 		}
 		var v int
-		if _, err := fmt.Sscanf(base[:idx], "%d", &v); err != nil {
+		if _, err := fmt.Sscanf(stem[:idx], "%d", &v); err != nil {
 			return nil, fmt.Errorf("migration %q: bad version: %w", e.Name(), err)
 		}
 		body, err := fs.ReadFile(migrationsFS, "migrations/"+e.Name())
 		if err != nil {
 			return nil, fmt.Errorf("read %q: %w", e.Name(), err)
 		}
-		out = append(out, migration{version: v, name: base[idx+1:], sql: string(body)})
+		out = append(out, migration{version: v, name: stem[idx+1:], sql: string(body)})
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].version < out[j].version })

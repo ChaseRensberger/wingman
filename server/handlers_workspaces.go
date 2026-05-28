@@ -12,47 +12,47 @@ import (
 	"github.com/chaserensberger/wingman/store"
 )
 
-const defaultBaseName = "Wingman"
+const defaultWorkspaceName = "Wingman"
 
-func (s *Server) ensureDefaultBase(clientID string) (*store.Base, error) {
-	var bases []*store.Base
+func (s *Server) ensureDefaultWorkspace(clientID string) (*store.Workspace, error) {
+	var workspaces []*store.Workspace
 	var err error
 	if clientID != "" {
-		bases, err = s.store.ListBasesByClient(clientID)
+		workspaces, err = s.store.ListWorkspacesByClient(clientID)
 	} else {
-		bases, err = s.store.ListBases()
+		workspaces, err = s.store.ListWorkspaces()
 	}
 	if err != nil {
 		return nil, err
 	}
-	for _, base := range bases {
-		if base.Name == defaultBaseName {
-			return base, nil
+	for _, workspace := range workspaces {
+		if workspace.Name == defaultWorkspaceName {
+			return workspace, nil
 		}
 	}
 
 	path, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("default base path: %w", err)
+		return nil, fmt.Errorf("default workspace path: %w", err)
 	}
-	base := &store.Base{Name: defaultBaseName, Path: path, ClientID: clientID}
-	if err := s.store.CreateBase(base); err != nil {
+	workspace := &store.Workspace{Name: defaultWorkspaceName, Path: path, ClientID: clientID}
+	if err := s.store.CreateWorkspace(workspace); err != nil {
 		return nil, err
 	}
-	return base, nil
+	return workspace, nil
 }
 
-type CreateBaseRequest struct {
+type CreateWorkspaceRequest struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 
-func (s *Server) handleCreateBase(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var req CreateBaseRequest
+	var req CreateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -71,84 +71,84 @@ func (s *Server) handleCreateBase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	base := &store.Base{Name: req.Name, Path: path}
+	workspace := &store.Workspace{Name: req.Name, Path: path}
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	base.ClientID = clientID
+	workspace.ClientID = clientID
 
-	if err := s.store.CreateBase(base); err != nil {
+	if err := s.store.CreateWorkspace(workspace); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, base)
+	writeJSON(w, http.StatusCreated, workspace)
 }
 
-func (s *Server) handleListBases(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var bases []*store.Base
+	var workspaces []*store.Workspace
 	var err error
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := s.ensureDefaultBase(clientID); err != nil {
+	if _, err := s.ensureDefaultWorkspace(clientID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	bases, err = s.store.ListBasesByClient(clientID)
+	workspaces, err = s.store.ListWorkspacesByClient(clientID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if bases == nil {
-		bases = []*store.Base{}
+	if workspaces == nil {
+		workspaces = []*store.Workspace{}
 	}
-	writeJSON(w, http.StatusOK, bases)
+	writeJSON(w, http.StatusOK, workspaces)
 }
 
-func (s *Server) handleGetBase(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	base, err := s.store.GetBase(chi.URLParam(r, "id"))
+	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, base)
+	writeJSON(w, http.StatusOK, workspace)
 }
 
-type UpdateBaseRequest struct {
+type UpdateWorkspaceRequest struct {
 	Name *string `json:"name,omitempty"`
 	Path *string `json:"path,omitempty"`
 }
 
-func (s *Server) handleUpdateBase(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	base, err := s.store.GetBase(chi.URLParam(r, "id"))
+	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	var req UpdateBaseRequest
+	var req UpdateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Name != nil {
-		base.Name = *req.Name
+		workspace.Name = *req.Name
 	}
 	if req.Path != nil {
 		path, err := session.ResolveWorkDir(*req.Path)
@@ -160,43 +160,43 @@ func (s *Server) handleUpdateBase(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "path is required")
 			return
 		}
-		base.Path = path
+		workspace.Path = path
 	}
-	if base.Name == "" {
+	if workspace.Name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 
-	if err := s.store.UpdateBase(base); err != nil {
+	if err := s.store.UpdateWorkspace(workspace); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, base)
+	writeJSON(w, http.StatusOK, workspace)
 }
 
-func (s *Server) handleDeleteBase(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	if err := s.store.DeleteBase(chi.URLParam(r, "id")); err != nil {
+	if err := s.store.DeleteWorkspace(chi.URLParam(r, "id")); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-func (s *Server) handleListBaseSessions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListWorkspaceSessions(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	baseID := chi.URLParam(r, "id")
-	if _, err := s.store.GetBase(baseID); err != nil {
+	workspaceID := chi.URLParam(r, "id")
+	if _, err := s.store.GetWorkspace(workspaceID); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	sessions, err := s.store.ListSessionsByBase(baseID)
+	sessions, err := s.store.ListSessionsByWorkspace(workspaceID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

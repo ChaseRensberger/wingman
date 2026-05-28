@@ -23,7 +23,7 @@ import (
 type CreateSessionRequest struct {
 	Title            string `json:"title,omitempty"`
 	WorkingDirectory string `json:"working_directory,omitempty"`
-	BaseID           string `json:"base_id,omitempty"`
+	WorkspaceID      string `json:"workspace_id,omitempty"`
 }
 
 const defaultSessionTitle = "New session"
@@ -44,16 +44,16 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		title = defaultSessionTitle
 	}
 
-	workDir, baseID, err := s.resolveSessionLocation(req.WorkingDirectory, req.BaseID)
+	workDir, workspaceID, err := s.resolveSessionLocation(req.WorkingDirectory, req.WorkspaceID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	sess := &store.Session{
-		Title:   title,
-		WorkDir: workDir,
-		BaseID:  baseID,
+		Title:       title,
+		WorkDir:     workDir,
+		WorkspaceID: workspaceID,
 	}
 
 	clientID, err := s.resolveClientID(r)
@@ -171,7 +171,7 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 type UpdateSessionRequest struct {
 	Title            *string `json:"title,omitempty"`
 	WorkingDirectory *string `json:"working_directory,omitempty"`
-	BaseID           *string `json:"base_id,omitempty"`
+	WorkspaceID      *string `json:"workspace_id,omitempty"`
 }
 
 func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -196,28 +196,28 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Title != nil {
 		sess.Title = *req.Title
 	}
-	if req.WorkingDirectory != nil || req.BaseID != nil {
+	if req.WorkingDirectory != nil || req.WorkspaceID != nil {
 		workingDirectory := sess.WorkDir
-		baseID := sess.BaseID
+		workspaceID := sess.WorkspaceID
 		if req.WorkingDirectory != nil {
 			workingDirectory = *req.WorkingDirectory
-			if req.BaseID == nil {
-				baseID = ""
+			if req.WorkspaceID == nil {
+				workspaceID = ""
 			}
 		}
-		if req.BaseID != nil {
-			baseID = *req.BaseID
-			if baseID != "" {
+		if req.WorkspaceID != nil {
+			workspaceID = *req.WorkspaceID
+			if workspaceID != "" {
 				workingDirectory = ""
 			}
 		}
-		workDir, resolvedBaseID, err := s.resolveSessionLocation(workingDirectory, baseID)
+		workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(workingDirectory, workspaceID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		sess.WorkDir = workDir
-		sess.BaseID = resolvedBaseID
+		sess.WorkspaceID = resolvedWorkspaceID
 	}
 
 	if err := s.store.UpdateSession(sess); err != nil {
@@ -228,16 +228,16 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sess)
 }
 
-func (s *Server) resolveSessionLocation(workingDirectory, baseID string) (workDir string, resolvedBaseID string, err error) {
-	if baseID != "" {
+func (s *Server) resolveSessionLocation(workingDirectory, workspaceID string) (workDir string, resolvedWorkspaceID string, err error) {
+	if workspaceID != "" {
 		if workingDirectory != "" {
-			return "", "", fmt.Errorf("working_directory and base_id cannot both be set")
+			return "", "", fmt.Errorf("working_directory and workspace_id cannot both be set")
 		}
-		base, err := s.store.GetBase(baseID)
+		workspace, err := s.store.GetWorkspace(workspaceID)
 		if err != nil {
 			return "", "", err
 		}
-		return base.Path, base.ID, nil
+		return workspace.Path, workspace.ID, nil
 	}
 	workDir, err = session.ResolveWorkDir(workingDirectory)
 	if err != nil {

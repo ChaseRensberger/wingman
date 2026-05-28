@@ -15,11 +15,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
-import { Route as SessionsBaseSlugRouteImport } from './routes/sessions/$baseSlug'
+import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessionId'
 import { Route as ProvidersProviderIdRouteImport } from './routes/providers/$providerId'
 import { Route as AgentsAgentIdRouteImport } from './routes/agents/$agentId'
-import { Route as SessionsBaseSlugIndexRouteImport } from './routes/sessions/$baseSlug/index'
-import { Route as SessionsBaseSlugSessionIdRouteImport } from './routes/sessions/$baseSlug/$sessionId'
+import { Route as SessionsWorkspacesWorkspaceSlugRouteImport } from './routes/sessions/workspaces/$workspaceSlug'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -51,9 +50,9 @@ const AgentsIndexRoute = AgentsIndexRouteImport.update({
   path: '/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsBaseSlugRoute = SessionsBaseSlugRouteImport.update({
-  id: '/sessions/$baseSlug',
-  path: '/sessions/$baseSlug',
+const SessionsSessionIdRoute = SessionsSessionIdRouteImport.update({
+  id: '/sessions/$sessionId',
+  path: '/sessions/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersProviderIdRoute = ProvidersProviderIdRouteImport.update({
@@ -66,16 +65,11 @@ const AgentsAgentIdRoute = AgentsAgentIdRouteImport.update({
   path: '/agents/$agentId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsBaseSlugIndexRoute = SessionsBaseSlugIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SessionsBaseSlugRoute,
-} as any)
-const SessionsBaseSlugSessionIdRoute =
-  SessionsBaseSlugSessionIdRouteImport.update({
-    id: '/$sessionId',
-    path: '/$sessionId',
-    getParentRoute: () => SessionsBaseSlugRoute,
+const SessionsWorkspacesWorkspaceSlugRoute =
+  SessionsWorkspacesWorkspaceSlugRouteImport.update({
+    id: '/sessions/workspaces/$workspaceSlug',
+    path: '/sessions/workspaces/$workspaceSlug',
+    getParentRoute: () => rootRouteImport,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -84,12 +78,11 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
+  '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
-  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
-  '/sessions/$baseSlug/': typeof SessionsBaseSlugIndexRoute
+  '/sessions/workspaces/$workspaceSlug': typeof SessionsWorkspacesWorkspaceSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -97,11 +90,11 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
+  '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents': typeof AgentsIndexRoute
   '/providers': typeof ProvidersIndexRoute
   '/sessions': typeof SessionsIndexRoute
-  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
-  '/sessions/$baseSlug': typeof SessionsBaseSlugIndexRoute
+  '/sessions/workspaces/$workspaceSlug': typeof SessionsWorkspacesWorkspaceSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -110,12 +103,11 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
-  '/sessions/$baseSlug': typeof SessionsBaseSlugRouteWithChildren
+  '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/agents/': typeof AgentsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/sessions/': typeof SessionsIndexRoute
-  '/sessions/$baseSlug/$sessionId': typeof SessionsBaseSlugSessionIdRoute
-  '/sessions/$baseSlug/': typeof SessionsBaseSlugIndexRoute
+  '/sessions/workspaces/$workspaceSlug': typeof SessionsWorkspacesWorkspaceSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -125,12 +117,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$baseSlug'
+    | '/sessions/$sessionId'
     | '/agents/'
     | '/providers/'
     | '/sessions/'
-    | '/sessions/$baseSlug/$sessionId'
-    | '/sessions/$baseSlug/'
+    | '/sessions/workspaces/$workspaceSlug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -138,11 +129,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
+    | '/sessions/$sessionId'
     | '/agents'
     | '/providers'
     | '/sessions'
-    | '/sessions/$baseSlug/$sessionId'
-    | '/sessions/$baseSlug'
+    | '/sessions/workspaces/$workspaceSlug'
   id:
     | '__root__'
     | '/'
@@ -150,12 +141,11 @@ export interface FileRouteTypes {
     | '/settings'
     | '/agents/$agentId'
     | '/providers/$providerId'
-    | '/sessions/$baseSlug'
+    | '/sessions/$sessionId'
     | '/agents/'
     | '/providers/'
     | '/sessions/'
-    | '/sessions/$baseSlug/$sessionId'
-    | '/sessions/$baseSlug/'
+    | '/sessions/workspaces/$workspaceSlug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -164,10 +154,11 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   AgentsAgentIdRoute: typeof AgentsAgentIdRoute
   ProvidersProviderIdRoute: typeof ProvidersProviderIdRoute
-  SessionsBaseSlugRoute: typeof SessionsBaseSlugRouteWithChildren
+  SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   AgentsIndexRoute: typeof AgentsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
   SessionsIndexRoute: typeof SessionsIndexRoute
+  SessionsWorkspacesWorkspaceSlugRoute: typeof SessionsWorkspacesWorkspaceSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -214,11 +205,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$baseSlug': {
-      id: '/sessions/$baseSlug'
-      path: '/sessions/$baseSlug'
-      fullPath: '/sessions/$baseSlug'
-      preLoaderRoute: typeof SessionsBaseSlugRouteImport
+    '/sessions/$sessionId': {
+      id: '/sessions/$sessionId'
+      path: '/sessions/$sessionId'
+      fullPath: '/sessions/$sessionId'
+      preLoaderRoute: typeof SessionsSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers/$providerId': {
@@ -235,35 +226,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$baseSlug/': {
-      id: '/sessions/$baseSlug/'
-      path: '/'
-      fullPath: '/sessions/$baseSlug/'
-      preLoaderRoute: typeof SessionsBaseSlugIndexRouteImport
-      parentRoute: typeof SessionsBaseSlugRoute
-    }
-    '/sessions/$baseSlug/$sessionId': {
-      id: '/sessions/$baseSlug/$sessionId'
-      path: '/$sessionId'
-      fullPath: '/sessions/$baseSlug/$sessionId'
-      preLoaderRoute: typeof SessionsBaseSlugSessionIdRouteImport
-      parentRoute: typeof SessionsBaseSlugRoute
+    '/sessions/workspaces/$workspaceSlug': {
+      id: '/sessions/workspaces/$workspaceSlug'
+      path: '/sessions/workspaces/$workspaceSlug'
+      fullPath: '/sessions/workspaces/$workspaceSlug'
+      preLoaderRoute: typeof SessionsWorkspacesWorkspaceSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface SessionsBaseSlugRouteChildren {
-  SessionsBaseSlugSessionIdRoute: typeof SessionsBaseSlugSessionIdRoute
-  SessionsBaseSlugIndexRoute: typeof SessionsBaseSlugIndexRoute
-}
-
-const SessionsBaseSlugRouteChildren: SessionsBaseSlugRouteChildren = {
-  SessionsBaseSlugSessionIdRoute: SessionsBaseSlugSessionIdRoute,
-  SessionsBaseSlugIndexRoute: SessionsBaseSlugIndexRoute,
-}
-
-const SessionsBaseSlugRouteWithChildren =
-  SessionsBaseSlugRoute._addFileChildren(SessionsBaseSlugRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -271,10 +242,11 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   AgentsAgentIdRoute: AgentsAgentIdRoute,
   ProvidersProviderIdRoute: ProvidersProviderIdRoute,
-  SessionsBaseSlugRoute: SessionsBaseSlugRouteWithChildren,
+  SessionsSessionIdRoute: SessionsSessionIdRoute,
   AgentsIndexRoute: AgentsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
   SessionsIndexRoute: SessionsIndexRoute,
+  SessionsWorkspacesWorkspaceSlugRoute: SessionsWorkspacesWorkspaceSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

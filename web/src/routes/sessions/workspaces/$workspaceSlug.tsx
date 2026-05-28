@@ -58,19 +58,19 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/core/table";
-import { baseSlug, findBaseBySlug } from "@/lib/base-slug";
+import { workspaceSlug, findWorkspaceBySlug } from "@/lib/workspace-slug";
 import { wfetch } from "@/lib/client";
-import type { Base, Session } from "@/lib/types";
+import type { Workspace, Session } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
 
-export const Route = createFileRoute("/sessions/$baseSlug/")({
-	component: BaseSessionsPage,
+export const Route = createFileRoute("/sessions/workspaces/$workspaceSlug")({
+	component: WorkspaceSessionsPage,
 });
 
-function BaseSessionsPage() {
-	const { baseSlug: routeBaseSlug } = Route.useParams();
+function WorkspaceSessionsPage() {
+	const { workspaceSlug: routeBaseSlug } = Route.useParams();
 	const navigate = useNavigate();
-	const [base, setBase] = useState<Base | null>(null);
+	const [workspace, setBase] = useState<Workspace | null>(null);
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [filter, setFilter] = useState("");
@@ -86,7 +86,7 @@ function BaseSessionsPage() {
 	const [baseName, setBaseName] = useState("");
 	const [basePath, setBasePath] = useState("");
 	const [savingBase, setSavingBase] = useState(false);
-	const [deleteBase, setDeleteBase] = useState<Base | null>(null);
+	const [deleteBase, setDeleteWorkspace] = useState<Workspace | null>(null);
 	const [deletingBaseId, setDeletingBaseId] = useState("");
 	const filterInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,15 +96,15 @@ function BaseSessionsPage() {
 	});
 
 	async function loadBase() {
-		const bases = (await wfetch("/bases")) as Base[];
-		const found = findBaseBySlug(bases, routeBaseSlug);
+		const workspaces = (await wfetch("/workspaces")) as Workspace[];
+		const found = findWorkspaceBySlug(workspaces, routeBaseSlug);
 		if (!found) {
 			setBase(null);
 			setSessions([]);
 			return;
 		}
 		setBase(found);
-		setSessions((await wfetch(`/bases/${found.id}/sessions`)) as Session[]);
+		setSessions((await wfetch(`/workspaces/${found.id}/sessions`)) as Session[]);
 	}
 
 	useEffect(() => {
@@ -113,7 +113,7 @@ function BaseSessionsPage() {
 			try {
 				await loadBase();
 			} catch (err) {
-				console.error("Failed to load base", err);
+				console.error("Failed to load workspace", err);
 				alert(String(err));
 			} finally {
 				if (!cancelled) setLoading(false);
@@ -130,17 +130,14 @@ function BaseSessionsPage() {
 	}, [filterOpen]);
 
 	async function handleCreate() {
-		if (!base) return;
+		if (!workspace) return;
 		setCreating(true);
 		try {
 			const session = (await wfetch("/sessions", {
 				method: "POST",
-				body: JSON.stringify({ base_id: base.id }),
+				body: JSON.stringify({ workspace_id: workspace.id }),
 			})) as Session;
-			navigate({
-				to: "/sessions/$baseSlug/$sessionId",
-				params: { baseSlug: baseSlug(base), sessionId: session.id },
-			});
+			navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } });
 		} catch (err) {
 			alert(String(err));
 		} finally {
@@ -155,9 +152,9 @@ function BaseSessionsPage() {
 	}
 
 	function openEditBase() {
-		if (!base) return;
-		setBaseName(base.name);
-		setBasePath(base.path);
+		if (!workspace) return;
+		setBaseName(workspace.name);
+		setBasePath(workspace.path);
 		setBaseDialogOpen(true);
 	}
 
@@ -213,18 +210,18 @@ function BaseSessionsPage() {
 
 	async function handleSaveBase(e: React.FormEvent) {
 		e.preventDefault();
-		if (!base) return;
+		if (!workspace) return;
 		setSavingBase(true);
 		try {
-			const updated = (await wfetch(`/bases/${base.id}`, {
+			const updated = (await wfetch(`/workspaces/${workspace.id}`, {
 				method: "PUT",
 				body: JSON.stringify({ name: baseName.trim(), path: basePath.trim() }),
-			})) as Base;
+			})) as Workspace;
 			setBase(updated);
 			setBaseDialogOpen(false);
-			const updatedSlug = baseSlug(updated);
+			const updatedSlug = workspaceSlug(updated);
 			if (updatedSlug !== routeBaseSlug) {
-				navigate({ to: "/sessions/$baseSlug", params: { baseSlug: updatedSlug } });
+				navigate({ to: "/sessions/workspaces/$workspaceSlug", params: { workspaceSlug: updatedSlug } });
 			}
 		} catch (err) {
 			alert(String(err));
@@ -233,11 +230,11 @@ function BaseSessionsPage() {
 		}
 	}
 
-	async function handleDeleteBase() {
+	async function handleDeleteWorkspace() {
 		if (!deleteBase) return;
 		setDeletingBaseId(deleteBase.id);
 		try {
-			await wfetch(`/bases/${deleteBase.id}`, { method: "DELETE" });
+			await wfetch(`/workspaces/${deleteBase.id}`, { method: "DELETE" });
 			navigate({ to: "/sessions" });
 		} catch (err) {
 			alert(String(err));
@@ -250,28 +247,28 @@ function BaseSessionsPage() {
 		return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
 	}
 
-	if (!base) {
-		return <div className="px-4 py-6 text-sm text-muted-foreground">Base not found.</div>;
+	if (!workspace) {
+		return <div className="px-4 py-6 text-sm text-muted-foreground">Workspace not found.</div>;
 	}
 
 	return (
 		<div className="mx-auto max-w-[118rem] px-4 py-6">
 			<div className="mb-4">
-				<PageBreadcrumb items={[{ label: "Sessions", to: "/sessions" }, { label: base.name }]} />
+				<PageBreadcrumb items={[{ label: "Sessions", to: "/sessions" }, { label: workspace.name }]} />
 			</div>
 
 			<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
-						<h1 className="truncate text-lg font-semibold">{base.name}</h1>
-						<Button size="icon-sm" variant="outline" onClick={openEditBase} aria-label="Edit base">
+						<h1 className="truncate text-lg font-semibold">{workspace.name}</h1>
+						<Button size="icon-sm" variant="outline" onClick={openEditBase} aria-label="Edit workspace">
 							<PencilSimpleIcon className="size-4" />
 						</Button>
-						<Button size="icon-sm" variant="outline" onClick={() => setDeleteBase(base)} aria-label="Delete base">
+						<Button size="icon-sm" variant="outline" onClick={() => setDeleteWorkspace(workspace)} aria-label="Delete workspace">
 							<TrashIcon className="size-4" />
 						</Button>
 					</div>
-					<p className="mt-1 truncate text-xs text-muted-foreground">{base.path}</p>
+					<p className="mt-1 truncate text-xs text-muted-foreground">{workspace.path}</p>
 				</div>
 				<div className="flex items-center gap-3">
 					<Button size="sm" onClick={handleCreate} disabled={creating}>{creating ? "Creating..." : "New"}</Button>
@@ -303,8 +300,8 @@ function BaseSessionsPage() {
 				</Empty>
 			) : filtered.length === 0 ? (
 				<Empty>
-					<EmptyTitle>No sessions in {base.name}</EmptyTitle>
-					<EmptyDescription>Start a new session from this Base.</EmptyDescription>
+					<EmptyTitle>No sessions in {workspace.name}</EmptyTitle>
+					<EmptyDescription>Start a new session from this Workspace.</EmptyDescription>
 					<EmptyActions>
 						<Button size="sm" onClick={handleCreate} disabled={creating}>{creating ? "Creating..." : "New"}</Button>
 					</EmptyActions>
@@ -322,7 +319,7 @@ function BaseSessionsPage() {
 					<TableBody>
 						{filtered.map((session) => (
 							<ContextMenu key={session.id}>
-								<ContextMenuTrigger render={<TableRow className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$baseSlug/$sessionId", params: { baseSlug: routeBaseSlug, sessionId: session.id } })} />}>
+				<ContextMenuTrigger render={<TableRow className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })} />}>
 									<TableCell className="font-medium">{session.title || session.id}</TableCell>
 									<TableCell className="text-muted-foreground">{timeAgo(session.created_at)}</TableCell>
 									<TableCell className="max-w-[200px] truncate text-muted-foreground">{session.work_dir || "-"}</TableCell>
@@ -354,8 +351,8 @@ function BaseSessionsPage() {
 				<DialogContent>
 					<form onSubmit={handleSaveBase} className="grid gap-4">
 						<DialogHeader>
-							<DialogTitle>Edit Base</DialogTitle>
-							<DialogDescription>A Base stores a server-side directory path for related sessions.</DialogDescription>
+							<DialogTitle>Edit Workspace</DialogTitle>
+							<DialogDescription>A Workspace stores a server-side directory path for related sessions.</DialogDescription>
 						</DialogHeader>
 						<div className="grid gap-3">
 							<div className="grid gap-1"><label className="text-xs font-medium">Name</label><Input value={baseName} onChange={(e) => setBaseName(e.target.value)} required /></div>
@@ -365,7 +362,7 @@ function BaseSessionsPage() {
 								<p className="text-xs text-muted-foreground">Path must exist on the Wingman server.</p>
 							</div>
 						</div>
-						<DialogFooter><Button type="button" variant="outline" onClick={() => setBaseDialogOpen(false)} disabled={savingBase}>Cancel</Button><Button type="submit" disabled={savingBase}>{savingBase ? "Saving..." : "Save Base"}</Button></DialogFooter>
+						<DialogFooter><Button type="button" variant="outline" onClick={() => setBaseDialogOpen(false)} disabled={savingBase}>Cancel</Button><Button type="submit" disabled={savingBase}>{savingBase ? "Saving..." : "Save Workspace"}</Button></DialogFooter>
 					</form>
 				</DialogContent>
 			</Dialog>
@@ -379,7 +376,7 @@ function BaseSessionsPage() {
 							<div className="grid gap-1">
 								<label className="text-xs font-medium">Working directory</label>
 								<div className="flex gap-2"><Input placeholder="Optional working directory" value={editWorkDir} onChange={(e) => setEditWorkDir(e.target.value)} /><Button type="button" variant="outline" onClick={() => chooseWorkingDirectory(setEditWorkDir)}><FolderOpenIcon className="size-4" />Choose</Button></div>
-								<p className="text-xs text-muted-foreground">Changing this detaches the session from its Base.</p>
+								<p className="text-xs text-muted-foreground">Changing this detaches the session from its Workspace.</p>
 							</div>
 						</div>
 						<DialogFooter><Button type="button" variant="outline" onClick={() => setEditingSession(null)} disabled={savingEdit}>Cancel</Button><Button type="submit" disabled={savingEdit}>{savingEdit ? "Saving..." : "Save changes"}</Button></DialogFooter>
@@ -394,10 +391,10 @@ function BaseSessionsPage() {
 				</AlertDialogContent>
 			</AlertDialog>
 
-			<AlertDialog open={deleteBase !== null} onOpenChange={(open) => !open && setDeleteBase(null)}>
+			<AlertDialog open={deleteBase !== null} onOpenChange={(open) => !open && setDeleteWorkspace(null)}>
 				<AlertDialogContent>
-					<AlertDialogHeader><AlertDialogTitle>Delete Base?</AlertDialogTitle><AlertDialogDescription>Linked sessions keep their working directories, but they will no longer appear under {deleteBase?.name}.</AlertDialogDescription></AlertDialogHeader>
-					<AlertDialogFooter><AlertDialogCancel disabled={!!deletingBaseId}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={!deleteBase || !!deletingBaseId} onClick={handleDeleteBase}>{deletingBaseId ? "Deleting..." : "Delete"}</AlertDialogAction></AlertDialogFooter>
+					<AlertDialogHeader><AlertDialogTitle>Delete Workspace?</AlertDialogTitle><AlertDialogDescription>Linked sessions keep their working directories, but they will no longer appear under {deleteBase?.name}.</AlertDialogDescription></AlertDialogHeader>
+					<AlertDialogFooter><AlertDialogCancel disabled={!!deletingBaseId}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={!deleteBase || !!deletingBaseId} onClick={handleDeleteWorkspace}>{deletingBaseId ? "Deleting..." : "Delete"}</AlertDialogAction></AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 		</div>

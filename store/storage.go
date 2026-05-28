@@ -46,13 +46,13 @@ type Store interface {
 	GetClient(id string) (*Client, error)
 	ListClients() ([]*Client, error)
 
-	CreateBase(base *Base) error
-	GetBase(id string) (*Base, error)
-	ListBases() ([]*Base, error)
-	ListBasesByClient(clientID string) ([]*Base, error)
-	UpdateBase(base *Base) error
-	DeleteBase(id string) error
-	ListSessionsByBase(baseID string) ([]*Session, error)
+	CreateWorkspace(workspace *Workspace) error
+	GetWorkspace(id string) (*Workspace, error)
+	ListWorkspaces() ([]*Workspace, error)
+	ListWorkspacesByClient(clientID string) ([]*Workspace, error)
+	UpdateWorkspace(workspace *Workspace) error
+	DeleteWorkspace(id string) error
+	ListSessionsByWorkspace(workspaceID string) ([]*Session, error)
 
 	GetAuth() (*Auth, error)
 	SetAuth(auth *Auth) error

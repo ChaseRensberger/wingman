@@ -23,7 +23,7 @@ Wingman ships these built-ins:
 | `grep` | Search text files with a regular expression. | Yes |
 | `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
 
-Directory-scoped tools require the session to have a working directory. Create or update the session with `working_directory`/`work_dir`, or create it from a Base with `base_id`, before allowing file or shell tools.
+Directory-scoped tools require the session to have a working directory. Create or update the session with `working_directory`/`work_dir`, or create it from a Workspace with `workspace_id`, before allowing file or shell tools.
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
@@ -31,7 +31,7 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
 
-For repeated work in the same directory, prefer a [Base](/concepts/bases) and create sessions with `base_id`.
+For repeated work in the same directory, prefer a [Workspace](/concepts/workspaces) and create sessions with `workspace_id`.
 
 ## Allow Tools On An Agent
 

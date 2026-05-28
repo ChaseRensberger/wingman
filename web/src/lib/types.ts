@@ -58,7 +58,7 @@ export interface Session {
   id: string;
   title?: string;
   work_dir?: string;
-  base_id?: string;
+  workspace_id?: string;
   client_id?: string;
   history: Message[];
   latest_model_call?: ModelCall;
@@ -66,7 +66,7 @@ export interface Session {
   updated_at: string;
 }
 
-export interface Base {
+export interface Workspace {
   id: string;
   name: string;
   path: string;

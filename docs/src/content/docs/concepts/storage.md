@@ -6,7 +6,7 @@ order: 105
 
 # Storage
 
-Storage is a core Wingman primitive. It persists agents, clients, Bases, sessions, message history, content parts, and provider auth credentials. Persistence is not implemented as a plugin because session history must be durable by default and storage failures should be surfaced directly by the runtime.
+Storage is a core Wingman primitive. It persists agents, clients, Workspaces, sessions, message history, content parts, and provider auth credentials. Persistence is not implemented as a plugin because session history must be durable by default and storage failures should be surfaced directly by the runtime.
 
 ## Default Store
 
@@ -40,8 +40,8 @@ The SQLite schema stores:
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
-| `bases` | Client-owned directory workspaces used to group sessions and seed working directories. |
-| `sessions` | Session metadata: title, working directory, client ID, optional Base ID, timestamps. |
+| `workspaces` | Client-owned directory workspaces used to group sessions and seed working directories. |
+| `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, timestamps. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
@@ -50,7 +50,7 @@ The SQLite schema stores:
 
 Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
 
-Sessions created with `base_id` store both the Base relationship and a working-directory snapshot. Later Base path changes do not rewrite existing sessions.
+Sessions created with `workspace_id` store both the Workspace relationship and a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
 ## Model Calls
 
@@ -119,7 +119,7 @@ type Store interface {
     GetSession(id string) (*Session, error)
     ListSessions() ([]*Session, error)
     ListSessionsByClient(clientID string) ([]*Session, error)
-    ListSessionsByBase(baseID string) ([]*Session, error)
+    ListSessionsByWorkspace(workspaceID string) ([]*Session, error)
     UpdateSession(session *Session) error
     DeleteSession(id string) error
 
@@ -136,12 +136,12 @@ type Store interface {
     GetClient(id string) (*Client, error)
     ListClients() ([]*Client, error)
 
-    CreateBase(base *Base) error
-    GetBase(id string) (*Base, error)
-    ListBases() ([]*Base, error)
-    ListBasesByClient(clientID string) ([]*Base, error)
-    UpdateBase(base *Base) error
-    DeleteBase(id string) error
+    CreateWorkspace(workspace *Workspace) error
+    GetWorkspace(id string) (*Workspace, error)
+    ListWorkspaces() ([]*Workspace, error)
+    ListWorkspacesByClient(clientID string) ([]*Workspace, error)
+    UpdateWorkspace(workspace *Workspace) error
+    DeleteWorkspace(id string) error
 
     GetAuth() (*Auth, error)
     SetAuth(auth *Auth) error

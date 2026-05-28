@@ -657,68 +657,68 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 	t.Run("BaseCRUDRoundTrip", func(t *testing.T) {
 		s := factory(t)
 
-		client, err := s.CreateClient("base-client")
+		client, err := s.CreateClient("workspace-client")
 		if err != nil {
 			t.Fatalf("create client failed: %v", err)
 		}
 
-		base := &store.Base{Name: "Wingman", Path: "/tmp", ClientID: client.ID}
-		if err := s.CreateBase(base); err != nil {
-			t.Fatalf("create base failed: %v", err)
+		workspace := &store.Workspace{Name: "Wingman", Path: "/tmp", ClientID: client.ID}
+		if err := s.CreateWorkspace(workspace); err != nil {
+			t.Fatalf("create workspace failed: %v", err)
 		}
-		if base.ID == "" {
-			t.Fatal("expected base ID to be set")
+		if workspace.ID == "" {
+			t.Fatal("expected workspace ID to be set")
 		}
-		if !strings.HasPrefix(base.ID, "bas_") {
-			t.Errorf("expected ID prefix 'bas_', got %q", base.ID)
-		}
-
-		got, err := s.GetBase(base.ID)
-		if err != nil {
-			t.Fatalf("get base failed: %v", err)
-		}
-		if got.Name != base.Name || got.Path != base.Path || got.ClientID != client.ID {
-			t.Fatalf("base mismatch: got %#v, want %#v", got, base)
+		if !strings.HasPrefix(workspace.ID, "wsp_") {
+			t.Errorf("expected ID prefix 'wsp_', got %q", workspace.ID)
 		}
 
-		base.Name = "Updated"
-		base.Path = "/var/tmp"
-		if err := s.UpdateBase(base); err != nil {
-			t.Fatalf("update base failed: %v", err)
-		}
-		got, err = s.GetBase(base.ID)
+		got, err := s.GetWorkspace(workspace.ID)
 		if err != nil {
-			t.Fatalf("get updated base failed: %v", err)
+			t.Fatalf("get workspace failed: %v", err)
+		}
+		if got.Name != workspace.Name || got.Path != workspace.Path || got.ClientID != client.ID {
+			t.Fatalf("workspace mismatch: got %#v, want %#v", got, workspace)
+		}
+
+		workspace.Name = "Updated"
+		workspace.Path = "/var/tmp"
+		if err := s.UpdateWorkspace(workspace); err != nil {
+			t.Fatalf("update workspace failed: %v", err)
+		}
+		got, err = s.GetWorkspace(workspace.ID)
+		if err != nil {
+			t.Fatalf("get updated workspace failed: %v", err)
 		}
 		if got.Name != "Updated" || got.Path != "/var/tmp" {
-			t.Fatalf("updated base mismatch: got %#v", got)
+			t.Fatalf("updated workspace mismatch: got %#v", got)
 		}
 
-		bases, err := s.ListBasesByClient(client.ID)
+		workspaces, err := s.ListWorkspacesByClient(client.ID)
 		if err != nil {
-			t.Fatalf("list bases by client failed: %v", err)
+			t.Fatalf("list workspaces by client failed: %v", err)
 		}
-		if len(bases) != 1 || bases[0].ID != base.ID {
-			t.Fatalf("expected base in client list, got %#v", bases)
+		if len(workspaces) != 1 || workspaces[0].ID != workspace.ID {
+			t.Fatalf("expected workspace in client list, got %#v", workspaces)
 		}
 
-		if err := s.DeleteBase(base.ID); err != nil {
-			t.Fatalf("delete base failed: %v", err)
+		if err := s.DeleteWorkspace(workspace.ID); err != nil {
+			t.Fatalf("delete workspace failed: %v", err)
 		}
-		if _, err := s.GetBase(base.ID); err == nil {
-			t.Fatal("expected error getting deleted base")
+		if _, err := s.GetWorkspace(workspace.ID); err == nil {
+			t.Fatal("expected error getting deleted workspace")
 		}
 	})
 
 	t.Run("SessionCreatedWithBaseRoundTripsAndLists", func(t *testing.T) {
 		s := factory(t)
 
-		base := &store.Base{Name: "Wingman", Path: "/tmp"}
-		if err := s.CreateBase(base); err != nil {
-			t.Fatalf("create base failed: %v", err)
+		workspace := &store.Workspace{Name: "Wingman", Path: "/tmp"}
+		if err := s.CreateWorkspace(workspace); err != nil {
+			t.Fatalf("create workspace failed: %v", err)
 		}
 
-		sess := &store.Session{Title: "base session", WorkDir: base.Path, BaseID: base.ID}
+		sess := &store.Session{Title: "workspace session", WorkDir: workspace.Path, WorkspaceID: workspace.ID}
 		if err := s.CreateSession(sess); err != nil {
 			t.Fatalf("create session failed: %v", err)
 		}
@@ -727,27 +727,27 @@ func Run(t *testing.T, factory func(t *testing.T) store.Store) {
 		if err != nil {
 			t.Fatalf("get session failed: %v", err)
 		}
-		if got.BaseID != base.ID {
-			t.Errorf("expected base_id %q, got %q", base.ID, got.BaseID)
+		if got.WorkspaceID != workspace.ID {
+			t.Errorf("expected workspace_id %q, got %q", workspace.ID, got.WorkspaceID)
 		}
 
-		list, err := s.ListSessionsByBase(base.ID)
+		list, err := s.ListSessionsByWorkspace(workspace.ID)
 		if err != nil {
-			t.Fatalf("list sessions by base failed: %v", err)
+			t.Fatalf("list sessions by workspace failed: %v", err)
 		}
 		if len(list) != 1 || list[0].ID != sess.ID {
-			t.Fatalf("expected linked session in base list, got %#v", list)
+			t.Fatalf("expected linked session in workspace list, got %#v", list)
 		}
 	})
 
-	t.Run("SessionCreatedWithNonexistentBaseIDErrors", func(t *testing.T) {
+	t.Run("SessionCreatedWithNonexistentWorkspaceIDErrors", func(t *testing.T) {
 		s := factory(t)
 
-		sess := &store.Session{Title: "bad base", BaseID: "bas_doesnotexist"}
+		sess := &store.Session{Title: "bad workspace", WorkspaceID: "wsp_doesnotexist"}
 		if err := s.CreateSession(sess); err == nil {
-			t.Fatal("expected error creating session with non-existent base")
-		} else if !strings.Contains(err.Error(), "base not found") {
-			t.Fatalf("expected 'base not found' error, got %v", err)
+			t.Fatal("expected error creating session with non-existent workspace")
+		} else if !strings.Contains(err.Error(), "workspace not found") {
+			t.Fatalf("expected 'workspace not found' error, got %v", err)
 		}
 	})
 
