@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
@@ -22,6 +22,10 @@ import { StopIcon } from "@phosphor-icons/react";
 const STREAM_MIN_CHARS_PER_FRAME = 1;
 const STREAM_MAX_CHARS_PER_FRAME = 18;
 const STREAM_BACKLOG_DIVISOR = 14;
+
+type SessionDetailSearch = {
+  workspace?: string;
+};
 
 function parseSSE(buffer: string): {
   events: Array<{ event: string; data: string }>;
@@ -109,11 +113,17 @@ function formatSessionError(err: unknown): string {
 }
 
 export const Route = createFileRoute("/sessions/$sessionId")({
+  validateSearch: (search: Record<string, unknown>): SessionDetailSearch => ({
+    workspace: typeof search.workspace === "string" ? search.workspace : undefined,
+  }),
   component: SessionDetailPage,
 });
 
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const { workspace: draftWorkspaceId } = Route.useSearch();
+  const navigate = useNavigate();
+  const isDraft = sessionId === "new";
   const [session, setSession] = useState<Session | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,14 +140,43 @@ function SessionDetailPage() {
   const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
   const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const activeSessionIdRef = useRef(sessionId);
+  const skipNextSessionLoadRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const streamingTextRef = useRef("");
   const visibleStreamingTextRef = useRef("");
 
-  const loadSession = useCallback(async () => {
+  useEffect(() => {
+    activeSessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const loadSession = useCallback(async (id = sessionId) => {
+    if (id === "new") {
+      const now = new Date().toISOString();
+      setSession({
+        id: "new",
+        title: "New session",
+        workspace_id: draftWorkspaceId,
+        history: [],
+        created_at: now,
+        updated_at: now,
+      });
+      if (draftWorkspaceId) {
+        try {
+          setWorkspace((await wfetch(`/workspaces/${draftWorkspaceId}`)) as Workspace);
+        } catch {
+          setWorkspace(null);
+        }
+      } else {
+        setWorkspace(null);
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = (await wfetch(`/sessions/${sessionId}`)) as Session;
+      const data = (await wfetch(`/sessions/${id}`)) as Session;
       setSession(data);
       if (data.workspace_id) {
         setWorkspace((await wfetch(`/workspaces/${data.workspace_id}`)) as Workspace);
@@ -150,14 +189,19 @@ function SessionDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [draftWorkspaceId, sessionId]);
 
   useEffect(() => {
+    if (skipNextSessionLoadRef.current) {
+      skipNextSessionLoadRef.current = false;
+      return;
+    }
+
     let cancelled = false;
     async function load() {
       try {
         const [sessData, agentsData, providerData] = await Promise.all([
-          wfetch(`/sessions/${sessionId}`) as Promise<Session>,
+          isDraft ? Promise.resolve(null) : wfetch(`/sessions/${sessionId}`) as Promise<Session>,
           wfetch("/agents") as Promise<Agent[]>,
           wfetch("/provider") as Promise<Provider[]>,
         ]);
@@ -172,10 +216,22 @@ function SessionDetailPage() {
           }),
         );
         if (!cancelled) {
-          setSession(sessData);
-          if (sessData.workspace_id) {
+          if (sessData) {
+            setSession(sessData);
+          } else {
+            const now = new Date().toISOString();
+            setSession({
+              id: "new",
+              title: "New session",
+              workspace_id: draftWorkspaceId,
+              history: [],
+              created_at: now,
+              updated_at: now,
+            });
+          }
+          if (sessData?.workspace_id || (isDraft && draftWorkspaceId)) {
             try {
-              setWorkspace((await wfetch(`/workspaces/${sessData.workspace_id}`)) as Workspace);
+              setWorkspace((await wfetch(`/workspaces/${sessData?.workspace_id ?? draftWorkspaceId}`)) as Workspace);
             } catch {
               setWorkspace(null);
             }
@@ -203,7 +259,7 @@ function SessionDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [draftWorkspaceId, isDraft, sessionId]);
 
   useEffect(() => {
     if (scrollRef.current && stickToBottomRef.current) {
@@ -265,7 +321,7 @@ function SessionDetailPage() {
 
   async function handleAbort() {
     try {
-      await wfetch(`/sessions/${sessionId}/abort`, { method: "POST" });
+      await wfetch(`/sessions/${activeSessionIdRef.current}/abort`, { method: "POST" });
     } catch (err) {
       console.error("Abort failed", err);
     }
@@ -298,8 +354,21 @@ function SessionDetailPage() {
     setVisibleStreamingText("");
     setLatestRunUsage(undefined);
     let completed = false;
+    let activeSessionId = sessionId;
 
     try {
+      if (isDraft) {
+        const created = (await wfetch("/sessions", {
+          method: "POST",
+          body: JSON.stringify(draftWorkspaceId ? { workspace_id: draftWorkspaceId } : {}),
+        })) as Session;
+        activeSessionId = created.id;
+        activeSessionIdRef.current = created.id;
+        skipNextSessionLoadRef.current = true;
+        setSession({ ...created, history: [buildUserMessage(outboundText)] });
+        navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
+      }
+
       const headers = new Headers({
         "Content-Type": "application/json",
       });
@@ -308,7 +377,7 @@ function SessionDetailPage() {
         headers.set("X-Wingman-Client", clientId);
       }
 
-      const res = await fetch(`/sessions/${sessionId}/message/stream`, {
+      const res = await fetch(`/sessions/${activeSessionId}/message/stream`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -399,7 +468,7 @@ function SessionDetailPage() {
       if (!completed && controller.signal.aborted) {
         setMessageText(outboundText);
       }
-      await loadSession();
+      await loadSession(activeSessionId);
     }
   }
 
@@ -461,7 +530,7 @@ function SessionDetailPage() {
               {session.title || "Untitled session"}
             </h1>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>{new Date(session.created_at).toLocaleString()}</span>
+              <span>{isDraft ? "Not saved yet" : new Date(session.created_at).toLocaleString()}</span>
               <span className="max-w-full truncate">{session.work_dir || "-"}</span>
               <span>
                 {contextWindow

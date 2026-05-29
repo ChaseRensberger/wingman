@@ -85,7 +85,6 @@ function SessionsPage() {
 	const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [creating, setCreating] = useState(false);
 	const [search, setSearch] = useState("");
 
 	const [workspaceMenuFilter, setWorkspaceMenuFilter] = useState("");
@@ -164,19 +163,12 @@ function SessionsPage() {
 		navigate({ to: "/sessions", search: workspace ? { workspace } : {} });
 	}
 
-	async function handleCreate() {
-		setCreating(true);
-		try {
-			const session = (await wfetch("/sessions", {
-				method: "POST",
-				body: JSON.stringify(selectedWorkspace ? { workspace_id: selectedWorkspace.id } : {}),
-			})) as Session;
-			navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } });
-		} catch (err) {
-			alert(String(err));
-		} finally {
-			setCreating(false);
-		}
+	function handleCreate() {
+		navigate({
+			to: "/sessions/$sessionId",
+			params: { sessionId: "new" },
+			search: selectedWorkspace ? { workspace: selectedWorkspace.id } : {},
+		});
 	}
 
 	function openCreateWorkspace() {
@@ -364,8 +356,8 @@ function SessionsPage() {
 									<XIcon className="size-4" />
 								</Button>
 							)}
-							<Button onClick={handleCreate} disabled={creating}>
-								<PlusIcon className="size-4" />{creating ? "Creating..." : createLabel}
+							<Button onClick={handleCreate}>
+								<PlusIcon className="size-4" />{createLabel}
 							</Button>
 						</div>
 
