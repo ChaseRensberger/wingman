@@ -1,0 +1,44 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Wingman Blog",
+  description = "Updates, design notes, and implementation details from the Wingman project.",
+} = Astro.props;
+
+const pageTitle = title === "Wingman Blog" ? title : `${title} | Wingman Blog`;
+const base = import.meta.env.BASE_URL;
+const assetBase = base.endsWith("/") ? base : `${base}/`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#101013" />
+    <link rel="icon" href={`${assetBase}favicon.svg`} />
+    <link rel="alternate" type="application/rss+xml" title="Wingman Blog" href="/blog/rss.xml" />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <div class="site-shell">
+      <main>
+        <slot />
+      </main>
+      <footer class="site-footer">
+        <a href="https://wingman.actor">Wingman</a>
+        <nav aria-label="Footer navigation">
+          <a href="https://github.com/chaserensberger/wingman">GitHub</a>
+          <a href="/blog/rss.xml">RSS</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

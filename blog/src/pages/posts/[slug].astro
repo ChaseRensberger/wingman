@@ -1,0 +1,46 @@
+---
+import { render, type CollectionEntry } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import WingblogLogo from "../../components/WingblogLogo.astro";
+import { formatDate, getPublishedPosts } from "../../lib/posts";
+
+export async function getStaticPaths() {
+  const posts = await getPublishedPosts();
+
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+interface Props {
+  post: CollectionEntry<"posts">;
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <header class="post-topbar">
+    <a href="/blog/" aria-label="Wingman Blog">
+      <WingblogLogo />
+    </a>
+  </header>
+  <article class="post-shell">
+    <header class="post-header">
+      <h1>{post.data.title}</h1>
+      <div class="post-byline">
+        <div class="post-meta">
+          <span>{post.data.author}</span>
+        </div>
+        <div class="post-meta">
+          <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+        </div>
+      </div>
+    </header>
+    <div class="prose">
+      <Content />
+    </div>
+  </article>
+</BaseLayout>

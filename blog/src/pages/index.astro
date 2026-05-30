@@ -1,0 +1,56 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import WingblogLogo from "../components/WingblogLogo.astro";
+import { formatDate, getPublishedPosts } from "../lib/posts";
+
+const posts = await getPublishedPosts();
+const [latest, ...olderPosts] = posts;
+---
+
+<BaseLayout>
+  <section class="masthead">
+    <div class="masthead-logo">
+      <WingblogLogo />
+    </div>
+    <p>A blog from the <a href="https://wingman.actor">Wingman</a> team.</p>
+  </section>
+
+  <div class="section-label">Posts</div>
+
+  {
+    latest ? (
+      <a class="featured-post" href={`/blog/posts/${latest.id}/`} aria-labelledby="featured-heading">
+        <div>
+          <p class="eyebrow">Latest</p>
+          <h2 id="featured-heading">
+            {latest.data.title}
+          </h2>
+        </div>
+        <div class="post-meta">
+          <time datetime={latest.data.pubDate.toISOString()}>{formatDate(latest.data.pubDate)}</time>
+        </div>
+      </a>
+    ) : (
+      <section class="featured-post">
+        <p class="empty-state">No posts yet.</p>
+      </section>
+    )
+  }
+
+  <section class="post-grid" aria-label="All posts">
+    {
+      olderPosts.map((post) => (
+        <a class="post-card" href={`/blog/posts/${post.id}/`}>
+          <div>
+            <h2>
+              {post.data.title}
+            </h2>
+          </div>
+          <div class="post-meta">
+            <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+          </div>
+        </a>
+      ))
+    }
+  </section>
+</BaseLayout>
