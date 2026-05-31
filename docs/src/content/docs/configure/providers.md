@@ -11,9 +11,9 @@ Provider configuration has three separate pieces:
 
 | Concern | Where it lives | What it controls |
 |---|---|---|
-| Provider metadata | WingModels catalog | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
+| Provider metadata | WingModels catalog and `~/.config/wingman/wingman.json` | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
 | Provider credentials | SQLite auth store through `/provider/auth` | API keys used by the Wingman server. |
-| Provider route overlays | `~/.config/wingman/wingman.json` | Runtime routing changes, such as sending `openai/*` refs through a gateway. |
+| Provider route and model config | `~/.config/wingman/wingman.json` | Runtime routing changes and custom provider/model definitions. |
 
 Agents store `model_ref` values such as `openai/gpt-5.5`. Provider route overlays can change where that ref is sent without changing the agent.
 
@@ -84,6 +84,45 @@ With that config, agents keep normal catalog model refs:
 
 The route changes at runtime. The persisted agent still says `openai/gpt-5.5`.
 
+## Add A Custom Provider
+
+Use a config-defined provider when you want a separate provider ID and model list instead of rewriting an existing catalog provider.
+
+This is the cleaner shape for gateways such as exe.dev because agents can use refs like `exe-openai/gpt-5.5` while regular `openai/*` refs keep using OpenAI directly.
+
+```json
+{
+  "provider": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+After restarting the server, the provider appears in `/provider`, its models appear in `/provider/exe-openai/models`, and agents can use:
+
+```text
+exe-openai/gpt-5.5
+```
+
 ## Auth Behavior
 
 `auth` controls whether Wingman sends credentials for a provider route.
@@ -99,6 +138,63 @@ Set `auth: false` only for unauthenticated gateways or local endpoints where Win
 ## exe.dev Gateway Example
 
 exe.dev boxes expose provider-compatible LLM gateways at `http://169.254.169.254/gateway/llm/{provider}`.
+
+Use custom provider IDs when you want to keep direct provider refs and exe.dev gateway refs available side by side:
+
+```json
+{
+  "provider": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
+      }
+    },
+    "exe-anthropic": {
+      "name": "exe.dev Anthropic Gateway",
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/anthropic/v1",
+        "auth": false
+      },
+      "models": {
+        "claude-sonnet-4-6": {
+          "api": "anthropic_messages",
+          "context_window": 1000000,
+          "max_output": 64000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Use these refs after restarting Wingman:
+
+```text
+exe-openai/gpt-5.5
+exe-anthropic/claude-sonnet-4-6
+```
+
+If you want all existing `openai/*` and `anthropic/*` refs to route through exe.dev instead, overlay the built-in providers:
 
 ```json
 {
@@ -119,7 +215,7 @@ exe.dev boxes expose provider-compatible LLM gateways at `http://169.254.169.254
 }
 ```
 
-Use normal model refs after configuring the gateway:
+Use normal model refs with the overlay approach:
 
 ```text
 openai/gpt-5.5

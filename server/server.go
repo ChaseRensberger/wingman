@@ -63,6 +63,7 @@ func New(cfg Config) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	provider.RegisterConfig(cfg.Providers)
 	s := &Server{
 		store:          cfg.Store,
 		router:         chi.NewRouter(),

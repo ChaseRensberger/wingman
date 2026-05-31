@@ -83,7 +83,47 @@ Use provider route overlays when a known provider should go through a proxy, loc
 
 ## Custom Model Routes
 
-Use `model_route` when the catalog does not know the model or when a specific agent/request needs explicit route metadata.
+Use config-defined providers for daemon-wide custom providers and models. Use `model_route` only when a specific agent/request needs explicit route metadata that should travel with that agent or request.
+
+For example, a custom provider in `~/.config/wingman/wingman.json` can add `exe-openai/gpt-5.5` to the normal provider and model APIs:
+
+```json
+{
+  "provider": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Agents can then use the custom ref directly:
+
+```json
+{
+  "name": "Assistant",
+  "model_ref": "exe-openai/gpt-5.5"
+}
+```
+
+Use `model_route` for one-off uncataloged routes that should remain part of the agent/request payload:
 
 ```json
 {
@@ -104,7 +144,7 @@ Use `model_route` when the catalog does not know the model or when a specific ag
 }
 ```
 
-If `model_ref` is already in the catalog, the catalog route wins. `model_route` is the escape hatch for uncataloged models and explicit custom deployments.
+If `model_ref` is already known through the embedded catalog or config-defined models, that metadata wins. `model_route` is the escape hatch for one-off uncataloged models and explicit custom deployments.
 
 ## Choosing Between Provider Config and `model_route`
 
@@ -112,9 +152,11 @@ If `model_ref` is already in the catalog, the catalog route wins. `model_route` 
 |---|---|
 | Store a provider API key | [Provider auth](/configure/providers#store-provider-auth) |
 | Route all `openai/*` refs through a gateway | [Provider route overlay](/configure/providers#route-a-provider-through-a-gateway) |
+| Add a reusable custom provider/model visible to the web UI | [Custom provider config](/configure/providers#add-a-custom-provider) |
 | Disable auth for an unauthenticated gateway | `provider.<id>.options.auth: false` |
 | Use a cataloged model with a different runtime endpoint | Provider route overlay |
-| Use a model not in the catalog | `model_route` |
+| Use a model not in the catalog across agents | Config-defined provider model |
+| Use a one-off model route for one agent/request | `model_route` |
 | Target an endpoint that needs a different wire protocol | Not supported unless Wingman implements that protocol |
 
 ## Supported Protocols
@@ -141,7 +183,6 @@ Wingman does not currently provide:
 
 - Generic provider discovery.
 - First-class Ollama, Gemini, or Bedrock provider families.
-- A config-file way to define entirely new providers.
 - A root default model that automatically applies to all agents and messages.
 
 Agents should set `model_ref`, or callers should pass `model_ref` on message requests.

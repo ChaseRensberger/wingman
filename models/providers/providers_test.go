@@ -55,3 +55,35 @@ func TestClientPrepareAppliesProviderBaseURLOverride(t *testing.T) {
 		t.Fatalf("url = %q, want provider base URL override", prepared.URL)
 	}
 }
+
+func TestRegisterConfigAddsCustomProviderModel(t *testing.T) {
+	RegisterConfig(map[string]ProviderConfig{
+		"test-gateway": {
+			Name:    "Test Gateway",
+			Options: ProviderOptions{BaseURL: "https://gateway.test/v1"},
+			Models: map[string]models.ModelInfo{
+				"gpt-test": {
+					API:          models.APIOpenAIResponses,
+					Capabilities: models.ModelCapabilities{Tools: true},
+				},
+			},
+		},
+	})
+
+	client := NewClientWithConfig(nil, map[string]ProviderConfig{
+		"test-gateway": {Options: ProviderOptions{BaseURL: "https://gateway.test/v1"}},
+	})
+	prepared, err := client.Prepare(context.Background(), models.Request{
+		Model:    models.ModelRef{Provider: "test-gateway", ID: "gpt-test"},
+		Messages: []models.Message{models.NewUserText("hello")},
+	})
+	if err != nil {
+		t.Fatalf("prepare config model: %v", err)
+	}
+	if prepared.URL != "https://gateway.test/v1/responses" {
+		t.Fatalf("url = %q, want config model URL", prepared.URL)
+	}
+	if prepared.Body["model"] != "gpt-test" {
+		t.Fatalf("body model = %v, want gpt-test", prepared.Body["model"])
+	}
+}

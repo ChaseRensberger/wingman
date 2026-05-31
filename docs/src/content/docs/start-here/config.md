@@ -20,7 +20,7 @@ Wingman has three main configuration surfaces:
 
 | Concern | Where it lives |
 |---|---|
-| Server bind address, database path, logs, plugin dirs, provider route overlays | `~/.config/wingman/wingman.json` and CLI flags |
+| Server bind address, database path, logs, plugin dirs, provider routes, custom provider models | `~/.config/wingman/wingman.json` and CLI flags |
 | Provider API keys | SQLite auth store through `PUT /provider/auth` |
 | External plugin manifests | `~/.config/wingman/plugins/` plus any extra plugin dirs |
 
@@ -48,10 +48,24 @@ Example:
     "log_format": "json"
   },
   "provider": {
-    "openai": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
       "options": {
         "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
         "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
       }
     }
   },
@@ -72,6 +86,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 | Start the local server or systemd service | [Run the Server](/use-wingman/run-server) |
 | Store API keys | [Providers](/configure/providers#store-provider-auth) |
 | Route a cataloged provider through a gateway | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
+| Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |
 | Choose between `model_ref` and `model_route` | [Models](/configure/models) |
 | Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
 | Check all supported config fields | [Config Schema](/reference/config-schema) |

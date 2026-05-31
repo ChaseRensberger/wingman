@@ -40,11 +40,15 @@ type providerFile struct {
 }
 
 var (
-	loadOnce  sync.Once
-	loadErr   error
-	byRef     map[string]models.ModelInfo
-	byProv    map[string]map[string]models.ModelInfo
-	byDefault map[string]providerFile
+	loadOnce       sync.Once
+	loadErr        error
+	byRef          map[string]models.ModelInfo
+	byProv         map[string]map[string]models.ModelInfo
+	byDefault      map[string]providerFile
+	overlayMu      sync.RWMutex
+	overlayRef     = map[string]models.ModelInfo{}
+	overlayProv    = map[string]map[string]models.ModelInfo{}
+	overlayDefault = map[string]providerFile{}
 )
 
 func load() error {
@@ -142,6 +146,13 @@ func readProviderFile(provider string) (providerFile, error) {
 
 // GetRef returns metadata for a provider-qualified model ref.
 func GetRef(ref string) (models.ModelInfo, bool) {
+	overlayMu.RLock()
+	if info, ok := overlayRef[ref]; ok {
+		overlayMu.RUnlock()
+		return info, true
+	}
+	overlayMu.RUnlock()
+
 	if err := load(); err != nil {
 		return models.ModelInfo{}, false
 	}
@@ -151,11 +162,26 @@ func GetRef(ref string) (models.ModelInfo, bool) {
 
 // GetModels returns the model catalog for a provider.
 func GetModels(provider string) (map[string]models.ModelInfo, bool) {
+	out := map[string]models.ModelInfo{}
 	if err := load(); err != nil {
 		return nil, false
 	}
-	m, ok := byProv[provider]
-	return m, ok
+	if m, ok := byProv[provider]; ok {
+		for id, info := range m {
+			out[id] = info
+		}
+	}
+	overlayMu.RLock()
+	if m, ok := overlayProv[provider]; ok {
+		for id, info := range m {
+			out[id] = info
+		}
+	}
+	overlayMu.RUnlock()
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
 }
 
 // Get returns a single model's metadata.
@@ -165,6 +191,13 @@ func Get(provider, modelID string) (models.ModelInfo, bool) {
 
 // GetProviderBaseURL returns the catalog default base URL for a provider.
 func GetProviderBaseURL(provider string) (string, bool) {
+	overlayMu.RLock()
+	if defaults, ok := overlayDefault[provider]; ok && defaults.BaseURL != "" {
+		overlayMu.RUnlock()
+		return defaults.BaseURL, true
+	}
+	overlayMu.RUnlock()
+
 	if err := load(); err != nil {
 		return "", false
 	}
@@ -173,4 +206,36 @@ func GetProviderBaseURL(provider string) (string, bool) {
 		return "", false
 	}
 	return defaults.BaseURL, true
+}
+
+// RegisterProviderOverlay adds process-local provider defaults and model metadata.
+// Config overlays win over the embedded catalog for the running daemon.
+func RegisterProviderOverlay(provider string, baseURL string, modelsByID map[string]models.ModelInfo) {
+	overlayMu.Lock()
+	defer overlayMu.Unlock()
+	if baseURL != "" {
+		overlayDefault[provider] = providerFile{BaseURL: baseURL}
+	}
+	if len(modelsByID) == 0 {
+		return
+	}
+	if overlayProv[provider] == nil {
+		overlayProv[provider] = map[string]models.ModelInfo{}
+	}
+	for id, info := range modelsByID {
+		if info.Provider == "" {
+			info.Provider = provider
+		}
+		if info.ID == "" {
+			info.ID = id
+		}
+		if info.BaseURL == "" {
+			info.BaseURL = baseURL
+		}
+		if overlayProv[info.Provider] == nil {
+			overlayProv[info.Provider] = map[string]models.ModelInfo{}
+		}
+		overlayProv[info.Provider][info.ID] = info
+		overlayRef[info.Provider+"/"+info.ID] = info
+	}
 }

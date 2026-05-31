@@ -44,10 +44,24 @@ The file is parsed as strict JSON:
     "log_format": "json"
   },
   "provider": {
-    "openai": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
       "options": {
         "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
         "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
       }
     }
   },
@@ -62,7 +76,7 @@ The file is parsed as strict JSON:
 | Field | Type | Required | Description |
 |---|---:|---:|---|
 | `server` | object | no | Server defaults used by `wingman serve` and `wingman up`. |
-| `provider` | object | no | Provider route overlays for cataloged providers. |
+| `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
 | `plugins` | object | no | External plugin discovery defaults. |
 | `models` | object | no | Reserved model-related defaults. |
 
@@ -129,13 +143,16 @@ There is no config-file equivalent for `--no-plugins`.
 
 ## `provider`
 
-`provider` is a map keyed by provider ID. It overlays WingModels catalog provider routes at daemon startup. It is not persisted in SQLite and does not store credentials.
+`provider` is a map keyed by provider ID. It overlays WingModels catalog provider routes and can define custom providers and models at daemon startup. It is not persisted in SQLite and does not store credentials.
 
 Supported provider fields:
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
+| `name` | string | no | Display name for a config-defined provider. Defaults to the provider ID for unknown providers. |
+| `auth_types` | object array | no | Auth methods exposed through `/provider`. Defaults to one `api_key` auth type for unknown providers. |
 | `options` | object | no | Runtime route options for this provider. |
+| `models` | object | no | Model metadata keyed by model ID. Required if this is a new provider you want to select from the API or web UI. |
 
 Supported `options` fields:
 
@@ -160,6 +177,74 @@ Example:
 ```
 
 Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways or local endpoints.
+
+Supported model fields under `provider.<id>.models.<model-id>`:
+
+| Field | Type | Required | Description |
+|---|---:|---:|---|
+| `provider` | string | no | Provider ID. Defaults to the enclosing provider key. |
+| `id` | string | no | Model ID. Defaults to the enclosing model key. |
+| `api` | string | yes | Wire protocol. One of `openai_responses`, `openai_completions`, or `anthropic_messages`. |
+| `base_url` | string | no | Model-specific base URL. Defaults to `provider.<id>.options.baseURL` when present. |
+| `env` | string array | no | Environment variables checked for credentials when auth is enabled. |
+| `context_window` | number | no | Context window used for UI/API metadata and context usage percentage. |
+| `max_output` | number | no | Maximum output tokens used for UI/API metadata. |
+| `capabilities` | object | no | Capability flags for runtime gating and UI metadata. |
+| `input_cost_per_mtok` | number | no | Input cost metadata per million tokens. |
+| `output_cost_per_mtok` | number | no | Output cost metadata per million tokens. |
+
+Supported capability flags:
+
+| Field | Type | Description |
+|---|---:|---|
+| `tools` | boolean | Model can use tools. |
+| `images` | boolean | Model accepts image inputs. |
+| `reasoning` | boolean | Model can emit reasoning parts. |
+| `structured_output` | boolean | Model supports structured output constraints. |
+
+Custom provider example:
+
+```json
+{
+  "provider": {
+    "exe-openai": {
+      "name": "exe.dev OpenAI Gateway",
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      },
+      "models": {
+        "gpt-5.5": {
+          "api": "openai_responses",
+          "context_window": 1050000,
+          "max_output": 128000,
+          "capabilities": {
+            "tools": true,
+            "images": true,
+            "reasoning": true,
+            "structured_output": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Route overlay example for an existing catalog provider:
+
+```json
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    }
+  }
+}
+```
 
 ## Reserved `models` Fields
 

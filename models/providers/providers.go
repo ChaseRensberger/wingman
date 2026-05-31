@@ -75,7 +75,10 @@ type Client struct {
 
 // ProviderConfig overlays catalog provider behavior for one process.
 type ProviderConfig struct {
-	Options ProviderOptions `json:"options,omitempty"`
+	Name      string                      `json:"name,omitempty"`
+	AuthTypes []AuthType                  `json:"auth_types,omitempty"`
+	Options   ProviderOptions             `json:"options,omitempty"`
+	Models    map[string]models.ModelInfo `json:"models,omitempty"`
 }
 
 // ProviderOptions are runtime options for a provider route.
@@ -93,6 +96,30 @@ func NewClient(auth map[string]string) *Client {
 // process-local provider overlays.
 func NewClientWithConfig(auth map[string]string, providers map[string]ProviderConfig) *Client {
 	return &Client{Auth: auth, Providers: providers}
+}
+
+// RegisterConfig adds config-defined providers and model metadata for this process.
+// Existing provider IDs keep their registered metadata unless config supplies fields.
+func RegisterConfig(providers map[string]ProviderConfig) {
+	for id, cfg := range providers {
+		if id == "" {
+			continue
+		}
+		meta, err := Get(id)
+		if err != nil {
+			meta = ProviderMeta{ID: id, Name: id, AuthTypes: []AuthType{{Type: "api_key"}}}
+		}
+		if cfg.Name != "" {
+			meta.Name = cfg.Name
+		}
+		if len(cfg.AuthTypes) > 0 {
+			meta.AuthTypes = cfg.AuthTypes
+		}
+		Register(meta)
+		if len(cfg.Models) > 0 {
+			catalog.RegisterProviderOverlay(id, cfg.Options.BaseURL, cfg.Models)
+		}
+	}
 }
 
 // Prepare lowers a request into provider-native JSON without sending it.
