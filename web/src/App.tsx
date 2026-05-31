@@ -35,9 +35,12 @@ function NavLink({
 }
 
 export default function App() {
+	const { location } = useRouterState();
+	const isSessionDetail = /^\/sessions\/[^/]+/.test(location.pathname);
+
 	return (
-		<div className="flex min-h-screen flex-col">
-			<header className="flex items-center justify-between gap-4 border-b px-4 py-3">
+		<div className="flex min-h-dvh flex-col">
+			<header className={cn("flex items-center justify-between gap-4 border-b px-4 py-3", isSessionDetail && "hidden")}>
 				<div className="flex items-center gap-5">
 					<Link to="/">
 						<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />

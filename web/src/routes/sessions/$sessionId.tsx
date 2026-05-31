@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, ToolResultPart, Usage } from "@/lib/types";
@@ -717,32 +717,42 @@ function SessionDetailPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-57px)] max-w-5xl flex-col px-4">
-      <div className="border-b py-4">
-        <PageBreadcrumb
-          items={workspace ? [
-            { label: "Sessions", to: "/sessions" },
-            { label: workspace.name, to: `/sessions?workspace=${workspace.id}` },
-            { label: sessionTitle || session.id.slice(0, 8) },
-          ] : [
-            { label: "Sessions", to: "/sessions" },
-            { label: sessionTitle || session.id.slice(0, 8) },
-          ]}
-        />
-        <div className="mt-4 flex items-start justify-between gap-4">
+    <div className="mx-auto flex h-dvh max-w-5xl flex-col px-3 sm:px-4">
+      <div className="border-b py-2 sm:py-3">
+        <div className="hidden sm:block">
+          <PageBreadcrumb
+            items={workspace ? [
+              { label: "Sessions", to: "/sessions" },
+              { label: workspace.name, to: `/sessions?workspace=${workspace.id}` },
+              { label: sessionTitle || session.id.slice(0, 8) },
+            ] : [
+              { label: "Sessions", to: "/sessions" },
+              { label: sessionTitle || session.id.slice(0, 8) },
+            ]}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 sm:mt-2">
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold tracking-tight">
+            <div className="mb-1 sm:hidden">
+              <Link to="/sessions" search={workspace ? { workspace: workspace.id } : {}} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                Sessions
+              </Link>
+            </div>
+            <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">
               {sessionTitle || "Untitled session"}
             </h1>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>{isDraft ? "Not saved yet" : new Date(session.created_at).toLocaleString()}</span>
-              <span className="max-w-full truncate">{session.work_dir || "-"}</span>
-              <span>
+            <div className="mt-1 flex min-w-0 gap-3 text-[0.7rem] text-muted-foreground sm:text-xs">
+              <span className="shrink-0">{isDraft ? "Draft" : new Date(session.created_at).toLocaleDateString()}</span>
+              <span className="min-w-0 truncate">{session.work_dir || workspace?.path || "No directory"}</span>
+              <span className="hidden shrink-0 sm:inline">
                 {contextWindow
-                  ? `${contextTokenLabel} / ${formatTokenCount(contextWindow)} context${contextPercent ? ` (${contextPercent})` : ""}`
+                  ? `${contextTokenLabel}/${formatTokenCount(contextWindow)} context${contextPercent ? ` (${contextPercent})` : ""}`
                   : `${contextTokenLabel} context`}
               </span>
             </div>
+          </div>
+          <div className="shrink-0 text-[0.7rem] text-muted-foreground sm:hidden">
+            {contextPercent || `${contextTokenLabel} ctx`}
           </div>
         </div>
       </div>
@@ -759,7 +769,7 @@ function SessionDetailPage() {
         onScroll={handleTranscriptScroll}
         onWheel={handleTranscriptWheel}
         onTouchMove={handleTranscriptTouchMove}
-        className="flex-1 overflow-y-auto py-2"
+        className="flex-1 overflow-y-auto py-1"
       >
         {session.history.length === 0 && !visibleStreamingText ? (
           <div className="flex h-full items-center justify-center py-12 text-center">
@@ -782,7 +792,7 @@ function SessionDetailPage() {
 
       <form
         onSubmit={handleSend}
-        className="border-t py-3"
+        className="border-t py-2 sm:py-3"
       >
         <div className="rounded-xl border bg-card p-2 shadow-sm shadow-primary/5">
           <Textarea
@@ -790,11 +800,11 @@ function SessionDetailPage() {
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
-            className="min-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+            className="min-h-16 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-20"
             disabled={isStreaming}
           />
-          <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Select
                 value={selectedAgent}
                 onValueChange={(v) => {
@@ -803,7 +813,7 @@ function SessionDetailPage() {
                   persistLastAgentId(agentId);
                 }}
               >
-                <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
+                <SelectTrigger className="h-8 w-full border-0 bg-muted/60 text-xs shadow-none sm:w-56">
                   <SelectValue placeholder="Select agent">
                     {selectedAgentName}
                   </SelectValue>
@@ -826,7 +836,7 @@ function SessionDetailPage() {
                 }}
                 disabled={!hasModels}
               >
-                <SelectTrigger className="h-8 w-72 border-0 bg-muted/60 text-xs shadow-none">
+                <SelectTrigger className="h-8 w-full border-0 bg-muted/60 text-xs shadow-none sm:w-72">
                   <SelectValue placeholder="Select model">
                     {modelSelectLabel}
                   </SelectValue>
@@ -845,14 +855,16 @@ function SessionDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
               {isStreaming ? (
                 <Button size="sm" variant="destructive" type="button" onClick={handleAbort}>
                   <StopIcon className="size-4" />
                   Abort
                 </Button>
               ) : (
-                <span>Enter to send, Shift+Enter for newline</span>
+                <Button size="sm" type="submit" disabled={!messageText.trim() || !selectedAgent}>
+                  Send
+                </Button>
               )}
             </div>
           </div>

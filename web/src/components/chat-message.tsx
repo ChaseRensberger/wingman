@@ -161,12 +161,12 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
 
   return (
     <div
-      className={`border-b border-border/60 py-5 last:border-b-0 ${
+      className={`border-b border-border/60 py-3 last:border-b-0 sm:py-4 ${
         isUser ? "bg-primary/[0.03]" : message.role === "tool" ? "bg-muted/35" : ""
       }`}
     >
       <div
-        className={`min-w-0 border-l-2 px-4 text-sm leading-6 ${
+        className={`min-w-0 border-l-2 px-3 text-sm leading-6 sm:px-4 ${
           isUser
             ? "border-primary/35 text-foreground"
             : isAssistant

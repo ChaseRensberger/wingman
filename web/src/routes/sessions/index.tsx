@@ -275,7 +275,7 @@ function SessionsPage() {
 	const createLabel = selectedWorkspace ? `New session in ${selectedWorkspace.name}` : "New session";
 
 	return (
-		<div className="mx-auto max-w-[118rem] px-4 py-6">
+		<div className="mx-auto max-w-5xl px-4 py-6">
 			<div className="mb-4">
 				<PageBreadcrumb items={[{ label: "Sessions" }]} />
 			</div>
