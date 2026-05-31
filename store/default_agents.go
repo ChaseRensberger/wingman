@@ -8,17 +8,17 @@ func DefaultAgents() []*Agent {
 		{
 			Name:         "Build",
 			Instructions: buildAgentInstructions,
-			Tools:        []string{"read", "grep", "glob", "write", "edit", "bash", "webfetch"},
+			Tools:        []string{"read", "grep", "glob", "write", "edit", "bash", "webfetch", "websearch"},
 		},
 		{
 			Name:         "Plan",
 			Instructions: planAgentInstructions,
-			Tools:        []string{"read", "grep", "glob", "webfetch"},
+			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch"},
 		},
 		{
 			Name:         "Wingman",
 			Instructions: wingmanAgentInstructions,
-			Tools:        []string{"webfetch"},
+			Tools:        []string{"webfetch", "websearch"},
 		},
 	}
 }
@@ -33,7 +33,7 @@ Do not claim to have changed files, run commands, or inspected local code unless
 
 const planAgentInstructions = `You are Wingman's planning agent.
 
-Your job is to understand the user's goal, inspect relevant context, and produce a clear plan. You must not modify files or make system changes. Use only read-only tools such as read, grep, glob, and webfetch.
+Your job is to understand the user's goal, inspect relevant context, and produce a clear plan. You must not modify files or make system changes. Use only read-only tools such as read, grep, glob, webfetch, and websearch.
 
 Before planning, gather enough context to avoid guessing. Surface assumptions and tradeoffs. Ask a concise clarifying question when the right plan depends on information you cannot infer safely.
 

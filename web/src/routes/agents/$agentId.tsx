@@ -20,7 +20,7 @@ import { wfetch } from "@/lib/client";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { splitModelRef } from "@/lib/utils";
 
-const builtInTools = ["apply_patch", "bash", "read", "write", "edit", "glob", "grep", "webfetch"];
+const builtInTools = ["apply_patch", "bash", "read", "write", "edit", "glob", "grep", "webfetch", "websearch"];
 
 interface AgentForm {
   name: string;

@@ -22,6 +22,7 @@ import { StopIcon } from "@phosphor-icons/react";
 const STREAM_MIN_CHARS_PER_FRAME = 1;
 const STREAM_MAX_CHARS_PER_FRAME = 18;
 const STREAM_BACKLOG_DIVISOR = 14;
+const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
 
 type SessionDetailSearch = {
   workspace?: string;
@@ -102,6 +103,17 @@ function eventField<T>(data: unknown, lower: string, upper: string): T | undefin
   if (!data || typeof data !== "object") return undefined;
   const record = data as Record<string, unknown>;
   return (record[lower] ?? record[upper]) as T | undefined;
+}
+
+function modelRefExists(models: Record<string, ProviderModel[]>, modelRef: string): boolean {
+  const ref = splitModelRef(modelRef);
+  return Boolean(ref.provider && ref.model && models[ref.provider]?.some((model) => model.id === ref.model));
+}
+
+function persistLastModelRef(modelRef: string) {
+  if (modelRef) {
+    localStorage.setItem(LAST_MODEL_REF_KEY, modelRef);
+  }
 }
 
 function formatSessionError(err: unknown): string {
@@ -238,12 +250,17 @@ function SessionDetailPage() {
           } else {
             setWorkspace(null);
           }
+          const modelMap = Object.fromEntries(modelEntries);
           setAgents(agentsData);
           setProviders(providerData);
-          setModels(Object.fromEntries(modelEntries));
+          setModels(modelMap);
           if (agentsData.length > 0) {
             setSelectedAgent(agentsData[0].id);
-            const modelRef = splitModelRef(agentsData[0].model_ref);
+            const storedModelRef = localStorage.getItem(LAST_MODEL_REF_KEY) ?? "";
+            const initialModelRef = modelRefExists(modelMap, storedModelRef)
+              ? storedModelRef
+              : agentsData[0].model_ref;
+            const modelRef = splitModelRef(initialModelRef);
             setSelectedProvider(modelRef.provider);
             setSelectedModel(modelRef.model);
           }
@@ -340,6 +357,8 @@ function SessionDetailPage() {
     if (!messageText.trim() || !selectedAgent) return;
 
     const outboundText = messageText.trim();
+    const outboundModelRef = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
+    persistLastModelRef(outboundModelRef);
     setError("");
     setMessageText("");
     setSession((prev) => {
@@ -382,7 +401,7 @@ function SessionDetailPage() {
         headers,
         body: JSON.stringify({
           agent_id: selectedAgent,
-          model_ref: selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "",
+          model_ref: outboundModelRef,
           message: outboundText,
         }),
         signal: controller.signal,
@@ -593,11 +612,7 @@ function SessionDetailPage() {
               <Select
                 value={selectedAgent}
                 onValueChange={(v) => {
-                  const agent = agents.find((a) => a.id === v);
-                  const modelRef = splitModelRef(agent?.model_ref);
                   setSelectedAgent(v ?? "");
-                  setSelectedProvider(modelRef.provider);
-                  setSelectedModel(modelRef.model);
                 }}
               >
                 <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
@@ -619,6 +634,7 @@ function SessionDetailPage() {
                   const modelRef = splitModelRef(v ?? "");
                   setSelectedProvider(modelRef.provider);
                   setSelectedModel(modelRef.model);
+                  persistLastModelRef(v ?? "");
                 }}
                 disabled={!hasModels}
               >

@@ -818,6 +818,7 @@ func (s *Server) resolveTools(toolNames []string) []tool.Tool {
 		"glob":        tool.NewGlobTool(),
 		"grep":        tool.NewGrepTool(),
 		"webfetch":    tool.NewWebFetchTool(),
+		"websearch":   tool.NewWebSearchTool(),
 	}
 	if s.plugins != nil {
 		for _, t := range s.plugins.Tools() {

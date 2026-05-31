@@ -19,7 +19,7 @@ const ENABLE_COMMAND = "sudo wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
 const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
-// const DISCORD_URL = "";
+const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WINGMODELS_EXAMPLE = `
 
@@ -360,7 +360,7 @@ function Hero() {
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
 					<NavLink name="Docs" url={DOCS_URL} />
-					{/* <NavLink name="Discord" url={DISCORD_URL} /> */}
+					<NavLink name="Discord" url={DISCORD_URL} />
 				</div>
 			</nav>
 			<div className="border-b bg-primary/10 px-6 py-3 text-sm text-primary sm:px-12">

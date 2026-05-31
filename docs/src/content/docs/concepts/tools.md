@@ -22,6 +22,7 @@ Wingman ships these built-ins:
 | `glob` | List files matching a glob pattern. | Yes |
 | `grep` | Search text files with a regular expression. | Yes |
 | `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
+| `websearch` | Search the web for current information through a configured search provider. | No |
 
 Directory-scoped tools require the session to have a working directory. Create or update the session with `working_directory`/`work_dir`, or create it from a Workspace with `workspace_id`, before allowing file or shell tools.
 
@@ -43,12 +44,30 @@ curl -sS -X POST http://localhost:2323/agents \
   -d '{
         "name": "Researcher",
         "instructions": "Answer with citations when useful.",
-        "tools": ["webfetch", "grep", "glob", "read"],
+        "tools": ["websearch", "webfetch", "grep", "glob", "read"],
         "model_ref": "anthropic/claude-sonnet-4-6"
       }'
 ```
 
 The model only sees tools that survive resolution. Unknown names are dropped when the session is built.
+
+## Web Search Configuration
+
+`websearch` uses Exa by default. Configure provider credentials with environment variables before starting `wingman serve`:
+
+```bash
+export WINGMAN_WEBSEARCH_PROVIDER=exa
+export EXA_API_KEY=your_exa_key
+```
+
+Or use Parallel:
+
+```bash
+export WINGMAN_WEBSEARCH_PROVIDER=parallel
+export PARALLEL_API_KEY=your_parallel_key
+```
+
+The tool accepts a required `query` plus optional `numResults`, `livecrawl`, `type`, and `contextMaxCharacters` fields. Use `websearch` when the model needs current or discoverable information; use `webfetch` when you already have a specific URL.
 
 ## Runtime Contract
 

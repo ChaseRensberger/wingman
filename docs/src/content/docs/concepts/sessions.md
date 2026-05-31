@@ -114,7 +114,7 @@ When the server is started with `--ephemeral`, persisted endpoints such as `/ses
 
 A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` use that directory as their workspace.
 
-Sessions without a working directory are valid if the selected agent only uses tools that do not need one, such as `webfetch`.
+Sessions without a working directory are valid if the selected agent only uses tools that do not need one, such as `webfetch` or `websearch`.
 
 A session created with `workspace_id` stores a snapshot of that Workspace's path as `work_dir`. Changing the Workspace later affects future sessions, not existing session history or existing `work_dir` values.
 

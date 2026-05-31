@@ -78,7 +78,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 {
   "name": "Assistant",
   "instructions": "Be helpful and concise.",
-  "tools": ["bash", "read", "write", "edit", "glob", "grep"],
+  "tools": ["bash", "read", "write", "edit", "glob", "grep", "websearch"],
   "model_ref": "anthropic/claude-sonnet-4-6",
   "options": {
     "max_tokens": 4096,
@@ -226,7 +226,7 @@ When the server is started with `--ephemeral`, persisted agents are unavailable,
   "agent": {
     "name": "One-shot Assistant",
     "instructions": "Be concise.",
-    "tools": ["webfetch"],
+    "tools": ["webfetch", "websearch"],
     "model_ref": "anthropic/claude-sonnet-4-6"
   },
   "message": "Explain Wingman in one paragraph."
