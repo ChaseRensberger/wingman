@@ -36,6 +36,19 @@ The `data` payload is an envelope:
 
 The stream ends with a terminal `done` event containing usage and step count.
 
+Common event types:
+
+| Event | Use |
+|---|---|
+| `stream_part` | Append assistant output or model stream metadata. |
+| `tool_start` | Show that a tool call started. |
+| `tool_end` | Mark a tool call complete and render a short result. |
+| `message` | Reconcile persisted assistant history when needed. |
+| `error` | Show an error and unlock the client UI. |
+| `done` | Mark the run complete and record usage/step count. |
+
+At minimum, a client should parse `data:` lines, JSON-decode the envelope, handle `stream_part`, `error`, and `done`, and ignore unknown event types for forward compatibility.
+
 ## When To Stream
 
 Stream when your client needs to:
@@ -46,3 +59,5 @@ Stream when your client needs to:
 - Let users cancel long-running work.
 
 Use the blocking message endpoint when you only need the final response.
+
+For the complete streaming shape, see [API](/reference/referenceapi#streaming).

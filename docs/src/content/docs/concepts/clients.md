@@ -6,7 +6,7 @@ order: 101
 
 # Clients
 
-Since Wingman is client agnostic, different clients on the same machine can use a single Wingman instance as a dependency without interfering with each other. They identify the caller at the API boundary so sessions can be attributed, listed, and governed per client/application.
+Since Wingman is client agnostic, different clients on the same machine can use a single Wingman instance as a dependency without interfering with each other. They identify the caller at the API boundary so sessions can be attributed, listed, and filtered per client/application.
 
 Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client named `Wingman` with ID `cli_wingman`, so manual `curl` calls and local scripts still work without setup.
 
@@ -24,3 +24,5 @@ curl -sS -X POST http://localhost:2323/sessions \
 Omitting the header is equivalent to using `X-Wingman-Client: cli_wingman`.
 
 Client identity also scopes Workspaces. `GET /workspaces` returns the Workspaces for the active client; it does not create any Workspaces automatically.
+
+Client identity is not authentication. Do not expose a Wingman server to untrusted networks based on `X-Wingman-Client`; it is local organization metadata only.

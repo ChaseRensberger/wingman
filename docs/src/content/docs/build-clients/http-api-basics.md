@@ -13,6 +13,8 @@ The default local workspace URL is:
 http://localhost:2323
 ```
 
+By default, browser clients must be served from the same origin as Wingman. Cross-origin browser access is disabled by default because the local API has no inbound auth. Non-browser HTTP clients can call the API directly.
+
 ## Basic Flow
 
 Most clients follow this sequence:
@@ -45,7 +47,21 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 ## Workspaces
 
-Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client; create one with `POST /workspaces` when needed.
+Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client.
+
+Create one when needed:
+
+```bash
+WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
+  -H "Content-Type: application/json" \
+  -H "X-Wingman-Client: ${CLIENT_ID}" \
+  -d "$(jq -n \
+    --arg name "$(basename "$PWD")" \
+    --arg path "$PWD" \
+    '{name: $name, path: $path}')" | jq -r .id)
+```
+
+Or reuse an existing Workspace:
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
@@ -63,7 +79,7 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 Use `working_directory` instead of `workspace_id` for ad hoc sessions. Do not send both fields.
 
-## Persistent And Ephemeral Runs
+## Persistent and Ephemeral Runs
 
 Use persistent sessions when you want history:
 

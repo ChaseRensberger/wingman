@@ -32,8 +32,10 @@ Expected response:
 On Linux, install and start Wingman as a systemd service:
 
 ```bash
-sudo wingman up
+wingman up
 ```
+
+`wingman up` prompts for `sudo` when it needs to write the systemd unit.
 
 Inspect the service:
 
@@ -44,10 +46,10 @@ wingman status
 Stop and remove it:
 
 ```bash
-sudo wingman down
+wingman down
 ```
 
-## Address And Port
+## Address and Port
 
 Change the bind address with `--host` and `--port`:
 
@@ -56,6 +58,8 @@ wingman serve --host 127.0.0.1 --port 2424
 ```
 
 Use `127.0.0.1` for local-only access. Bind to `0.0.0.0` only on trusted networks; Wingman does not provide inbound auth or multi-tenant isolation.
+
+Wingman does not enable cross-origin browser access by default. The bundled web UI is served from `/web` on the same origin as the API.
 
 ## Ephemeral Mode
 

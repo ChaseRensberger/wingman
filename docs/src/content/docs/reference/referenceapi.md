@@ -141,7 +141,7 @@ Or create the session from a Workspace:
 {
   "response": "Here is the script...",
   "tool_calls": [
-    { "tool_name": "write", "input": {"path": "x.py"}, "output": "" }
+    { "tool_name": "write", "input": {"filePath": "x.py"}, "output": "" }
   ],
   "usage": { "input_tokens": 120, "output_tokens": 45 },
   "steps": 2

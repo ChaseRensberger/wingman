@@ -9,42 +9,42 @@ description: "Wingman command-line interface reference."
 
 The `wingman` binary runs the local Wingman HTTP server, manages the Linux systemd service, and prints build information.
 
-## Usage
-
 ```bash
 wingman <command> [flags]
 ```
 
-When working from the repository, replace `wingman` with `go run ./cmd/wingman`:
-
-```bash
-go run ./cmd/wingman <command> [flags]
-```
+When working from the repository, replace `wingman` with `go run ./cmd/wingman`.
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `serve` | Start the HTTP server. |
+| `serve` | Start the HTTP server in the foreground. |
 | `up` | Install, enable, and start Wingman as a systemd service. |
 | `down` | Stop, disable, and remove the Wingman systemd service. |
 | `restart` | Restart the Wingman systemd service. |
 | `status` | Show the Wingman systemd service status. |
 | `version` | Print version information. |
 
-## `wingman up`
+## Server Commands
 
-Installs `/etc/systemd/system/wingman.service`, reloads systemd, enables the service at boot, and starts it immediately.
+`wingman serve` starts the server in the foreground:
 
 ```bash
-wingman up [flags]
+wingman serve
 ```
 
-The command re-executes itself through `sudo` when needed. The service runs `wingman serve` as the user that invoked it, so the default database stays under that user's home directory. Linux/systemd is the supported service manager.
+`wingman up` installs `/etc/systemd/system/wingman.service`, enables it at boot, and starts it immediately:
 
-### Flags
+```bash
+wingman up
+```
 
-`wingman up` accepts the same runtime flags as `wingman serve`. The selected values are written into the generated systemd unit.
+`wingman up` re-executes itself through `sudo` when needed. The service runs `wingman serve` as the user that invoked it, so the default database stays under that user's home directory. Linux/systemd is the supported service manager.
+
+`wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated systemd unit.
+
+## Runtime Flags
 
 | Flag | Default | Description |
 |---|---|---|
@@ -58,45 +58,26 @@ The command re-executes itself through `sudo` when needed. The service runs `win
 | `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
 | `--no-plugins` | `false` | Disable out-of-process plugin loading. |
 
-### Examples
-
-Start Wingman now and at boot:
+Examples:
 
 ```bash
-wingman up
-```
-
-Start the service on a different port:
-
-```bash
+wingman serve --host 127.0.0.1 --port 2424
+wingman serve --db ./wingman.db
+wingman serve --ephemeral
 wingman up --port 2424
 ```
 
-Bind on all interfaces:
+Bind to `0.0.0.0` only on trusted networks. Wingman does not provide inbound auth or multi-tenant isolation.
 
-```bash
-wingman up --host 0.0.0.0
-```
+## Service Commands
 
-## `wingman down`
-
-Stops and disables `wingman.service`, removes `/etc/systemd/system/wingman.service`, and reloads systemd.
-
-```bash
-wingman down
-```
-
-## `wingman status`
-
-Shows `systemctl status wingman.service`.
+Check the generated systemd service:
 
 ```bash
 wingman status
 ```
 
-## `wingman restart`
-
-Restarts `wingman.service` without regenerating the systemd unit. Use this after editing `~/.config/wingman/wingman.json`.
+Restart the service after editing `~/.config/wingman/wingman.json`:
 
 ```bash
 wingman restart
@@ -104,63 +85,25 @@ wingman restart
 
 To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`, run `wingman up` again with the new flags.
 
-## `wingman serve`
-
-Starts the Wingman HTTP server in the foreground. By default it binds to `127.0.0.1:2323` and stores data in SQLite at `~/.local/share/wingman/wingman.db`.
+Stop and remove the service:
 
 ```bash
-wingman serve [flags]
+wingman down
 ```
 
-### Flags
+## Development Proxy
 
-| Flag | Default | Description |
-|---|---|---|
-| `--host` | `127.0.0.1` | Host to bind to. |
-| `--port` | `2323` | Port to listen on. |
-| `--db` | `~/.local/share/wingman/wingman.db` | SQLite database path. |
-| `--ephemeral` | `false` | Run without persistence. |
-| `--log-format` | `json` | Log format: `json` or `text`. |
-| `--log-level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. |
-| `--ui-dev` | none | Proxy `/web` to a Vite dev server URL. |
-| `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
-| `--no-plugins` | `false` | Disable out-of-process plugin loading. |
-
-### Examples
-
-Start with defaults:
-
-```bash
-wingman serve
-```
-
-Bind on all interfaces:
-
-```bash
-wingman serve --host 0.0.0.0 --port 2323
-```
-
-Use a custom database path:
-
-```bash
-wingman serve --db ./wingman.db
-```
-
-Run without persistence:
-
-```bash
-wingman serve --ephemeral
-```
-
-Proxy the embedded web route to a local Vite server during UI development:
+Proxy the embedded web route to a local Vite server while developing the web UI:
 
 ```bash
 wingman serve --ui-dev http://localhost:5173
 ```
 
-## `wingman version`
+Normal users do not need `--ui-dev`.
 
-Prints the binary version, commit, and build date.
+## Version
+
+Print the binary version, commit, and build date:
 
 ```bash
 wingman version

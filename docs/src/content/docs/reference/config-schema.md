@@ -64,7 +64,7 @@ The file is parsed as strict JSON:
 | `server` | object | no | Server defaults used by `wingman serve` and `wingman up`. |
 | `provider` | object | no | Provider route overlays for cataloged providers. |
 | `plugins` | object | no | External plugin discovery defaults. |
-| `models` | object | no | Parsed model-related defaults. |
+| `models` | object | no | Reserved model-related defaults. |
 
 Only the documented fields are supported.
 
@@ -161,13 +161,15 @@ Example:
 
 Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways or local endpoints.
 
-## `models`
+## Reserved `models` Fields
 
 | Field | Type | Default | Description |
 |---|---:|---|---|
 | `default` | string | empty | Parsed model ref reserved for future default-model behavior. |
 
-`models.default` is parsed by the server, but it is not currently applied to agent creation or message execution. Agents should set `model_ref`, or callers should pass `model_ref` on message requests.
+`models.default` is parsed by the server, but it is not currently applied to agent creation or message execution. It is reserved for future default-model behavior.
+
+For now, agents should set `model_ref`, or callers should pass `model_ref` on message requests.
 
 Example:
 

@@ -1,6 +1,5 @@
 ---
 title: "Introduction"
-draft: false
 order: 1
 ---
 

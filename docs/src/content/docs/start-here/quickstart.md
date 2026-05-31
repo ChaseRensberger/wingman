@@ -21,18 +21,16 @@ If you are working from the repository, you also need Go installed.
 From a release install:
 
 ```bash
-wingman up
+wingman serve
 ```
 
-This prompts for `sudo` if needed, installs and starts `wingman.service` under systemd, and enables it to start when your machine boots.
+This starts Wingman in the foreground. Use this path for your first run so logs stay visible in the terminal.
 
 From the repository:
 
 ```bash
 go run ./cmd/wingman serve
 ```
-
-You can also use `wingman serve` from a release install when you want to run the server in the foreground instead of installing a system service.
 
 The server listens on `127.0.0.1:2323` by default and stores data in SQLite at `~/.local/share/wingman/wingman.db`.
 
@@ -48,11 +46,13 @@ Expected response:
 { "status": "ok" }
 ```
 
-Inspect the systemd service:
+On Linux, install and start Wingman as a systemd service when you want it running in the background:
 
 ```bash
-wingman status
+wingman up
 ```
+
+`wingman up` prompts for `sudo` if needed, installs `wingman.service`, and enables it to start when your machine boots.
 
 ## Configure provider auth
 

@@ -57,7 +57,7 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
 
 `POST /sessions/{id}/message` requires the session to exist. A typo in the ID returns `404`; it does not create a new session.
 
-## Per-Message Agent And Model
+## Per-Message Agent and Model
 
 Agents and models are selected per message:
 
@@ -132,7 +132,7 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 
 Tool result parts contain model-facing text and may also contain metadata for clients. File-editing tools use this metadata to expose changed files, patches, and addition/deletion counts so UIs can render diffs without parsing prose. Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, and plugins can introduce custom content.
 
-## Usage And Context
+## Usage and Context
 
 Persisted sessions also store normalized model-call records for assistant turns. A model call captures the provider/model route, finish state, token usage, context token count, context window, and computed context percentage reported by the provider path.
 

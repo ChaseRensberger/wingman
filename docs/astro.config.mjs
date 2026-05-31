@@ -41,7 +41,6 @@ export default defineConfig({
           items: [
             { label: "Run the Server", slug: "use-wingman/run-server" },
             { label: "Use the Web UI", slug: "use-wingman/web-ui" },
-            { label: "Configure Providers", slug: "use-wingman/configure-providers" },
           ],
         },
         {

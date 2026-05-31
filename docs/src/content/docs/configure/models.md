@@ -51,7 +51,7 @@ Message requests can override the agent's model for one turn:
 
 If neither the message nor the agent provides a model, Wingman returns an error before the first provider call.
 
-## Provider Routes And Model Refs
+## Provider Routes and Model Refs
 
 Provider route overlays change where cataloged model refs are sent. They do not change the model ref itself.
 
@@ -106,7 +106,7 @@ Use `model_route` when the catalog does not know the model or when a specific ag
 
 If `model_ref` is already in the catalog, the catalog route wins. `model_route` is the escape hatch for uncataloged models and explicit custom deployments.
 
-## Choosing Between Provider Config And `model_route`
+## Choosing Between Provider Config and `model_route`
 
 | Need | Use |
 |---|---|

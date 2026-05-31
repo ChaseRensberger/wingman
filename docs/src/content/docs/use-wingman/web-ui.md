@@ -19,13 +19,13 @@ Open:
 http://localhost:2323/web
 ```
 
-The web UI is a client of the same HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Workspaces, and sessions without writing `curl` requests by hand.
+The web UI is a same-origin client of the HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Workspaces, and sessions without writing `curl` requests by hand.
 
-## Sessions And Workspaces
+## Sessions and Workspaces
 
 The Sessions page shows all sessions by default. Use the Workspace dropdown to filter to a saved Workspace or to sessions with no Workspace.
 
-Create, edit, and delete Workspaces from the Sessions page. Wingman does not create a default Workspace automatically.
+Create, edit, and delete Workspaces from the Sessions page. Wingman does not create a default Workspace automatically. When setting a Workspace or session working directory, enter an absolute path on the machine running Wingman.
 
 Workspace filters and session detail are reflected in the URL:
 
