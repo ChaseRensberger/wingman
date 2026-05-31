@@ -167,8 +167,13 @@ resolve_version() {
 
 resolve_asset_url() {
   local version="$1" os="$2" arch="$3" ext="$4"
-  local api url name candidate fallback
-  api="https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/v${version}"
+  resolve_release_asset_url "v${version}" "$version" "$os" "$arch" "$ext"
+}
+
+resolve_release_asset_url() {
+  local tag="$1" version="$2" os="$3" arch="$4" ext="$5"
+  local api url name candidate="" fallback=""
+  api="https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${tag}"
 
   while IFS= read -r url; do
     [[ -z "$url" ]] && continue
@@ -192,7 +197,7 @@ resolve_asset_url() {
     if [[ -z "$fallback" ]]; then
       fallback="$url"
     fi
-  done < <(curl -fsSL "$api" | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  done < <(curl -fsSL "$api" 2>/dev/null | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
   if [[ -n "$candidate" ]]; then
     echo "$candidate"
@@ -207,61 +212,8 @@ resolve_asset_url() {
   echo ""
 }
 
-github_auth_header_args() {
-  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  if [[ -n "$token" ]]; then
-    printf '%s\n' -H "Authorization: Bearer ${token}"
-  fi
-}
-
-github_api_get() {
-  local url="$1"
-  local -a args=()
-
-  while IFS= read -r arg; do
-    args+=("$arg")
-  done < <(github_auth_header_args)
-
-  curl -fsSL \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "${args[@]}" \
-    "$url"
-}
-
-github_download() {
-  local url="$1" output="$2"
-  local -a args=()
-
-  while IFS= read -r arg; do
-    args+=("$arg")
-  done < <(github_auth_header_args)
-
-  curl -fL \
-    -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    "${args[@]}" \
-    "$url" \
-    -o "$output"
-}
-
-latest_snapshot_artifact_url() {
-  local api json artifact url
-  api="https://api.github.com/repos/${OWNER}/${REPO}/actions/artifacts?name=${APP}-snapshot&per_page=20"
-  json=$(github_api_get "$api")
-
-  while IFS= read -r artifact; do
-    [[ "$artifact" == *'"expired": false'* || "$artifact" == *'"expired":false'* ]] || continue
-    url=$(printf '%s' "$artifact" | sed -n 's/.*"archive_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    if [[ -n "$url" ]]; then
-      echo "$url"
-      return
-    fi
-  done < <(printf '%s' "$json" | tr -d '\n' | sed 's/},{/}\n{/g')
-}
-
 install_from_snapshot() {
-  local os arch ext tmp_dir artifact_zip artifact_url archive bin_name
+  local os arch ext tmp_dir archive url bin_name
   os=$(detect_os)
   arch=$(detect_arch)
 
@@ -270,40 +222,35 @@ install_from_snapshot() {
     ext="zip"
   fi
 
-  artifact_url=$(latest_snapshot_artifact_url)
-  if [[ -z "$artifact_url" ]]; then
-    echo "Failed to resolve latest ${APP} snapshot artifact" >&2
+  url=$(resolve_release_asset_url "snapshot" "snapshot" "$os" "$arch" "$ext")
+  if [[ -z "$url" ]]; then
+    echo "Failed to resolve latest ${APP} snapshot release artifact" >&2
     exit 1
   fi
 
   echo "Installing latest ${APP} snapshot (${os}/${arch})"
 
   tmp_dir=$(mktemp -d)
-  artifact_zip="${tmp_dir}/${APP}-snapshot.zip"
+  archive="${tmp_dir}/$(basename "$url")"
   trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
 
-  if ! github_download "$artifact_url" "$artifact_zip"; then
-    echo "Failed to download snapshot artifact: $artifact_url" >&2
-    echo "If GitHub requires authentication, retry with GH_TOKEN set to a token that can read Actions artifacts." >&2
-    exit 1
-  fi
-
-  if ! command -v unzip >/dev/null 2>&1; then
-    echo "Error: unzip is required to install snapshots" >&2
-    exit 1
-  fi
-
-  unzip -q "$artifact_zip" -d "$tmp_dir"
-  archive=$(find "$tmp_dir" -type f -name "${APP}_*_${os}_${arch}.${ext}" | head -n 1)
-  if [[ -z "$archive" ]]; then
-    echo "Snapshot artifact does not contain a ${os}/${arch} archive" >&2
+  if ! curl -fL "$url" -o "$archive"; then
+    echo "Failed to download snapshot artifact: $url" >&2
     exit 1
   fi
 
   if [[ "$os" == "windows" ]]; then
+    if ! command -v unzip >/dev/null 2>&1; then
+      echo "Error: unzip is required to install on Windows" >&2
+      exit 1
+    fi
     unzip -q "$archive" -d "$tmp_dir/archive"
     bin_name="${APP}.exe"
   else
+    if ! command -v tar >/dev/null 2>&1; then
+      echo "Error: tar is required to install" >&2
+      exit 1
+    fi
     tar -xzf "$archive" -C "$tmp_dir"
     bin_name="$APP"
   fi
