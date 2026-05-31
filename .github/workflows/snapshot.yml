@@ -2,6 +2,8 @@ name: snapshot
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -34,4 +36,4 @@ jobs:
         with:
           name: wingman-snapshot
           path: dist/*
-          retention-days: 7
+          retention-days: 30

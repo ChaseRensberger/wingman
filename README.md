@@ -25,6 +25,12 @@ Install the latest release:
 curl -fsSL https://wingman.actor/install | bash
 ```
 
+Install the latest snapshot build from `main`:
+
+```bash
+curl -fsSL https://wingman.actor/install | bash -s -- --snapshot
+```
+
 Restart your shell if the installer added `~/.wingman/bin` to your `PATH`, then verify the binary:
 
 ```bash

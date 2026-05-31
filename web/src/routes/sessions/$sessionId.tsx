@@ -27,18 +27,6 @@ const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
 const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
 const DEFAULT_SESSION_TITLE = "New session";
 
-const TITLE_OUTPUT_SCHEMA = {
-  name: "session_title",
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["title"],
-    properties: {
-      title: { type: "string", minLength: 1, maxLength: 80 },
-    },
-  },
-};
-
 type SessionDetailSearch = {
   workspace?: string;
 };
@@ -122,23 +110,6 @@ function sanitizeGeneratedTitle(title: string): string {
     .slice(0, 80);
 }
 
-function extractTitleFromText(text: string): string {
-  try {
-    const parsed = JSON.parse(text) as { title?: unknown };
-    if (typeof parsed.title === "string") return sanitizeGeneratedTitle(parsed.title);
-  } catch {
-    // The model streams partial JSON before the structured output event arrives.
-  }
-
-  const match = text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)/);
-  if (!match) return "";
-  try {
-    return sanitizeGeneratedTitle(JSON.parse(`"${match[1]}"`) as string);
-  } catch {
-    return sanitizeGeneratedTitle(match[1]);
-  }
-}
-
 function eventField<T>(data: unknown, lower: string, upper: string): T | undefined {
   if (!data || typeof data !== "object") return undefined;
   const record = data as Record<string, unknown>;
@@ -202,14 +173,13 @@ async function generateSessionTitle(
         instructions: [
           "Generate a concise, specific title for a chat session from the user's first message.",
           "Use 3 to 7 words.",
-          "Do not use quotes or trailing punctuation.",
-          "Return only the requested structured output.",
+          "Respond with only the title text.",
+          "Do not use JSON, markdown, quotes, labels, or trailing punctuation.",
         ].join("\n"),
         tools: [],
       },
       model_ref: modelRef,
       message,
-      output_schema: TITLE_OUTPUT_SCHEMA,
     }),
     signal,
   });
@@ -235,22 +205,14 @@ async function generateSessionTitle(
       const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
       if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
         textBuffer += part.delta;
-        const title = extractTitleFromText(textBuffer);
+        const title = sanitizeGeneratedTitle(textBuffer);
         if (title) onTitle(title);
-      }
-    }
-    if (ev.event === "structured_output") {
-      const envelope = ev.data as { data?: unknown; Data?: unknown };
-      const data = envelope.data ?? envelope.Data;
-      const parsed = eventField<Record<string, unknown>>(data, "parsed", "Parsed");
-      if (typeof parsed?.title === "string") {
-        finalTitle = sanitizeGeneratedTitle(parsed.title);
-        if (finalTitle) onTitle(finalTitle);
       }
     }
   }
 
-  return finalTitle || extractTitleFromText(textBuffer);
+  finalTitle = sanitizeGeneratedTitle(textBuffer);
+  return finalTitle;
 }
 
 export const Route = createFileRoute("/sessions/$sessionId")({
