@@ -17,19 +17,41 @@ Wingman is yet another agent harness, but this one is:
 - Independent from common harness dependencies: no Vercel AI SDK, no models.dev, etc. This makes it better suited for secure or airgapped environments.
 - Highly extensible: plugin support via in-process Go modules or out-of-process JSON-RPC. Plugins can register tools, attach to lifecycle events, rewrite history, and more.
 
-## Install
+## Quick Start
 
-Grab a binary from the releases page or use the install script.
+Install the latest release:
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
 ```
 
+Restart your shell if the installer added `~/.wingman/bin` to your `PATH`, then verify the binary:
+
 ```bash
-sudo wingman up
+wingman version
 ```
 
-`sudo wingman up` installs and starts `wingman.service` with systemd. The server listens on `127.0.0.1:2323` (by default) and stores data in SQLite at `~/.local/share/wingman/wingman.db` by default.
+Start Wingman in the foreground:
+
+```bash
+wingman serve
+```
+
+The server listens on `127.0.0.1:2323` by default and stores data in SQLite at `~/.local/share/wingman/wingman.db`.
+
+Open the bundled web UI:
+
+```text
+http://127.0.0.1:2323/web
+```
+
+On Linux, install and start Wingman as a systemd service when you want it running in the background:
+
+```bash
+wingman up
+```
+
+`wingman up` prompts for `sudo` if needed, installs `wingman.service`, and starts it.
 
 ## Features
 

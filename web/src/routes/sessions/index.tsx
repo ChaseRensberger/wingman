@@ -4,7 +4,6 @@ import {
 	CheckIcon,
 	DotsThreeVerticalIcon,
 	FolderIcon,
-	FolderOpenIcon,
 	MagnifyingGlassIcon,
 	PencilSimpleIcon,
 	PlusIcon,
@@ -50,6 +49,7 @@ import {
 	TableRow,
 } from "@/components/core/table";
 import { wfetch } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -148,7 +148,7 @@ function SessionsPage() {
 				await loadData();
 			} catch (err) {
 				console.error("Failed to load sessions", err);
-				alert(String(err));
+				showErrorToast(err);
 			} finally {
 				if (!cancelled) setLoading(false);
 			}
@@ -193,22 +193,6 @@ function SessionsPage() {
 		setSessionWorkDir(session.work_dir || "");
 	}
 
-	async function chooseWorkingDirectory(setter: (path: string) => void) {
-		const picker = (window as Window & {
-			showDirectoryPicker?: () => Promise<{ name: string }>;
-		}).showDirectoryPicker;
-		if (!picker) {
-			alert("This browser does not support directory picking. Enter the path manually.");
-			return;
-		}
-		try {
-			const handle = await picker.call(window);
-			setter(handle.name);
-		} catch (err) {
-			if ((err as Error).name !== "AbortError") alert(String(err));
-		}
-	}
-
 	async function handleSaveWorkspace(e: React.FormEvent) {
 		e.preventDefault();
 		setSavingWorkspace(true);
@@ -230,7 +214,7 @@ function SessionsPage() {
 			await loadData();
 			setWorkspaceDialogOpen(false);
 		} catch (err) {
-			alert(String(err));
+			showErrorToast(err);
 		} finally {
 			setSavingWorkspace(false);
 		}
@@ -246,7 +230,7 @@ function SessionsPage() {
 			setDeleteWorkspace(null);
 			setWorkspaceDialogOpen(false);
 		} catch (err) {
-			alert(String(err));
+			showErrorToast(err);
 		} finally {
 			setDeletingWorkspaceId("");
 		}
@@ -267,7 +251,7 @@ function SessionsPage() {
 			setSessions((prev) => prev.map((session) => (session.id === updated.id ? updated : session)));
 			setEditingSession(null);
 		} catch (err) {
-			alert(String(err));
+			showErrorToast(err);
 		} finally {
 			setSavingSession(false);
 		}
@@ -281,7 +265,7 @@ function SessionsPage() {
 			setSessions((prev) => prev.filter((session) => session.id !== deleteSession.id));
 			setDeleteSession(null);
 		} catch (err) {
-			alert(String(err));
+			showErrorToast(err);
 		} finally {
 			setDeletingSessionId("");
 		}
@@ -457,11 +441,8 @@ function SessionsPage() {
 										No directory
 									</label>
 								</div>
-								<div className="flex gap-2">
-									<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="/path/to/project" disabled={workspaceHasNoDirectory} />
-									<Button type="button" variant="outline" onClick={() => chooseWorkingDirectory(setWorkspacePath)} disabled={workspaceHasNoDirectory}><FolderOpenIcon className="size-4" />Choose</Button>
-								</div>
-								<p className="text-xs text-muted-foreground">Sessions created in this workspace will not start with a working directory.</p>
+								<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="/path/to/project" disabled={workspaceHasNoDirectory} />
+								<p className="text-xs text-muted-foreground">Use an absolute path on the machine running Wingman.</p>
 							</div>
 						</div>
 						<DialogFooter className="items-center sm:justify-between">
@@ -490,7 +471,7 @@ function SessionsPage() {
 							<div className="grid gap-1"><label className="text-xs font-medium">Name</label><Input placeholder="Session name" value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} /></div>
 							<div className="grid gap-1">
 								<label className="text-xs font-medium">Working directory</label>
-								<div className="flex gap-2"><Input placeholder="Optional working directory" value={sessionWorkDir} onChange={(e) => setSessionWorkDir(e.target.value)} /><Button type="button" variant="outline" onClick={() => chooseWorkingDirectory(setSessionWorkDir)}><FolderOpenIcon className="size-4" />Choose</Button></div>
+								<Input placeholder="Optional working directory" value={sessionWorkDir} onChange={(e) => setSessionWorkDir(e.target.value)} />
 								<p className="text-xs text-muted-foreground">Clear this field to remove the working directory.</p>
 							</div>
 						</div>

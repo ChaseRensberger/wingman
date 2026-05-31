@@ -25,7 +25,24 @@ jobs:
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Run GoReleaser Snapshot
+      - name: Build web UI
+        working-directory: web
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Build docs
+        working-directory: docs
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -tags webdist ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"

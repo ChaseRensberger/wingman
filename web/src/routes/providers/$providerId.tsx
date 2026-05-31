@@ -17,6 +17,7 @@ import { Input } from "@/components/core/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/core/table";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
 
 export const Route = createFileRoute("/providers/$providerId")({
@@ -48,7 +49,7 @@ function ProviderDetailPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => alert(String(err)));
+    load().catch((err) => showErrorToast(err));
   }, [providerId]);
 
   async function saveKey() {
@@ -62,7 +63,7 @@ function ProviderDetailPage() {
       setKey("");
       await load();
     } catch (err) {
-      alert(String(err));
+      showErrorToast(err);
     } finally {
       setSaving(false);
     }
@@ -75,7 +76,7 @@ function ProviderDetailPage() {
       await wfetch(`/provider/auth/${provider.id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      alert(String(err));
+      showErrorToast(err);
     } finally {
       setDeleting(false);
     }

@@ -3,6 +3,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Badge } from "@/components/core/badge";
 import { Button } from "@/components/core/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/core/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -17,6 +24,7 @@ import { Input } from "@/components/core/input";
 import { Textarea } from "@/components/core/textarea";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { splitModelRef } from "@/lib/utils";
 
@@ -87,7 +95,7 @@ function AgentDetailPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => alert(String(err)));
+    load().catch((err) => showErrorToast(err));
   }, [agentId]);
 
   function toggleTool(tool: string) {
@@ -122,7 +130,7 @@ function AgentDetailPage() {
       setAgent(updated);
       setForm(formFromAgent(updated));
     } catch (err) {
-      alert(String(err));
+      showErrorToast(err);
     } finally {
       setSaving(false);
     }
@@ -135,7 +143,7 @@ function AgentDetailPage() {
       await wfetch(`/agents/${agent.id}`, { method: "DELETE" });
       navigate({ to: "/agents" });
     } catch (err) {
-      alert(String(err));
+      showErrorToast(err);
       setDeleting(false);
     }
   }
@@ -194,37 +202,54 @@ function AgentDetailPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1">
               <label className="text-xs font-medium">Provider</label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              <Select
                 value={form.provider}
-                onChange={(e) => setForm((prev) => prev && { ...prev, provider: e.target.value, model: "" })}
+                onValueChange={(value) => setForm((prev) => prev && { ...prev, provider: value ?? "", model: "" })}
               >
-                <option value="">Select provider</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1">
               <label className="text-xs font-medium">Model</label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              <Select
                 value={form.model}
-                onChange={(e) => setForm((prev) => prev && { ...prev, model: e.target.value })}
+                onValueChange={(value) => setForm((prev) => prev && { ...prev, model: value ?? "" })}
+                disabled={!form.provider || providerModels.length === 0}
               >
-                <option value="">Select model</option>
-                {providerModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.id}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder={form.provider ? "Select model" : "Select provider first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {providerModels.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid gap-2">
-            <label className="text-xs font-medium">Tools</label>
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-medium">Tools</label>
+              <div className="flex gap-1">
+                <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => prev && { ...prev, tools: builtInTools })}>
+                  All on
+                </Button>
+                <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => prev && { ...prev, tools: [] })}>
+                  All off
+                </Button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {builtInTools.map((tool) => (
                 <Button

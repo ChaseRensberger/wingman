@@ -5,13 +5,19 @@ import "./globals.css";
 import { ensureClient } from "./lib/client";
 import { router } from "./router";
 import { ThemeProvider } from "./components/theme-provider";
+import { ToastProvider } from "./components/core/toast";
+import { AppToaster } from "./components/app-toaster";
+import { toastManager } from "./lib/toast";
 
 async function main() {
   await ensureClient();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ThemeProvider>
-        <RouterProvider router={router} />
+        <ToastProvider toastManager={toastManager}>
+          <RouterProvider router={router} />
+          <AppToaster />
+        </ToastProvider>
       </ThemeProvider>
     </StrictMode>,
   );
@@ -19,5 +25,8 @@ async function main() {
 
 main().catch((err) => {
   console.error("Bootstrap failed:", err);
-  document.body.innerHTML = `<div style="padding:2rem">Failed to start: ${String(err)}</div>`;
+  const message = document.createElement("div");
+  message.style.padding = "2rem";
+  message.textContent = `Failed to start: ${String(err)}`;
+  document.body.replaceChildren(message);
 });

@@ -21,6 +21,7 @@ import {
 } from "@/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/core/empty";
 import { wfetch } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
@@ -88,23 +89,23 @@ function AgentsPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => alert(String(err)));
+    load().catch((err) => showErrorToast(err));
   }, []);
 
   useEffect(() => {
     if (filterOpen) filterInputRef.current?.focus();
   }, [filterOpen]);
 
-  function openNew() {
-    setForm(emptyForm);
-    setCreateOpen((open) => !open);
-  }
-
   function toggleTool(tool: string) {
     setForm((prev) => ({
       ...prev,
       tools: prev.tools.includes(tool) ? prev.tools.filter((item) => item !== tool) : [...prev.tools, tool],
     }));
+  }
+
+  function openNew() {
+    setForm(emptyForm);
+    setCreateOpen((open) => !open);
   }
 
   async function save(e: React.FormEvent) {
@@ -128,7 +129,7 @@ function AgentsPage() {
       setCreateOpen(false);
       await load();
     } catch (err) {
-      alert(String(err));
+      showErrorToast(err);
     } finally {
       setSaving(false);
     }
@@ -249,13 +250,28 @@ function AgentsPage() {
               </div>
             </div>
             <div className="grid gap-2">
-              <label className="text-xs font-medium">Tools</label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-medium">Tools</label>
+                <div className="flex gap-1">
+                  <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => ({ ...prev, tools: builtInTools }))}>
+                    All on
+                  </Button>
+                  <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => ({ ...prev, tools: [] }))}>
+                    All off
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {builtInTools.map((tool) => (
-                  <label key={tool} className="flex items-center gap-2 text-xs">
-                    <input type="checkbox" checked={form.tools.includes(tool)} onChange={() => toggleTool(tool)} />
-                    {tool}
-                  </label>
+                  <Button
+                    key={tool}
+                    type="button"
+                    onClick={() => toggleTool(tool)}
+                    variant="ghost"
+                    className="h-auto rounded-md p-0"
+                  >
+                    <Badge variant={form.tools.includes(tool) ? "default" : "outline"}>{tool}</Badge>
+                  </Button>
                 ))}
               </div>
             </div>

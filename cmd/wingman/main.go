@@ -129,16 +129,27 @@ func (c fileConfig) pluginDirs() []string {
 
 func expandHome(path string) string {
 	if path == "~" {
-		if home, err := os.UserHomeDir(); err == nil {
+		if home, err := effectiveHomeDir(); err == nil {
 			return home
 		}
 	}
 	if strings.HasPrefix(path, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
+		if home, err := effectiveHomeDir(); err == nil {
 			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
 		}
 	}
 	return path
+}
+
+func effectiveHomeDir() (string, error) {
+	if os.Geteuid() == 0 && os.Getenv("SUDO_USER") != "" {
+		u, err := user.Lookup(os.Getenv("SUDO_USER"))
+		if err != nil {
+			return "", err
+		}
+		return u.HomeDir, nil
+	}
+	return os.UserHomeDir()
 }
 
 func main() {

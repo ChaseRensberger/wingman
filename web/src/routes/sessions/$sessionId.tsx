@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
@@ -197,7 +198,7 @@ function SessionDetailPage() {
       }
     } catch (err) {
       console.error("Failed to load session", err);
-      alert(String(err));
+      showErrorToast(err);
     } finally {
       setLoading(false);
     }
@@ -267,7 +268,7 @@ function SessionDetailPage() {
         }
       } catch (err) {
         console.error("Failed to load session/agents", err);
-        alert(String(err));
+        showErrorToast(err);
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 
 	"github.com/chaserensberger/wingman/internal/observability"
 	"github.com/chaserensberger/wingman/models/providers"
@@ -84,13 +83,6 @@ func New(cfg Config) *Server {
 }
 
 func (s *Server) setupMiddleware() {
-	s.router.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "X-Wingman-Client"},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(s.requestLogger)

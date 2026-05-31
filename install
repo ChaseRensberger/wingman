@@ -9,6 +9,7 @@ requested_version="${VERSION:-}"
 binary_path=""
 install_dir="${WINGMAN_INSTALL_DIR:-$HOME/.wingman/bin}"
 no_modify_path=false
+assume_yes=false
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,7 @@ Options:
   -b, --binary <path>     Install from a local binary
       --install-dir <dir> Set install directory (default: ~/.wingman/bin)
       --no-modify-path    Do not modify shell config files
+  -y, --yes               Accept default install choices
 
 Examples:
   curl -fsSL https://wingman.actor/install | bash
@@ -64,12 +66,44 @@ while [[ $# -gt 0 ]]; do
       no_modify_path=true
       shift
       ;;
+    -y|--yes)
+      assume_yes=true
+      shift
+      ;;
     *)
       echo "Warning: Unknown option '$1'" >&2
       shift
       ;;
   esac
 done
+
+is_interactive() {
+  [[ -t 0 && -t 1 && "$assume_yes" == false ]]
+}
+
+confirm() {
+  local prompt="$1" default="$2" answer
+  if ! is_interactive; then
+    [[ "$default" == "yes" ]]
+    return
+  fi
+
+  if [[ "$default" == "yes" ]]; then
+    read -r -p "${prompt} [Y/n] " answer
+    [[ -z "$answer" || "$answer" =~ ^[Yy]$ ]]
+  else
+    read -r -p "${prompt} [y/N] " answer
+    [[ "$answer" =~ ^[Yy]$ ]]
+  fi
+}
+
+if is_interactive; then
+  echo "Wingman will install to: ${install_dir}"
+  if ! confirm "Continue?" yes; then
+    echo "Install cancelled"
+    exit 0
+  fi
+fi
 
 mkdir -p "$install_dir"
 
@@ -254,7 +288,7 @@ else
   install_from_archive
 fi
 
-if [[ "$no_modify_path" == false ]]; then
+if [[ "$no_modify_path" == false ]] && confirm "Add ${install_dir} to PATH in your shell config?" yes; then
   add_path
 fi
 

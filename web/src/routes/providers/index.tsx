@@ -4,6 +4,7 @@ import { Input } from "@/components/core/input";
 import { Badge } from "@/components/core/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/core/table";
 import { wfetch } from "@/lib/client";
+import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
@@ -48,7 +49,7 @@ function ProvidersPage() {
   }
 
   useEffect(() => {
-    load().catch((err) => alert(String(err)));
+    load().catch((err) => showErrorToast(err));
   }, []);
 
   const configuredCount = providers.filter((provider) => provider.auth.configured).length;
