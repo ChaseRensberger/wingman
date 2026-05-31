@@ -588,7 +588,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		WorkDir: workDir,
 	}
 
-	runSession, err := s.buildSession(storedAgent, sess)
+	runSession, err := s.buildEphemeralSession(storedAgent, sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -667,6 +667,14 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
 func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
+	return s.buildSessionWithStore(stored, sess, s.store)
+}
+
+func (s *Server) buildEphemeralSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
+	return s.buildSessionWithStore(stored, sess, nil)
+}
+
+func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session, st store.Store) (*session.Session, error) {
 	if stored.ModelRef == "" {
 		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
@@ -682,8 +690,10 @@ func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*sessio
 		session.WithModelRef(modelRef, modelInfo),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
-		session.WithStore(s.store),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
+	}
+	if st != nil {
+		opts = append(opts, session.WithStore(st))
 	}
 	if s.plugins != nil {
 		s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir)

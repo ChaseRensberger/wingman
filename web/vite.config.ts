@@ -24,9 +24,10 @@ export default defineConfig({
       "/provider": { target: "http://127.0.0.1:2323", changeOrigin: true },
       "/agents": { target: "http://127.0.0.1:2323", changeOrigin: true },
       "/clients": { target: "http://127.0.0.1:2323", changeOrigin: true },
-		"/logs": { target: "http://127.0.0.1:2323", changeOrigin: true },
-		"/workspaces": { target: "http://127.0.0.1:2323", changeOrigin: true },
-		"/sessions": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/logs": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/workspaces": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/sessions": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/run": { target: "http://127.0.0.1:2323", changeOrigin: true },
     },
   },
 });

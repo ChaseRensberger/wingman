@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, Usage } from "@/lib/types";
+import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, ToolResultPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/core/alert";
 import { Button } from "@/components/core/button";
@@ -23,7 +23,21 @@ import { StopIcon } from "@phosphor-icons/react";
 const STREAM_MIN_CHARS_PER_FRAME = 1;
 const STREAM_MAX_CHARS_PER_FRAME = 18;
 const STREAM_BACKLOG_DIVISOR = 14;
+const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
 const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
+const DEFAULT_SESSION_TITLE = "New session";
+
+const TITLE_OUTPUT_SCHEMA = {
+  name: "session_title",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["title"],
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: 80 },
+    },
+  },
+};
 
 type SessionDetailSearch = {
   workspace?: string;
@@ -100,6 +114,31 @@ function buildUserMessage(text: string): Message {
   };
 }
 
+function sanitizeGeneratedTitle(title: string): string {
+  return title
+    .replace(/\s+/g, " ")
+    .replace(/^[[\]"'`]+|[[\]"'`.!?]+$/g, "")
+    .trim()
+    .slice(0, 80);
+}
+
+function extractTitleFromText(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { title?: unknown };
+    if (typeof parsed.title === "string") return sanitizeGeneratedTitle(parsed.title);
+  } catch {
+    // The model streams partial JSON before the structured output event arrives.
+  }
+
+  const match = text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)/);
+  if (!match) return "";
+  try {
+    return sanitizeGeneratedTitle(JSON.parse(`"${match[1]}"`) as string);
+  } catch {
+    return sanitizeGeneratedTitle(match[1]);
+  }
+}
+
 function eventField<T>(data: unknown, lower: string, upper: string): T | undefined {
   if (!data || typeof data !== "object") return undefined;
   const record = data as Record<string, unknown>;
@@ -109,6 +148,16 @@ function eventField<T>(data: unknown, lower: string, upper: string): T | undefin
 function modelRefExists(models: Record<string, ProviderModel[]>, modelRef: string): boolean {
   const ref = splitModelRef(modelRef);
   return Boolean(ref.provider && ref.model && models[ref.provider]?.some((model) => model.id === ref.model));
+}
+
+function agentExists(agents: Agent[], agentId: string): boolean {
+  return Boolean(agentId && agents.some((agent) => agent.id === agentId));
+}
+
+function persistLastAgentId(agentId: string) {
+  if (agentId) {
+    localStorage.setItem(LAST_AGENT_ID_KEY, agentId);
+  }
 }
 
 function persistLastModelRef(modelRef: string) {
@@ -123,6 +172,85 @@ function formatSessionError(err: unknown): string {
     return "This session has no working directory. The selected agent tried to use a tool that requires one. Create a new session with a working directory to use this agent.";
   }
   return message.replace(/^Error:\s*/, "");
+}
+
+function shouldAutoGenerateTitle(session: Session | null): boolean {
+  if (!session || session.history.length > 0) return false;
+  const title = (session.title ?? "").trim();
+  return title === "" || title === DEFAULT_SESSION_TITLE;
+}
+
+async function generateSessionTitle(
+  message: string,
+  modelRef: string,
+  signal: AbortSignal,
+  onTitle: (title: string) => void,
+): Promise<string> {
+  if (!modelRef) return "";
+
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const clientId = getClientId();
+  if (clientId) headers.set("X-Wingman-Client", clientId);
+
+  const res = await fetch("/run", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      agent: {
+        id: "session_title_generator",
+        name: "Session Title Generator",
+        instructions: [
+          "Generate a concise, specific title for a chat session from the user's first message.",
+          "Use 3 to 7 words.",
+          "Do not use quotes or trailing punctuation.",
+          "Return only the requested structured output.",
+        ].join("\n"),
+        tools: [],
+      },
+      model_ref: modelRef,
+      message,
+      output_schema: TITLE_OUTPUT_SCHEMA,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+
+  let textBuffer = "";
+  let finalTitle = "";
+  for await (const ev of readSSE(res)) {
+    if (ev.event === "error") {
+      const message =
+        typeof ev.data === "string"
+          ? ev.data
+          : eventField<{ error?: string }>(ev.data, "data", "Data")?.error;
+      throw new Error(message || "Title generation failed");
+    }
+    if (ev.event === "stream_part") {
+      const envelope = ev.data as { data?: unknown; Data?: unknown };
+      const data = envelope.data ?? envelope.Data;
+      const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
+      if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
+        textBuffer += part.delta;
+        const title = extractTitleFromText(textBuffer);
+        if (title) onTitle(title);
+      }
+    }
+    if (ev.event === "structured_output") {
+      const envelope = ev.data as { data?: unknown; Data?: unknown };
+      const data = envelope.data ?? envelope.Data;
+      const parsed = eventField<Record<string, unknown>>(data, "parsed", "Parsed");
+      if (typeof parsed?.title === "string") {
+        finalTitle = sanitizeGeneratedTitle(parsed.title);
+        if (finalTitle) onTitle(finalTitle);
+      }
+    }
+  }
+
+  return finalTitle || extractTitleFromText(textBuffer);
 }
 
 export const Route = createFileRoute("/sessions/$sessionId")({
@@ -149,6 +277,9 @@ function SessionDetailPage() {
   const [messageText, setMessageText] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [visibleStreamingText, setVisibleStreamingText] = useState("");
+  const [streamingTitle, setStreamingTitle] = useState("");
+  const [visibleStreamingTitle, setVisibleStreamingTitle] = useState("");
+  const [isTitleStreaming, setIsTitleStreaming] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
   const [error, setError] = useState("");
@@ -159,9 +290,17 @@ function SessionDetailPage() {
   const stickToBottomRef = useRef(true);
   const streamingTextRef = useRef("");
   const visibleStreamingTextRef = useRef("");
+  const streamingTitleRef = useRef("");
+  const visibleStreamingTitleRef = useRef("");
+  const titleSessionIdRef = useRef(sessionId);
 
   useEffect(() => {
     activeSessionIdRef.current = sessionId;
+    if (titleSessionIdRef.current !== sessionId) {
+      setStreamingTitle("");
+      setVisibleStreamingTitle("");
+      setIsTitleStreaming(false);
+    }
   }, [sessionId]);
 
   const loadSession = useCallback(async (id = sessionId) => {
@@ -256,11 +395,15 @@ function SessionDetailPage() {
           setProviders(providerData);
           setModels(modelMap);
           if (agentsData.length > 0) {
-            setSelectedAgent(agentsData[0].id);
+            const storedAgentId = localStorage.getItem(LAST_AGENT_ID_KEY) ?? "";
+            const initialAgent = agentExists(agentsData, storedAgentId)
+              ? agentsData.find((agent) => agent.id === storedAgentId)!
+              : agentsData[0];
+            setSelectedAgent(initialAgent.id);
             const storedModelRef = localStorage.getItem(LAST_MODEL_REF_KEY) ?? "";
             const initialModelRef = modelRefExists(modelMap, storedModelRef)
               ? storedModelRef
-              : agentsData[0].model_ref;
+              : initialAgent.model_ref;
             const modelRef = splitModelRef(initialModelRef);
             setSelectedProvider(modelRef.provider);
             setSelectedModel(modelRef.model);
@@ -294,6 +437,14 @@ function SessionDetailPage() {
   }, [visibleStreamingText]);
 
   useEffect(() => {
+    streamingTitleRef.current = streamingTitle;
+  }, [streamingTitle]);
+
+  useEffect(() => {
+    visibleStreamingTitleRef.current = visibleStreamingTitle;
+  }, [visibleStreamingTitle]);
+
+  useEffect(() => {
     if (!isStreaming && !streamingText) return;
 
     let frameId = 0;
@@ -320,6 +471,34 @@ function SessionDetailPage() {
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
   }, [isStreaming, streamingText]);
+
+  useEffect(() => {
+    if (!isTitleStreaming && !streamingTitle) return;
+
+    let frameId = 0;
+    const tick = () => {
+      const target = streamingTitleRef.current;
+      const visible = visibleStreamingTitleRef.current;
+
+      if (visible.length < target.length) {
+        const backlog = target.length - visible.length;
+        const charsThisFrame = Math.min(
+          STREAM_MAX_CHARS_PER_FRAME,
+          Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(backlog / STREAM_BACKLOG_DIVISOR)),
+        );
+        const next = target.slice(0, visible.length + charsThisFrame);
+        visibleStreamingTitleRef.current = next;
+        setVisibleStreamingTitle(next);
+      }
+
+      if (isTitleStreaming || visibleStreamingTitleRef.current.length < streamingTitleRef.current.length) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isTitleStreaming, streamingTitle]);
 
   function handleTranscriptScroll() {
     const el = scrollRef.current;
@@ -359,6 +538,8 @@ function SessionDetailPage() {
 
     const outboundText = messageText.trim();
     const outboundModelRef = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
+    const shouldGenerateTitle = shouldAutoGenerateTitle(session);
+    persistLastAgentId(selectedAgent);
     persistLastModelRef(outboundModelRef);
     setError("");
     setMessageText("");
@@ -375,6 +556,41 @@ function SessionDetailPage() {
     setLatestRunUsage(undefined);
     let completed = false;
     let activeSessionId = sessionId;
+    let titlePromise: Promise<string> | null = null;
+
+    if (shouldGenerateTitle && outboundModelRef) {
+      titleSessionIdRef.current = sessionId;
+      setIsTitleStreaming(true);
+      setStreamingTitle("");
+      setVisibleStreamingTitle("");
+      titlePromise = generateSessionTitle(outboundText, outboundModelRef, controller.signal, (title) => {
+        if (!title) return;
+        setStreamingTitle(title);
+      }).catch((err) => {
+        if ((err as Error).name !== "AbortError") {
+          console.warn("Session title generation failed", err);
+        }
+        return "";
+      }).finally(() => {
+        setIsTitleStreaming(false);
+      });
+    }
+
+    const persistGeneratedTitle = (id: string) => {
+      if (!titlePromise) return;
+      void titlePromise.then(async (title) => {
+        if (!title || titleSessionIdRef.current !== id) return;
+        try {
+          const updated = (await wfetch(`/sessions/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ title }),
+          })) as Session;
+          setSession((prev) => prev && prev.id === id ? { ...prev, title: updated.title } : prev);
+        } catch (err) {
+          console.warn("Failed to persist generated session title", err);
+        }
+      });
+    };
 
     try {
       if (isDraft) {
@@ -384,10 +600,12 @@ function SessionDetailPage() {
         })) as Session;
         activeSessionId = created.id;
         activeSessionIdRef.current = created.id;
+        if (titlePromise) titleSessionIdRef.current = created.id;
         skipNextSessionLoadRef.current = true;
         setSession({ ...created, history: [buildUserMessage(outboundText)] });
         navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
       }
+      persistGeneratedTitle(activeSessionId);
 
       const headers = new Headers({
         "Content-Type": "application/json",
@@ -507,6 +725,7 @@ function SessionDetailPage() {
   const hasModels = Object.values(models).some((providerModels) => providerModels.length > 0);
   const latestUsage = latestAssistantUsage(session?.history ?? []) ?? latestRunUsage;
   const persistedCall = session?.latest_model_call;
+  const sessionTitle = visibleStreamingTitle || (streamingTitle || isTitleStreaming ? "Generating title..." : session?.title);
   const contextTokens = persistedCall?.context_tokens ?? contextTokenCount(latestUsage);
   const contextWindow = persistedCall?.context_window || selectedModelInfo?.context_window;
   const contextPercent = persistedCall?.context_percent
@@ -514,11 +733,15 @@ function SessionDetailPage() {
     : formatContextPercent(contextTokens, contextWindow);
   const contextTokenLabel = contextTokens > 0 ? formatTokenCount(contextTokens) : "0k";
   const toolCallsById = new Map<string, ToolCallPart>();
+  const toolResultsById = new Map<string, true>();
   for (const msg of session?.history ?? []) {
     for (const part of msg.content) {
       if (part.type === "tool_call") {
         const toolCall = part as ToolCallPart;
         toolCallsById.set(toolCall.call_id, toolCall);
+      } else if (part.type === "tool_result") {
+        const toolResult = part as ToolResultPart;
+        toolResultsById.set(toolResult.call_id, true);
       }
     }
   }
@@ -538,16 +761,16 @@ function SessionDetailPage() {
           items={workspace ? [
             { label: "Sessions", to: "/sessions" },
             { label: workspace.name, to: `/sessions?workspace=${workspace.id}` },
-            { label: session.title || session.id.slice(0, 8) },
+            { label: sessionTitle || session.id.slice(0, 8) },
           ] : [
             { label: "Sessions", to: "/sessions" },
-            { label: session.title || session.id.slice(0, 8) },
+            { label: sessionTitle || session.id.slice(0, 8) },
           ]}
         />
         <div className="mt-4 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold tracking-tight">
-              {session.title || "Untitled session"}
+              {sessionTitle || "Untitled session"}
             </h1>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>{isDraft ? "Not saved yet" : new Date(session.created_at).toLocaleString()}</span>
@@ -586,7 +809,7 @@ function SessionDetailPage() {
         ) : (
           <div>
             {session.history.map((msg, idx) => (
-              <ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} />
+              <ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} toolResultsById={toolResultsById} />
             ))}
             {visibleStreamingText && (
               <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />
@@ -613,7 +836,9 @@ function SessionDetailPage() {
               <Select
                 value={selectedAgent}
                 onValueChange={(v) => {
-                  setSelectedAgent(v ?? "");
+                  const agentId = v ?? "";
+                  setSelectedAgent(agentId);
+                  persistLastAgentId(agentId);
                 }}
               >
                 <SelectTrigger className="h-8 w-56 border-0 bg-muted/60 text-xs shadow-none">
