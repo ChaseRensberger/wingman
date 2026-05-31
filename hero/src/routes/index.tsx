@@ -15,7 +15,7 @@ function RouteComponent() {
 }
 
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
-const ENABLE_COMMAND = "sudo wingman up";
+const ENABLE_COMMAND = "wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
 const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
@@ -288,7 +288,7 @@ function ClientsSection() {
 				<div className="space-y-2">
 					<video
 						className="w-full rounded-sm border bg-background"
-						src="/wingman-web-demo-trimmed.mp4"
+						src="/wingman-web-demo.mp4"
 						autoPlay
 						muted
 						loop
