@@ -159,7 +159,8 @@ func shouldBypassTimeout(r *http.Request) bool {
 func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasPrefix(path, "/health") ||
+		if path == "/" ||
+			strings.HasPrefix(path, "/health") ||
 			strings.HasPrefix(path, "/provider") ||
 			strings.HasPrefix(path, "/agents") ||
 			strings.HasPrefix(path, "/clients") ||
@@ -175,6 +176,7 @@ func jsonContentType(next http.Handler) http.Handler {
 }
 
 func (s *Server) setupRoutes() {
+	s.router.Get("/", s.handleRoot)
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/logs", s.handleLogs)
 	s.router.Route("/plugins", func(r chi.Router) {
@@ -375,4 +377,18 @@ func (s *Server) ephemeralNotImplemented(w http.ResponseWriter) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Health string `json:"health"`
+		Web    string `json:"web"`
+	}{
+		Name:   "wingman",
+		Status: "ok",
+		Health: "/health",
+		Web:    "/web",
+	})
 }
