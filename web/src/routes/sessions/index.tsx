@@ -51,7 +51,7 @@ import {
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn, timeAgo, workspaceColor } from "@/lib/utils";
 
 type SessionsSearch = {
 	workspace?: string;
@@ -63,15 +63,6 @@ export const Route = createFileRoute("/sessions/")({
 	}),
 	component: SessionsPage,
 });
-
-const workspaceColors = [
-	"bg-sky-400",
-	"bg-emerald-400",
-	"bg-blue-400",
-	"bg-amber-400",
-	"bg-violet-400",
-	"bg-pink-400",
-];
 
 function displayPath(path: string) {
 	if (!path) return "No directory";
@@ -271,7 +262,7 @@ function SessionsPage() {
 		}
 	}
 
-	const selectedWorkspaceColor = selectedWorkspace ? workspaceColors[Math.max(0, workspaces.findIndex((workspace) => workspace.id === selectedWorkspace.id)) % workspaceColors.length] : "";
+	const selectedWorkspaceColor = selectedWorkspace ? workspaceColor(selectedWorkspace.id) : "bg-muted-foreground";
 	const createLabel = selectedWorkspace ? `New session in ${selectedWorkspace.name}` : "New session";
 
 	return (
@@ -316,8 +307,8 @@ function SessionsPage() {
 										<span className="flex items-center gap-2 text-muted-foreground"><span>{noWorkspaceCount}</span>{workspaceFilter === "none" && <CheckIcon className="size-4 text-primary" />}</span>
 									</DropdownMenuItem>
 									<DropdownMenuSeparator />
-									{filteredWorkspaces.map((workspace, index) => {
-										const color = workspaceColors[index % workspaceColors.length];
+									{filteredWorkspaces.map((workspace) => {
+										const color = workspaceColor(workspace.id);
 										return (
 											<DropdownMenuItem key={workspace.id} className="min-h-9 justify-between" onClick={() => setWorkspaceFilter(workspace.id)}>
 												<span className="flex min-w-0 items-center gap-2">
@@ -382,8 +373,7 @@ function SessionsPage() {
 							<TableBody>
 								{filteredSessions.map((session) => {
 									const workspace = session.workspace_id ? workspacesById.get(session.workspace_id) : undefined;
-									const workspaceIndex = workspace ? workspaces.findIndex((item) => item.id === workspace.id) : -1;
-									const color = workspaceIndex >= 0 ? workspaceColors[workspaceIndex % workspaceColors.length] : "bg-muted-foreground";
+									const color = workspace ? workspaceColor(workspace.id) : "bg-muted-foreground";
 									return (
 										<TableRow key={session.id} className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })}>
 											<TableCell className="font-medium">{session.title || session.id}</TableCell>
