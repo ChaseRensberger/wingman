@@ -88,7 +88,7 @@ The route changes at runtime. The persisted agent still says `openai/gpt-5.5`.
 
 Use a config-defined provider when you want a separate provider ID and model list instead of rewriting an existing catalog provider.
 
-This is the cleaner shape for gateways such as exe.dev because agents can use refs like `exe-openai/gpt-5.5` while regular `openai/*` refs keep using OpenAI directly.
+This keeps gateway refs separate from direct provider refs. Agents can use refs like `exe-openai/gpt-5.5`, while regular `openai/*` refs keep using OpenAI directly.
 
 ```json
 {

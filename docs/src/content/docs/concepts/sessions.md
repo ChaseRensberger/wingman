@@ -8,7 +8,7 @@ order: 102
 
 A session is the runtime record for agent work. It owns message history, drives model turns, dispatches tool calls, emits events, and persists the transcript when storage is enabled.
 
-This distinction is load-bearing:
+A session stores runtime state, while an agent provides reusable configuration:
 
 - An agent is a reusable definition.
 - A session is a running conversation or one-shot run.
@@ -16,7 +16,7 @@ This distinction is load-bearing:
 - A session is not permanently bound to one model.
 - Each message chooses the agent configuration for that turn.
 
-That shape lets one session hand off between agents or models without creating a new conversation record.
+One session can hand off between agents or models without creating a new conversation record.
 
 Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 

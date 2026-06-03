@@ -6,7 +6,7 @@ order: 105
 
 # Storage
 
-Storage is a core Wingman primitive. It persists agents, clients, Workspaces, sessions, message history, content parts, and provider auth credentials. Persistence is not implemented as a plugin because session history must be durable by default and storage failures should be surfaced directly by the runtime.
+Storage persists agents, clients, Workspaces, sessions, message history, content parts, and provider auth credentials. Session history is durable by default when the server runs with storage enabled.
 
 ## Default Store
 
@@ -101,11 +101,11 @@ Wingman configures SQLite for local daemon use:
 | `busy_timeout` | `5000` | Waits briefly on lock contention. |
 | `MaxOpenConns` | `1` | Serializes writes through one connection. |
 
-SQLite is the durable store provided by Wingman. The storage boundary is adapter-shaped for embedded Go applications.
+SQLite is the durable store provided by Wingman. Embedded Go applications can provide a different store implementation.
 
 ## Store Interface
 
-Embedding applications can provide their own implementation of `store.Store`. This is a Go adapter boundary, not a plugin hook:
+Embedding applications can provide their own implementation of `store.Store`:
 
 ```go
 type Store interface {

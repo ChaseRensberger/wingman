@@ -6,7 +6,7 @@ order: 103
 
 # WingModels
 
-WingModels is Wingman's provider-agnostic model SDK. It gives the agent runtime one request shape, one message shape, and one stream shape while keeping provider wire formats behind the model boundary.
+WingModels is Wingman's provider-agnostic model SDK. It gives the agent runtime common request, message, and stream formats while keeping provider wire formats behind the model client.
 
 ## Supported Providers
 
@@ -20,15 +20,15 @@ Custom routes may target endpoints that speak one of Wingman's supported protoco
 
 ## Why It Exists
 
-The agent runtime needs:
+The agent runtime uses WingModels for:
 
-- One conversation shape for storage and replay.
-- One stream shape for UI, plugins, and HTTP events.
+- A common conversation format for storage and replay.
+- A common stream format for UI, plugins, and HTTP events.
 - Provider-specific request lowering and SSE parsing behind a single model client.
 - Local model metadata without depending on a hosted metadata service.
 - Model refs that can change per message without binding a session to one provider.
 
-## Runtime Shape
+## Runtime API
 
 The loop talks to a `models.Client`:
 
@@ -67,7 +67,7 @@ WingModels stores conversation content as provider-neutral messages with typed p
 - Tool result
 - Plugin-defined opaque content
 
-Providers lower this common shape into their native wire formats at request time. This lets the store, HTTP API, UI, and plugins work with one content model instead of provider-specific payloads.
+Providers lower this common format into their native wire formats at request time. This lets the store, HTTP API, UI, and plugins work with one content model instead of provider-specific payloads.
 
 ## Streaming
 
@@ -83,7 +83,7 @@ FinishPart
 
 ## Catalog
 
-The embedded catalog provides provider defaults, model metadata, and capability flags. It is intentionally small and only includes fields the runtime, API, or docs use.
+The embedded catalog provides provider defaults, model metadata, and capability flags.
 
 Catalog files live under:
 
@@ -141,7 +141,7 @@ HTTP agents use `model_route`:
 }
 ```
 
-If `model_ref` is in the catalog, the catalog wins. `model_route` is the escape hatch for uncataloged models and explicit custom deployments.
+If `model_ref` is in the catalog, the catalog wins. Use `model_route` for uncataloged models and explicit custom deployments.
 
 ## Supported Protocols
 
@@ -153,15 +153,4 @@ openai_completions
 anthropic_messages
 ```
 
-The endpoint must speak the selected protocol. A route alone cannot make an unsupported API compatible.
-
-## Current Limits
-
-WingModels is not a broad provider SDK. Current limits include:
-
-- No generic provider discovery flow.
-- No first-class Ollama, Gemini, or Bedrock provider families.
-- No `CountTokens` API; compaction uses a local approximation.
-- Limited provider-specific structured-output behavior.
-
-The important boundary is already in place: the agent loop depends on `models.Client` and `models.ModelRef`, not provider-owned model implementations.
+Choose the protocol that matches the endpoint.

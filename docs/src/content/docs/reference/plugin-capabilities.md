@@ -50,8 +50,8 @@ Go plugins register hooks with `plugin.Registry`.
 
 Hooks compose in install order. Transform hooks receive the previous hook's output. Sinks fan out independently.
 
-## RPC Plugin Surface
+## RPC Plugin Support
 
 RPC plugins declare tools in a manifest and implement `tool.execute` over stdio JSON-RPC.
 
-The RPC protocol page documents the tool execution surface exposed by the stock server.
+The RPC protocol page documents the tool execution support exposed by the stock server.

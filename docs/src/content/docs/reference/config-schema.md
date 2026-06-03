@@ -245,23 +245,3 @@ Route overlay example for an existing catalog provider:
   }
 }
 ```
-
-## Reserved `models` Fields
-
-| Field | Type | Default | Description |
-|---|---:|---|---|
-| `default` | string | empty | Parsed model ref reserved for future default-model behavior. |
-
-`models.default` is parsed by the server, but it is not currently applied to agent creation or message execution. It is reserved for future default-model behavior.
-
-For now, agents should set `model_ref`, or callers should pass `model_ref` on message requests.
-
-Example:
-
-```json
-{
-  "models": {
-    "default": "anthropic/claude-sonnet-4-6"
-  }
-}
-```

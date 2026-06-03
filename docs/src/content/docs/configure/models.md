@@ -144,7 +144,7 @@ Use `model_route` for one-off uncataloged routes that should remain part of the 
 }
 ```
 
-If `model_ref` is already known through the embedded catalog or config-defined models, that metadata wins. `model_route` is the escape hatch for one-off uncataloged models and explicit custom deployments.
+If `model_ref` is already known through the embedded catalog or config-defined models, that metadata wins. Use `model_route` for one-off uncataloged models and explicit custom deployments.
 
 ## Choosing Between Provider Config and `model_route`
 
@@ -157,7 +157,6 @@ If `model_ref` is already known through the embedded catalog or config-defined m
 | Use a cataloged model with a different runtime endpoint | Provider route overlay |
 | Use a model not in the catalog across agents | Config-defined provider model |
 | Use a one-off model route for one agent/request | `model_route` |
-| Target an endpoint that needs a different wire protocol | Not supported unless Wingman implements that protocol |
 
 ## Supported Protocols
 
@@ -169,20 +168,10 @@ openai_completions
 anthropic_messages
 ```
 
-The endpoint must speak the selected protocol. A route alone cannot make an unsupported API compatible.
+Choose the protocol that matches the endpoint.
 
 ## Catalog
 
-Wingman's embedded catalog provides provider defaults, model metadata, and capability flags. It is intentionally small and only includes fields the runtime, API, or docs use.
+Wingman's embedded catalog provides provider defaults, model metadata, and capability flags.
 
 Catalog details live in [WingModels](/concepts/wingmodels#catalog).
-
-## Current Limits
-
-Wingman does not currently provide:
-
-- Generic provider discovery.
-- First-class Ollama, Gemini, or Bedrock provider families.
-- A root default model that automatically applies to all agents and messages.
-
-Agents should set `model_ref`, or callers should pass `model_ref` on message requests.
