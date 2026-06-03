@@ -51,4 +51,4 @@ release:
   prerelease: auto
 
 snapshot:
-  version_template: "{{ incpatch .Version }}-next+{{ .ShortCommit }}"
+  version_template: "{{ incpatch .PreviousTag }}-next+{{ .ShortCommit }}"
