@@ -392,7 +392,6 @@ function SessionsPage() {
 													<div className="flex min-w-0 items-center gap-2">
 														<span className={cn("size-2 rounded-sm", color)} />
 														<span className="font-medium">{workspace.name}</span>
-														<span className="truncate text-muted-foreground">{displayPath(workspace.path)}</span>
 													</div>
 												) : (
 													<span className="italic text-muted-foreground">No workspace</span>
