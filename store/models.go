@@ -24,7 +24,6 @@ type Session struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
-// Workspace is a saved context used to start and filter related sessions.
 type Workspace struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
