@@ -161,7 +161,7 @@ func main() {
 
 	cmd := &cli.Command{
 		Name:  "wingman",
-		Usage: "AI agent framework",
+		Usage: "The open-source client-agnostic agent harness",
 		Commands: []*cli.Command{
 			{
 				Name:   "serve",
