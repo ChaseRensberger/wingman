@@ -37,11 +37,7 @@ checksum:
   name_template: "checksums.txt"
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+  disable: true
 
 release:
   github:
@@ -51,4 +47,4 @@ release:
   prerelease: auto
 
 snapshot:
-  version_template: "{{ incpatch .PreviousTag }}-next+{{ .ShortCommit }}"
+  version_template: "{{ incpatch .PreviousTag }}-snapshot.{{ .ShortCommit }}"

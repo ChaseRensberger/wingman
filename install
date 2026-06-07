@@ -10,7 +10,6 @@ binary_path=""
 install_dir="${WINGMAN_INSTALL_DIR:-$HOME/.wingman/bin}"
 no_modify_path=false
 assume_yes=false
-install_snapshot=false
 
 usage() {
   cat <<'EOF'
@@ -20,8 +19,7 @@ Usage: install [options]
 
 Options:
   -h, --help              Show help
-  -v, --version <version> Install a specific version (default: latest stable release)
-      --snapshot          Install the latest snapshot build from GitHub Actions
+  -v, --version <version> Install a specific stable or prerelease version (default: latest stable release)
   -b, --binary <path>     Install from a local binary
       --install-dir <dir> Set install directory (default: ~/.wingman/bin)
       --no-modify-path    Do not modify shell config files
@@ -29,8 +27,7 @@ Options:
 
 Examples:
   curl -fsSL https://wingman.actor/install | bash
-  curl -fsSL https://wingman.actor/install | bash -s -- --snapshot
-  curl -fsSL https://wingman.actor/install | bash -s -- --version 0.1.1
+  curl -fsSL https://wingman.actor/install | bash -s -- --version 0.2.0-beta.1
   ./install --binary ./wingman
 EOF
 }
@@ -50,8 +47,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --snapshot)
-      install_snapshot=true
-      shift
+      echo "Error: --snapshot is no longer supported; install prereleases with --version <version>" >&2
+      exit 1
       ;;
     -b|--binary)
       if [[ -z "${2:-}" ]]; then
@@ -83,16 +80,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-if [[ "$install_snapshot" == true && -n "$requested_version" ]]; then
-  echo "Error: --snapshot cannot be combined with --version" >&2
-  exit 1
-fi
-
-if [[ "$install_snapshot" == true && -n "$binary_path" ]]; then
-  echo "Error: --snapshot cannot be combined with --binary" >&2
-  exit 1
-fi
 
 is_interactive() {
   [[ -t 0 && -t 1 && "$assume_yes" == false ]]
@@ -212,62 +199,6 @@ resolve_release_asset_url() {
   echo ""
 }
 
-install_from_snapshot() {
-  local os arch ext tmp_dir archive url bin_name
-  os=$(detect_os)
-  arch=$(detect_arch)
-
-  ext="tar.gz"
-  if [[ "$os" == "windows" ]]; then
-    ext="zip"
-  fi
-
-  url=$(resolve_release_asset_url "snapshot" "snapshot" "$os" "$arch" "$ext")
-  if [[ -z "$url" ]]; then
-    echo "Failed to resolve latest ${APP} snapshot release artifact" >&2
-    exit 1
-  fi
-
-  echo "Installing latest ${APP} snapshot (${os}/${arch})"
-
-  tmp_dir=$(mktemp -d)
-  archive="${tmp_dir}/$(basename "$url")"
-  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
-
-  if ! curl -fL "$url" -o "$archive"; then
-    echo "Failed to download snapshot artifact: $url" >&2
-    exit 1
-  fi
-
-  if [[ "$os" == "windows" ]]; then
-    if ! command -v unzip >/dev/null 2>&1; then
-      echo "Error: unzip is required to install on Windows" >&2
-      exit 1
-    fi
-    unzip -q "$archive" -d "$tmp_dir/archive"
-    bin_name="${APP}.exe"
-  else
-    if ! command -v tar >/dev/null 2>&1; then
-      echo "Error: tar is required to install" >&2
-      exit 1
-    fi
-    tar -xzf "$archive" -C "$tmp_dir"
-    bin_name="$APP"
-  fi
-
-  if [[ ! -f "${tmp_dir}/${bin_name}" && ! -f "${tmp_dir}/archive/${bin_name}" ]]; then
-    echo "Downloaded snapshot archive does not contain ${bin_name}" >&2
-    exit 1
-  fi
-
-  if [[ -f "${tmp_dir}/archive/${bin_name}" ]]; then
-    cp "${tmp_dir}/archive/${bin_name}" "${install_dir}/${bin_name}"
-  else
-    cp "${tmp_dir}/${bin_name}" "${install_dir}/${bin_name}"
-  fi
-  chmod +x "${install_dir}/${bin_name}"
-}
-
 install_from_archive() {
   local os arch version ext filename url tmp_dir archive bin_name
   os=$(detect_os)
@@ -360,9 +291,7 @@ add_path() {
   echo "  ${line}"
 }
 
-if [[ "$install_snapshot" == true ]]; then
-  install_from_snapshot
-elif [[ -n "$binary_path" ]]; then
+if [[ -n "$binary_path" ]]; then
   install_from_binary
 else
   install_from_archive
