@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chaserensberger/wingman/agent/loop"
+	"github.com/chaserensberger/wingman/agent/run"
 )
 
 // SessionStream is the streaming counterpart to Session.Run. It exposes
@@ -38,16 +38,16 @@ type SessionStream struct {
 //
 // Defined event types:
 //
-//   - "iteration_start":     Data is loop.IterationStartEvent
-//   - "iteration_end":       Data is loop.IterationEndEvent
-//   - "message":             Data is loop.MessageEvent
-//   - "tool_start":          Data is loop.ToolExecutionStartEvent
-//   - "tool_end":            Data is loop.ToolExecutionEndEvent
-//   - "stream_part":         Data is loop.StreamPartEvent (carries models.StreamPart)
-//   - "compaction":          Data is loop.ContextTransformedEvent (head Part type "compaction_marker")
-//   - "context_transformed": Data is loop.ContextTransformedEvent (other transforms)
-//   - "error":               Data is loop.ErrorEvent
-//   - "structured_output":   Data is loop.StructuredOutputEvent
+//   - "iteration_start":     Data is run.IterationStartEvent
+//   - "iteration_end":       Data is run.IterationEndEvent
+//   - "message":             Data is run.MessageEvent
+//   - "tool_start":          Data is run.ToolExecutionStartEvent
+//   - "tool_end":            Data is run.ToolExecutionEndEvent
+//   - "stream_part":         Data is run.StreamPartEvent (carries models.StreamPart)
+//   - "compaction":          Data is run.ContextTransformedEvent (head Part type "compaction_marker")
+//   - "context_transformed": Data is run.ContextTransformedEvent (other transforms)
+//   - "error":               Data is run.ErrorEvent
+//   - "structured_output":   Data is run.StructuredOutputEvent
 //
 // Consumers that want the loop's typed events simply type-assert on Data.
 type StreamEvent struct {
@@ -87,17 +87,17 @@ func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream
 
 	ss := &SessionStream{
 		// 256 = comfortable headroom for streaming text deltas in a
-		// single turn before backpressuring the loop. Smaller would risk
+		// single turn before backpressuring the run. Smaller would risk
 		// stalling; larger wastes memory on slow consumers.
 		events:  make(chan StreamEvent, 256),
 		resultC: make(chan streamResult, 1),
 	}
 
-	// Forwarding sink: convert each loop.Event into a StreamEvent and
+	// Forwarding sink: convert each run.Event into a StreamEvent and
 	// push onto ss.events. The loop emits on its own goroutine, so the
 	// sink will block when ss.events is full; that's intentional
 	// backpressure on slow consumers.
-	sink := loop.SinkFunc(func(e loop.Event) {
+	sink := run.SinkFunc(func(e run.Event) {
 		ev := toStreamEvent(e)
 		select {
 		case ss.events <- ev:
@@ -115,31 +115,31 @@ func (s *Session) RunStream(ctx context.Context, message string) (*SessionStream
 	return ss, nil
 }
 
-// toStreamEvent classifies a loop.Event into the public envelope.
+// toStreamEvent classifies a run.Event into the public envelope.
 // Adding a new loop event variant requires updating classify; the
 // default branch surfaces the raw event under an "unknown" type so logs
 // catch the omission. Version is stamped centrally so call sites stay
 // uniform — never construct a StreamEvent without using this.
-func toStreamEvent(e loop.Event) StreamEvent {
+func toStreamEvent(e run.Event) StreamEvent {
 	t, data := classify(e)
 	return StreamEvent{Type: t, Version: EnvelopeVersion, Data: data}
 }
 
-func classify(e loop.Event) (string, any) {
+func classify(e run.Event) (string, any) {
 	switch v := e.(type) {
-	case loop.IterationStartEvent:
+	case run.IterationStartEvent:
 		return "iteration_start", v
-	case loop.IterationEndEvent:
+	case run.IterationEndEvent:
 		return "iteration_end", v
-	case loop.MessageEvent:
+	case run.MessageEvent:
 		return "message", v
-	case loop.ToolExecutionStartEvent:
+	case run.ToolExecutionStartEvent:
 		return "tool_start", v
-	case loop.ToolExecutionEndEvent:
+	case run.ToolExecutionEndEvent:
 		return "tool_end", v
-	case loop.StreamPartEvent:
+	case run.StreamPartEvent:
 		return "stream_part", v
-	case loop.ContextTransformedEvent:
+	case run.ContextTransformedEvent:
 		// Discriminate by inspecting the head message's first part
 		// type discriminator. Plugins that wish to surface their own
 		// SSE event type for a context transform install a Part whose
@@ -157,9 +157,9 @@ func classify(e loop.Event) (string, any) {
 			}
 		}
 		return "context_transformed", v
-	case loop.ErrorEvent:
+	case run.ErrorEvent:
 		return "error", map[string]string{"error": fmt.Sprint(v.Err)}
-	case loop.StructuredOutputEvent:
+	case run.StructuredOutputEvent:
 		return "structured_output", map[string]any{
 			"schema":   v.Schema,
 			"raw_json": v.RawJSON,

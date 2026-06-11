@@ -1,4 +1,4 @@
-// Package session is a thin stateful wrapper over agent/loop.
+// Package session is a thin stateful wrapper over agent/run.
 //
 // A Session owns:
 //   - an identifier (ULID)
@@ -35,8 +35,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
@@ -61,11 +61,11 @@ type Session struct {
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
 	// pipelines), so a user-supplied hook always has the final word.
-	transformHistory  loop.TransformHistoryHook
-	transformContext  loop.TransformContextHook
-	transformToolDefs loop.TransformToolDefsHook
-	transformParams   loop.TransformParamsHook
-	afterRun          loop.AfterRunHook
+	transformHistory  run.TransformHistoryHook
+	transformContext  run.TransformContextHook
+	transformToolDefs run.TransformToolDefsHook
+	transformParams   run.TransformParamsHook
+	afterRun          run.AfterRunHook
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
 	// (including plugin-injected messages such as compaction markers
@@ -171,7 +171,7 @@ func WithLogger(logger *slog.Logger) Option {
 // Composed *after* any plugin-contributed TransformHistory hooks; receives
 // the post-plugin slice. Prefer WithPlugin for reusable behavior;
 // reserve this for one-off ad-hoc hooks.
-func WithTransformHistory(h loop.TransformHistoryHook) Option {
+func WithTransformHistory(h run.TransformHistoryHook) Option {
 	return func(s *Session) { s.transformHistory = h }
 }
 
@@ -180,7 +180,7 @@ func WithTransformHistory(h loop.TransformHistoryHook) Option {
 // session history. Composed *after* any plugin-contributed
 // TransformContext hooks (sees the post-plugin slice). Useful for
 // redaction or per-turn context injection.
-func WithTransformContext(h loop.TransformContextHook) Option {
+func WithTransformContext(h run.TransformContextHook) Option {
 	return func(s *Session) { s.transformContext = h }
 }
 
@@ -188,20 +188,20 @@ func WithTransformContext(h loop.TransformContextHook) Option {
 // the tool definitions sent to the provider without affecting the
 // session's running tool registry. Composed *after* any
 // plugin-contributed TransformToolDefs hooks.
-func WithTransformToolDefs(h loop.TransformToolDefsHook) Option {
+func WithTransformToolDefs(h run.TransformToolDefsHook) Option {
 	return func(s *Session) { s.transformToolDefs = h }
 }
 
 // WithTransformParams installs a raw per-turn hook that may rewrite
 // the sampling parameters sent to the provider. Composed *after* any
 // plugin-contributed TransformParams hooks.
-func WithTransformParams(h loop.TransformParamsHook) Option {
+func WithTransformParams(h run.TransformParamsHook) Option {
 	return func(s *Session) { s.transformParams = h }
 }
 
 // WithAfterRun installs a raw hook that fires exactly once at the end
 // of Run, after plugin-contributed AfterRun hooks. Errors are joined.
-func WithAfterRun(h loop.AfterRunHook) Option {
+func WithAfterRun(h run.AfterRunHook) Option {
 	return func(s *Session) { s.afterRun = h }
 }
 
@@ -340,9 +340,9 @@ type Result struct {
 	Steps int
 
 	// StopReason tells callers why the loop terminated. Mirrors
-	// loop.StopReason exactly; re-exported here so callers don't import
+	// run.StopReason exactly; re-exported here so callers don't import
 	// the loop package just for the constants.
-	StopReason loop.StopReason
+	StopReason run.StopReason
 
 	// StructuredOutput is populated when the run had an active OutputSchema
 	// and the model returned a parseable, schema-valid final message.
@@ -380,7 +380,7 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 // non-nil, is invoked for every loop event in addition to the session's
 // internal sink. The session's own sink collects ToolCallResults and
 // keeps the running history in sync.
-func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Sink) (*Result, error) {
+func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sink) (*Result, error) {
 	s.mu.Lock()
 	if s.client == nil || s.model.Provider == "" || s.model.ID == "" {
 		s.mu.Unlock()
@@ -490,9 +490,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		)
 	}
 
-	internal := loop.SinkFunc(func(e loop.Event) {
+	internal := run.SinkFunc(func(e run.Event) {
 		logLoopEvent(logger, e)
-		if me, ok := e.(loop.MessageEvent); ok {
+		if me, ok := e.(run.MessageEvent); ok {
 			if s.store != nil {
 				msgID, err := s.persistMessage(ctx, me.Message, nextMsgIdx)
 				if err != nil && persistErr == nil {
@@ -513,7 +513,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		if extraSink != nil {
 			extraSink.OnEvent(e)
 		}
-		if ie, ok := e.(loop.IterationEndEvent); ok && s.store != nil {
+		if ie, ok := e.(run.IterationEndEvent); ok && s.store != nil {
 			msgID := assistantMessageIDs[ie.Step]
 			if err := s.persistModelCall(ctx, msgID, ie.Step, ie.Turn.Assistant, model, modelInfo, ""); err != nil && persistErr == nil {
 				persistErr = err
@@ -521,7 +521,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		}
 	})
 
-	cfg := loop.Config{
+	cfg := run.Config{
 		Client:       client,
 		Model:        model,
 		ModelInfo:    modelInfo,
@@ -530,7 +530,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 		WorkDir:      workDir,
 		Sink:         internal,
 		OutputSchema: outputSchema,
-		Hooks: loop.Hooks{
+		Hooks: run.Hooks{
 			BeforeRun:         built.Hooks.BeforeRun,
 			TransformHistory:  transformHistory,
 			TransformContext:  transformContext,
@@ -546,12 +546,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	if logger != nil {
 		logger.Info("session run started", "history_messages", len(historySnap))
 	}
-	res, runErr := loop.Run(ctx, cfg)
+	res, runErr := run.Run(ctx, cfg)
 
 	// Adopt the loop's terminal message slice wholesale. This handles
 	// both the simple case (loop appended turns to historySnap) and
 	// the plugin-mutation case (a TransformHistory hook rewrote the slice).
-	// loop.Run guarantees res != nil, even on error.
+	// run.Run guarantees res != nil, even on error.
 	s.mu.Lock()
 	if res != nil {
 		s.history = append([]models.Message(nil), res.Messages...)
@@ -631,14 +631,14 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink loop.Si
 	return out, nil
 }
 
-func logLoopEvent(logger *slog.Logger, e loop.Event) {
+func logLoopEvent(logger *slog.Logger, e run.Event) {
 	if logger == nil {
 		return
 	}
 	switch v := e.(type) {
-	case loop.IterationStartEvent:
+	case run.IterationStartEvent:
 		logger.Debug("loop turn started", "step", v.Step)
-	case loop.IterationEndEvent:
+	case run.IterationEndEvent:
 		logger.Info("loop turn completed",
 			"step", v.Step,
 			"tool_calls", len(v.Turn.Results),
@@ -646,25 +646,25 @@ func logLoopEvent(logger *slog.Logger, e loop.Event) {
 			"output_tokens", v.Turn.Usage.OutputTokens,
 			"total_tokens", v.Turn.Usage.TotalTokens,
 		)
-	case loop.ToolExecutionStartEvent:
+	case run.ToolExecutionStartEvent:
 		logger.Info("tool execution started", "tool", v.Call.Name, "call_id", v.Call.ID)
-	case loop.ToolExecutionEndEvent:
+	case run.ToolExecutionEndEvent:
 		logger.Info("tool execution completed",
 			"tool", v.Result.Name,
 			"call_id", v.Result.CallID,
 			"duration_ms", v.Result.Duration.Milliseconds(),
 			"is_error", v.Result.IsError,
 		)
-	case loop.ContextTransformedEvent:
+	case run.ContextTransformedEvent:
 		logger.Info("context transformed",
 			"step", v.Step,
 			"phase", v.Phase,
 			"original_count", v.OriginalCount,
 			"new_count", v.NewCount,
 		)
-	case loop.StructuredOutputEvent:
+	case run.StructuredOutputEvent:
 		logger.Info("structured output produced", "schema", v.Schema)
-	case loop.ErrorEvent:
+	case run.ErrorEvent:
 		logger.Error("loop error", "error", v.Err)
 	}
 }
@@ -705,7 +705,7 @@ func textOf(msg models.Message) string {
 // composeTransformHistory returns the composition of plugin and user
 // TransformHistory hooks. If only one (or neither) is non-nil, returns it
 // directly to keep the call path obvious.
-func composeTransformHistory(pluginHook, userHook loop.TransformHistoryHook) loop.TransformHistoryHook {
+func composeTransformHistory(pluginHook, userHook run.TransformHistoryHook) run.TransformHistoryHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -714,7 +714,7 @@ func composeTransformHistory(pluginHook, userHook loop.TransformHistoryHook) loo
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
+	return func(ctx context.Context, info run.TransformHistoryInfo) ([]models.Message, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err
@@ -729,7 +729,7 @@ func composeTransformHistory(pluginHook, userHook loop.TransformHistoryHook) loo
 
 // composeTransformContext mirrors composeTransformHistory for the per-turn
 // transform seam.
-func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loop.TransformContextHook {
+func composeTransformContext(pluginHook, userHook run.TransformContextHook) run.TransformContextHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -738,7 +738,7 @@ func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loo
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
+	return func(ctx context.Context, info run.TransformContextInfo) ([]models.Message, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err
@@ -751,7 +751,7 @@ func composeTransformContext(pluginHook, userHook loop.TransformContextHook) loo
 
 // composeTransformToolDefs mirrors composeTransformHistory for the
 // tool-definitions transform seam.
-func composeTransformToolDefs(pluginHook, userHook loop.TransformToolDefsHook) loop.TransformToolDefsHook {
+func composeTransformToolDefs(pluginHook, userHook run.TransformToolDefsHook) run.TransformToolDefsHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -760,7 +760,7 @@ func composeTransformToolDefs(pluginHook, userHook loop.TransformToolDefsHook) l
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+	return func(ctx context.Context, info run.TransformToolDefsInfo) ([]models.ToolDef, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
 			return nil, err
@@ -773,7 +773,7 @@ func composeTransformToolDefs(pluginHook, userHook loop.TransformToolDefsHook) l
 
 // composeTransformParams mirrors composeTransformHistory for the
 // sampling-parameters transform seam.
-func composeTransformParams(pluginHook, userHook loop.TransformParamsHook) loop.TransformParamsHook {
+func composeTransformParams(pluginHook, userHook run.TransformParamsHook) run.TransformParamsHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -782,10 +782,10 @@ func composeTransformParams(pluginHook, userHook loop.TransformParamsHook) loop.
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+	return func(ctx context.Context, info run.TransformParamsInfo) (run.TransformParamsResult, error) {
 		out, err := pluginHook(ctx, info)
 		if err != nil {
-			return loop.TransformParamsResult{}, err
+			return run.TransformParamsResult{}, err
 		}
 		next := info
 		next.Params = out.Params
@@ -795,7 +795,7 @@ func composeTransformParams(pluginHook, userHook loop.TransformParamsHook) loop.
 
 // composeAfterRun runs the plugin hook first, then the user hook.
 // Errors from both are joined.
-func composeAfterRun(pluginHook, userHook loop.AfterRunHook) loop.AfterRunHook {
+func composeAfterRun(pluginHook, userHook run.AfterRunHook) run.AfterRunHook {
 	switch {
 	case pluginHook == nil && userHook == nil:
 		return nil
@@ -804,7 +804,7 @@ func composeAfterRun(pluginHook, userHook loop.AfterRunHook) loop.AfterRunHook {
 	case userHook == nil:
 		return pluginHook
 	}
-	return func(ctx context.Context, info loop.AfterRunInfo) error {
+	return func(ctx context.Context, info run.AfterRunInfo) error {
 		var errs []error
 		if err := pluginHook(ctx, info); err != nil {
 			errs = append(errs, err)

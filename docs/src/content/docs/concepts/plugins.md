@@ -39,7 +39,7 @@ type Plugin interface {
 ```go
 func (p *Plugin) Install(r *plugin.Registry) error {
     r.RegisterTransformContext(p.transformContext)
-    r.RegisterSink(loop.SinkFunc(p.sink))
+    r.RegisterSink(run.SinkFunc(p.sink))
     return nil
 }
 ```

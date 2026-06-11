@@ -1,4 +1,4 @@
-package loop
+package run
 
 import (
 	"context"
@@ -39,13 +39,13 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 	}
 
 	if cfg.Client == nil {
-		return nil, errors.New("loop.Run: Config.Client is required")
+		return nil, errors.New("run.Run: Config.Client is required")
 	}
 	if cfg.Model.Provider == "" || cfg.Model.ID == "" {
-		return nil, errors.New("loop.Run: Config.Model is required")
+		return nil, errors.New("run.Run: Config.Model is required")
 	}
 	if cfg.Hooks.BeforeRun != nil && len(cfg.Messages) > 0 {
-		return nil, errors.New("loop.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
+		return nil, errors.New("run.Run: BeforeRun hook installed with non-empty Config.Messages; pick one source of initial history")
 	}
 
 	if cfg.OutputSchema != nil && !cfg.ModelInfo.Capabilities.StructuredOutput {
@@ -350,7 +350,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		assistantMsg.Usage = &turnUsage
 	}
 
-	// Cumulative usage across the loop. Providers report cumulative
+	// Cumulative usage across the run. Providers report cumulative
 	// per-call counts; we sum because each turn is a fresh call.
 	r.usage.InputTokens += turnUsage.InputTokens
 	r.usage.OutputTokens += turnUsage.OutputTokens
@@ -502,7 +502,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	}
 
 	// Real execution. Tool errors become result text with IsError=true;
-	// only hook errors fail the loop.
+	// only hook errors fail the run.
 	start := time.Now()
 	toolResult, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
 	duration := time.Since(start)

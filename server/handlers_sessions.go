@@ -355,7 +355,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	// the loop emits a terminal turn with FinishReasonAborted and
 	// returns. We still persist whatever history was produced before
 	// the cancel because AppendMessage runs synchronously per
-	// MessageEvent during the loop.
+	// MessageEvent during the run.
 	runCtx, release := s.aborts.register(id, r.Context())
 	defer release()
 
@@ -448,7 +448,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 
 	// Wire shutdown signaling: when Shutdown is called server-wide,
 	// shutdownCtx fires and we cancel this request's context so the
-	// loop returns and the SSE writer below exits its drain loop.
+	// loop returns and the SSE writer below exits its drain run.
 	// trackInflight registers with the WaitGroup so Shutdown waits for
 	// us to actually finish (vs. just signalling).
 	done := s.trackInflight()

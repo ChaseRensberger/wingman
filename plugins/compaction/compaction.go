@@ -58,8 +58,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chaserensberger/wingman/agent/loop"
 	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 )
 
@@ -246,7 +246,7 @@ func (p *Plugin) Install(r *plugin.Registry) error {
 // from the start, if none) up to the keepTail boundary, then append a
 // new marker. The pre-compaction messages are kept in history so the
 // transcript remains addressable on disk and via History().
-func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
+func (p *Plugin) transformHistory(ctx context.Context, info run.TransformHistoryInfo) ([]models.Message, error) {
 	client := p.client
 	model := p.model
 	modelInfo := p.modelInfo
@@ -336,7 +336,7 @@ func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistor
 	// one. Sink may be nil if the loop wasn't given one; gate the
 	// emission.
 	if info.Sink != nil {
-		info.Sink.OnEvent(loop.MessageEvent{Message: markerMsg})
+		info.Sink.OnEvent(run.MessageEvent{Message: markerMsg})
 	}
 	return out, nil
 }
@@ -346,7 +346,7 @@ func (p *Plugin) transformHistory(ctx context.Context, info loop.TransformHistor
 // message synthesizing all marker summaries; keep everything after.
 //
 // If no marker is present, return the messages unchanged.
-func (p *Plugin) transformContext(_ context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
+func (p *Plugin) transformContext(_ context.Context, info run.TransformContextInfo) ([]models.Message, error) {
 	latest := findLatestMarker(info.Messages)
 	if latest < 0 {
 		return info.Messages, nil

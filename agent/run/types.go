@@ -1,4 +1,4 @@
-// Package loop is the agent inference loop. It drives a models.Client
+// Package run is the agent inference run. It drives a models.Client
 // across multiple turns, dispatches tool calls between turns, and emits
 // lifecycle events to a sink.
 //
@@ -34,7 +34,7 @@
 //
 // Sinks that only care about one layer can ignore the other via a type
 // switch.
-package loop
+package run
 
 import (
 	"context"
@@ -114,7 +114,7 @@ type Config struct {
 	ToolExecution ToolExecutionMode
 
 	// Hooks are user-supplied callbacks invoked at specific points in
-	// the loop. See Hooks for details. nil hooks are skipped.
+	// the run. See Hooks for details. nil hooks are skipped.
 	Hooks Hooks
 
 	// Sink receives lifecycle events. nil discards events. The loop
@@ -144,10 +144,10 @@ const (
 //
 // Calling convention notes:
 //   - Each hook receives the loop's context and can return an error to
-//     fail the loop. Returning ErrSkipTool from BeforeToolCall skips the
+//     fail the run. Returning ErrSkipTool from BeforeToolCall skips the
 //     execution and synthesizes a tool result with the returned args/
 //     error message; this is the soft-deny path. Returning any other
-//     error fails the loop.
+//     error fails the run.
 //   - TransformContext and TransformSystem return new values; the loop
 //     uses the returned slice/string going forward but does not write
 //     back into Config.Messages. This means transforms are per-turn.
@@ -157,7 +157,7 @@ const (
 //     anything that should outlive a single turn; use TransformContext
 //     for per-turn ephemeral edits (redaction, injection).
 //   - Hooks run synchronously on the loop goroutine. Slow hooks slow the
-//     loop. Hooks that need concurrency should fire-and-forget into
+//     run. Hooks that need concurrency should fire-and-forget into
 //     their own goroutines.
 //
 // To add a new lifecycle seam:
@@ -193,7 +193,7 @@ type Hooks struct {
 
 	// OnTurnEnd fires after a turn's assistant message and tool
 	// results have been appended. The Turn carries everything that
-	// happened in the turn. Errors here fail the loop.
+	// happened in the turn. Errors here fail the run.
 	OnTurnEnd func(ctx context.Context, step int, turn Turn) error
 
 	// TransformHistory, if non-nil, is invoked at the top of each loop
@@ -206,7 +206,7 @@ type Hooks struct {
 	// If the returned slice's length differs from the input, the loop
 	// emits a ContextTransformedEvent so observers can react.
 	//
-	// Errors fail the loop.
+	// Errors fail the run.
 	TransformHistory TransformHistoryHook
 
 	// TransformSystem may rewrite the system prompt for this turn. The
@@ -230,12 +230,12 @@ type Hooks struct {
 	// Return ErrSkipTool to skip execution; the loop will synthesize a
 	// tool result with the returned args (if non-nil) and the error's
 	// message (if of type *ToolDecision; see ErrSkipTool docs). Any
-	// other error fails the loop.
+	// other error fails the run.
 	BeforeToolCall BeforeToolCallFunc
 
 	// AfterToolCall fires after each tool call's execution (including
 	// when execution failed). It may rewrite the result string. Returns
-	// the (possibly rewritten) result; an error here fails the loop.
+	// the (possibly rewritten) result; an error here fails the run.
 	AfterToolCall AfterToolCallFunc
 
 	// AfterRun fires exactly once at the end of Run, after the loop has
@@ -249,14 +249,14 @@ type Hooks struct {
 	// TransformToolDefs rewrites the tool definitions for this turn's
 	// wire request only. Returning the input slice unchanged is a no-op.
 	// Returning a nil slice means "send no tools this turn". Errors fail
-	// the loop. The loop's running tool registry is unaffected.
+	// the run. The loop's running tool registry is unaffected.
 	TransformToolDefs TransformToolDefsHook
 
 	// TransformParams mutates the per-request sampling parameters before
 	// the LLM call. The hook receives the params the loop is about to
 	// send and returns the params that should be used for this turn's
 	// wire request only. The loop's own Config is unaffected. Errors fail
-	// the loop.
+	// the run.
 	TransformParams TransformParamsHook
 }
 
@@ -334,7 +334,7 @@ type TransformToolDefsInfo struct {
 type TransformToolDefsHook func(ctx context.Context, info TransformToolDefsInfo) ([]models.ToolDef, error)
 
 // SamplingParams is the set of per-request sampling knobs exposed by
-// the loop. Pointer fields distinguish "unset" from "set to zero".
+// the run. Pointer fields distinguish "unset" from "set to zero".
 type SamplingParams struct {
 	MaxOutputTokens *int
 }
@@ -356,11 +356,11 @@ type TransformParamsResult struct {
 type TransformParamsHook func(ctx context.Context, info TransformParamsInfo) (TransformParamsResult, error)
 
 // ErrSkipTool is returned from BeforeToolCall to skip tool execution
-// without failing the loop. The loop synthesizes a tool result message
+// without failing the run. The loop synthesizes a tool result message
 // containing the error's Unwrap target as the result text and isError=true.
 //
 // Callers that want a custom skip message wrap it: fmt.Errorf("not
-// permitted: bash on prod: %w", loop.ErrSkipTool).
+// permitted: bash on prod: %w", run.ErrSkipTool).
 var ErrSkipTool = errors.New("skip tool")
 
 // ToolCall is a tool invocation request from the model, surfaced to
@@ -410,7 +410,7 @@ type Turn struct {
 
 // Result is the loop's terminal value, returned from Run.
 type Result struct {
-	// Messages is the full conversation after the loop. This includes
+	// Messages is the full conversation after the run. This includes
 	// the input messages the caller passed in. Callers that want only
 	// the new messages take Messages[len(input):].
 	Messages []models.Message

@@ -1,9 +1,9 @@
 // Package hookid provides stable string identifiers for the hooks defined in
-// agent/loop.
+// agent/run.
 //
 // These IDs are used for wire vocabulary, observability span/trace event
 // names, and documentation anchors. They are explicitly NOT used for in-process
-// dispatch — that is handled by the Go types in agent/loop directly.
+// dispatch — that is handled by the Go types in agent/run directly.
 package hookid
 
 // ID is a stable string identifier for a hook. Use the named constant values

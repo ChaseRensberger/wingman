@@ -54,9 +54,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chaserensberger/wingman/agent/loop"
-	"github.com/chaserensberger/wingman/tool"
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 // Plugin is the aggregating abstraction. Implementations bundle hook
@@ -74,22 +74,22 @@ type Plugin interface {
 }
 
 // Registry collects plugin contributions during the install phase.
-// Session uses Build to fold the registry into a loop.Hooks value
+// Session uses Build to fold the registry into a run.Hooks value
 // (with composed pipelines), a sink, and a merged tool slice.
 //
 // Registry is single-use: once Build is called, further Register* calls
 // have undefined effect. Sessions construct a fresh Registry per
 // activation.
 type Registry struct {
-	beforeRun         []loop.BeforeRunHook
-	transformHistory  []loop.TransformHistoryHook
-	transformContext  []loop.TransformContextHook
-	beforeToolCall    []loop.BeforeToolCallFunc
-	afterToolCall     []loop.AfterToolCallFunc
-	afterRun          []loop.AfterRunHook
-	transformToolDefs []loop.TransformToolDefsHook
-	transformParams   []loop.TransformParamsHook
-	sinks             []loop.Sink
+	beforeRun         []run.BeforeRunHook
+	transformHistory  []run.TransformHistoryHook
+	transformContext  []run.TransformContextHook
+	beforeToolCall    []run.BeforeToolCallFunc
+	afterToolCall     []run.AfterToolCallFunc
+	afterRun          []run.AfterRunHook
+	transformToolDefs []run.TransformToolDefsHook
+	transformParams   []run.TransformParamsHook
+	sinks             []run.Sink
 	tools             []tool.Tool
 }
 
@@ -102,7 +102,7 @@ func NewRegistry() *Registry { return &Registry{} }
 //
 // The canonical user is the storage plugin (rehydrate from disk);
 // other plugins layer on top (resumption markers, header context).
-func (r *Registry) RegisterBeforeRun(h loop.BeforeRunHook) {
+func (r *Registry) RegisterBeforeRun(h run.BeforeRunHook) {
 	if h != nil {
 		r.beforeRun = append(r.beforeRun, h)
 	}
@@ -111,7 +111,7 @@ func (r *Registry) RegisterBeforeRun(h loop.BeforeRunHook) {
 // RegisterTransformHistory adds a TransformHistory hook to the pipeline. Hooks run
 // in install order; each receives the previous hook's output as
 // info.Messages.
-func (r *Registry) RegisterTransformHistory(h loop.TransformHistoryHook) {
+func (r *Registry) RegisterTransformHistory(h run.TransformHistoryHook) {
 	if h != nil {
 		r.transformHistory = append(r.transformHistory, h)
 	}
@@ -119,7 +119,7 @@ func (r *Registry) RegisterTransformHistory(h loop.TransformHistoryHook) {
 
 // RegisterTransformContext adds a TransformContext hook to the
 // per-turn ephemeral pipeline. Hooks run in install order.
-func (r *Registry) RegisterTransformContext(h loop.TransformContextHook) {
+func (r *Registry) RegisterTransformContext(h run.TransformContextHook) {
 	if h != nil {
 		r.transformContext = append(r.transformContext, h)
 	}
@@ -128,7 +128,7 @@ func (r *Registry) RegisterTransformContext(h loop.TransformContextHook) {
 // RegisterBeforeToolCall adds a BeforeToolCall hook. Hooks run in
 // install order; the first hook to return ErrSkipTool short-circuits
 // the chain.
-func (r *Registry) RegisterBeforeToolCall(h loop.BeforeToolCallFunc) {
+func (r *Registry) RegisterBeforeToolCall(h run.BeforeToolCallFunc) {
 	if h != nil {
 		r.beforeToolCall = append(r.beforeToolCall, h)
 	}
@@ -136,7 +136,7 @@ func (r *Registry) RegisterBeforeToolCall(h loop.BeforeToolCallFunc) {
 
 // RegisterAfterToolCall adds an AfterToolCall hook. Hooks run in
 // install order; each receives the previous hook's output.
-func (r *Registry) RegisterAfterToolCall(h loop.AfterToolCallFunc) {
+func (r *Registry) RegisterAfterToolCall(h run.AfterToolCallFunc) {
 	if h != nil {
 		r.afterToolCall = append(r.afterToolCall, h)
 	}
@@ -144,7 +144,7 @@ func (r *Registry) RegisterAfterToolCall(h loop.AfterToolCallFunc) {
 
 // RegisterAfterRun adds an AfterRun hook. Hooks run in install order;
 // every registered hook sees the same Result and errors are joined.
-func (r *Registry) RegisterAfterRun(h loop.AfterRunHook) {
+func (r *Registry) RegisterAfterRun(h run.AfterRunHook) {
 	if h != nil {
 		r.afterRun = append(r.afterRun, h)
 	}
@@ -153,7 +153,7 @@ func (r *Registry) RegisterAfterRun(h loop.AfterRunHook) {
 // RegisterTransformToolDefs adds a TransformToolDefs hook to the
 // per-turn pipeline. Hooks run in install order; each receives the
 // previous hook's output.
-func (r *Registry) RegisterTransformToolDefs(h loop.TransformToolDefsHook) {
+func (r *Registry) RegisterTransformToolDefs(h run.TransformToolDefsHook) {
 	if h != nil {
 		r.transformToolDefs = append(r.transformToolDefs, h)
 	}
@@ -162,7 +162,7 @@ func (r *Registry) RegisterTransformToolDefs(h loop.TransformToolDefsHook) {
 // RegisterTransformParams adds a TransformParams hook to the per-turn
 // pipeline. Hooks run in install order; each receives the previous
 // hook's output.
-func (r *Registry) RegisterTransformParams(h loop.TransformParamsHook) {
+func (r *Registry) RegisterTransformParams(h run.TransformParamsHook) {
 	if h != nil {
 		r.transformParams = append(r.transformParams, h)
 	}
@@ -170,7 +170,7 @@ func (r *Registry) RegisterTransformParams(h loop.TransformParamsHook) {
 
 // RegisterSink adds an event observer. All registered sinks receive
 // every event, in install order.
-func (r *Registry) RegisterSink(s loop.Sink) {
+func (r *Registry) RegisterSink(s run.Sink) {
 	if s != nil {
 		r.sinks = append(r.sinks, s)
 	}
@@ -198,20 +198,20 @@ func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) {
 }
 
 // Built bundles the composed hooks, merged tool slice, and aggregated
-// sink that a session feeds to loop.Run. Construct via Registry.Build.
+// sink that a session feeds to run.Run. Construct via Registry.Build.
 type Built struct {
-	Hooks loop.Hooks
+	Hooks run.Hooks
 	Tools []tool.Tool
 	// Sink is non-nil when at least one plugin registered a sink. The
 	// session combines this with its own internal sink.
-	Sink loop.Sink
+	Sink run.Sink
 }
 
 // Build folds the registry's contributions into a Built value. The
 // returned Built is independent of the registry; further mutations to
 // the registry don't affect it.
 func (r *Registry) Build() Built {
-	hooks := loop.Hooks{}
+	hooks := run.Hooks{}
 
 	switch len(r.beforeRun) {
 	case 0:
@@ -279,9 +279,9 @@ func (r *Registry) Build() Built {
 		hooks.TransformParams = composeTransformParams(r.transformParams)
 	}
 
-	var sink loop.Sink
+	var sink run.Sink
 	if len(r.sinks) > 0 {
-		sink = multiSink(append([]loop.Sink(nil), r.sinks...))
+		sink = multiSink(append([]run.Sink(nil), r.sinks...))
 	}
 
 	tools := append([]tool.Tool(nil), r.tools...)
@@ -293,7 +293,7 @@ func (r *Registry) Build() Built {
 // accumulated history from prior hooks and may return a new
 // accumulated history. nil returns leave the accumulator unchanged.
 // Errors short-circuit the chain.
-func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
+func composeBeforeRun(hooks []run.BeforeRunHook) run.BeforeRunHook {
 	return func(ctx context.Context, current []models.Message) ([]models.Message, error) {
 		acc := current
 		for i, h := range hooks {
@@ -311,8 +311,8 @@ func composeBeforeRun(hooks []loop.BeforeRunHook) loop.BeforeRunHook {
 
 // composeTransformHistory chains TransformHistory hooks: each one's output messages
 // become the next one's input. Errors short-circuit the chain.
-func composeTransformHistory(hooks []loop.TransformHistoryHook) loop.TransformHistoryHook {
-	return func(ctx context.Context, info loop.TransformHistoryInfo) ([]models.Message, error) {
+func composeTransformHistory(hooks []run.TransformHistoryHook) run.TransformHistoryHook {
+	return func(ctx context.Context, info run.TransformHistoryInfo) ([]models.Message, error) {
 		msgs := info.Messages
 		for i, h := range hooks {
 			next := info
@@ -330,8 +330,8 @@ func composeTransformHistory(hooks []loop.TransformHistoryHook) loop.TransformHi
 }
 
 // composeTransformContext chains TransformContext hooks similarly.
-func composeTransformContext(hooks []loop.TransformContextHook) loop.TransformContextHook {
-	return func(ctx context.Context, info loop.TransformContextInfo) ([]models.Message, error) {
+func composeTransformContext(hooks []run.TransformContextHook) run.TransformContextHook {
+	return func(ctx context.Context, info run.TransformContextInfo) ([]models.Message, error) {
 		msgs := info.Messages
 		for i, h := range hooks {
 			next := info
@@ -352,8 +352,8 @@ func composeTransformContext(hooks []loop.TransformContextHook) loop.TransformCo
 // previous hook's args (rewritten via the hook's newArgs return). The
 // first hook to return any error (including ErrSkipTool) terminates
 // the chain — ErrSkipTool propagates to the loop unchanged.
-func composeBeforeToolCall(hooks []loop.BeforeToolCallFunc) loop.BeforeToolCallFunc {
-	return func(ctx context.Context, call loop.ToolCall) (map[string]any, error) {
+func composeBeforeToolCall(hooks []run.BeforeToolCallFunc) run.BeforeToolCallFunc {
+	return func(ctx context.Context, call run.ToolCall) (map[string]any, error) {
 		args := call.Args
 		for i, h := range hooks {
 			next := call
@@ -372,8 +372,8 @@ func composeBeforeToolCall(hooks []loop.BeforeToolCallFunc) loop.BeforeToolCallF
 
 // composeAfterToolCall chains AfterToolCall hooks: each receives the
 // previous hook's output string and isError flag.
-func composeAfterToolCall(hooks []loop.AfterToolCallFunc) loop.AfterToolCallFunc {
-	return func(ctx context.Context, call loop.ToolCall, result string, isError bool) (string, error) {
+func composeAfterToolCall(hooks []run.AfterToolCallFunc) run.AfterToolCallFunc {
+	return func(ctx context.Context, call run.ToolCall, result string, isError bool) (string, error) {
 		out := result
 		for i, h := range hooks {
 			newOut, err := h(ctx, call, out, isError)
@@ -388,8 +388,8 @@ func composeAfterToolCall(hooks []loop.AfterToolCallFunc) loop.AfterToolCallFunc
 
 // composeAfterRun runs all AfterRun hooks; every hook sees the same
 // Result and errors are joined.
-func composeAfterRun(hooks []loop.AfterRunHook) loop.AfterRunHook {
-	return func(ctx context.Context, info loop.AfterRunInfo) error {
+func composeAfterRun(hooks []run.AfterRunHook) run.AfterRunHook {
+	return func(ctx context.Context, info run.AfterRunInfo) error {
 		var errs []error
 		for i, h := range hooks {
 			if err := h(ctx, info); err != nil {
@@ -402,8 +402,8 @@ func composeAfterRun(hooks []loop.AfterRunHook) loop.AfterRunHook {
 
 // composeTransformToolDefs chains TransformToolDefs hooks: each receives
 // the previous hook's output. Errors short-circuit the chain.
-func composeTransformToolDefs(hooks []loop.TransformToolDefsHook) loop.TransformToolDefsHook {
-	return func(ctx context.Context, info loop.TransformToolDefsInfo) ([]models.ToolDef, error) {
+func composeTransformToolDefs(hooks []run.TransformToolDefsHook) run.TransformToolDefsHook {
+	return func(ctx context.Context, info run.TransformToolDefsInfo) ([]models.ToolDef, error) {
 		tools := info.Tools
 		for i, h := range hooks {
 			next := info
@@ -420,28 +420,28 @@ func composeTransformToolDefs(hooks []loop.TransformToolDefsHook) loop.Transform
 
 // composeTransformParams chains TransformParams hooks: each receives
 // the previous hook's output. Errors short-circuit the chain.
-func composeTransformParams(hooks []loop.TransformParamsHook) loop.TransformParamsHook {
-	return func(ctx context.Context, info loop.TransformParamsInfo) (loop.TransformParamsResult, error) {
+func composeTransformParams(hooks []run.TransformParamsHook) run.TransformParamsHook {
+	return func(ctx context.Context, info run.TransformParamsInfo) (run.TransformParamsResult, error) {
 		params := info.Params
 		for i, h := range hooks {
 			next := info
 			next.Params = params
 			out, err := h(ctx, next)
 			if err != nil {
-				return loop.TransformParamsResult{}, fmt.Errorf("transform_params[%d]: %w", i, err)
+				return run.TransformParamsResult{}, fmt.Errorf("transform_params[%d]: %w", i, err)
 			}
 			params = out.Params
 		}
-		return loop.TransformParamsResult{Params: params}, nil
+		return run.TransformParamsResult{Params: params}, nil
 	}
 }
 
 // multiSink fans an event out to multiple sinks. Each sink runs
-// synchronously in install order; a slow sink slows the loop. Sinks
+// synchronously in install order; a slow sink slows the run. Sinks
 // that need concurrency should fire-and-forget into their own goroutines.
-type multiSink []loop.Sink
+type multiSink []run.Sink
 
-func (m multiSink) OnEvent(e loop.Event) {
+func (m multiSink) OnEvent(e run.Event) {
 	for _, s := range m {
 		s.OnEvent(e)
 	}

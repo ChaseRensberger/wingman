@@ -1,7 +1,7 @@
-// Package looptest provides deterministic test helpers for agent/loop.
+// Package runtest provides deterministic test helpers for agent/run.
 // RecordingModel scripts pre-canned responses; RecordingSink captures emitted
 // events. Intended for use only in tests.
-package looptest
+package runtest
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func Reply(text string) ScriptedReply { return ScriptedReply{text: text} }
 func ReplyWithTool(name, jsonArgs string) ScriptedReply {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(jsonArgs), &args); err != nil {
-		panic(fmt.Sprintf("looptest.ReplyWithTool: invalid JSON args: %v", err))
+		panic(fmt.Sprintf("runtest.ReplyWithTool: invalid JSON args: %v", err))
 	}
 	return ScriptedReply{toolCalls: []scriptedToolCall{{name: name, args: args}}}
 }
@@ -104,7 +104,7 @@ func (m *RecordingModel) Info() models.ModelInfo {
 	if m.info.Provider != "" {
 		return m.info
 	}
-	return models.ModelInfo{Provider: "looptest", ID: "recording-model",
+	return models.ModelInfo{Provider: "runtest", ID: "recording-model",
 		Capabilities: models.ModelCapabilities{Tools: true}}
 }
 
@@ -119,7 +119,7 @@ func (m *RecordingModel) Stream(ctx context.Context, req models.Request) (*model
 	})
 	m.index++
 	if m.index > len(m.script) {
-		return nil, fmt.Errorf("looptest: script exhausted, request %d has no scripted reply", m.index)
+		return nil, fmt.Errorf("runtest: script exhausted, request %d has no scripted reply", m.index)
 	}
 	reply := m.script[m.index-1]
 	if reply.err != nil {
@@ -196,18 +196,18 @@ func assembleMessage(reply ScriptedReply) *models.Message {
 	}
 	return &models.Message{
 		Role: models.RoleAssistant, Content: content, FinishReason: reason,
-		Origin: &models.MessageOrigin{Provider: "looptest", API: models.APIOpenAICompletions, ModelID: "recording-model"},
+		Origin: &models.MessageOrigin{Provider: "runtest", API: models.APIOpenAICompletions, ModelID: "recording-model"},
 	}
 }
 
 func deepCopy[T any](v T) T {
 	b, err := json.Marshal(v)
 	if err != nil {
-		panic(fmt.Sprintf("looptest: deep copy: %v", err))
+		panic(fmt.Sprintf("runtest: deep copy: %v", err))
 	}
 	var out T
 	if err := json.Unmarshal(b, &out); err != nil {
-		panic(fmt.Sprintf("looptest: deep copy: %v", err))
+		panic(fmt.Sprintf("runtest: deep copy: %v", err))
 	}
 	return out
 }

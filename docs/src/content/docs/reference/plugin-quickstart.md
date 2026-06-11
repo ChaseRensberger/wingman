@@ -20,7 +20,7 @@ import (
     "fmt"
     "log/slog"
 
-    "github.com/chaserensberger/wingman/agent/loop"
+    "github.com/chaserensberger/wingman/agent/run"
     "github.com/chaserensberger/wingman/agent/plugin"
 )
 
@@ -37,11 +37,11 @@ func (p *Plugin) Name() string {
 }
 
 func (p *Plugin) Install(r *plugin.Registry) error {
-    r.RegisterSink(loop.SinkFunc(p.sink))
+    r.RegisterSink(run.SinkFunc(p.sink))
     return nil
 }
 
-func (p *Plugin) sink(event loop.Event) {
+func (p *Plugin) sink(event run.Event) {
     p.logger.Info("wingman event", "type", fmt.Sprintf("%T", event))
 }
 ```
