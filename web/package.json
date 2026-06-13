@@ -1,42 +1,17 @@
 {
-  "name": "web",
+  "name": "wingman-web",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@base-ui/react": "^1.4.1",
-    "@fontsource-variable/fira-code": "^5.2.7",
-    "@phosphor-icons/react": "^2.1.10",
-    "@tailwindcss/vite": "^4.2.4",
-    "@tanstack/react-router": "^1.169.2",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "motion": "^12.38.0",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "shiki": "^4.0.2",
-    "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.4",
-    "tailwindcss-animate": "^1.0.7"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.29.0",
-    "@rolldown/plugin-babel": "^0.2.3",
-    "@tanstack/router-plugin": "^1.167.34",
-    "@types/babel__core": "^7.20.5",
-    "@types/node": "^24.12.2",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.0.10"
+    "build": "bun run --sequential --workspaces build",
+    "build:blog": "bun --filter wingman-blog build",
+    "build:docs": "bun --filter wingman-docs build",
+    "build:hero": "bun --filter wingman-hero build",
+    "build:console": "bun --filter wingman-console build",
+    "build:core": "bun --filter @wingman/core build",
+    "lint": "bun run --sequential --workspaces --if-present lint"
   }
 }
