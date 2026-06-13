@@ -21,7 +21,7 @@ import (
 	"github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
-	webui "github.com/chaserensberger/wingman/web"
+	consoleui "github.com/chaserensberger/wingman/web/apps/console"
 )
 
 type Server struct {
@@ -241,19 +241,19 @@ func (s *Server) mountWebUI() {
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(devURL)
-		s.router.Handle("/web", proxy)
-		s.router.Handle("/web/*", proxy)
+		s.router.Handle("/console", proxy)
+		s.router.Handle("/console/*", proxy)
 		return
 	}
 
-	dist, err := fs.Sub(webui.Dist, webui.DistRoot)
+	dist, err := fs.Sub(consoleui.Dist, consoleui.DistRoot)
 	if err != nil {
 		s.logger.Error("web UI unavailable", "error", err)
 		return
 	}
 	files := http.FileServer(http.FS(dist))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		servePath := strings.TrimPrefix(r.URL.Path, "/web")
+		servePath := strings.TrimPrefix(r.URL.Path, "/console")
 		if servePath == "" || servePath == "/" {
 			servePath = "/"
 		}
@@ -265,8 +265,8 @@ func (s *Server) mountWebUI() {
 		r2.URL.Path = servePath
 		files.ServeHTTP(w, r2)
 	})
-	s.router.Handle("/web", handler)
-	s.router.Handle("/web/*", handler)
+	s.router.Handle("/console", handler)
+	s.router.Handle("/console/*", handler)
 }
 
 // Ephemeral reports whether the server was created with a nil store,
@@ -389,6 +389,6 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		Name:   "wingman",
 		Status: "ok",
 		Health: "/health",
-		Web:    "/web",
+		Web:    "/console",
 	})
 }

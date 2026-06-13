@@ -236,7 +236,7 @@ func serveFlags(cfg fileConfig) []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:  "ui-dev",
-			Usage: "Proxy /web to a Vite dev server URL",
+			Usage: "Proxy /console to a Vite dev server URL",
 		},
 		&cli.BoolFlag{
 			Name:  "ephemeral",

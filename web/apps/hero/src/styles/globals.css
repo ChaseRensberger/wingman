@@ -1,0 +1,3 @@
+@import "@wingman/core/globals.css";
+
+@source "../../../../packages/core/src/**/*.{ts,tsx}";
