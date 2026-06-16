@@ -1,0 +1,61 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
+import { Card, CardContent, CardHeader, CardTitle } from "@wingman/core/components/core/card";
+import { RadioGroup, RadioGroupItem } from "@wingman/core/components/core/radio-group";
+import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { type Theme, useTheme } from "@wingman/core/components/theme-provider";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/settings")({
+  component: SettingsPage,
+});
+
+function SettingsPage() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    { value: "light", label: "Light", icon: SunIcon },
+    { value: "dark", label: "Dark", icon: MoonIcon },
+    { value: "system", label: "System", icon: DesktopIcon },
+  ] as const;
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <div className="mb-4">
+        <PageBreadcrumb items={[{ label: "Settings" }]} />
+      </div>
+
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>Theme</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            value={theme}
+            onValueChange={(value) => setTheme(value as Theme)}
+            className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
+          >
+            {options.map((option) => {
+              const Icon = option.icon;
+              const active = theme === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                    active
+                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <RadioGroupItem value={option.value} className="sr-only" />
+                  <Icon className="size-4" />
+                  <span>{option.label}</span>
+                </label>
+              );
+            })}
+          </RadioGroup>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -48,7 +48,7 @@ The server listens on `127.0.0.1:2323` by default and stores data in SQLite at `
 Open the bundled web UI:
 
 ```text
-http://127.0.0.1:2323/web
+http://127.0.0.1:2323/console
 ```
 
 On Linux, install and start Wingman as a systemd service when you want it running in the background:

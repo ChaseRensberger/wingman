@@ -25,13 +25,13 @@ jobs:
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Build web UI
+      - name: Install JavaScript dependencies
         working-directory: web
-        run: bun install --frozen-lockfile && bun run build
+        run: bun install --frozen-lockfile
 
-      - name: Build docs
-        working-directory: docs
-        run: bun install --frozen-lockfile && bun run build
+      - name: Build TypeScript workspaces
+        working-directory: web
+        run: bun run build
 
       - name: Vet
         run: go vet ./...
