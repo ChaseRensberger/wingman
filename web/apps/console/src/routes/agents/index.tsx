@@ -21,6 +21,7 @@ import {
 } from "@wingman/core/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { wfetch } from "@/lib/client";
+import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
@@ -72,8 +73,9 @@ function AgentsPage() {
       ]);
       setAgents(agentData);
       setProviders(providerData);
+      const selectableProviders = providerData.filter(isProviderSelectable);
       const modelEntries = await Promise.all(
-        providerData.map(async (provider) => {
+        selectableProviders.map(async (provider) => {
           try {
             const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
@@ -136,6 +138,7 @@ function AgentsPage() {
   }
 
   const providerModels = models[form.provider] ?? [];
+  const selectableProviders = providers.filter(isProviderSelectable);
   const filteredAgents = agents.filter((agent) => {
     const haystack = `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
     return haystack.includes(filter.toLowerCase());
@@ -221,7 +224,7 @@ function AgentsPage() {
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent>
-                    {providers.map((provider) => (
+                    {selectableProviders.map((provider) => (
                       <SelectItem key={provider.id} value={provider.id}>
                         {provider.name}
                       </SelectItem>

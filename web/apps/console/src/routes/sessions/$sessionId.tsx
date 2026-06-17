@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
+import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, Message, Part, Provider, ProviderModel, ToolCallPart, ToolResultPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
@@ -319,8 +320,9 @@ function SessionDetailPage() {
           wfetch("/agents") as Promise<Agent[]>,
           wfetch("/provider") as Promise<Provider[]>,
         ]);
+        const selectableProviders = providerData.filter(isProviderSelectable);
         const modelEntries = await Promise.all(
-          providerData.map(async (provider) => {
+          selectableProviders.map(async (provider) => {
             try {
               const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
               return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
@@ -680,7 +682,8 @@ function SessionDetailPage() {
   }
 
   const selectedAgentName = agents.find((a) => a.id === selectedAgent)?.name;
-  const selectedProviderName = providers.find((provider) => provider.id === selectedProvider)?.name;
+  const selectableProviders = providers.filter(isProviderSelectable);
+  const selectedProviderName = selectableProviders.find((provider) => provider.id === selectedProvider)?.name;
   const selectedModelInfo = (models[selectedProvider] ?? []).find((model) => model.id === selectedModel);
   const modelSelectValue = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
   const modelSelectLabel = selectedProviderName && selectedModel ? `${selectedProviderName} / ${selectedModel}` : undefined;
@@ -832,7 +835,7 @@ function SessionDetailPage() {
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {providers.map((provider) => (
+                  {selectableProviders.map((provider) => (
                     <SelectGroup key={provider.id}>
                       <SelectLabel>{provider.name}</SelectLabel>
                       {(models[provider.id] ?? []).map((model) => (

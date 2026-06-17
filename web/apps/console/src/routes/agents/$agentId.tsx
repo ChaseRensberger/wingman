@@ -24,6 +24,7 @@ import { Input } from "@wingman/core/components/core/input";
 import { Textarea } from "@wingman/core/components/core/textarea";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
+import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { splitModelRef } from "@/lib/utils";
@@ -78,8 +79,9 @@ function AgentDetailPage() {
       setAgent(agentData);
       setForm(formFromAgent(agentData));
       setProviders(providerData);
+      const selectableProviders = providerData.filter(isProviderSelectable);
       const modelEntries = await Promise.all(
-        providerData.map(async (provider) => {
+        selectableProviders.map(async (provider) => {
           try {
             const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
@@ -149,6 +151,7 @@ function AgentDetailPage() {
   }
 
   const providerModels = form ? models[form.provider] ?? [] : [];
+  const selectableProviders = providers.filter(isProviderSelectable);
   const crumbLabel = agent?.name || agentId;
 
   return (
@@ -210,7 +213,7 @@ function AgentDetailPage() {
                   <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {providers.map((provider) => (
+                  {selectableProviders.map((provider) => (
                     <SelectItem key={provider.id} value={provider.id}>
                       {provider.name}
                     </SelectItem>
