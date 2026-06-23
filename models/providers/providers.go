@@ -83,8 +83,11 @@ type ProviderConfig struct {
 
 // ProviderOptions are runtime options for a provider route.
 type ProviderOptions struct {
-	BaseURL string `json:"baseURL,omitempty"`
-	Auth    *bool  `json:"auth,omitempty"`
+	BaseURL    string            `json:"baseURL,omitempty"`
+	Auth       *bool             `json:"auth,omitempty"`
+	AuthHeader string            `json:"authHeader,omitempty"`
+	AuthScheme string            `json:"authScheme,omitempty"`
+	Query      map[string]string `json:"query,omitempty"`
 }
 
 // NewClient constructs a route-backed provider client.
@@ -150,7 +153,9 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg, ok := c.Providers[info.Provider]; ok {
+	var cfg ProviderConfig
+	if providerCfg, ok := c.Providers[info.Provider]; ok {
+		cfg = providerCfg
 		if cfg.Options.BaseURL != "" {
 			info.BaseURL = cfg.Options.BaseURL
 		}
@@ -161,7 +166,7 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	}
 	apiKey := ""
 	useAuth := true
-	if cfg, ok := c.Providers[info.Provider]; ok && cfg.Options.Auth != nil {
+	if cfg.Options.Auth != nil {
 		useAuth = *cfg.Options.Auth
 	}
 	if useAuth {
@@ -182,7 +187,45 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 		Protocol: protocol,
 		BaseURL:  info.BaseURL,
 		APIKey:   apiKey,
+		Route: &httpmodel.Route{
+			ID:       string(protocol),
+			Protocol: protocol,
+			Endpoint: httpmodel.Endpoint{BaseURL: info.BaseURL, Query: cfg.Options.Query},
+			Auth:     routeAuth(protocol, apiKey, cfg.Options),
+			Headers:  routeHeaders(protocol),
+		},
 	}, nil
+}
+
+func routeAuth(protocol httpmodel.Protocol, apiKey string, options ProviderOptions) httpmodel.Auth {
+	if options.Auth != nil && !*options.Auth {
+		return httpmodel.NoAuth
+	}
+	if apiKey == "" {
+		return httpmodel.NoAuth
+	}
+	header := options.AuthHeader
+	if header == "" && protocol == httpmodel.AnthropicMessages {
+		header = "x-api-key"
+	}
+	if header != "" {
+		value := apiKey
+		if options.AuthScheme != "" {
+			value = options.AuthScheme + " " + apiKey
+		}
+		return httpmodel.HeaderAuth(header, value)
+	}
+	return httpmodel.BearerAuth(apiKey)
+}
+
+func routeHeaders(protocol httpmodel.Protocol) map[string]string {
+	if protocol != httpmodel.AnthropicMessages {
+		return nil
+	}
+	return map[string]string{
+		"anthropic-version": "2023-06-01",
+		"anthropic-beta":    "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+	}
 }
 
 func resolveModelInfo(ref models.ModelRef) (models.ModelInfo, error) {
@@ -212,6 +255,8 @@ func protocolFor(api models.API) (httpmodel.Protocol, error) {
 	case models.APIOpenAIResponses:
 		return httpmodel.OpenAIResponses, nil
 	case models.APIOpenAICompletions:
+		return httpmodel.OpenAIChat, nil
+	case models.APIOpenAICompatible:
 		return httpmodel.OpenAIChat, nil
 	case models.APIAnthropicMessages:
 		return httpmodel.AnthropicMessages, nil

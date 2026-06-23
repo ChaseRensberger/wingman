@@ -46,6 +46,7 @@ type API string
 const (
 	APIOpenAIResponses   API = "openai_responses"
 	APIOpenAICompletions API = "openai_completions"
+	APIOpenAICompatible  API = "openai_compatible_chat"
 	APIAnthropicMessages API = "anthropic_messages"
 )
 
@@ -98,41 +99,51 @@ func (OpaquePart) isPart()     {}
 
 // TextPart is a plain text block.
 type TextPart struct {
-	Text string `json:"text"`
+	Text             string `json:"text"`
+	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 
 func (TextPart) Type() string { return "text" }
 
 // ImagePart is an image reference.
 type ImagePart struct {
-	URL    string `json:"url,omitempty"`
-	Base64 string `json:"base64,omitempty"`
+	URL              string `json:"url,omitempty"`
+	Base64           string `json:"base64,omitempty"`
+	MediaType        string `json:"media_type,omitempty"`
+	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 
 func (ImagePart) Type() string { return "image" }
 
 // ReasoningPart carries model reasoning text.
 type ReasoningPart struct {
-	Reasoning string `json:"reasoning"`
+	Reasoning        string `json:"reasoning"`
+	Encrypted        string `json:"encrypted,omitempty"`
+	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 
 func (ReasoningPart) Type() string { return "reasoning" }
 
 // ToolCallPart is a completed tool call inside a message.
 type ToolCallPart struct {
-	CallID string         `json:"call_id"`
-	Name   string         `json:"name"`
-	Input  map[string]any `json:"input"`
+	CallID           string         `json:"call_id"`
+	Name             string         `json:"name"`
+	Input            map[string]any `json:"input"`
+	ProviderExecuted bool           `json:"provider_executed,omitempty"`
+	ProviderMetadata Meta           `json:"provider_metadata,omitempty"`
 }
 
 func (ToolCallPart) Type() string { return "tool_call" }
 
 // ToolResultPart is the outcome of a tool execution.
 type ToolResultPart struct {
-	CallID   string `json:"call_id"`
-	Output   []Part `json:"output"`
-	IsError  bool   `json:"is_error"`
-	Metadata Meta   `json:"metadata,omitempty"`
+	CallID           string `json:"call_id"`
+	Name             string `json:"name,omitempty"`
+	Output           []Part `json:"output"`
+	IsError          bool   `json:"is_error"`
+	Metadata         Meta   `json:"metadata,omitempty"`
+	ProviderExecuted bool   `json:"provider_executed,omitempty"`
+	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 
 func (ToolResultPart) Type() string { return "tool_result" }
@@ -147,26 +158,35 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		raw[i] = b
 	}
 	return json.Marshal(struct {
-		CallID   string            `json:"call_id"`
-		Output   []json.RawMessage `json:"output"`
-		IsError  bool              `json:"is_error"`
-		Metadata Meta              `json:"metadata,omitempty"`
-	}{p.CallID, raw, p.IsError, p.Metadata})
+		CallID           string            `json:"call_id"`
+		Name             string            `json:"name,omitempty"`
+		Output           []json.RawMessage `json:"output"`
+		IsError          bool              `json:"is_error"`
+		Metadata         Meta              `json:"metadata,omitempty"`
+		ProviderExecuted bool              `json:"provider_executed,omitempty"`
+		ProviderMetadata Meta              `json:"provider_metadata,omitempty"`
+	}{p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
 }
 
 func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		CallID   string            `json:"call_id"`
-		Output   []json.RawMessage `json:"output"`
-		IsError  bool              `json:"is_error"`
-		Metadata Meta              `json:"metadata,omitempty"`
+		CallID           string            `json:"call_id"`
+		Name             string            `json:"name,omitempty"`
+		Output           []json.RawMessage `json:"output"`
+		IsError          bool              `json:"is_error"`
+		Metadata         Meta              `json:"metadata,omitempty"`
+		ProviderExecuted bool              `json:"provider_executed,omitempty"`
+		ProviderMetadata Meta              `json:"provider_metadata,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	p.CallID = raw.CallID
+	p.Name = raw.Name
 	p.IsError = raw.IsError
 	p.Metadata = raw.Metadata
+	p.ProviderExecuted = raw.ProviderExecuted
+	p.ProviderMetadata = raw.ProviderMetadata
 	p.Output = make([]Part, len(raw.Output))
 	for i, b := range raw.Output {
 		part, err := UnmarshalPart(b)

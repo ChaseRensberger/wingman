@@ -21,6 +21,7 @@ import (
 	"github.com/chaserensberger/wingman/internal/observability"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 	"github.com/chaserensberger/wingman/pluginhost"
