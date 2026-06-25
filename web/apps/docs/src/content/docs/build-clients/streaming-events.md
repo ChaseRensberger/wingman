@@ -60,4 +60,4 @@ Stream when your client needs to:
 
 Use the blocking message endpoint when you only need the final response.
 
-For the complete streaming shape, see [API](/reference/referenceapi#streaming).
+For the complete streaming shape, see [API](/docs/reference/referenceapi#streaming).

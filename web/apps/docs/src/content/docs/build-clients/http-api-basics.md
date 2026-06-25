@@ -94,4 +94,4 @@ Use an ephemeral session when you want one in-memory run and no transcript:
 POST /run
 ```
 
-See [API](/reference/referenceapi) for endpoint shapes.
+See [API](/docs/reference/referenceapi) for endpoint shapes.

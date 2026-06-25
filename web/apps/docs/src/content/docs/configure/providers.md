@@ -232,7 +232,7 @@ Provider config does not:
 - Mutate persisted agents.
 - Make an unsupported endpoint compatible with Wingman.
 
-The endpoint still needs to speak one of Wingman's supported protocols. See [Models](/configure/models) for when to use `model_route` instead.
+The endpoint still needs to speak one of Wingman's supported protocols. See [Models](/docs/configure/models) for when to use `model_route` instead.
 
 ## Troubleshooting
 
@@ -245,4 +245,4 @@ If a provider call fails, check these in order:
 5. If you set `auth: false`, does the gateway actually accept unauthenticated requests?
 6. If you use `model_route`, does the endpoint speak the selected protocol?
 
-For exact config fields, see [Config Schema](/reference/config-schema#provider).
+For exact config fields, see [Config Schema](/docs/reference/config-schema#provider).

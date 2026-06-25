@@ -68,6 +68,6 @@ wingman up
 - **SQLite-backed sessions** - Store agents, sessions, messages, parts, and provider auth in a local SQLite database.
 - **HTTP API** - Communicate with Wingman via HTTP from your own clients.
 
-**Want to learn more?** [Check out the site](https://wingman.actor) & [Read the docs](https://docs.wingman.actor)
+**Want to learn more?** [Check out the site](https://wingman.actor) & [Read the docs](https://wingman.actor/docs)
 
 Also I made [a hackernews client](https://news.wingman.actor).
