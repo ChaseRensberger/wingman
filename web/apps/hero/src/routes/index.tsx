@@ -17,7 +17,7 @@ function RouteComponent() {
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const ENABLE_COMMAND = "wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
-const DOCS_URL = "https://docs.wingman.actor";
+const DOCS_URL = "/docs/";
 const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";

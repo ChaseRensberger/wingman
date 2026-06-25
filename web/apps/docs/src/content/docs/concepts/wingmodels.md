@@ -114,7 +114,7 @@ Wingman's config can overlay catalog provider routes for the running daemon. The
 
 This keeps persisted agents simple: `model_ref` remains `openai/gpt-5.5`, while the daemon decides where OpenAI requests are routed.
 
-See [Providers](/configure/providers) for auth and gateway details.
+See [Providers](/docs/configure/providers) for auth and gateway details.
 
 ## Custom Models
 

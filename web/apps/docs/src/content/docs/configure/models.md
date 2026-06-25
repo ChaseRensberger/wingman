@@ -79,7 +79,7 @@ Agents still use normal refs:
 }
 ```
 
-Use provider route overlays when a known provider should go through a proxy, local gateway, or provider-compatible endpoint. See [Providers](/configure/providers) for auth and route details.
+Use provider route overlays when a known provider should go through a proxy, local gateway, or provider-compatible endpoint. See [Providers](/docs/configure/providers) for auth and route details.
 
 ## Custom Model Routes
 
@@ -150,9 +150,9 @@ If `model_ref` is already known through the embedded catalog or config-defined m
 
 | Need | Use |
 |---|---|
-| Store a provider API key | [Provider auth](/configure/providers#store-provider-auth) |
-| Route all `openai/*` refs through a gateway | [Provider route overlay](/configure/providers#route-a-provider-through-a-gateway) |
-| Add a reusable custom provider/model visible to the web UI | [Custom provider config](/configure/providers#add-a-custom-provider) |
+| Store a provider API key | [Provider auth](/docs/configure/providers#store-provider-auth) |
+| Route all `openai/*` refs through a gateway | [Provider route overlay](/docs/configure/providers#route-a-provider-through-a-gateway) |
+| Add a reusable custom provider/model visible to the web UI | [Custom provider config](/docs/configure/providers#add-a-custom-provider) |
 | Disable auth for an unauthenticated gateway | `provider.<id>.options.auth: false` |
 | Use a cataloged model with a different runtime endpoint | Provider route overlay |
 | Use a model not in the catalog across agents | Config-defined provider model |
@@ -174,4 +174,4 @@ Choose the protocol that matches the endpoint.
 
 Wingman's embedded catalog provides provider defaults, model metadata, and capability flags.
 
-Catalog details live in [WingModels](/concepts/wingmodels#catalog).
+Catalog details live in [WingModels](/docs/concepts/wingmodels#catalog).

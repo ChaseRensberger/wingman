@@ -91,4 +91,4 @@ Use Go plugins for:
 - Custom message-part decoders.
 - Performance-sensitive extensions.
 
-Use [RPC plugins](/reference/rpc-plugin-protocol) when you want the stock server to load an out-of-process plugin from disk.
+Use [RPC plugins](/docs/reference/rpc-plugin-protocol) when you want the stock server to load an out-of-process plugin from disk.

@@ -171,7 +171,7 @@ event: done
 data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
 ```
 
-See [Streaming Events](/build-clients/streaming-events) for client-side streaming guidance.
+See [Streaming Events](/docs/build-clients/streaming-events) for client-side streaming guidance.
 
 ### Abort response
 

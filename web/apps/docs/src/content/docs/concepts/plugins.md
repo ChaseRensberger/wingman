@@ -21,7 +21,7 @@ Wingman has one plugin model with two loading paths:
 
 Go plugins have the full lifecycle surface. RPC plugins currently expose tool execution for the stock server.
 
-See [Plugin Capabilities](/reference/plugin-capabilities) for the full matrix.
+See [Plugin Capabilities](/docs/reference/plugin-capabilities) for the full matrix.
 
 ## Go Plugins
 
@@ -56,7 +56,7 @@ sess := session.New(
 
 Use Go plugins for embedded applications, custom binaries, performance-sensitive hooks, and code that needs typed access to hook inputs.
 
-The stock `wingman serve` binary does not discover Go plugins from disk. See [Go Plugin Quickstart](/reference/plugin-quickstart) for a step-by-step example.
+The stock `wingman serve` binary does not discover Go plugins from disk. See [Go Plugin Quickstart](/docs/reference/plugin-quickstart) for a step-by-step example.
 
 ## External Plugins
 
@@ -107,7 +107,7 @@ Minimal manifest:
 
 `command` is executed directly. Shell expansion is not applied, so pass every argument as a separate array item.
 
-See [RPC Plugin Protocol](/reference/rpc-plugin-protocol) for the manifest fields, JSON-RPC request shape, and a minimal Node plugin.
+See [RPC Plugin Protocol](/docs/reference/rpc-plugin-protocol) for the manifest fields, JSON-RPC request shape, and a minimal Node plugin.
 
 ## Using Plugin Tools
 
