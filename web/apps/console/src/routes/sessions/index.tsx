@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { ClientPagination, useClientPagination } from "@/components/client-pagination";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -122,6 +123,7 @@ function SessionsPage() {
 			return haystack.includes(search.toLowerCase());
 		})
 		.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
+	const sessionPages = useClientPagination(filteredSessions, 12, `${workspaceFilter || ""}:${search}`);
 
 	async function loadData() {
 		const [workspaceData, sessionData] = await Promise.all([
@@ -360,52 +362,55 @@ function SessionsPage() {
 					{filteredSessions.length === 0 ? (
 						<div className="rounded-lg border bg-card px-5 py-12 text-center text-sm text-muted-foreground">No sessions found.</div>
 					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Title</TableHead>
-									<TableHead>Workspace</TableHead>
-									<TableHead>Updated</TableHead>
-									<TableHead>Workdir</TableHead>
-									<TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{filteredSessions.map((session) => {
-									const workspace = session.workspace_id ? workspacesById.get(session.workspace_id) : undefined;
-									const color = workspace ? workspaceColor(workspace.id) : "bg-muted-foreground";
-									return (
-										<TableRow key={session.id} className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })}>
-											<TableCell className="font-medium">{session.title || session.id}</TableCell>
-											<TableCell className="max-w-[420px]">
-												{workspace ? (
-													<div className="flex min-w-0 items-center gap-2">
-														<span className={cn("size-2 rounded-sm", color)} />
-														<span className="font-medium">{workspace.name}</span>
-													</div>
-												) : (
-													<span className="italic text-muted-foreground">No workspace</span>
-												)}
-											</TableCell>
-											<TableCell className="whitespace-nowrap text-muted-foreground">{timeAgo(session.updated_at || session.created_at)}</TableCell>
-											<TableCell className="max-w-[320px] truncate text-muted-foreground">{session.work_dir || "-"}</TableCell>
-											<TableCell className="w-0 text-right" onClick={(e) => e.stopPropagation()}>
-												<DropdownMenu>
-													<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Session actions" />}>
-														<DotsThreeVerticalIcon className="size-4" />
-													</DropdownMenuTrigger>
-													<DropdownMenuContent align="end" className="w-44">
-														<DropdownMenuItem onClick={() => openEditSession(session)}><PencilSimpleIcon className="size-4" />Edit session</DropdownMenuItem>
-														<DropdownMenuSeparator />
-														<DropdownMenuItem variant="destructive" onClick={() => setDeleteSession(session)}><TrashIcon className="size-4" />Delete session</DropdownMenuItem>
-													</DropdownMenuContent>
-												</DropdownMenu>
-											</TableCell>
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
+						<>
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Title</TableHead>
+										<TableHead>Workspace</TableHead>
+										<TableHead>Updated</TableHead>
+										<TableHead>Workdir</TableHead>
+										<TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{sessionPages.pageItems.map((session) => {
+										const workspace = session.workspace_id ? workspacesById.get(session.workspace_id) : undefined;
+										const color = workspace ? workspaceColor(workspace.id) : "bg-muted-foreground";
+										return (
+											<TableRow key={session.id} className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })}>
+												<TableCell className="font-medium">{session.title || session.id}</TableCell>
+												<TableCell className="max-w-[420px]">
+													{workspace ? (
+														<div className="flex min-w-0 items-center gap-2">
+															<span className={cn("size-2 rounded-sm", color)} />
+															<span className="font-medium">{workspace.name}</span>
+														</div>
+													) : (
+														<span className="italic text-muted-foreground">No workspace</span>
+													)}
+												</TableCell>
+												<TableCell className="whitespace-nowrap text-muted-foreground">{timeAgo(session.updated_at || session.created_at)}</TableCell>
+												<TableCell className="max-w-[320px] truncate text-muted-foreground">{session.work_dir || "-"}</TableCell>
+												<TableCell className="w-0 text-right" onClick={(e) => e.stopPropagation()}>
+													<DropdownMenu>
+														<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Session actions" />}>
+															<DotsThreeVerticalIcon className="size-4" />
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end" className="w-44">
+															<DropdownMenuItem onClick={() => openEditSession(session)}><PencilSimpleIcon className="size-4" />Edit session</DropdownMenuItem>
+															<DropdownMenuSeparator />
+															<DropdownMenuItem variant="destructive" onClick={() => setDeleteSession(session)}><TrashIcon className="size-4" />Delete session</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
+												</TableCell>
+											</TableRow>
+										);
+									})}
+								</TableBody>
+							</Table>
+							<ClientPagination {...sessionPages} onPageChange={sessionPages.setPage} />
+						</>
 					)}
 				</div>
 			)}
