@@ -9,6 +9,7 @@
     "build": "bun run --sequential --workspaces build",
     "build:blog": "bun --filter wingman-blog build",
     "build:docs": "bun --filter wingman-docs build",
+    "build:home": "bun --filter wingman-home build",
     "build:hero": "bun --filter wingman-hero build",
     "build:console": "bun --filter wingman-console build",
     "build:core": "bun --filter @wingman/core build",
