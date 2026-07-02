@@ -5,7 +5,7 @@ description: "Configure provider auth, provider routes, and model gateways."
 
 # Providers
 
-Providers are the model services Wingman can call, such as Anthropic, OpenAI, or OpenCode.
+Providers are the model services Wingman can call, such as Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, or OpenCode.
 
 Provider configuration has three separate pieces:
 
@@ -50,6 +50,9 @@ When using WingModels directly as a Go SDK, provider clients can read environmen
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `OPENCODE_API_KEY`
+- `GEMINI_API_KEY`
+- `OPENROUTER_API_KEY`
+- `DEEPSEEK_API_KEY`
 
 When using the Wingman server, prefer `/provider/auth`. It makes credentials daemon-owned instead of client-owned.
 
@@ -171,7 +174,7 @@ Use custom provider IDs when you want to keep direct provider refs and exe.dev g
         "auth": false
       },
       "models": {
-        "claude-sonnet-4-6": {
+        "claude-sonnet-5": {
           "api": "anthropic_messages",
           "context_window": 1000000,
           "max_output": 64000,
@@ -191,7 +194,7 @@ Use these refs after restarting Wingman:
 
 ```text
 exe-openai/gpt-5.5
-exe-anthropic/claude-sonnet-4-6
+exe-anthropic/claude-sonnet-5
 ```
 
 If you want all existing `openai/*` and `anthropic/*` refs to route through exe.dev instead, overlay the built-in providers:
@@ -219,7 +222,7 @@ Use normal model refs with the overlay approach:
 
 ```text
 openai/gpt-5.5
-anthropic/claude-sonnet-4-6
+anthropic/claude-sonnet-5
 ```
 
 ## What Provider Config Does Not Do
@@ -240,7 +243,7 @@ If a provider call fails, check these in order:
 
 1. Is the server using the config file you edited?
 2. Does `curl -sS http://localhost:2323/provider/auth | jq` show the provider as configured, unless you intentionally set `auth: false`?
-3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.5`?
+3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.5`, `anthropic/claude-sonnet-5`, `google/gemini-3.5-flash`, or `deepseek/deepseek-v4-pro`?
 4. If you set `baseURL`, does it include the provider's expected API prefix, such as `/v1`?
 5. If you set `auth: false`, does the gateway actually accept unauthenticated requests?
 6. If you use `model_route`, does the endpoint speak the selected protocol?

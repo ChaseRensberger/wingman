@@ -503,6 +503,18 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 
 	// Real execution. Tool errors become result text with IsError=true;
 	// only hook errors fail the run.
+	if err := validateToolInput(call.Tool, call.Args); err != nil {
+		res := ToolResult{
+			CallID:  call.ID,
+			Name:    call.Name,
+			Args:    call.Args,
+			Output:  err.Error(),
+			IsError: true,
+		}
+		res = r.runAfterToolCall(ctx, call, res)
+		r.emit(ToolExecutionEndEvent{Result: res})
+		return res, nil
+	}
 	start := time.Now()
 	toolResult, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
 	duration := time.Since(start)
@@ -523,6 +535,33 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	res = r.runAfterToolCall(ctx, call, res)
 	r.emit(ToolExecutionEndEvent{Result: res})
 	return res, nil
+}
+
+func validateToolInput(t tool.Tool, args map[string]any) error {
+	def := t.Definition().AsModelToolDef()
+	if len(def.InputSchema) == 0 {
+		return nil
+	}
+	schema := def.InputSchema
+	b, err := json.Marshal(schema)
+	if err != nil {
+		return fmt.Errorf("tool %q input schema marshal error: %w", t.Name(), err)
+	}
+	if err := json.Unmarshal(b, &schema); err != nil {
+		return fmt.Errorf("tool %q input schema normalize error: %w", t.Name(), err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("tool-input.json", schema); err != nil {
+		return fmt.Errorf("tool %q input schema compile error: %w", t.Name(), err)
+	}
+	sch, err := c.Compile("tool-input.json")
+	if err != nil {
+		return fmt.Errorf("tool %q input schema compile error: %w", t.Name(), err)
+	}
+	if err := sch.Validate(args); err != nil {
+		return fmt.Errorf("tool %q input validation error: %w", t.Name(), err)
+	}
+	return nil
 }
 
 // runAfterToolCall runs the AfterToolCall hook if configured. Hook
@@ -696,6 +735,7 @@ func buildToolResultMessage(results []ToolResult) models.Message {
 	for _, r := range results {
 		content = append(content, models.ToolResultPart{
 			CallID:   r.CallID,
+			Name:     r.Name,
 			Output:   []models.Part{models.TextPart{Text: r.Output}},
 			IsError:  r.IsError,
 			Metadata: r.Metadata,

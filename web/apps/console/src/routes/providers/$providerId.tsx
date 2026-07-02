@@ -87,6 +87,11 @@ function ProviderDetailPage() {
   const supportsApiKey = provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
   const crumbLabel = provider?.name || providerId;
 
+  function formatCost(model: ProviderModel) {
+    if (!model.input_cost_per_mtok && !model.output_cost_per_mtok) return "-";
+    return `$${model.input_cost_per_mtok ?? 0}/$${model.output_cost_per_mtok ?? 0}`;
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-4">
@@ -185,6 +190,7 @@ function ProviderDetailPage() {
                 <TableHead>Model</TableHead>
                 <TableHead>Context</TableHead>
                 <TableHead>Output</TableHead>
+                <TableHead>Cost / MTok</TableHead>
                 <TableHead>Capabilities</TableHead>
               </TableRow>
             </TableHeader>
@@ -194,6 +200,7 @@ function ProviderDetailPage() {
                   <TableCell className="font-medium">{model.id}</TableCell>
                   <TableCell className="text-muted-foreground">{model.context_window || "-"}</TableCell>
                   <TableCell className="text-muted-foreground">{model.max_output || "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatCost(model)}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {model.tools && <Badge variant="outline">tools</Badge>}

@@ -127,7 +127,7 @@ func WithModelRef(ref models.ModelRef, info models.ModelInfo) Option {
 	}
 }
 
-// WithModel is a compatibility helper for tests and embedders that already
+// WithModel is a compatibility helper for embedders that already
 // have a concrete client-like model value. It does not change the loop's
 // client/model-ref contract.
 func WithModel(c models.Client) Option {

@@ -1,6 +1,6 @@
 // Package memory provides an in-memory implementation of store.Store
-// suitable for tests and ephemeral runs. It conforms to the same
-// behavioral contract as store/sqlite.go (verified by store/storetest).
+// suitable for ephemeral runs. It conforms to the same behavioral contract
+// as store/sqlite.go.
 package memory
 
 import (

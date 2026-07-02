@@ -14,7 +14,7 @@ Wingman is yet another agent harness, but this one is:
 
 - Written in Go.
 - Client agnostic: multiple clients/UIs on one machine can use Wingman as a shared dependency. Wingman is decoupled from any specific use case, so it does not come bundled with a coding TUI, but you can run a coding TUI on top of it.
-- Independent from common harness dependencies: no Vercel AI SDK, no models.dev, etc. This makes it better suited for secure or airgapped environments.
+- Independent of external dependencies, making it ideal for running in secure or airgapped environments.
 - Highly extensible: plugin support via in-process Go modules or out-of-process JSON-RPC. Plugins can register tools, attach to lifecycle events, rewrite history, and more.
 
 ## Quick Start
