@@ -117,7 +117,7 @@ Plugin tools are selected like built-in tools: include the tool name in an agent
 {
   "name": "Greeter",
   "instructions": "Use greet when the user asks for a greeting.",
-  "model_ref": "anthropic/claude-sonnet-4-6",
+  "model_ref": "anthropic/claude-sonnet-5",
   "tools": ["greet"]
 }
 ```

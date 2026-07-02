@@ -20,6 +20,7 @@ const (
 	OpenAIResponses   Protocol = "openai_responses"
 	OpenAIChat        Protocol = "openai_chat"
 	AnthropicMessages Protocol = "anthropic_messages"
+	GeminiGenerate    Protocol = "gemini_generate"
 )
 
 // Model is a small HTTP/SSE-backed implementation for the supported providers.
@@ -153,17 +154,28 @@ func (m *Model) route(req models.Request) Route {
 	if m.Route != nil {
 		route := *m.Route
 		if route.Endpoint.Query == nil {
-			route.Endpoint.Query = req.HTTP.Query
+			route.Endpoint.Query = defaultQuery(m.Protocol, req.HTTP.Query)
 		}
 		return route
 	}
 	return Route{
 		ID:       string(m.Protocol),
 		Protocol: m.Protocol,
-		Endpoint: Endpoint{BaseURL: m.BaseURL, Query: req.HTTP.Query},
+		Endpoint: Endpoint{BaseURL: m.BaseURL, Query: defaultQuery(m.Protocol, req.HTTP.Query), ModelID: m.Info_.ID},
 		Auth:     defaultAuth(m.Protocol, m.APIKey),
 		Headers:  routeHeaders(m.Protocol),
 	}
+}
+
+func defaultQuery(protocol Protocol, query map[string]string) map[string]string {
+	if protocol != GeminiGenerate {
+		return query
+	}
+	out := map[string]string{"alt": "sse"}
+	for k, v := range query {
+		out[k] = v
+	}
+	return out
 }
 
 func (m *Model) auth(req *http.Request) {
@@ -178,6 +190,8 @@ func (m *Model) body(req models.Request) (map[string]any, error) {
 		return m.openAIChatBody(req)
 	case AnthropicMessages:
 		return m.anthropicBody(req)
+	case GeminiGenerate:
+		return m.geminiBody(req), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", m.Protocol)
 	}
@@ -294,6 +308,63 @@ func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
 	return overlay(body, req.HTTP.Body), nil
 }
 
+func (m *Model) geminiBody(req models.Request) map[string]any {
+	contents := make([]any, 0, len(req.Messages))
+	for _, msg := range req.Messages {
+		switch msg.Role {
+		case models.RoleUser:
+			contents = append(contents, map[string]any{"role": "user", "parts": geminiUserParts(msg.Content)})
+		case models.RoleAssistant:
+			parts := geminiAssistantParts(msg.Content)
+			for _, call := range toolCalls(msg.Content) {
+				parts = append(parts, map[string]any{"functionCall": map[string]any{"name": call.Name, "args": call.Input}})
+			}
+			contents = append(contents, map[string]any{"role": "model", "parts": parts})
+		case models.RoleTool:
+			parts := make([]any, 0, len(msg.Content))
+			for _, result := range toolResults(msg.Content) {
+				response := map[string]any{"output": toolResultText(result)}
+				if result.IsError {
+					response["error"] = true
+				}
+				name := result.Name
+				if name == "" {
+					name = result.CallID
+				}
+				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": response}})
+			}
+			contents = append(contents, map[string]any{"role": "user", "parts": parts})
+		}
+	}
+	body := map[string]any{"contents": contents}
+	if req.System != "" {
+		body["systemInstruction"] = map[string]any{"parts": []any{map[string]any{"text": req.System}}}
+	}
+	if len(req.Tools) > 0 && req.ToolChoice != models.ToolChoiceNone {
+		declarations := make([]any, 0, len(req.Tools))
+		for _, tool := range req.Tools {
+			declarations = append(declarations, map[string]any{"name": tool.Name, "description": tool.Description, "parameters": tool.InputSchema})
+		}
+		body["tools"] = []any{map[string]any{"functionDeclarations": declarations}}
+		addGeminiToolChoice(body, req.ToolChoice)
+	}
+	if req.OutputSchema != nil || req.ResponseFormat.Type != "" {
+		format := req.ResponseFormat
+		if req.OutputSchema != nil {
+			format = models.ResponseFormat{Type: "json_schema", Schema: req.OutputSchema.Schema}
+		}
+		if format.Type == "json_schema" || format.Type == "json" {
+			generationConfig := generationConfig(body)
+			generationConfig["responseMimeType"] = "application/json"
+			if format.Schema != nil {
+				generationConfig["responseSchema"] = format.Schema
+			}
+		}
+	}
+	addGeminiOptions(body, req)
+	return overlay(body, req.HTTP.Body)
+}
+
 func (m *Model) readSSE(r io.Reader, stream *models.EventStream[models.StreamPart, *models.Message]) (*models.Message, models.Usage, models.FinishReason, error) {
 	stream.Push(models.StreamStartPart{})
 	state := parseState{provider: m.Info_.Provider, api: m.Info_.API, model: m.Info_.ID, finish: models.FinishReasonStop}
@@ -339,6 +410,8 @@ func (m *Model) handleSSEData(data string, state *parseState, stream *models.Eve
 		parseOpenAIChat(event, state, stream)
 	case AnthropicMessages:
 		parseAnthropic(event, state, stream)
+	case GeminiGenerate:
+		parseGemini(event, state, stream)
 	}
 	return nil
 }
@@ -518,6 +591,40 @@ func parseAnthropic(event map[string]any, state *parseState, stream *models.Even
 	}
 }
 
+func parseGemini(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+	if usage := geminiUsage(event["usageMetadata"]); !usage.Empty() {
+		state.usage = usage
+	}
+	choices, _ := event["candidates"].([]any)
+	if len(choices) == 0 {
+		return
+	}
+	choice, _ := choices[0].(map[string]any)
+	content, _ := choice["content"].(map[string]any)
+	parts, _ := content["parts"].([]any)
+	for _, rawPart := range parts {
+		part, _ := rawPart.(map[string]any)
+		if text := stringValue(part["text"]); text != "" {
+			if thought, _ := part["thought"].(bool); thought {
+				pushReasoning(state, stream, "reasoning-0", text)
+				continue
+			}
+			pushText(state, stream, "text-0", text)
+		}
+		if rawCall, _ := part["functionCall"].(map[string]any); rawCall != nil {
+			call := models.ToolCallPart{
+				CallID: fmt.Sprintf("call_%d", len(state.tools)+1),
+				Name:   stringValue(rawCall["name"]),
+				Input:  objectValue(rawCall["args"]),
+			}
+			pushTool(state, stream, call)
+		}
+	}
+	if reason := stringValue(choice["finishReason"]); reason != "" {
+		state.finish = finishReason(reason, len(state.tools) > 0)
+	}
+}
+
 func pushText(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], id, delta string) {
 	if state.text.Len() == 0 {
 		stream.Push(models.TextStartPart{ID: id})
@@ -587,6 +694,22 @@ func addAnthropicToolChoice(body map[string]any, choice models.ToolChoice) {
 	}
 }
 
+func addGeminiToolChoice(body map[string]any, choice models.ToolChoice) {
+	var cfg map[string]any
+	switch choice {
+	case "", models.ToolChoiceAuto:
+		return
+	case models.ToolChoiceNone:
+		delete(body, "tools")
+		return
+	case models.ToolChoiceRequired:
+		cfg = map[string]any{"mode": "ANY"}
+	default:
+		cfg = map[string]any{"mode": "ANY", "allowedFunctionNames": []string{string(choice)}}
+	}
+	body["toolConfig"] = map[string]any{"functionCallingConfig": cfg}
+}
+
 func addOpenAIResponseFormat(body map[string]any, schema *models.OutputSchema, format models.ResponseFormat, mode string) {
 	if schema != nil {
 		format = models.ResponseFormat{Type: "json_schema", Name: schema.Name, Schema: schema.Schema, Strict: schema.Strict}
@@ -637,6 +760,36 @@ func addCommonOptions(body map[string]any, req models.Request) {
 	if len(req.Generation.Stop) > 0 {
 		body["stop"] = req.Generation.Stop
 	}
+}
+
+func addGeminiOptions(body map[string]any, req models.Request) {
+	config := generationConfig(body)
+	if req.Generation.MaxTokens != 0 {
+		config["maxOutputTokens"] = req.Generation.MaxTokens
+	} else if req.MaxOutputTokens != 0 {
+		config["maxOutputTokens"] = req.MaxOutputTokens
+	}
+	if req.Generation.Temperature != nil {
+		config["temperature"] = *req.Generation.Temperature
+	}
+	if req.Generation.TopP != nil {
+		config["topP"] = *req.Generation.TopP
+	}
+	if len(req.Generation.Stop) > 0 {
+		config["stopSequences"] = req.Generation.Stop
+	}
+	if len(config) == 0 {
+		delete(body, "generationConfig")
+	}
+}
+
+func generationConfig(body map[string]any) map[string]any {
+	if raw, ok := body["generationConfig"].(map[string]any); ok {
+		return raw
+	}
+	config := map[string]any{}
+	body["generationConfig"] = config
+	return config
 }
 
 func overlay(base map[string]any, patch map[string]any) map[string]any {
@@ -738,6 +891,38 @@ func anthropicAssistantBlocks(content models.Content) []any {
 	return out
 }
 
+func geminiUserParts(content models.Content) []any {
+	out := []any{}
+	for _, part := range content {
+		switch p := part.(type) {
+		case models.TextPart:
+			out = append(out, map[string]any{"text": p.Text})
+		case models.ImagePart:
+			if p.Base64 != "" {
+				mediaType := p.MediaType
+				if mediaType == "" {
+					mediaType = "image/png"
+				}
+				out = append(out, map[string]any{"inlineData": map[string]any{"mimeType": mediaType, "data": p.Base64}})
+			}
+		}
+	}
+	return out
+}
+
+func geminiAssistantParts(content models.Content) []any {
+	out := []any{}
+	for _, part := range content {
+		switch p := part.(type) {
+		case models.TextPart:
+			out = append(out, map[string]any{"text": p.Text})
+		case models.ReasoningPart:
+			out = append(out, map[string]any{"text": p.Reasoning, "thought": true})
+		}
+	}
+	return out
+}
+
 func imageURL(p models.ImagePart) string {
 	if p.URL != "" {
 		return p.URL
@@ -815,6 +1000,7 @@ func decodeArgs(raw string) map[string]any {
 }
 
 func finishReason(raw string, hasTools bool) models.FinishReason {
+	raw = strings.ToLower(raw)
 	if hasTools || raw == "tool_calls" || raw == "function_call" || raw == "tool_use" {
 		return models.FinishReasonToolCalls
 	}
@@ -843,6 +1029,17 @@ func anthropicUsage(v any) models.Usage {
 	return models.Usage{InputTokens: input + cacheRead + cacheWrite, OutputTokens: output, TotalTokens: input + cacheRead + cacheWrite + output, CachedInputTokens: cacheRead, CacheWriteTokens: cacheWrite}
 }
 
+func geminiUsage(v any) models.Usage {
+	m, _ := v.(map[string]any)
+	input := intValue(m["promptTokenCount"])
+	output := intValue(m["candidatesTokenCount"])
+	total := intValue(m["totalTokenCount"])
+	if total == 0 {
+		total = input + output
+	}
+	return models.Usage{InputTokens: input, OutputTokens: output, TotalTokens: total, CachedInputTokens: intValue(m["cachedContentTokenCount"]), ReasoningTokens: intValue(m["thoughtsTokenCount"])}
+}
+
 func nested(v any, path ...string) any {
 	cur := v
 	for _, key := range path {
@@ -860,6 +1057,13 @@ func stringValue(v any) string {
 		return s
 	}
 	return ""
+}
+
+func objectValue(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{}
 }
 
 func intValue(v any) int {

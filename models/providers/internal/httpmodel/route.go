@@ -10,6 +10,7 @@ import (
 type Endpoint struct {
 	BaseURL string
 	Query   map[string]string
+	ModelID string
 }
 
 // Route composes the orthogonal pieces of a model deployment: protocol,
@@ -33,6 +34,8 @@ func (r Route) URL() string {
 		path = "/chat/completions"
 	case AnthropicMessages:
 		path = "/messages"
+	case GeminiGenerate:
+		path = "/models/" + url.PathEscape(r.Endpoint.ModelID) + ":streamGenerateContent"
 	}
 	raw := base + path
 	if len(r.Endpoint.Query) == 0 {

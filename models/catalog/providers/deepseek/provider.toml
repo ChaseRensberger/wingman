@@ -1,0 +1,2 @@
+base_url = "https://api.deepseek.com/v1"
+env = ["DEEPSEEK_API_KEY"]

@@ -104,6 +104,78 @@ func TestOpenAIResponsesPrepareLowersImagesAndStructuredOutput(t *testing.T) {
 	}
 }
 
+func TestGeminiPrepareLowersMessagesToolsAndStructuredOutput(t *testing.T) {
+	m := &Model{Info_: models.ModelInfo{Provider: "google", ID: "gemini-3.5-flash", API: models.APIGeminiGenerate}, Protocol: GeminiGenerate, BaseURL: "https://generativelanguage.googleapis.com/v1beta"}
+	prepared, err := m.Prepare(nil, models.Request{
+		System: "You are concise.",
+		Messages: []models.Message{{Role: models.RoleUser, Content: models.Content{
+			models.TextPart{Text: "describe"},
+			models.ImagePart{Base64: "aGVsbG8=", MediaType: "image/png"},
+		}}},
+		Tools:        []models.ToolDef{{Name: "lookup", Description: "Look up data", InputSchema: map[string]any{"type": "object"}}},
+		OutputSchema: &models.OutputSchema{Name: "description", Schema: map[string]any{"type": "object"}, Strict: true},
+	})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if prepared.URL != "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse" {
+		t.Fatalf("url = %q", prepared.URL)
+	}
+	contents := prepared.Body["contents"].([]any)
+	parts := contents[0].(map[string]any)["parts"].([]any)
+	if parts[0].(map[string]any)["text"] != "describe" {
+		t.Fatalf("text part = %#v", parts[0])
+	}
+	if parts[1].(map[string]any)["inlineData"] == nil {
+		t.Fatalf("image part = %#v", parts[1])
+	}
+	tools := prepared.Body["tools"].([]any)
+	decls := tools[0].(map[string]any)["functionDeclarations"].([]any)
+	if decls[0].(map[string]any)["name"] != "lookup" {
+		t.Fatalf("declarations = %#v", decls)
+	}
+	config := prepared.Body["generationConfig"].(map[string]any)
+	if config["responseMimeType"] != "application/json" || config["responseSchema"] == nil {
+		t.Fatalf("generationConfig = %#v", config)
+	}
+}
+
+func TestGeminiParsesTextToolCallAndUsage(t *testing.T) {
+	m := &Model{Info_: models.ModelInfo{Provider: "google", ID: "gemini-3.5-flash", API: models.APIGeminiGenerate}, Protocol: GeminiGenerate}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](16)
+	textEvent := map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": []any{map[string]any{"text": "hi"}}}}}}
+	toolEvent := map[string]any{
+		"candidates": []any{map[string]any{
+			"content": map[string]any{"parts": []any{map[string]any{"functionCall": map[string]any{
+				"name": "lookup",
+				"args": map[string]any{"query": "weather"},
+			}}}},
+			"finishReason": "STOP",
+		}},
+		"usageMetadata": map[string]any{"promptTokenCount": 2, "candidatesTokenCount": 3, "totalTokenCount": 5},
+	}
+	msg, usage, reason, err := m.readSSE(strings.NewReader(sseEvents(textEvent, toolEvent)), stream)
+	if err != nil {
+		t.Fatalf("readSSE: %v", err)
+	}
+	if reason != models.FinishReasonToolCalls {
+		t.Fatalf("reason = %q, want tool_calls", reason)
+	}
+	if usage.TotalTokens != 5 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if len(msg.Content) != 2 {
+		t.Fatalf("content len = %d, want text and tool call", len(msg.Content))
+	}
+	if text, ok := msg.Content[0].(models.TextPart); !ok || text.Text != "hi" {
+		t.Fatalf("text = %#v", msg.Content[0])
+	}
+	call, ok := msg.Content[1].(models.ToolCallPart)
+	if !ok || call.Name != "lookup" || call.Input["query"] != "weather" {
+		t.Fatalf("call = %#v", msg.Content[1])
+	}
+}
+
 func TestAnthropicParsesReasoningDelta(t *testing.T) {
 	m := &Model{Info_: models.ModelInfo{Provider: "anthropic", ID: "claude", API: models.APIAnthropicMessages}, Protocol: AnthropicMessages}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](16)

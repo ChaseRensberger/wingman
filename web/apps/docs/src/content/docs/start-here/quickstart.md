@@ -12,7 +12,7 @@ This guide starts the Wingman HTTP server, creates an agent, creates a session, 
 
 - `curl`
 - `jq`
-- An Anthropic API key in `ANTHROPIC_API_KEY`
+- An Anthropic API key in `ANTHROPIC_API_KEY`, or another supported provider key such as `GOOGLE_GENERATIVE_AI_API_KEY`, `OPENROUTER_API_KEY`, or `DEEPSEEK_API_KEY`
 
 If you are working from the repository, you also need Go installed.
 
@@ -77,7 +77,7 @@ AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
     "name": "Quickstart Assistant",
     "instructions": "You are concise and helpful.",
     "tools": ["read", "glob", "grep"],
-    "model_ref": "anthropic/claude-sonnet-4-6",
+    "model_ref": "anthropic/claude-sonnet-5",
     "options": {"max_tokens": 1024}
   }' | jq -r .id)
 

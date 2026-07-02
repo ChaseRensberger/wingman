@@ -64,7 +64,7 @@ Agents and models are selected per message:
 ```json
 {
   "agent_id": "agt_...",
-  "model_ref": "anthropic/claude-sonnet-4-6",
+  "model_ref": "anthropic/claude-sonnet-5",
   "message": "Use the stronger model for this turn."
 }
 ```
@@ -100,7 +100,7 @@ curl -N -X POST http://localhost:2323/run \
       "name": "One-shot Assistant",
       "instructions": "Be concise.",
       "tools": ["webfetch"],
-      "model_ref": "anthropic/claude-sonnet-4-6"
+      "model_ref": "anthropic/claude-sonnet-5"
     },
     "message": "Explain Wingman in one paragraph."
   }'

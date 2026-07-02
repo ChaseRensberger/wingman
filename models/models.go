@@ -48,6 +48,7 @@ const (
 	APIOpenAICompletions API = "openai_completions"
 	APIOpenAICompatible  API = "openai_compatible_chat"
 	APIAnthropicMessages API = "anthropic_messages"
+	APIGeminiGenerate    API = "gemini_generate"
 )
 
 // ------------------------------------------------------------------

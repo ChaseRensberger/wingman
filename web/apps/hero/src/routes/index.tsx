@@ -188,7 +188,9 @@ function WhatIsWingmanSection() {
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
-					<span>Doesn't rely on your usual harness dependencies. No Vercel AI SDK, no models.dev, etc...making it ideal for running in secure or airgapped environments.</span>
+					<span>
+						Independent of external dependencies, making it ideal for running in secure or airgapped environments.
+					</span>
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
@@ -253,7 +255,7 @@ function ProvidersSection() {
 			</p>
 			<Markdown>{WINGMODELS_EXAMPLE}</Markdown>
 			<div className="space-y-3">
-				<p className="text-xs text-muted-foreground uppercase tracking-wider">Supported Providers (More coming soon)</p>
+				<p className="text-xs text-muted-foreground uppercase tracking-wider">Supported Providers</p>
 				<ul className="space-y-3">
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
@@ -266,6 +268,18 @@ function ProvidersSection() {
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
 						<span>OpenCode Zen</span>
+					</li>
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>Google Gemini</span>
+					</li>
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>OpenRouter</span>
+					</li>
+					<li className="flex items-start gap-2 text-sm text-muted-foreground">
+						<span className="text-primary">[*]</span>
+						<span>DeepSeek</span>
 					</li>
 				</ul>
 			</div>
@@ -319,8 +333,8 @@ function ComingSoonSection() {
 				</div>
 
 				<div className="rounded-sm border bg-card p-4">
-					<h3 className="font-semibold">More Providers</h3>
-					<p className="mt-1 text-sm text-muted-foreground">At launch Provider support is limited but I'm working on it. Also cost tracking is on the way.</p>
+					<h3 className="font-semibold">Provider Debug Tools</h3>
+					<p className="mt-1 text-sm text-muted-foreground">Inspect model resolution, prepared provider requests, and normalized streams without writing a client.</p>
 				</div>
 
 				<div className="rounded-sm border bg-card p-4">

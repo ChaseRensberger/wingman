@@ -182,6 +182,13 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 			}
 		}
 	}
+	query := cfg.Options.Query
+	if protocol == httpmodel.GeminiGenerate {
+		query = map[string]string{"alt": "sse"}
+		for k, v := range cfg.Options.Query {
+			query[k] = v
+		}
+	}
 	return &httpmodel.Model{
 		Info_:    info,
 		Protocol: protocol,
@@ -190,7 +197,7 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 		Route: &httpmodel.Route{
 			ID:       string(protocol),
 			Protocol: protocol,
-			Endpoint: httpmodel.Endpoint{BaseURL: info.BaseURL, Query: cfg.Options.Query},
+			Endpoint: httpmodel.Endpoint{BaseURL: info.BaseURL, Query: query, ModelID: info.ID},
 			Auth:     routeAuth(protocol, apiKey, cfg.Options),
 			Headers:  routeHeaders(protocol),
 		},
@@ -207,6 +214,9 @@ func routeAuth(protocol httpmodel.Protocol, apiKey string, options ProviderOptio
 	header := options.AuthHeader
 	if header == "" && protocol == httpmodel.AnthropicMessages {
 		header = "x-api-key"
+	}
+	if header == "" && protocol == httpmodel.GeminiGenerate {
+		header = "x-goog-api-key"
 	}
 	if header != "" {
 		value := apiKey
@@ -260,6 +270,8 @@ func protocolFor(api models.API) (httpmodel.Protocol, error) {
 		return httpmodel.OpenAIChat, nil
 	case models.APIAnthropicMessages:
 		return httpmodel.AnthropicMessages, nil
+	case models.APIGeminiGenerate:
+		return httpmodel.GeminiGenerate, nil
 	default:
 		return "", fmt.Errorf("unsupported model API: %s", api)
 	}

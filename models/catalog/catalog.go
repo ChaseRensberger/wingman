@@ -26,6 +26,8 @@ type modelFile struct {
 	Env           []string `toml:"env"`
 	ContextWindow int      `toml:"context_window"`
 	MaxOutput     int      `toml:"max_output"`
+	InputCost     float64  `toml:"input_cost_per_mtok"`
+	OutputCost    float64  `toml:"output_cost_per_mtok"`
 	Capabilities  struct {
 		Tools            bool `toml:"tools"`
 		Images           bool `toml:"images"`
@@ -102,13 +104,15 @@ func load() error {
 					src.Env = providerDefaults.Env
 				}
 				info := models.ModelInfo{
-					Provider:      src.Provider,
-					ID:            src.ID,
-					API:           models.API(src.API),
-					BaseURL:       src.BaseURL,
-					Env:           src.Env,
-					ContextWindow: src.ContextWindow,
-					MaxOutput:     src.MaxOutput,
+					Provider:          src.Provider,
+					ID:                src.ID,
+					API:               models.API(src.API),
+					BaseURL:           src.BaseURL,
+					Env:               src.Env,
+					ContextWindow:     src.ContextWindow,
+					MaxOutput:         src.MaxOutput,
+					InputCostPerMTok:  src.InputCost,
+					OutputCostPerMTok: src.OutputCost,
 					Capabilities: models.ModelCapabilities{
 						Tools:            src.Capabilities.Tools,
 						Images:           src.Capabilities.Images,

@@ -64,5 +64,8 @@ func defaultAuth(protocol Protocol, apiKey string) Auth {
 	if protocol == AnthropicMessages {
 		return HeaderAuth("x-api-key", apiKey)
 	}
+	if protocol == GeminiGenerate {
+		return HeaderAuth("x-goog-api-key", apiKey)
+	}
 	return BearerAuth(apiKey)
 }
