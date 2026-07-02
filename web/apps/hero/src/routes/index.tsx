@@ -24,32 +24,18 @@ const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/m
 const WINGMODELS_EXAMPLE = `
 
 \`\`\`go
-func main() {
-  ref, ok := models.ParseModelRef("openai/gpt-5.5")
-  if !ok {
-    log.Fatal("invalid model ref")
-  }
+import (
+  "github.com/chaserensberger/wingman/models"
+  provider "github.com/chaserensberger/wingman/models/providers"
+  gemini "github.com/chaserensberger/wingman/models/providers/google"
+)
 
-  client := provider.NewClient(nil)
-
-  msg, err := client.Generate(context.Background(), models.Request{
-    Model: ref,
-    System: "You are concise.",
-    Messages: []models.Message{
-      models.NewUserText("Explain Wingman in one sentence."),
-    },
-    Generation: models.Generation{MaxTokens: 80},
-  })
-  if err != nil {
-    log.Fatal(err)
-  }
-
-  for _, part := range msg.Content {
-    if text, ok := part.(models.TextPart); ok {
-      fmt.Println(text.Text)
-    }
-  }
-}
+msg, err := provider.NewClient(nil).Generate(ctx, models.Request{
+  Model: gemini.Model("gemini-3.5-flash"),
+  Messages: []models.Message{
+    models.NewUserText("Explain Wingman in one sentence."),
+  },
+})
 \`\`\``;
 
 const FEATURES = [
@@ -271,7 +257,7 @@ function ProvidersSection() {
 					</li>
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
-						<span>Google Gemini</span>
+						<span>Gemini</span>
 					</li>
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>

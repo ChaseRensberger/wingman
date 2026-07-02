@@ -5,7 +5,7 @@ description: "Configure provider auth, provider routes, and model gateways."
 
 # Providers
 
-Providers are the model services Wingman can call, such as Anthropic, OpenAI, Google Gemini, OpenRouter, DeepSeek, or OpenCode.
+Providers are the model services Wingman can call, such as Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, or OpenCode.
 
 Provider configuration has three separate pieces:
 
@@ -50,7 +50,7 @@ When using WingModels directly as a Go SDK, provider clients can read environmen
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `OPENCODE_API_KEY`
-- `GOOGLE_GENERATIVE_AI_API_KEY` or `GEMINI_API_KEY`
+- `GEMINI_API_KEY`
 - `OPENROUTER_API_KEY`
 - `DEEPSEEK_API_KEY`
 

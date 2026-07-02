@@ -1,2 +1,2 @@
 base_url = "https://generativelanguage.googleapis.com/v1beta"
-env = ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"]
+env = ["GEMINI_API_KEY"]

@@ -106,8 +106,7 @@ func DefaultDBPath() (string, error) {
 	return filepath.Join(home, ".local", "share", "wingman", "wingman.db"), nil
 }
 
-// Now returns the current UTC timestamp formatted as RFC3339. Centralized
-// so tests can swap it out later if needed.
+// Now returns the current UTC timestamp formatted as RFC3339.
 func Now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // ---- agents --------------------------------------------------------------

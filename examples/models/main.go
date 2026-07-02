@@ -10,20 +10,21 @@ import (
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
-	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	"github.com/chaserensberger/wingman/models/providers/anthropic"
+	"github.com/chaserensberger/wingman/models/providers/opencode"
 )
 
 func main() {
 	client := provider.NewClient(nil)
 	// automatic model resolution
-	model := models.ModelRef{Provider: "opencode", ID: "claude-sonnet-5"}
+	model := opencode.Model("claude-sonnet-5")
 	run(context.Background(), client, model)
 
 	anthropicClient := provider.NewClient(map[string]string{
 		"anthropic": os.Getenv("ANTHROPIC_API_KEY"),
 	})
 	// direct provider model resolution
-	model = models.ModelRef{Provider: "anthropic", ID: "claude-sonnet-5"}
+	model = anthropic.Model("claude-sonnet-5")
 	run(context.Background(), anthropicClient, model)
 }
 

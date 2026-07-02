@@ -14,7 +14,7 @@ WingModels currently includes catalog entries for:
 
 - Anthropic
 - DeepSeek
-- Google Gemini
+- Gemini
 - OpenAI
 - OpenCode Zen
 - OpenRouter
