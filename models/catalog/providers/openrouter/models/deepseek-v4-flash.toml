@@ -1,0 +1,13 @@
+id = "deepseek/deepseek-v4-flash"
+provider = "openrouter"
+api = "openai_compatible_chat"
+context_window = 1048576
+max_output = 16384
+input_cost_per_mtok = 0.089
+output_cost_per_mtok = 0.18
+
+[capabilities]
+tools = true
+images = false
+reasoning = true
+structured_output = true

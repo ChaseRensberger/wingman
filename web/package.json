@@ -1,5 +1,5 @@
 {
-  "name": "wingman-web",
+  "name": "@wingman/web",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -7,10 +7,10 @@
   ],
   "scripts": {
     "build": "bun run --sequential --workspaces build",
-    "build:blog": "bun --filter wingman-blog build",
-    "build:docs": "bun --filter wingman-docs build",
-    "build:hero": "bun --filter wingman-hero build",
-    "build:console": "bun --filter wingman-console build",
+    "build:blog": "bun --filter @wingman/blog build",
+    "build:docs": "bun --filter @wingman/docs build",
+    "build:hero": "bun --filter @wingman/hero build",
+    "build:console": "bun --filter @wingman/console build",
     "build:core": "bun --filter @wingman/core build",
     "lint": "bun run --sequential --workspaces --if-present lint"
   }

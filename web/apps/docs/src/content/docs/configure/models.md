@@ -14,9 +14,12 @@ provider/model
 Examples:
 
 ```text
-anthropic/claude-sonnet-4-6
+anthropic/claude-sonnet-5
 openai/gpt-5.5
-opencode/claude-sonnet-4-6
+google/gemini-3.5-flash
+openrouter/moonshotai/kimi-k2.7-code
+deepseek/deepseek-v4-pro
+opencode/claude-sonnet-5
 ```
 
 The provider part selects the provider catalog entry. The model part selects a model under that provider.
@@ -30,7 +33,7 @@ Agents usually define a default `model_ref`:
   "name": "Assistant",
   "instructions": "Be concise and helpful.",
   "tools": ["read", "glob", "grep"],
-  "model_ref": "anthropic/claude-sonnet-4-6",
+  "model_ref": "anthropic/claude-sonnet-5",
   "options": { "max_tokens": 4096 }
 }
 ```
@@ -166,6 +169,7 @@ Custom routes must use one of Wingman's supported protocols:
 openai_responses
 openai_completions
 anthropic_messages
+gemini_generate
 ```
 
 Choose the protocol that matches the endpoint.

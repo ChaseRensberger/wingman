@@ -13,8 +13,11 @@ WingModels is Wingman's provider-agnostic model SDK. It gives the agent runtime 
 WingModels currently includes catalog entries for:
 
 - Anthropic
+- DeepSeek
+- Gemini
 - OpenAI
 - OpenCode Zen
+- OpenRouter
 
 Custom routes may target endpoints that speak one of Wingman's supported protocols.
 
@@ -51,9 +54,12 @@ provider/model
 Examples:
 
 ```text
-anthropic/claude-sonnet-4-6
+anthropic/claude-sonnet-5
 openai/gpt-5.5
-opencode/claude-sonnet-4-6
+google/gemini-3.5-flash
+openrouter/moonshotai/kimi-k2.7-code
+deepseek/deepseek-v4-pro
+opencode/claude-sonnet-5
 ```
 
 ## Provider-Neutral Messages
@@ -151,6 +157,7 @@ Custom routes must use one of Wingman's supported protocols:
 openai_responses
 openai_completions
 anthropic_messages
+gemini_generate
 ```
 
 Choose the protocol that matches the endpoint.

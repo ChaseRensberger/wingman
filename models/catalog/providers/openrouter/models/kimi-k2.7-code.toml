@@ -1,0 +1,13 @@
+id = "moonshotai/kimi-k2.7-code"
+provider = "openrouter"
+api = "openai_compatible_chat"
+context_window = 262144
+max_output = 16384
+input_cost_per_mtok = 0.74
+output_cost_per_mtok = 3.5
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true

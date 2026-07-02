@@ -1,4 +1,4 @@
-id = "claude-sonnet-4-6"
+id = "claude-sonnet-5"
 provider = "opencode"
 api = "anthropic_messages"
 context_window = 1000000
@@ -8,4 +8,4 @@ max_output = 64000
 tools = true
 images = true
 reasoning = true
-structured_output = false
+structured_output = true

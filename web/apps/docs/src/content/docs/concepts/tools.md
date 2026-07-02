@@ -45,7 +45,7 @@ curl -sS -X POST http://localhost:2323/agents \
         "name": "Researcher",
         "instructions": "Answer with citations when useful.",
         "tools": ["websearch", "webfetch", "grep", "glob", "read"],
-        "model_ref": "anthropic/claude-sonnet-4-6"
+        "model_ref": "anthropic/claude-sonnet-5"
       }'
 ```
 

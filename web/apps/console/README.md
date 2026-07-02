@@ -7,7 +7,7 @@ Bundled Wingman management UI. It is a Vite/React app served by `wingman serve` 
 Run the Vite dev server, then proxy `/console` from the Go server:
 
 ```sh
-bun --filter wingman-console dev
+bun --filter @wingman/console dev
 wingman serve --ui-dev http://127.0.0.1:5173
 ```
 

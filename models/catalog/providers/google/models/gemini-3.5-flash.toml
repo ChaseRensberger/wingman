@@ -1,0 +1,13 @@
+id = "gemini-3.5-flash"
+provider = "google"
+api = "gemini_generate"
+context_window = 1048576
+max_output = 65536
+input_cost_per_mtok = 1.5
+output_cost_per_mtok = 9
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true

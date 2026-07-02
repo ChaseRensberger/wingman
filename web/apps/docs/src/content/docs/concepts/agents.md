@@ -15,7 +15,7 @@ curl -sS -X POST http://localhost:2323/agents \
         "name": "Builder",
         "instructions": "You are a pragmatic software engineer. Make small, correct changes.",
         "tools": ["read", "grep", "glob", "write", "edit", "bash"],
-        "model_ref": "anthropic/claude-sonnet-4-6",
+        "model_ref": "anthropic/claude-sonnet-5",
         "options": {
           "max_tokens": 4096
         }

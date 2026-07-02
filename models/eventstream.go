@@ -48,3 +48,10 @@ func (es *EventStream[T, F]) Final() (F, error) {
 	defer es.mu.Unlock()
 	return es.final, es.err
 }
+
+// Drain consumes all stream values and returns the terminal value and error.
+func (es *EventStream[T, F]) Drain() (F, error) {
+	for range es.Iter() {
+	}
+	return es.Final()
+}
