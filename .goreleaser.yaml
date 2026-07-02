@@ -2,10 +2,6 @@ version: 2
 
 project_name: wingman
 
-before:
-  hooks:
-    - sh -c "cd web && bun install --frozen-lockfile && bun run build"
-
 builds:
   - main: ./cmd/wingman
     binary: wingman
