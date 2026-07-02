@@ -16,10 +16,12 @@ import (
 	"github.com/chaserensberger/wingman/tool"
 
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
+	_ "github.com/chaserensberger/wingman/models/providers/deepseek"
 	_ "github.com/chaserensberger/wingman/models/providers/google"
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
+	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 )
 
 type CreateSessionRequest struct {

@@ -466,6 +466,7 @@ const (
 	FinishReasonStop      FinishReason = "stop"
 	FinishReasonToolCalls FinishReason = "tool_calls"
 	FinishReasonMaxTokens FinishReason = "max_tokens"
+	FinishReasonBlocked   FinishReason = "blocked"
 	FinishReasonAborted   FinishReason = "aborted"
 	FinishReasonError     FinishReason = "error"
 )

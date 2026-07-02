@@ -392,6 +392,7 @@ func (m *Model) readSSE(r io.Reader, stream *models.EventStream[models.StreamPar
 	if err := scanner.Err(); err != nil {
 		return state.message(), state.usage, state.finish, err
 	}
+	closeOpenParts(&state, stream)
 	return state.message(), state.usage, state.finish, nil
 }
 
@@ -421,7 +422,10 @@ type parseState struct {
 	api      models.API
 	model    string
 	text     strings.Builder
+	textID   string
 	reason   strings.Builder
+	reasonID string
+	sig      string
 	tools    []models.ToolCallPart
 	usage    models.Usage
 	finish   models.FinishReason
@@ -440,7 +444,7 @@ func (s *parseState) message() *models.Message {
 		content = append(content, models.TextPart{Text: text})
 	}
 	if reasoning := s.reason.String(); reasoning != "" {
-		content = append(content, models.ReasoningPart{Reasoning: reasoning})
+		content = append(content, models.ReasoningPart{Reasoning: reasoning, Encrypted: s.sig})
 	}
 	for _, call := range s.tools {
 		content = append(content, call)
@@ -604,6 +608,9 @@ func parseGemini(event map[string]any, state *parseState, stream *models.EventSt
 	parts, _ := content["parts"].([]any)
 	for _, rawPart := range parts {
 		part, _ := rawPart.(map[string]any)
+		if sig := stringValue(part["thoughtSignature"]); sig != "" {
+			state.sig = sig
+		}
 		if text := stringValue(part["text"]); text != "" {
 			if thought, _ := part["thought"].(bool); thought {
 				pushReasoning(state, stream, "reasoning-0", text)
@@ -627,6 +634,7 @@ func parseGemini(event map[string]any, state *parseState, stream *models.EventSt
 
 func pushText(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], id, delta string) {
 	if state.text.Len() == 0 {
+		state.textID = id
 		stream.Push(models.TextStartPart{ID: id})
 	}
 	state.text.WriteString(delta)
@@ -635,10 +643,24 @@ func pushText(state *parseState, stream *models.EventStream[models.StreamPart, *
 
 func pushReasoning(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], id, delta string) {
 	if state.reason.Len() == 0 {
+		state.reasonID = id
 		stream.Push(models.ReasoningStartPart{ID: id})
 	}
 	state.reason.WriteString(delta)
 	stream.Push(models.ReasoningDeltaPart{ID: id, Delta: delta})
+}
+
+func closeOpenParts(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+	if state.reason.Len() > 0 && state.reasonID != "" {
+		part := models.ReasoningEndPart{ID: state.reasonID}
+		if state.sig != "" {
+			part.ProviderMetadata = models.Meta{"google": map[string]any{"thought_signature": state.sig}}
+		}
+		stream.Push(part)
+	}
+	if state.text.Len() > 0 && state.textID != "" {
+		stream.Push(models.TextEndPart{ID: state.textID})
+	}
 }
 
 func pushTool(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], call models.ToolCallPart) {
@@ -917,7 +939,11 @@ func geminiAssistantParts(content models.Content) []any {
 		case models.TextPart:
 			out = append(out, map[string]any{"text": p.Text})
 		case models.ReasoningPart:
-			out = append(out, map[string]any{"text": p.Reasoning, "thought": true})
+			part := map[string]any{"text": p.Reasoning, "thought": true}
+			if p.Encrypted != "" {
+				part["thoughtSignature"] = p.Encrypted
+			}
+			out = append(out, part)
 		}
 	}
 	return out
@@ -1006,6 +1032,12 @@ func finishReason(raw string, hasTools bool) models.FinishReason {
 	}
 	if raw == "length" || raw == "max_tokens" || raw == "max_output_tokens" {
 		return models.FinishReasonMaxTokens
+	}
+	if raw == "image_safety" || raw == "recitation" || raw == "safety" || raw == "blocklist" || raw == "prohibited_content" || raw == "spii" {
+		return models.FinishReasonBlocked
+	}
+	if raw == "malformed_function_call" {
+		return models.FinishReasonError
 	}
 	return models.FinishReasonStop
 }

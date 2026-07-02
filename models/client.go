@@ -28,9 +28,7 @@ func Generate(ctx context.Context, c Client, req Request) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	for range stream.Iter() {
-	}
-	return stream.Final()
+	return stream.Drain()
 }
 
 // ParseModelRef splits a provider-qualified model ref like "openai/gpt-5.5".
