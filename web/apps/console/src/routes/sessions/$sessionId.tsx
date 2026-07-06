@@ -19,7 +19,7 @@ import {
   SelectItem,
 } from "@wingman/core/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
-import { StopIcon } from "@phosphor-icons/react";
+import { PauseIcon, PlayIcon, StopIcon } from "@phosphor-icons/react";
 
 const STREAM_MIN_CHARS_PER_FRAME = 1;
 const STREAM_MAX_CHARS_PER_FRAME = 18;
@@ -30,6 +30,14 @@ const DEFAULT_SESSION_TITLE = "New session";
 
 type SessionDetailSearch = {
   workspace?: string;
+};
+
+type SessionEvent = {
+  id: string;
+  type: string;
+  session_id?: string;
+  seq?: number;
+  data?: Record<string, unknown>;
 };
 
 function parseSSE(buffer: string): {
@@ -115,6 +123,17 @@ function eventField<T>(data: unknown, lower: string, upper: string): T | undefin
   if (!data || typeof data !== "object") return undefined;
   const record = data as Record<string, unknown>;
   return (record[lower] ?? record[upper]) as T | undefined;
+}
+
+async function latestSessionEventSeq(sessionId: string): Promise<number> {
+  let after = 0;
+  for (;;) {
+    const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEvent[]; has_more?: boolean };
+    const events = page.data ?? [];
+    if (events.length === 0) return after;
+    after = events.at(-1)?.seq ?? after;
+    if (!page.has_more) return after;
+  }
 }
 
 function modelRefExists(models: Record<string, ProviderModel[]>, modelRef: string): boolean {
@@ -244,9 +263,13 @@ function SessionDetailPage() {
   const [visibleStreamingTitle, setVisibleStreamingTitle] = useState("");
   const [isTitleStreaming, setIsTitleStreaming] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isStreamPaused, setIsStreamPaused] = useState(false);
   const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
   const [error, setError] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const eventControllerRef = useRef<AbortController | null>(null);
+  const lastEventSeqRef = useRef(0);
+  const activeRunRef = useRef<{ sessionId: string; completed: boolean } | null>(null);
   const activeSessionIdRef = useRef(sessionId);
   const skipNextSessionLoadRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -259,6 +282,11 @@ function SessionDetailPage() {
 
   useEffect(() => {
     activeSessionIdRef.current = sessionId;
+    lastEventSeqRef.current = 0;
+    activeRunRef.current = null;
+    eventControllerRef.current?.abort();
+    eventControllerRef.current = null;
+    setIsStreamPaused(false);
     if (titleSessionIdRef.current !== sessionId) {
       setStreamingTitle("");
       setVisibleStreamingTitle("");
@@ -480,6 +508,91 @@ function SessionDetailPage() {
     stickToBottomRef.current = false;
   }
 
+  function applySessionEvent(ev: SessionEvent) {
+    if (typeof ev.seq === "number" && ev.seq > lastEventSeqRef.current) {
+      lastEventSeqRef.current = ev.seq;
+    }
+    const data = ev.data ?? {};
+    if (ev.type === "session.text.delta") {
+      const delta = typeof data.delta === "string" ? data.delta : "";
+      if (delta) {
+        const next = streamingTextRef.current + delta;
+        streamingTextRef.current = next;
+        setStreamingText(next);
+      }
+      return;
+    }
+    if (ev.type === "session.message.created") {
+      const message = data.message as Message | undefined;
+      if (!message) return;
+      setSession((prev) => {
+        if (!prev) return prev;
+        return { ...prev, history: [...prev.history, message] };
+      });
+      if (message.role === "assistant") {
+        streamingTextRef.current = "";
+        visibleStreamingTextRef.current = "";
+        setStreamingText("");
+        setVisibleStreamingText("");
+      }
+      return;
+    }
+    if (ev.type === "session.run.completed") {
+      const usage = data.usage as Usage | undefined;
+      if (usage) setLatestRunUsage(usage);
+      activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
+      return;
+    }
+    if (ev.type === "session.run.failed") {
+      const error = typeof data.error === "string" ? data.error : "Run failed";
+      activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
+      throw new Error(error);
+    }
+  }
+
+  async function subscribeSessionEvents(sessionId: string, signal: AbortSignal): Promise<void> {
+    const headers = new Headers();
+    const clientId = getClientId();
+    if (clientId) headers.set("X-Wingman-Client", clientId);
+    const res = await fetch(`/sessions/${sessionId}/events?after=${lastEventSeqRef.current}`, { headers, signal });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    for await (const ev of readSSE(res)) {
+      if (!ev.event || ev.event.startsWith(":")) continue;
+      applySessionEvent(ev.data as SessionEvent);
+      if (activeRunRef.current?.completed) return;
+    }
+  }
+
+  async function startEventSubscription(sessionId: string) {
+    eventControllerRef.current?.abort();
+    const controller = new AbortController();
+    eventControllerRef.current = controller;
+    setIsStreamPaused(false);
+    try {
+      await subscribeSessionEvents(sessionId, controller.signal);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("Event stream failed", err);
+        setError(formatSessionError(err));
+      }
+    }
+  }
+
+  function handlePauseStream() {
+    eventControllerRef.current?.abort();
+    eventControllerRef.current = null;
+    setIsStreamPaused(true);
+  }
+
+  function handleResumeStream() {
+    const run = activeRunRef.current;
+    if (!run || run.completed) return;
+    void startEventSubscription(run.sessionId);
+  }
+
   async function handleAbort() {
     try {
       await wfetch(`/sessions/${activeSessionIdRef.current}/abort`, { method: "POST" });
@@ -490,7 +603,11 @@ function SessionDetailPage() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    eventControllerRef.current?.abort();
+    eventControllerRef.current = null;
+    activeRunRef.current = null;
     setIsStreaming(false);
+    setIsStreamPaused(false);
     setStreamingText("");
     setVisibleStreamingText("");
     await loadSession();
@@ -515,6 +632,7 @@ function SessionDetailPage() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setIsStreaming(true);
+    setIsStreamPaused(false);
     setStreamingText("");
     setVisibleStreamingText("");
     setLatestRunUsage(undefined);
@@ -571,6 +689,10 @@ function SessionDetailPage() {
       }
       persistGeneratedTitle(activeSessionId);
 
+      lastEventSeqRef.current = await latestSessionEventSeq(activeSessionId);
+      activeRunRef.current = { sessionId: activeSessionId, completed: false };
+      void startEventSubscription(activeSessionId);
+
       const headers = new Headers({
         "Content-Type": "application/json",
       });
@@ -579,7 +701,7 @@ function SessionDetailPage() {
         headers.set("X-Wingman-Client", clientId);
       }
 
-      const res = await fetch(`/sessions/${activeSessionId}/message/stream`, {
+      const res = await fetch(`/sessions/${activeSessionId}/message`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -594,67 +716,6 @@ function SessionDetailPage() {
         const text = await res.text();
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
-
-      let textBuffer = "";
-      for await (const ev of readSSE(res)) {
-        if (ev.event === "error") {
-          const message =
-            typeof ev.data === "string"
-              ? ev.data
-              : eventField<{ error?: string }>(ev.data, "data", "Data")?.error;
-          throw new Error(message || "Stream failed");
-        }
-        if (ev.event === "done") {
-          const envelope = ev.data as {
-            data?: unknown;
-            Data?: unknown;
-          };
-          const data = envelope.data ?? envelope.Data;
-          const usage = eventField<Usage>(data, "usage", "Usage");
-          if (usage) {
-            setLatestRunUsage(usage);
-          }
-          completed = true;
-          break;
-        }
-        if (ev.event === "stream_part") {
-          const envelope = ev.data as {
-            type: string;
-            version: number;
-            data?: unknown;
-            Data?: unknown;
-          };
-          const data = envelope.data ?? envelope.Data;
-          const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
-          if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
-            textBuffer += part.delta;
-            setStreamingText(textBuffer);
-          }
-        }
-        if (ev.event === "message") {
-          const envelope = ev.data as {
-            type: string;
-            version: number;
-            data?: unknown;
-            Data?: unknown;
-          };
-          const data = envelope.data ?? envelope.Data;
-          const message = eventField<Message>(data, "message", "Message");
-          if (message) {
-            setSession((prev) => {
-              if (!prev) return prev;
-              return { ...prev, history: [...prev.history, message] };
-            });
-            if (message.role === "assistant") {
-              textBuffer = "";
-              streamingTextRef.current = "";
-              visibleStreamingTextRef.current = "";
-              setStreamingText("");
-              setVisibleStreamingText("");
-            }
-          }
-        }
-      }
       completed = true;
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -664,8 +725,12 @@ function SessionDetailPage() {
       }
     } finally {
       setIsStreaming(false);
+      setIsStreamPaused(false);
       setStreamingText("");
       setVisibleStreamingText("");
+      eventControllerRef.current?.abort();
+      eventControllerRef.current = null;
+      activeRunRef.current = null;
       abortControllerRef.current = null;
       if (!completed && controller.signal.aborted) {
         setMessageText(outboundText);
@@ -850,10 +915,23 @@ function SessionDetailPage() {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {isStreaming ? (
-                <Button size="sm" variant="destructive" type="button" onClick={handleAbort}>
-                  <StopIcon className="size-4" />
-                  Abort
-                </Button>
+                <>
+                  {isStreamPaused ? (
+                    <Button size="sm" variant="secondary" type="button" onClick={handleResumeStream}>
+                      <PlayIcon className="size-4" />
+                      Resume stream
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="secondary" type="button" onClick={handlePauseStream}>
+                      <PauseIcon className="size-4" />
+                      Pause stream
+                    </Button>
+                  )}
+                  <Button size="sm" variant="destructive" type="button" onClick={handleAbort}>
+                    <StopIcon className="size-4" />
+                    Abort
+                  </Button>
+                </>
               ) : (
                 <span>Enter to send, Shift+Enter for newline</span>
               )}

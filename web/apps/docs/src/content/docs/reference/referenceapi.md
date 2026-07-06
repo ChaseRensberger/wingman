@@ -14,7 +14,7 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 
 - Request bodies are JSON.
 - Standard request timeout is 60 seconds.
-- `POST /sessions/{id}/message/stream` bypasses the standard timeout and returns `text/event-stream`.
+- `GET /sessions/{id}/events` bypasses the standard timeout and returns `text/event-stream`.
 - ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Health
@@ -98,13 +98,14 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `PUT` | `/sessions/{id}` | Update session metadata (title, work_dir) |
 | `DELETE` | `/sessions/{id}` | Delete session |
 | `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
-| `POST` | `/sessions/{id}/message/stream` | Send a message and stream SSE events |
+| `GET` | `/sessions/{id}/events` | Replay session events after `after`, then stream new events |
+| `GET` | `/sessions/{id}/events/history` | Read a finite page of session events |
 | `POST` | `/sessions/{id}/abort` | Cancel every in-flight run for the session |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
 
-`POST /sessions/{id}/message` and `POST /sessions/{id}/message/stream` require the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly.
+`POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly.
 
 ### Create request
 
@@ -150,7 +151,7 @@ Or create the session from a Workspace:
 
 ### Streaming
 
-`POST /sessions/{id}/message/stream` returns `text/event-stream`. Each event is:
+`GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. Each event is:
 
 ```text
 event: <type>
@@ -158,20 +159,13 @@ data: <json>
 
 ```
 
-Where `<json>` is the envelope:
+Where `<json>` is the event envelope:
 
 ```json
-{ "type": "tool_start", "version": 1, "data": { ... } }
+{ "id": "evt_...", "type": "session.message.created", "seq": 12, "version": 1, "data": { ... } }
 ```
 
-The `type` is one of `iteration_start`, `iteration_end`, `message`, `tool_start`, `tool_end`, `stream_part`, `compaction`, `context_transformed`, `error`. After the loop returns, the server writes one terminal envelope:
-
-```text
-event: done
-data: {"type":"done","version":1,"data":{"usage":{...},"steps":N}}
-```
-
-See [Streaming Events](/build-clients/streaming-events) for client-side streaming guidance.
+See [Streaming Events](/build-clients/streaming-events) for event shapes and reconnect behavior.
 
 ### Abort response
 

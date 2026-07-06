@@ -28,6 +28,7 @@ type Server struct {
 	store     store.Store
 	router    *chi.Mux
 	aborts    *abortRegistry
+	events    *sessionEventBroker
 	webDevURL string
 	logger    *slog.Logger
 	logs      *observability.LogBuffer
@@ -68,6 +69,7 @@ func New(cfg Config) *Server {
 		store:          cfg.Store,
 		router:         chi.NewRouter(),
 		aborts:         newAbortRegistry(),
+		events:         newSessionEventBroker(),
 		webDevURL:      cfg.WebDevURL,
 		logger:         logger,
 		logs:           cfg.Logs,
@@ -152,6 +154,12 @@ func shouldBypassTimeout(r *http.Request) bool {
 	if strings.HasPrefix(path, "/sessions/") && strings.HasSuffix(path, "/message/stream") {
 		return true
 	}
+	if strings.HasPrefix(path, "/sessions/") && strings.Contains(path, "/events") {
+		return true
+	}
+	if path == "/run" {
+		return true
+	}
 
 	return false
 }
@@ -223,6 +231,8 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}", s.handleGetSession)
 		r.Put("/{id}", s.handleUpdateSession)
 		r.Delete("/{id}", s.handleDeleteSession)
+		r.Get("/{id}/events", s.handleSessionEvents)
+		r.Get("/{id}/events/history", s.handleSessionEventsHistory)
 		r.Post("/{id}/message", s.handleMessageSession)
 		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 		r.Post("/{id}/abort", s.handleAbortSession)

@@ -988,6 +988,97 @@ func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]M
 	return out, nil
 }
 
+// AppendSessionEvent stores one durable session event and assigns the next
+// session-scoped sequence number.
+func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error) {
+	if event.ID == "" {
+		event.ID = NewID(PrefixEvent)
+	}
+	if event.Version == 0 {
+		event.Version = 1
+	}
+	if event.Time.IsZero() {
+		event.Time = time.Now().UTC()
+	}
+	if len(event.DataJSON) == 0 && len(event.Data) > 0 {
+		event.DataJSON = []byte(event.Data)
+	}
+	if len(event.DataJSON) == 0 {
+		event.DataJSON = []byte(`{}`)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SessionEvent{}, err
+	}
+	defer tx.Rollback()
+
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, event.SessionID).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return SessionEvent{}, ErrSessionNotFound
+		}
+		return SessionEvent{}, err
+	}
+
+	var seq sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(seq) FROM session_events WHERE session_id = ?`, event.SessionID).Scan(&seq); err != nil {
+		return SessionEvent{}, err
+	}
+	if seq.Valid {
+		event.Seq = seq.Int64 + 1
+	} else {
+		event.Seq = 1
+	}
+	createdAt := event.Time.UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO session_events (id, session_id, seq, type, version, data_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, event.ID, event.SessionID, event.Seq, event.Type, event.Version, string(event.DataJSON), createdAt); err != nil {
+		return SessionEvent{}, fmt.Errorf("insert session event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SessionEvent{}, err
+	}
+	event.Data = json.RawMessage(event.DataJSON)
+	return event, nil
+}
+
+// ListSessionEvents returns durable session events with Seq > after.
+func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]SessionEvent, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, seq, type, version, data_json, created_at
+		FROM session_events
+		WHERE session_id = ? AND seq > ?
+		ORDER BY seq ASC
+		LIMIT ?
+	`, sessionID, after, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query session events: %w", err)
+	}
+	defer rows.Close()
+
+	out := []SessionEvent{}
+	for rows.Next() {
+		var ev SessionEvent
+		var dataJSON, createdAt string
+		if err := rows.Scan(&ev.ID, &ev.SessionID, &ev.Seq, &ev.Type, &ev.Version, &dataJSON, &createdAt); err != nil {
+			return nil, err
+		}
+		ev.DataJSON = []byte(dataJSON)
+		ev.Data = json.RawMessage(ev.DataJSON)
+		ev.Time, _ = time.Parse(time.RFC3339Nano, createdAt)
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
 // ---- auth ----------------------------------------------------------------
 
 // GetAuth returns the singleton auth row, or an empty Auth if unset.

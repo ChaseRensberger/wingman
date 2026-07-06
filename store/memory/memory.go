@@ -26,6 +26,7 @@ type Store struct {
 	messages   map[string]*store.StoredMessage
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
+	events     map[string]*store.SessionEvent
 	auth       *store.Auth
 }
 
@@ -39,6 +40,7 @@ func NewStore() *Store {
 		messages:   make(map[string]*store.StoredMessage),
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
+		events:     make(map[string]*store.SessionEvent),
 	}
 }
 
@@ -124,6 +126,16 @@ func copyModelCall(c *store.ModelCall) store.ModelCall {
 	if c.MetadataJSON != nil {
 		cp.MetadataJSON = make([]byte, len(c.MetadataJSON))
 		copy(cp.MetadataJSON, c.MetadataJSON)
+	}
+	return cp
+}
+
+func copySessionEvent(e *store.SessionEvent) store.SessionEvent {
+	cp := *e
+	if e.DataJSON != nil {
+		cp.DataJSON = make([]byte, len(e.DataJSON))
+		copy(cp.DataJSON, e.DataJSON)
+		cp.Data = cp.DataJSON
 	}
 	return cp
 }
@@ -689,6 +701,64 @@ func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.M
 	})
 	if out == nil {
 		out = []store.ModelCall{}
+	}
+	return out, nil
+}
+
+func (s *Store) AppendSessionEvent(ctx context.Context, event store.SessionEvent) (store.SessionEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.sessions[event.SessionID]; !ok {
+		return store.SessionEvent{}, store.ErrSessionNotFound
+	}
+	if event.ID == "" {
+		event.ID = store.NewID(store.PrefixEvent)
+	}
+	if event.Version == 0 {
+		event.Version = 1
+	}
+	if event.Time.IsZero() {
+		event.Time = time.Now().UTC()
+	}
+	if len(event.DataJSON) == 0 && len(event.Data) > 0 {
+		event.DataJSON = []byte(event.Data)
+	}
+	if len(event.DataJSON) == 0 {
+		event.DataJSON = []byte(`{}`)
+	}
+	var maxSeq int64
+	for _, existing := range s.events {
+		if existing.SessionID == event.SessionID && existing.Seq > maxSeq {
+			maxSeq = existing.Seq
+		}
+	}
+	event.Seq = maxSeq + 1
+	event.Data = event.DataJSON
+	cp := copySessionEvent(&event)
+	s.events[event.ID] = &cp
+	return copySessionEvent(&cp), nil
+}
+
+func (s *Store) ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]store.SessionEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	out := []store.SessionEvent{}
+	for _, event := range s.events {
+		if event.SessionID == sessionID && event.Seq > after {
+			out = append(out, copySessionEvent(event))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }

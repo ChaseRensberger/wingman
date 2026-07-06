@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Agent struct {
 	ID           string         `json:"id"`
@@ -43,6 +46,51 @@ type StoredMessage struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	Parts        []StoredPart
+}
+
+// SessionEvent is one server-sent event for a session. Durable events have
+// a session-scoped Seq and are stored for replay. Live-only events use the
+// same wire shape but are not persisted.
+type SessionEvent struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Time      time.Time       `json:"-"`
+	SessionID string          `json:"session_id,omitempty"`
+	Seq       int64           `json:"seq,omitempty"`
+	Version   int             `json:"version"`
+	DataJSON  []byte          `json:"-"`
+	Data      json.RawMessage `json:"data"`
+}
+
+func (e SessionEvent) MarshalJSON() ([]byte, error) {
+	data := e.Data
+	if len(data) == 0 {
+		data = e.DataJSON
+	}
+	if len(data) == 0 {
+		data = json.RawMessage(`{}`)
+	}
+	timeValue := ""
+	if !e.Time.IsZero() {
+		timeValue = e.Time.UTC().Format(time.RFC3339Nano)
+	}
+	return json.Marshal(struct {
+		ID        string          `json:"id"`
+		Type      string          `json:"type"`
+		Time      string          `json:"time,omitempty"`
+		SessionID string          `json:"session_id,omitempty"`
+		Seq       int64           `json:"seq,omitempty"`
+		Version   int             `json:"version"`
+		Data      json.RawMessage `json:"data"`
+	}{
+		ID:        e.ID,
+		Type:      e.Type,
+		Time:      timeValue,
+		SessionID: e.SessionID,
+		Seq:       e.Seq,
+		Version:   e.Version,
+		Data:      data,
+	})
 }
 
 const (

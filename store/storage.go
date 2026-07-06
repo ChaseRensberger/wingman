@@ -40,6 +40,11 @@ type Store interface {
 	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
 	// ListModelCalls returns all model calls for the session ordered by step.
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
+	// AppendSessionEvent stores one durable session event and assigns its
+	// session-scoped sequence.
+	AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error)
+	// ListSessionEvents returns durable session events with Seq > after.
+	ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]SessionEvent, error)
 
 	// CreateClient registers a Wingman API consumer identity.
 	CreateClient(name string) (*Client, error)
