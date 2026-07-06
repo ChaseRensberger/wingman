@@ -132,7 +132,7 @@ Each event is sent as server-sent events with an `event:` type and a JSON `data:
 
 ## Next steps
 
-- Read [Global Config](/start-here/config) for server flags, storage, logs, and plugins.
-- Read [Providers](/configure/providers) for provider auth and gateway routing.
-- Read [Sessions](/concepts/sessions) for the session lifecycle and ephemeral runs.
-- Read [API](/reference/referenceapi) if you are building your own client.
+- Read [Global Config](/docs/start-here/config) for server flags, storage, logs, and plugins.
+- Read [Providers](/docs/configure/providers) for provider auth and gateway routing.
+- Read [Sessions](/docs/concepts/sessions) for the session lifecycle and ephemeral runs.
+- Read [API](/docs/reference/referenceapi) if you are building your own client.

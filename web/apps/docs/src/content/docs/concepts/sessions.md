@@ -18,7 +18,7 @@ A session stores runtime state, while an agent provides reusable configuration:
 
 One session can hand off between agents or models without creating a new conversation record.
 
-Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
+Sessions can belong to a [Workspace](/docs/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 
 ## Create Then Send
 

@@ -19,7 +19,7 @@ Open:
 http://localhost:2323/console
 ```
 
-The console UI is a same-origin client of the HTTP API documented in [HTTP API](/reference/referenceapi). It is useful for managing providers, agents, Workspaces, and sessions without writing `curl` requests by hand.
+The console UI is a same-origin client of the HTTP API documented in [HTTP API](/docs/reference/referenceapi). It is useful for managing providers, agents, Workspaces, and sessions without writing `curl` requests by hand.
 
 ## Sessions and Workspaces
 

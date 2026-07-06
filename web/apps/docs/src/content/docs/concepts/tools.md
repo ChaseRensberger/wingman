@@ -32,7 +32,7 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
 
-For repeated work in the same directory, prefer a [Workspace](/concepts/workspaces) and create sessions with `workspace_id`.
+For repeated work in the same directory, prefer a [Workspace](/docs/concepts/workspaces) and create sessions with `workspace_id`.
 
 ## Allow Tools On An Agent
 
@@ -120,7 +120,7 @@ There are two extension paths:
 
 Use Go tools when you control the embedding process and need typed hooks. Use external plugin tools when you want to extend the stock `wingman serve` binary without rebuilding it.
 
-See [Plugins](/concepts/plugins) for plugin installation and manifest details.
+See [Plugins](/docs/concepts/plugins) for plugin installation and manifest details.
 
 ## Tool Results
 

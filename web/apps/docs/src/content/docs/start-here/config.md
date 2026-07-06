@@ -77,19 +77,19 @@ Example:
 
 CLI flags passed to `wingman serve` or `wingman up` override config file values.
 
-For exact fields, see [Config Schema](/reference/config-schema).
+For exact fields, see [Config Schema](/docs/reference/config-schema).
 
 ## Common Tasks
 
 | Task | Go to |
 |---|---|
-| Start the local server or systemd service | [Run the Server](/use-wingman/run-server) |
-| Store API keys | [Providers](/configure/providers#store-provider-auth) |
-| Route a cataloged provider through a gateway | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
-| Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |
-| Choose between `model_ref` and `model_route` | [Models](/configure/models) |
-| Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
-| Check all supported config fields | [Config Schema](/reference/config-schema) |
+| Start the local server or systemd service | [Run the Server](/docs/use-wingman/run-server) |
+| Store API keys | [Providers](/docs/configure/providers#store-provider-auth) |
+| Route a cataloged provider through a gateway | [Providers](/docs/configure/providers#route-a-provider-through-a-gateway) |
+| Add a reusable custom provider/model | [Providers](/docs/configure/providers#add-a-custom-provider) |
+| Choose between `model_ref` and `model_route` | [Models](/docs/configure/models) |
+| Load external plugins | [Plugins](/docs/concepts/plugins#external-plugins) |
+| Check all supported config fields | [Config Schema](/docs/reference/config-schema) |
 
 ## Defaults
 
