@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS session_events (
     session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     seq          INTEGER NOT NULL,
     type         TEXT NOT NULL,
-    version      INTEGER NOT NULL DEFAULT 1,
     data_json    TEXT NOT NULL,
     created_at   TEXT NOT NULL,
     UNIQUE(session_id, seq)

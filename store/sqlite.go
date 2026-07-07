@@ -994,9 +994,6 @@ func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent
 	if event.ID == "" {
 		event.ID = NewID(PrefixEvent)
 	}
-	if event.Version == 0 {
-		event.Version = 1
-	}
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	}
@@ -1032,9 +1029,9 @@ func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent
 	}
 	createdAt := event.Time.UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO session_events (id, session_id, seq, type, version, data_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, event.ID, event.SessionID, event.Seq, event.Type, event.Version, string(event.DataJSON), createdAt); err != nil {
+		INSERT INTO session_events (id, session_id, seq, type, data_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, event.ID, event.SessionID, event.Seq, event.Type, string(event.DataJSON), createdAt); err != nil {
 		return SessionEvent{}, fmt.Errorf("insert session event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -1053,7 +1050,7 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, seq, type, version, data_json, created_at
+		SELECT id, session_id, seq, type, data_json, created_at
 		FROM session_events
 		WHERE session_id = ? AND seq > ?
 		ORDER BY seq ASC
@@ -1068,7 +1065,7 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 	for rows.Next() {
 		var ev SessionEvent
 		var dataJSON, createdAt string
-		if err := rows.Scan(&ev.ID, &ev.SessionID, &ev.Seq, &ev.Type, &ev.Version, &dataJSON, &createdAt); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.SessionID, &ev.Seq, &ev.Type, &dataJSON, &createdAt); err != nil {
 			return nil, err
 		}
 		ev.DataJSON = []byte(dataJSON)

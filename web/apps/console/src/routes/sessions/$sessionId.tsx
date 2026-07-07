@@ -35,8 +35,10 @@ type SessionDetailSearch = {
 type SessionEvent = {
   id: string;
   type: string;
-  session_id?: string;
-  seq?: number;
+  cursor?: {
+    session_id: string;
+    seq: number;
+  };
   data?: Record<string, unknown>;
 };
 
@@ -131,7 +133,7 @@ async function latestSessionEventSeq(sessionId: string): Promise<number> {
     const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEvent[]; has_more?: boolean };
     const events = page.data ?? [];
     if (events.length === 0) return after;
-    after = events.at(-1)?.seq ?? after;
+    after = events.at(-1)?.cursor?.seq ?? after;
     if (!page.has_more) return after;
   }
 }
@@ -509,8 +511,8 @@ function SessionDetailPage() {
   }
 
   function applySessionEvent(ev: SessionEvent) {
-    if (typeof ev.seq === "number" && ev.seq > lastEventSeqRef.current) {
-      lastEventSeqRef.current = ev.seq;
+    if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) {
+      lastEventSeqRef.current = ev.cursor.seq;
     }
     const data = ev.data ?? {};
     if (ev.type === "session.text.delta") {

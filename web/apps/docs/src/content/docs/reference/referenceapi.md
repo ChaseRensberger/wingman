@@ -162,7 +162,7 @@ data: <json>
 Where `<json>` is the event envelope:
 
 ```json
-{ "id": "evt_...", "type": "session.message.created", "seq": 12, "version": 1, "data": { ... } }
+{ "id": "evt_...", "type": "session.message.created", "cursor": {"session_id":"ses_...","seq":12}, "data": { ... } }
 ```
 
 See [Streaming Events](/build-clients/streaming-events) for event shapes and reconnect behavior.

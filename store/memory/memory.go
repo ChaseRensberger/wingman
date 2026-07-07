@@ -715,9 +715,6 @@ func (s *Store) AppendSessionEvent(ctx context.Context, event store.SessionEvent
 	if event.ID == "" {
 		event.ID = store.NewID(store.PrefixEvent)
 	}
-	if event.Version == 0 {
-		event.Version = 1
-	}
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	}

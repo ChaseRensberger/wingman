@@ -80,7 +80,7 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
   -H "Accept: text/event-stream"
 ```
 
-The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, `version`, and `data`. Durable events also include `seq`.
+The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, and `data`. Durable events also include `cursor`.
 
 ## Ephemeral Sessions
 

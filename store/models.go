@@ -57,9 +57,13 @@ type SessionEvent struct {
 	Time      time.Time       `json:"-"`
 	SessionID string          `json:"session_id,omitempty"`
 	Seq       int64           `json:"seq,omitempty"`
-	Version   int             `json:"version"`
 	DataJSON  []byte          `json:"-"`
 	Data      json.RawMessage `json:"data"`
+}
+
+type sessionEventCursor struct {
+	SessionID string `json:"session_id"`
+	Seq       int64  `json:"seq"`
 }
 
 func (e SessionEvent) MarshalJSON() ([]byte, error) {
@@ -74,22 +78,22 @@ func (e SessionEvent) MarshalJSON() ([]byte, error) {
 	if !e.Time.IsZero() {
 		timeValue = e.Time.UTC().Format(time.RFC3339Nano)
 	}
+	var cursor *sessionEventCursor
+	if e.Seq > 0 && e.SessionID != "" {
+		cursor = &sessionEventCursor{SessionID: e.SessionID, Seq: e.Seq}
+	}
 	return json.Marshal(struct {
-		ID        string          `json:"id"`
-		Type      string          `json:"type"`
-		Time      string          `json:"time,omitempty"`
-		SessionID string          `json:"session_id,omitempty"`
-		Seq       int64           `json:"seq,omitempty"`
-		Version   int             `json:"version"`
-		Data      json.RawMessage `json:"data"`
+		ID     string              `json:"id"`
+		Type   string              `json:"type"`
+		Time   string              `json:"time,omitempty"`
+		Cursor *sessionEventCursor `json:"cursor,omitempty"`
+		Data   json.RawMessage     `json:"data"`
 	}{
-		ID:        e.ID,
-		Type:      e.Type,
-		Time:      timeValue,
-		SessionID: e.SessionID,
-		Seq:       e.Seq,
-		Version:   e.Version,
-		Data:      data,
+		ID:     e.ID,
+		Type:   e.Type,
+		Time:   timeValue,
+		Cursor: cursor,
+		Data:   data,
 	})
 }
 

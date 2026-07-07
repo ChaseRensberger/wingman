@@ -63,9 +63,10 @@ Each event is a JSON object in the SSE `data:` body:
   "id": "evt_...",
   "type": "session.message.created",
   "time": "2026-07-03T12:00:00Z",
-  "session_id": "ses_...",
-  "seq": 43,
-  "version": 1,
+  "cursor": {
+    "session_id": "ses_...",
+    "seq": 43
+  },
   "data": {
     "run_id": "run_...",
     "message": {
@@ -83,12 +84,10 @@ Field meanings:
 | `id` | Unique event ID. |
 | `type` | Event type. Also used as the SSE event name. |
 | `time` | Event timestamp. |
-| `session_id` | Session that emitted the event. |
-| `seq` | Durable session sequence. Present only for durable session events. |
-| `version` | Schema version for this event type. |
+| `cursor` | Resume position. Present only for durable session events. |
 | `data` | Event-specific payload. |
 
-For live-only events without `seq`, the SSE `id` is the event ID.
+For live-only events without `cursor`, the SSE `id` is the event ID.
 
 ## Durable Events
 
@@ -128,7 +127,6 @@ Live events include the run and step needed to merge them with the later durable
   "id": "evt_...",
   "type": "session.text.delta",
   "time": "2026-07-03T12:00:00Z",
-  "session_id": "ses_...",
   "data": {
     "run_id": "run_...",
     "step": 1,
@@ -148,8 +146,8 @@ connect /sessions/{id}/events?after=last_seq
 
 for each event:
   apply event
-  if event.seq exists:
-    save_checkpoint(event.seq)
+  if event.cursor exists:
+    save_checkpoint(event.cursor.seq)
 
 on disconnect:
   reconnect with the saved checkpoint
