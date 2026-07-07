@@ -263,8 +263,8 @@ h1 {
 }
 
 .post-header h1 {
-  max-width: 16ch;
-  font-size: clamp(2rem, 6vw, 4rem);
+  max-width: none;
+  font-size: clamp(1.875rem, 4.5vw, 3rem);
 }
 
 .prose {

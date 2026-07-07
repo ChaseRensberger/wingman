@@ -16,7 +16,9 @@ import (
 const (
 	PrefixAgent     = "agt_"
 	PrefixSession   = "ses_"
+	PrefixRun       = "run_"
 	PrefixMessage   = "msg_"
+	PrefixEvent     = "evt_"
 	PrefixModelCall = "mcl_"
 	PrefixPart      = "prt_"
 	PrefixToolUse   = "tlu_"
@@ -42,7 +44,7 @@ func NewID(prefix string) string {
 // Unknown prefixes are rejected to catch accidentally-typed IDs early
 // (a session ID where an agent ID was expected, etc.).
 func ParseID(id string) (prefix, body string, err error) {
-	for _, p := range []string{PrefixAgent, PrefixSession, PrefixMessage, PrefixModelCall, PrefixPart, PrefixToolUse, PrefixClient, PrefixWorkspace} {
+	for _, p := range []string{PrefixAgent, PrefixSession, PrefixRun, PrefixMessage, PrefixEvent, PrefixModelCall, PrefixPart, PrefixToolUse, PrefixClient, PrefixWorkspace} {
 		if strings.HasPrefix(id, p) {
 			return p, id[len(p):], nil
 		}

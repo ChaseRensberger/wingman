@@ -119,13 +119,11 @@ The response includes the assistant's final text, any tool calls, token usage, a
 
 ## Stream a message
 
-Use the streaming endpoint when you want lifecycle events as the agent runs:
+Subscribe to session events when you want lifecycle events as the agent runs:
 
 ```bash
-curl -N -X POST "http://localhost:2323/sessions/${SESSION_ID}/message/stream" \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  -d "{\"agent_id\":\"${AGENT_ID}\",\"message\":\"Summarize this project in one paragraph.\"}"
+curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
+  -H "Accept: text/event-stream"
 ```
 
 Each event is sent as server-sent events with an `event:` type and a JSON `data:` envelope.

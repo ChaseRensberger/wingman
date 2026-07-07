@@ -73,19 +73,14 @@ Agents and models are selected per message:
 
 ## Streaming
 
-Use the streaming endpoint when a client needs live events:
+Use the event stream when a client needs live events:
 
 ```bash
-curl -N -X POST "http://localhost:2323/sessions/${SESSION_ID}/message/stream" \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  -d '{
-    "agent_id": "agt_...",
-    "message": "Inspect this repository and report back."
-  }'
+curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
+  -H "Accept: text/event-stream"
 ```
 
-The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `type`, `version`, and `data`.
+The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, and `data`. Durable events also include `cursor`.
 
 ## Ephemeral Sessions
 
