@@ -24,7 +24,7 @@ Most clients follow this sequence:
 3. Create or reuse an agent with `/agents`.
 4. Create or reuse a Workspace with `/workspaces` if the session should belong to a saved context.
 5. Create a session with `POST /sessions`.
-6. Send messages with `POST /sessions/{id}/message` or `POST /sessions/{id}/message/stream`.
+6. Send messages with `POST /sessions/{id}/message`; subscribe to live updates with `GET /sessions/{id}/events`.
 
 ## Client Identity
 

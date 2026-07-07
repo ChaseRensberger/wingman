@@ -363,11 +363,24 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	runCtx, release := s.aborts.register(id, r.Context())
 	defer release()
 
-	result, err := runSession.Run(runCtx, req.Message)
+	runID := store.NewID(store.PrefixRun)
+	s.persistRunEvent(runCtx, id, "session.run.started", map[string]any{"run_id": runID})
+	stream, err := runSession.RunStream(runCtx, req.Message)
 	if err != nil {
+		s.persistRunEvent(runCtx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	for stream.Next() {
+		s.forwardRunEvent(runCtx, id, runID, stream.Event())
+	}
+	if err := stream.Err(); err != nil {
+		s.persistRunEvent(runCtx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	result := stream.Result()
+	s.persistRunEvent(runCtx, id, "session.run.completed", map[string]any{"run_id": runID, "usage": result.Usage, "steps": result.Steps})
 
 	toolCalls := result.ToolCalls
 	if toolCalls == nil {
@@ -472,8 +485,11 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	ctx, release := s.aborts.register(id, ctx)
 	defer release()
 
+	runID := store.NewID(store.PrefixRun)
+	s.persistRunEvent(ctx, id, "session.run.started", map[string]any{"run_id": runID})
 	stream, err := runSession.RunStream(ctx, req.Message)
 	if err != nil {
+		s.persistRunEvent(ctx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 		flusher.Flush()
 		return
@@ -481,6 +497,7 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 
 	for stream.Next() {
 		event := stream.Event()
+		s.forwardRunEvent(ctx, id, runID, event)
 		// Send the full envelope as the SSE data payload. The "event:"
 		// line still carries Type so EventSource consumers can filter
 		// without parsing JSON, but parsing the data yields a fully
@@ -495,12 +512,14 @@ func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := stream.Err(); err != nil {
+		s.persistRunEvent(ctx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 		flusher.Flush()
 		return
 	}
 
 	result := stream.Result()
+	s.persistRunEvent(ctx, id, "session.run.completed", map[string]any{"run_id": runID, "usage": result.Usage, "steps": result.Steps})
 	doneEnvelope := session.StreamEvent{
 		Type:    "done",
 		Version: session.EnvelopeVersion,
