@@ -856,19 +856,14 @@ func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, rou
 // implementations. Unknown names are silently dropped; callers that
 // need strict validation should validate at agent-creation time.
 func (s *Server) resolveTools(toolNames []string) []tool.Tool {
-	builtins := map[string]tool.Tool{
-		"apply_patch": tool.NewApplyPatchTool(),
-		"bash":        tool.NewBashTool(),
-		"read":        tool.NewReadTool(),
-		"write":       tool.NewWriteTool(),
-		"edit":        tool.NewEditTool(),
-		"glob":        tool.NewGlobTool(),
-		"grep":        tool.NewGrepTool(),
-		"webfetch":    tool.NewWebFetchTool(),
-		"websearch":   tool.NewWebSearchTool(),
-	}
+	builtins := nativeTools()
 	if s.plugins != nil {
 		for _, t := range s.plugins.Tools() {
+			builtins[t.Name()] = t
+		}
+	}
+	if s.mcp != nil {
+		for _, t := range s.mcp.Tools() {
 			builtins[t.Name()] = t
 		}
 	}
@@ -880,4 +875,18 @@ func (s *Server) resolveTools(toolNames []string) []tool.Tool {
 		}
 	}
 	return tools
+}
+
+func nativeTools() map[string]tool.Tool {
+	return map[string]tool.Tool{
+		"apply_patch": tool.NewApplyPatchTool(),
+		"bash":        tool.NewBashTool(),
+		"read":        tool.NewReadTool(),
+		"write":       tool.NewWriteTool(),
+		"edit":        tool.NewEditTool(),
+		"glob":        tool.NewGlobTool(),
+		"grep":        tool.NewGrepTool(),
+		"webfetch":    tool.NewWebFetchTool(),
+		"websearch":   tool.NewWebSearchTool(),
+	}
 }

@@ -88,6 +88,10 @@ type Definition struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	InputSchema InputSchema `json:"input_schema"`
+	// RawInputSchema carries schemas from external protocols such as MCP that
+	// exceed Wingman's small typed schema subset. If set, it takes precedence
+	// when building the model-facing tool definition.
+	RawInputSchema map[string]any `json:"-"`
 }
 
 // InputSchema is the JSON Schema for a tool's input. Wingman v0.1 only
@@ -112,6 +116,13 @@ type Property struct {
 // model layer expects. Centralizing the conversion here keeps providers
 // from having to know about the typed schema shape.
 func (d Definition) AsModelToolDef() models.ToolDef {
+	if d.RawInputSchema != nil {
+		return models.ToolDef{
+			Name:        d.Name,
+			Description: d.Description,
+			InputSchema: d.RawInputSchema,
+		}
+	}
 	props := make(map[string]any, len(d.InputSchema.Properties))
 	for name, p := range d.InputSchema.Properties {
 		obj := map[string]any{"type": p.Type}

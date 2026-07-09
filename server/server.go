@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/chaserensberger/wingman/internal/observability"
+	wingmcp "github.com/chaserensberger/wingman/mcp"
 	"github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
@@ -34,6 +35,7 @@ type Server struct {
 	logger           *slog.Logger
 	logs             *observability.LogBuffer
 	plugins          *pluginhost.Manager
+	mcp              *wingmcp.Manager
 	providers        map[string]provider.ProviderConfig
 	permissions      permission.Ruleset
 	agentPermissions map[string]permission.Ruleset
@@ -58,6 +60,7 @@ type Config struct {
 	Logger           *slog.Logger
 	Logs             *observability.LogBuffer
 	Plugins          *pluginhost.Manager
+	MCP              *wingmcp.Manager
 	Providers        map[string]provider.ProviderConfig
 	Permissions      permission.Ruleset
 	AgentPermissions map[string]permission.Ruleset
@@ -79,6 +82,7 @@ func New(cfg Config) *Server {
 		logger:           logger,
 		logs:             cfg.Logs,
 		plugins:          cfg.Plugins,
+		mcp:              cfg.MCP,
 		providers:        cfg.Providers,
 		permissions:      cfg.Permissions,
 		agentPermissions: cfg.AgentPermissions,
@@ -180,7 +184,9 @@ func jsonContentType(next http.Handler) http.Handler {
 			strings.HasPrefix(path, "/agents") ||
 			strings.HasPrefix(path, "/clients") ||
 			strings.HasPrefix(path, "/logs") ||
+			strings.HasPrefix(path, "/mcp") ||
 			strings.HasPrefix(path, "/plugins") ||
+			strings.HasPrefix(path, "/tools") ||
 			strings.HasPrefix(path, "/workspaces") ||
 			strings.HasPrefix(path, "/sessions") ||
 			strings.HasPrefix(path, "/run") {
@@ -198,6 +204,14 @@ func (s *Server) setupRoutes() {
 		r.Get("/", s.handleListPlugins)
 		r.Post("/reload", s.handleReloadPlugins)
 	})
+	s.router.Route("/mcp", func(r chi.Router) {
+		r.Get("/", s.handleListMCP)
+		r.Post("/{name}/connect", s.handleConnectMCP)
+		r.Post("/{name}/disconnect", s.handleDisconnectMCP)
+		r.Post("/{name}/auth", s.handleAuthMCP)
+		r.Delete("/{name}/auth", s.handleLogoutMCP)
+	})
+	s.router.Get("/tools", s.handleListTools)
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)
