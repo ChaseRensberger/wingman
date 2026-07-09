@@ -134,6 +134,10 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 	if err != nil {
 		return err
 	}
+	permissionsJSON, err := marshalNullable(agent.Permissions)
+	if err != nil {
+		return err
+	}
 
 	optionsJSON, err := marshalNullable(agent.Options)
 	if err != nil {
@@ -145,9 +149,9 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO agents (id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, agent.ID, agent.Name, agent.Instructions, string(tools), agent.ModelRef, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
+		INSERT INTO agents (id, name, instructions, tools_json, permissions_json, model_ref, options_json, output_schema_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, agent.ID, agent.Name, agent.Instructions, string(tools), permissionsJSON, agent.ModelRef, optionsJSON, outputSchemaJSON, agent.CreatedAt, agent.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert agent: %w", err)
 	}
@@ -157,7 +161,7 @@ func (s *SQLiteStore) CreateAgent(agent *Agent) error {
 // GetAgent returns the agent with the given ID, or an error if not found.
 func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 	row := s.db.QueryRow(`
-		SELECT id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at
+		SELECT id, name, instructions, tools_json, permissions_json, model_ref, options_json, output_schema_json, created_at, updated_at
 		FROM agents WHERE id = ?
 	`, id)
 	a, err := scanAgent(row)
@@ -170,7 +174,7 @@ func (s *SQLiteStore) GetAgent(id string) (*Agent, error) {
 // ListAgents returns every agent, newest first by created_at.
 func (s *SQLiteStore) ListAgents() ([]*Agent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, instructions, tools_json, model_ref, options_json, output_schema_json, created_at, updated_at
+		SELECT id, name, instructions, tools_json, permissions_json, model_ref, options_json, output_schema_json, created_at, updated_at
 		FROM agents ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -198,6 +202,10 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 	if err != nil {
 		return err
 	}
+	permissionsJSON, err := marshalNullable(agent.Permissions)
+	if err != nil {
+		return err
+	}
 	optionsJSON, err := marshalNullable(agent.Options)
 	if err != nil {
 		return err
@@ -208,9 +216,9 @@ func (s *SQLiteStore) UpdateAgent(agent *Agent) error {
 	}
 
 	res, err := s.db.Exec(`
-		UPDATE agents SET name = ?, instructions = ?, tools_json = ?, model_ref = ?, options_json = ?, output_schema_json = ?, updated_at = ?
+		UPDATE agents SET name = ?, instructions = ?, tools_json = ?, permissions_json = ?, model_ref = ?, options_json = ?, output_schema_json = ?, updated_at = ?
 		WHERE id = ?
-	`, agent.Name, agent.Instructions, string(tools), agent.ModelRef, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
+	`, agent.Name, agent.Instructions, string(tools), permissionsJSON, agent.ModelRef, optionsJSON, outputSchemaJSON, agent.UpdatedAt, agent.ID)
 	if err != nil {
 		return err
 	}
@@ -1174,11 +1182,12 @@ func scanModelCall(r rowScanner) (ModelCall, error) {
 func scanAgent(r rowScanner) (*Agent, error) {
 	var a Agent
 	var toolsJSON string
+	var permissionsJSON sql.NullString
 	var optionsJSON sql.NullString
 	var outputSchemaJSON sql.NullString
 
 	if err := r.Scan(
-		&a.ID, &a.Name, &a.Instructions, &toolsJSON,
+		&a.ID, &a.Name, &a.Instructions, &toolsJSON, &permissionsJSON,
 		&a.ModelRef, &optionsJSON, &outputSchemaJSON,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
@@ -1186,6 +1195,11 @@ func scanAgent(r rowScanner) (*Agent, error) {
 	}
 	if toolsJSON != "" {
 		if err := json.Unmarshal([]byte(toolsJSON), &a.Tools); err != nil {
+			return nil, err
+		}
+	}
+	if permissionsJSON.Valid && permissionsJSON.String != "" {
+		if err := json.Unmarshal([]byte(permissionsJSON.String), &a.Permissions); err != nil {
 			return nil, err
 		}
 	}

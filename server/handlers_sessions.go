@@ -12,6 +12,7 @@ import (
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 
@@ -713,6 +714,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 		session.WithModelRef(modelRef, modelInfo),
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
+		session.WithPermissions(s.effectivePermissions(stored)),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
 	}
 	if st != nil {
@@ -733,6 +735,18 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 	}
 
 	return session.New(opts...), nil
+}
+
+func (s *Server) effectivePermissions(agent *store.Agent) permission.Ruleset {
+	if agent == nil {
+		return s.permissions
+	}
+	return permission.Merge(
+		agent.Permissions,
+		s.permissions,
+		s.agentPermissions[agent.Name],
+		s.agentPermissions[agent.ID],
+	)
 }
 
 // buildModelClient resolves a model ref and returns a route-backed model client.

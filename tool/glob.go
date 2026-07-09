@@ -57,11 +57,11 @@ func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir s
 
 	baseDir := workDir
 	if path, ok := params["path"].(string); ok && path != "" {
-		if filepath.IsAbs(path) {
-			baseDir = path
-		} else {
-			baseDir = filepath.Join(workDir, path)
+		resolved, _, err := resolveWorkPath(workDir, path)
+		if err != nil {
+			return Result{}, err
 		}
+		baseDir = resolved
 	}
 
 	var matches []string

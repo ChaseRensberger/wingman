@@ -3,18 +3,21 @@ package store
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/chaserensberger/wingman/permission"
 )
 
 type Agent struct {
-	ID           string         `json:"id"`
-	Name         string         `json:"name"`
-	Instructions string         `json:"instructions,omitempty"`
-	Tools        []string       `json:"tools,omitempty"`
-	ModelRef     string         `json:"model_ref,omitempty"`
-	Options      map[string]any `json:"options,omitempty"`
-	OutputSchema map[string]any `json:"output_schema,omitempty"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	Instructions string             `json:"instructions,omitempty"`
+	Tools        []string           `json:"tools,omitempty"`
+	Permissions  permission.Ruleset `json:"permissions,omitempty"`
+	ModelRef     string             `json:"model_ref,omitempty"`
+	Options      map[string]any     `json:"options,omitempty"`
+	OutputSchema map[string]any     `json:"output_schema,omitempty"`
+	CreatedAt    string             `json:"created_at"`
+	UpdatedAt    string             `json:"updated_at"`
 }
 
 type Session struct {

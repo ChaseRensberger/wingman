@@ -79,6 +79,8 @@ The file is parsed as strict JSON:
 | `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
 | `plugins` | object | no | External plugin discovery defaults. |
 | `models` | object | no | Reserved model-related defaults. |
+| `permissions` | string, object, or rule array | no | Daemon-wide tool permission rules. |
+| `agent_permissions` | object | no | Daemon-local permission overlays keyed by agent ID or name. |
 
 Only the documented fields are supported.
 
@@ -140,6 +142,53 @@ wingman serve --no-plugins
 ```
 
 There is no config-file equivalent for `--no-plugins`.
+
+## `permissions`
+
+`permissions` defines daemon-wide tool policy. It is evaluated at run time and is not written into stored agents.
+
+Supported effects are `allow`, `ask`, and `deny`.
+
+Example:
+
+```json
+{
+  "permissions": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "go test *": "allow",
+      "git push *": "deny"
+    }
+  }
+}
+```
+
+See [Permissions](/configure/permissions) for actions, resources, precedence, and current limits.
+
+Permission failures include structured tool-result metadata so clients can render policy failures without parsing text output.
+
+## `agent_permissions`
+
+`agent_permissions` overlays daemon-local rules onto stored SQLite agents by agent ID or name.
+
+Example:
+
+```json
+{
+  "agent_permissions": {
+    "Plan": {
+      "edit": "deny",
+      "bash": "deny"
+    }
+  }
+}
+```
+
+ID-specific overlays run after name-specific overlays when both match.
 
 ## `provider`
 

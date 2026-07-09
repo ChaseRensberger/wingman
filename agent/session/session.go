@@ -38,20 +38,22 @@ import (
 	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 )
 
 // Session is a single conversation. Construct with New.
 type Session struct {
-	id        string
-	workDir   string
-	client    models.Client
-	model     models.ModelRef
-	modelInfo models.ModelInfo
-	system    string
-	tools     []tool.Tool
-	logger    *slog.Logger
+	id          string
+	workDir     string
+	client      models.Client
+	model       models.ModelRef
+	modelInfo   models.ModelInfo
+	system      string
+	tools       []tool.Tool
+	permissions permission.Ruleset
+	logger      *slog.Logger
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -158,6 +160,11 @@ func WithSystem(prompt string) Option {
 // WithTools registers the tools the model may call.
 func WithTools(tools ...tool.Tool) Option {
 	return func(s *Session) { s.tools = append(s.tools, tools...) }
+}
+
+// WithPermissions sets runtime tool permission rules for this session.
+func WithPermissions(rules permission.Ruleset) Option {
+	return func(s *Session) { s.permissions = append(permission.Ruleset(nil), rules...) }
 }
 
 // WithLogger enables structured runtime logs for this session. The logger is
@@ -392,6 +399,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	modelInfo := s.modelInfo
 	system := s.system
 	tools := append([]tool.Tool(nil), s.tools...)
+	permissions := append(permission.Ruleset(nil), s.permissions...)
 	workDir := s.workDir
 	logger := s.logger
 	rawTransformHistory := s.transformHistory
@@ -528,6 +536,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		System:       system,
 		Tools:        tools,
 		WorkDir:      workDir,
+		Permissions:  permissions,
 		Sink:         internal,
 		OutputSchema: outputSchema,
 		Hooks: run.Hooks{

@@ -7,19 +7,21 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 )
 
 const agentOptionModelRoute = "model_route"
 
 type CreateAgentRequest struct {
-	Name         string            `json:"name"`
-	Instructions string            `json:"instructions,omitempty"`
-	Tools        []string          `json:"tools,omitempty"`
-	ModelRef     string            `json:"model_ref,omitempty"`
-	ModelRoute   *models.ModelInfo `json:"model_route,omitempty"`
-	Options      map[string]any    `json:"options,omitempty"`
-	OutputSchema map[string]any    `json:"output_schema,omitempty"`
+	Name         string             `json:"name"`
+	Instructions string             `json:"instructions,omitempty"`
+	Tools        []string           `json:"tools,omitempty"`
+	Permissions  permission.Ruleset `json:"permissions,omitempty"`
+	ModelRef     string             `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`
+	Options      map[string]any     `json:"options,omitempty"`
+	OutputSchema map[string]any     `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +44,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
+		Permissions:  req.Permissions,
 		ModelRef:     req.ModelRef,
 		Options:      req.Options,
 		OutputSchema: req.OutputSchema,
@@ -89,13 +92,14 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateAgentRequest struct {
-	Name         *string           `json:"name,omitempty"`
-	Instructions *string           `json:"instructions,omitempty"`
-	Tools        []string          `json:"tools,omitempty"`
-	ModelRef     *string           `json:"model_ref,omitempty"`
-	ModelRoute   *models.ModelInfo `json:"model_route,omitempty"`
-	Options      map[string]any    `json:"options,omitempty"`
-	OutputSchema map[string]any    `json:"output_schema,omitempty"`
+	Name         *string            `json:"name,omitempty"`
+	Instructions *string            `json:"instructions,omitempty"`
+	Tools        []string           `json:"tools,omitempty"`
+	Permissions  permission.Ruleset `json:"permissions,omitempty"`
+	ModelRef     *string            `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`
+	Options      map[string]any     `json:"options,omitempty"`
+	OutputSchema map[string]any     `json:"output_schema,omitempty"`
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +129,9 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Tools != nil {
 		a.Tools = req.Tools
+	}
+	if req.Permissions != nil {
+		a.Permissions = req.Permissions
 	}
 	if req.ModelRef != nil {
 		a.ModelRef = *req.ModelRef

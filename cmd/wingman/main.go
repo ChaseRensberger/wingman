@@ -27,6 +27,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
 	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
@@ -54,7 +55,9 @@ type fileConfig struct {
 	Models struct {
 		Default string `json:"default"`
 	} `json:"models"`
-	Provider map[string]provider.ProviderConfig `json:"provider"`
+	Permissions      permission.Ruleset                 `json:"permissions"`
+	AgentPermissions map[string]permission.Ruleset      `json:"agent_permissions"`
+	Provider         map[string]provider.ProviderConfig `json:"provider"`
 }
 
 func loadConfig() (fileConfig, error) {
@@ -304,12 +307,14 @@ func runServe(cfg fileConfig) cli.ActionFunc {
 		}
 
 		srv := server.New(server.Config{
-			Store:     st,
-			WebDevURL: cmd.String("ui-dev"),
-			Logger:    logger,
-			Logs:      logs,
-			Plugins:   plugins,
-			Providers: cfg.Provider,
+			Store:            st,
+			WebDevURL:        cmd.String("ui-dev"),
+			Logger:           logger,
+			Logs:             logs,
+			Plugins:          plugins,
+			Providers:        cfg.Provider,
+			Permissions:      cfg.Permissions,
+			AgentPermissions: cfg.AgentPermissions,
 		})
 
 		host := cmd.String("host")

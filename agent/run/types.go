@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/tool"
 )
 
@@ -77,6 +78,10 @@ type Config struct {
 	// Tools that don't need it can ignore it. Empty string means the
 	// process working directory at execution time.
 	WorkDir string
+
+	// Permissions are ordered tool permission rules. Later matching rules win.
+	// Empty means preserve the historical behavior and allow every tool call.
+	Permissions permission.Ruleset
 
 	// ToolChoice controls how the model selects tools on every turn.
 	// Zero value is treated as ToolChoiceAuto by all providers.

@@ -74,11 +74,11 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 
 	searchPath := workDir
 	if path, ok := params["path"].(string); ok && path != "" {
-		if filepath.IsAbs(path) {
-			searchPath = path
-		} else {
-			searchPath = filepath.Join(workDir, path)
+		resolved, _, err := resolveWorkPath(workDir, path)
+		if err != nil {
+			return Result{}, err
 		}
+		searchPath = resolved
 	}
 
 	includePattern := ""

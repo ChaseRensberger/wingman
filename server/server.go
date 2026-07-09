@@ -19,21 +19,24 @@ import (
 
 	"github.com/chaserensberger/wingman/internal/observability"
 	"github.com/chaserensberger/wingman/models/providers"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
 )
 
 type Server struct {
-	store     store.Store
-	router    *chi.Mux
-	aborts    *abortRegistry
-	events    *sessionEventBroker
-	webDevURL string
-	logger    *slog.Logger
-	logs      *observability.LogBuffer
-	plugins   *pluginhost.Manager
-	providers map[string]provider.ProviderConfig
+	store            store.Store
+	router           *chi.Mux
+	aborts           *abortRegistry
+	events           *sessionEventBroker
+	webDevURL        string
+	logger           *slog.Logger
+	logs             *observability.LogBuffer
+	plugins          *pluginhost.Manager
+	providers        map[string]provider.ProviderConfig
+	permissions      permission.Ruleset
+	agentPermissions map[string]permission.Ruleset
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -50,12 +53,14 @@ type Server struct {
 }
 
 type Config struct {
-	Store     store.Store
-	WebDevURL string
-	Logger    *slog.Logger
-	Logs      *observability.LogBuffer
-	Plugins   *pluginhost.Manager
-	Providers map[string]provider.ProviderConfig
+	Store            store.Store
+	WebDevURL        string
+	Logger           *slog.Logger
+	Logs             *observability.LogBuffer
+	Plugins          *pluginhost.Manager
+	Providers        map[string]provider.ProviderConfig
+	Permissions      permission.Ruleset
+	AgentPermissions map[string]permission.Ruleset
 }
 
 func New(cfg Config) *Server {
@@ -66,17 +71,19 @@ func New(cfg Config) *Server {
 	}
 	provider.RegisterConfig(cfg.Providers)
 	s := &Server{
-		store:          cfg.Store,
-		router:         chi.NewRouter(),
-		aborts:         newAbortRegistry(),
-		events:         newSessionEventBroker(),
-		webDevURL:      cfg.WebDevURL,
-		logger:         logger,
-		logs:           cfg.Logs,
-		plugins:        cfg.Plugins,
-		providers:      cfg.Providers,
-		shutdownCtx:    ctx,
-		shutdownCancel: cancel,
+		store:            cfg.Store,
+		router:           chi.NewRouter(),
+		aborts:           newAbortRegistry(),
+		events:           newSessionEventBroker(),
+		webDevURL:        cfg.WebDevURL,
+		logger:           logger,
+		logs:             cfg.Logs,
+		plugins:          cfg.Plugins,
+		providers:        cfg.Providers,
+		permissions:      cfg.Permissions,
+		agentPermissions: cfg.AgentPermissions,
+		shutdownCtx:      ctx,
+		shutdownCancel:   cancel,
 	}
 
 	s.setupMiddleware()

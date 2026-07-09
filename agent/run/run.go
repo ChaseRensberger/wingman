@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -515,6 +518,11 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		r.emit(ToolExecutionEndEvent{Result: res})
 		return res, nil
 	}
+	if res, ok := r.checkPermission(call); !ok {
+		res = r.runAfterToolCall(ctx, call, res)
+		r.emit(ToolExecutionEndEvent{Result: res})
+		return res, nil
+	}
 	start := time.Now()
 	toolResult, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
 	duration := time.Since(start)
@@ -535,6 +543,111 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	res = r.runAfterToolCall(ctx, call, res)
 	r.emit(ToolExecutionEndEvent{Result: res})
 	return res, nil
+}
+
+func (r *runner) checkPermission(call ToolCall) (ToolResult, bool) {
+	if len(r.cfg.Permissions) == 0 {
+		return ToolResult{}, true
+	}
+	action, resources := permissionTarget(call, r.cfg.WorkDir)
+	if len(resources) == 0 {
+		resources = []string{"*"}
+	}
+	var askResource string
+	for _, resource := range resources {
+		decision := permission.Evaluate(action, resource, r.cfg.Permissions, permission.EffectAllow)
+		switch decision.Effect {
+		case permission.EffectDeny:
+			return permissionToolResult(call, permission.EffectDeny, action, resource), false
+		case permission.EffectAsk:
+			askResource = resource
+		}
+	}
+	if askResource != "" {
+		return permissionToolResult(call, permission.EffectAsk, action, askResource), false
+	}
+	return ToolResult{}, true
+}
+
+func permissionToolResult(call ToolCall, effect permission.Effect, action, resource string) ToolResult {
+	label := "permission denied"
+	if effect == permission.EffectAsk {
+		label = "permission required"
+	}
+	return ToolResult{
+		CallID:  call.ID,
+		Name:    call.Name,
+		Args:    call.Args,
+		Output:  fmt.Sprintf("%s: %s %s", label, action, resource),
+		IsError: true,
+		Metadata: map[string]any{
+			"permission": map[string]any{
+				"effect":   string(effect),
+				"action":   action,
+				"resource": resource,
+			},
+		},
+	}
+}
+
+func permissionTarget(call ToolCall, workDir string) (string, []string) {
+	switch call.Name {
+	case "write", "edit", "apply_patch":
+		return "edit", pathResources(call, workDir)
+	case "read":
+		return "read", pathResources(call, workDir)
+	case "bash":
+		return "bash", []string{stringArg(call.Args, "command", "*")}
+	case "glob", "grep":
+		return call.Name, []string{stringArg(call.Args, "pattern", "*")}
+	case "webfetch":
+		return "webfetch", []string{stringArg(call.Args, "url", "*")}
+	case "websearch":
+		return "websearch", []string{stringArg(call.Args, "query", "*")}
+	default:
+		return call.Name, []string{"*"}
+	}
+}
+
+func pathResources(call ToolCall, workDir string) []string {
+	if call.Name == "apply_patch" {
+		return []string{"*"}
+	}
+	path := stringArg(call.Args, "filePath", "")
+	if path == "" {
+		path = stringArg(call.Args, "path", "")
+	}
+	if path == "" {
+		return []string{"*"}
+	}
+	if workDir != "" {
+		if rel := relativeResource(workDir, path); rel != "" {
+			return []string{rel}
+		}
+	}
+	return []string{filepath.ToSlash(filepath.Clean(path))}
+}
+
+func relativeResource(workDir, raw string) string {
+	path := raw
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workDir, path)
+	}
+	path = filepath.Clean(path)
+	workDir = filepath.Clean(workDir)
+	rel, err := filepath.Rel(workDir, path)
+	if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+func stringArg(args map[string]any, key, fallback string) string {
+	value, ok := args[key].(string)
+	if !ok || value == "" {
+		return fallback
+	}
+	return value
 }
 
 func validateToolInput(t tool.Tool, args map[string]any) error {
