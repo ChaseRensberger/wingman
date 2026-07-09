@@ -15,6 +15,10 @@ Wingman reads global configuration from:
 
 This file is for daemon-wide settings that apply across clients.
 
+Set `XDG_CONFIG_HOME` to change the config root. For example, when it is set to
+`~/settings`, Wingman reads `~/settings/wingman/wingman.json`. The default path
+is the same on Linux and macOS.
+
 ## Precedence
 
 Configuration is resolved in this order:
@@ -77,6 +81,7 @@ The file is parsed as strict JSON:
 |---|---:|---:|---|
 | `server` | object | no | Server defaults used by `wingman serve` and `wingman up`. |
 | `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
+| `mcp` | object | no | Configured Model Context Protocol servers. |
 | `plugins` | object | no | External plugin discovery defaults. |
 | `models` | object | no | Reserved model-related defaults. |
 | `permissions` | string, object, or rule array | no | Daemon-wide tool permission rules. |
@@ -142,6 +147,23 @@ wingman serve --no-plugins
 ```
 
 There is no config-file equivalent for `--no-plugins`.
+
+## `mcp`
+
+`mcp` is a map of Model Context Protocol server names to server definitions. Enabled servers connect when Wingman starts.
+
+| Field | Type | Required | Description |
+|---|---:|---:|---|
+| `type` | string | yes | `local` for a stdio subprocess or `remote` for an HTTP MCP endpoint. |
+| `command` | string array | local | Executable followed by arguments for a local server. |
+| `cwd` | string | no | Working directory for a local server. Supports `~` and `~/...` expansion. |
+| `environment` | object | no | Environment variables supplied to a local server. |
+| `url` | string | remote | Remote MCP endpoint URL. Wingman tries streamable HTTP, then SSE. |
+| `headers` | object | no | HTTP headers supplied to a remote server. |
+| `enabled` | boolean | no | Whether the server connects at startup. Defaults to `true`. |
+| `timeout` | number | no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
+
+See [MCP Servers](/configure/mcp) for local and remote examples, status checks, and current limits.
 
 ## `permissions`
 

@@ -6,7 +6,7 @@ order: 3
 
 # Global Config
 
-Wingman is configured per local user. Global files live under:
+Wingman is configured per local user. By default, global files live under:
 
 ```text
 ~/.config/wingman/
@@ -14,13 +14,18 @@ Wingman is configured per local user. Global files live under:
 
 Use global config for daemon-wide settings that apply across clients and projects.
 
+Set `XDG_CONFIG_HOME` to use a different config root. For example,
+`XDG_CONFIG_HOME=~/settings` makes the global config file
+`~/settings/wingman/wingman.json`. This behavior is the same on Linux and
+macOS.
+
 ## Configuration Surfaces
 
 Wingman has three main configuration surfaces:
 
 | Concern | Where it lives |
 |---|---|
-| Server bind address, database path, logs, plugin dirs, provider routes, custom provider models | `~/.config/wingman/wingman.json` and CLI flags |
+| Server bind address, database path, logs, plugin dirs, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags |
 | Provider API keys | SQLite auth store through `PUT /provider/auth` |
 | External plugin manifests | `~/.config/wingman/plugins/` plus any extra plugin dirs |
 
@@ -89,6 +94,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 | Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |
 | Choose between `model_ref` and `model_route` | [Models](/configure/models) |
 | Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
+| Connect MCP servers and tools | [MCP Servers](/configure/mcp) |
 | Check all supported config fields | [Config Schema](/reference/config-schema) |
 
 ## Defaults
