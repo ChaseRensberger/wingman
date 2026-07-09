@@ -83,14 +83,16 @@ func loadConfig() (fileConfig, error) {
 }
 
 func configDir() (string, error) {
-	if os.Geteuid() == 0 && os.Getenv("SUDO_USER") != "" {
-		u, err := user.Lookup(os.Getenv("SUDO_USER"))
-		if err != nil {
-			return "", err
+	if os.Geteuid() != 0 || os.Getenv("SUDO_USER") == "" {
+		if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+			return dir, nil
 		}
-		return filepath.Join(u.HomeDir, ".config"), nil
 	}
-	return os.UserConfigDir()
+	home, err := effectiveHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config"), nil
 }
 
 func (c fileConfig) host() string {
