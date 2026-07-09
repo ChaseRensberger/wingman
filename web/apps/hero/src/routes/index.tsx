@@ -310,10 +310,6 @@ function ComingSoonSection() {
 			</div>
 			<div className="grid gap-3 sm:grid-cols-2">
 				<div className="rounded-sm border bg-card p-4">
-					<h3 className="font-semibold">MCP support</h3>
-					<p className="mt-1 text-sm text-muted-foreground">Connect Wingman agents to local or remote Model Context Protocol servers.</p>
-				</div>
-				<div className="rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">Plugin Registry</h3>
 					<p className="mt-1 text-sm text-muted-foreground">Discover and install community plugins from a shared registry.</p>
 				</div>
