@@ -549,7 +549,16 @@ func (r *runner) checkPermission(call ToolCall) (ToolResult, bool) {
 	if len(r.cfg.Permissions) == 0 {
 		return ToolResult{}, true
 	}
-	action, resources := permissionTarget(call, r.cfg.WorkDir)
+	action, resources, err := permissionTarget(call, r.cfg.WorkDir)
+	if err != nil {
+		return ToolResult{
+			CallID:  call.ID,
+			Name:    call.Name,
+			Args:    call.Args,
+			Output:  err.Error(),
+			IsError: true,
+		}, false
+	}
 	if len(resources) == 0 {
 		resources = []string{"*"}
 	}
@@ -590,22 +599,31 @@ func permissionToolResult(call ToolCall, effect permission.Effect, action, resou
 	}
 }
 
-func permissionTarget(call ToolCall, workDir string) (string, []string) {
+func permissionTarget(call ToolCall, workDir string) (string, []string, error) {
+	if permissioned, ok := call.Tool.(tool.PermissionedTool); ok {
+		check, err := permissioned.Permission(call.Args, workDir)
+		if err != nil {
+			return "", nil, err
+		}
+		return check.Action, check.Resources, nil
+	}
 	switch call.Name {
-	case "write", "edit", "apply_patch":
-		return "edit", pathResources(call, workDir)
+	case "write", "edit":
+		return "edit", pathResources(call, workDir), nil
+	case "apply_patch":
+		return "edit", []string{"*"}, nil
 	case "read":
-		return "read", pathResources(call, workDir)
+		return "read", pathResources(call, workDir), nil
 	case "bash":
-		return "bash", []string{stringArg(call.Args, "command", "*")}
+		return "bash", []string{stringArg(call.Args, "command", "*")}, nil
 	case "glob", "grep":
-		return call.Name, []string{stringArg(call.Args, "pattern", "*")}
+		return call.Name, []string{stringArg(call.Args, "pattern", "*")}, nil
 	case "webfetch":
-		return "webfetch", []string{stringArg(call.Args, "url", "*")}
+		return "webfetch", []string{stringArg(call.Args, "url", "*")}, nil
 	case "websearch":
-		return "websearch", []string{stringArg(call.Args, "query", "*")}
+		return "websearch", []string{stringArg(call.Args, "query", "*")}, nil
 	default:
-		return call.Name, []string{"*"}
+		return call.Name, []string{"*"}, nil
 	}
 }
 

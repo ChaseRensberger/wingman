@@ -33,7 +33,7 @@ Rules match an action and a resource.
 | Action | Resource |
 |---|---|
 | `read` | File or directory path. |
-| `edit` | File path for `edit`, `write`, and `apply_patch`. |
+| `edit` | File path for `edit` and `write`; every touched path for `apply_patch`. |
 | `grep` | Search pattern. |
 | `glob` | Glob pattern. |
 | `bash` | Shell command string. |
@@ -224,7 +224,6 @@ Current v1 limits:
 
 - `ask` does not yet pause and wait for a client reply.
 - `allow always` saved approvals are not implemented yet.
-- `apply_patch` currently checks the broad `edit *` resource instead of each touched file path.
 - External directory approvals are not separate because directory-scoped tools are contained to the session working directory.
 
 For remote or multi-user deployments, Wingman still needs the deferred inbound-auth and sandbox story.

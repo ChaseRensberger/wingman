@@ -58,6 +58,48 @@ func (t *ApplyPatchTool) Definition() Definition {
 
 func (t *ApplyPatchTool) DirectoryScoped() {}
 
+func (t *ApplyPatchTool) Permission(params map[string]any, workDir string) (PermissionCheck, error) {
+	patchText, ok := params["patchText"].(string)
+	if !ok || strings.TrimSpace(patchText) == "" {
+		return PermissionCheck{}, fmt.Errorf("patchText is required")
+	}
+	if workDir == "" {
+		return PermissionCheck{}, fmt.Errorf("workDir is required for apply_patch tool")
+	}
+	sections, err := parsePatchSections(patchText)
+	if err != nil {
+		return PermissionCheck{}, err
+	}
+	seen := make(map[string]bool, len(sections)*2)
+	resources := make([]string, 0, len(sections))
+	addResource := func(raw string) error {
+		if raw == "" {
+			return nil
+		}
+		_, rel, err := resolveWorkPath(workDir, raw)
+		if err != nil {
+			return err
+		}
+		if !seen[rel] {
+			seen[rel] = true
+			resources = append(resources, rel)
+		}
+		return nil
+	}
+	for _, section := range sections {
+		if err := addResource(section.Path); err != nil {
+			return PermissionCheck{}, err
+		}
+		if err := addResource(section.MovePath); err != nil {
+			return PermissionCheck{}, err
+		}
+	}
+	if len(resources) == 0 {
+		resources = []string{"*"}
+	}
+	return PermissionCheck{Action: "edit", Resources: resources, Save: []string{"*"}}, nil
+}
+
 func (t *ApplyPatchTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
 	patchText, ok := params["patchText"].(string)
 	if !ok || strings.TrimSpace(patchText) == "" {

@@ -54,6 +54,22 @@ type SequentialTool interface {
 	Sequential() bool
 }
 
+// PermissionCheck describes the action/resources a tool call needs before it
+// executes. Tools with non-trivial inputs, such as apply_patch touching multiple
+// files, implement PermissionedTool to avoid coarse fallback matching.
+type PermissionCheck struct {
+	Action    string
+	Resources []string
+	Save      []string
+}
+
+// PermissionedTool is an optional interface for tools that can describe their
+// own permission target from validated input parameters.
+type PermissionedTool interface {
+	Tool
+	Permission(params map[string]any, workDir string) (PermissionCheck, error)
+}
+
 // DirectoryScopedTool is a marker interface for tools that operate on the
 // local filesystem. The session start path validates that if any allowed tool
 // implements this marker, the session has a non-empty working directory.
