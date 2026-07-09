@@ -19,6 +19,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/chaserensberger/wingman/internal/observability"
+	wingmcp "github.com/chaserensberger/wingman/mcp"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
 	_ "github.com/chaserensberger/wingman/models/providers/deepseek"
@@ -58,6 +59,7 @@ type fileConfig struct {
 	Permissions      permission.Ruleset                 `json:"permissions"`
 	AgentPermissions map[string]permission.Ruleset      `json:"agent_permissions"`
 	Provider         map[string]provider.ProviderConfig `json:"provider"`
+	MCP              map[string]wingmcp.ServerConfig    `json:"mcp"`
 }
 
 func loadConfig() (fileConfig, error) {
@@ -306,12 +308,16 @@ func runServe(cfg fileConfig) cli.ActionFunc {
 			logger.Info("plugins initialized", "dirs", dirs)
 		}
 
+		mcpManager := wingmcp.New(ctx, wingmcp.Config{Servers: cfg.MCP})
+		defer mcpManager.Close()
+
 		srv := server.New(server.Config{
 			Store:            st,
 			WebDevURL:        cmd.String("ui-dev"),
 			Logger:           logger,
 			Logs:             logs,
 			Plugins:          plugins,
+			MCP:              mcpManager,
 			Providers:        cfg.Provider,
 			Permissions:      cfg.Permissions,
 			AgentPermissions: cfg.AgentPermissions,

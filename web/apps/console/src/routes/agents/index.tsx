@@ -24,11 +24,9 @@ import { wfetch } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
-import type { Agent, Provider, ProviderModel } from "@/lib/types";
+import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-
-const builtInTools = ["apply_patch", "bash", "read", "write", "edit", "glob", "grep", "webfetch", "websearch"];
 
 interface AgentForm {
   name: string;
@@ -44,7 +42,7 @@ const emptyForm: AgentForm = {
   instructions: "",
   provider: "",
   model: "",
-  tools: builtInTools,
+  tools: [],
   outputSchema: "",
 };
 
@@ -57,6 +55,7 @@ function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
+  const [toolCatalog, setToolCatalog] = useState<ToolCatalogItem[]>([]);
   const [form, setForm] = useState<AgentForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,12 +66,14 @@ function AgentsPage() {
 
   async function load() {
     try {
-      const [agentData, providerData] = await Promise.all([
+      const [agentData, providerData, toolData] = await Promise.all([
         wfetch("/agents") as Promise<Agent[]>,
         wfetch("/provider") as Promise<Provider[]>,
+        wfetch("/tools") as Promise<ToolsResponse>,
       ]);
       setAgents(agentData);
       setProviders(providerData);
+      setToolCatalog(toolData.tools ?? []);
       const selectableProviders = providerData.filter(isProviderSelectable);
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
@@ -106,7 +107,7 @@ function AgentsPage() {
   }
 
   function openNew() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, tools: toolCatalog.map((tool) => tool.name) });
     setCreateOpen((open) => !open);
   }
 
@@ -138,6 +139,7 @@ function AgentsPage() {
   }
 
   const providerModels = models[form.provider] ?? [];
+  const availableTools = toolCatalog.map((tool) => tool.name);
   const selectableProviders = providers.filter(isProviderSelectable);
   const filteredAgents = agents.filter((agent) => {
     const haystack = `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
@@ -256,7 +258,7 @@ function AgentsPage() {
               <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-medium">Tools</label>
                 <div className="flex gap-1">
-                  <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => ({ ...prev, tools: builtInTools }))}>
+                  <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => ({ ...prev, tools: availableTools }))}>
                     All on
                   </Button>
                   <Button type="button" variant="ghost" size="xs" onClick={() => setForm((prev) => ({ ...prev, tools: [] }))}>
@@ -265,15 +267,16 @@ function AgentsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {builtInTools.map((tool) => (
+                {toolCatalog.map((tool) => (
                   <Button
-                    key={tool}
+                    key={tool.name}
                     type="button"
-                    onClick={() => toggleTool(tool)}
+                    onClick={() => toggleTool(tool.name)}
                     variant="ghost"
                     className="h-auto rounded-md p-0"
+                    title={`${tool.source}${tool.server ? `: ${tool.server}` : ""}`}
                   >
-                    <Badge variant={form.tools.includes(tool) ? "default" : "outline"}>{tool}</Badge>
+                    <Badge variant={form.tools.includes(tool.name) ? "default" : "outline"}>{tool.name}</Badge>
                   </Button>
                 ))}
               </div>

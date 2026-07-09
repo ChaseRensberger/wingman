@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as IndexRouteImport } from './routes/index'
@@ -19,6 +20,11 @@ import { Route as SessionsSessionIdRouteImport } from './routes/sessions/$sessio
 import { Route as ProvidersProviderIdRouteImport } from './routes/providers/$providerId'
 import { Route as AgentsAgentIdRouteImport } from './routes/agents/$agentId'
 
+const ToolsRoute = ToolsRouteImport.update({
+  id: '/tools',
+  path: '/tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
+  '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
+  '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
+  '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
   '/providers/$providerId': typeof ProvidersProviderIdRoute
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/'
     | '/logs'
     | '/settings'
+    | '/tools'
     | '/agents/$agentId'
     | '/providers/$providerId'
     | '/sessions/$sessionId'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/'
     | '/logs'
     | '/settings'
+    | '/tools'
     | '/agents/$agentId'
     | '/providers/$providerId'
     | '/sessions/$sessionId'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/logs'
     | '/settings'
+    | '/tools'
     | '/agents/$agentId'
     | '/providers/$providerId'
     | '/sessions/$sessionId'
@@ -139,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LogsRoute: typeof LogsRoute
   SettingsRoute: typeof SettingsRoute
+  ToolsRoute: typeof ToolsRoute
   AgentsAgentIdRoute: typeof AgentsAgentIdRoute
   ProvidersProviderIdRoute: typeof ProvidersProviderIdRoute
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
@@ -149,6 +162,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tools': {
+      id: '/tools'
+      path: '/tools'
+      fullPath: '/tools'
+      preLoaderRoute: typeof ToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -219,6 +239,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LogsRoute: LogsRoute,
   SettingsRoute: SettingsRoute,
+  ToolsRoute: ToolsRoute,
   AgentsAgentIdRoute: AgentsAgentIdRoute,
   ProvidersProviderIdRoute: ProvidersProviderIdRoute,
   SessionsSessionIdRoute: SessionsSessionIdRoute,

@@ -182,3 +182,31 @@ export interface LogEntry {
   msg?: string;
   attrs?: Record<string, unknown>;
 }
+
+export interface ToolCatalogItem {
+  name: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  source: "native" | "plugin" | "mcp" | string;
+  plugin?: string;
+  server?: string;
+  remote_name?: string;
+  status?: string;
+}
+
+export interface ToolsResponse {
+  tools: ToolCatalogItem[];
+}
+
+export interface MCPServer {
+  name: string;
+  type: string;
+  status: string;
+  error?: string;
+  tools?: string[];
+  tool_count: number;
+}
+
+export interface MCPResponse {
+  servers: MCPServer[];
+}

@@ -1,7 +1,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import WingmanIcon from "@/assets/icon-128.png";
 import { Button } from "@wingman/core/components/core/button";
-import { FileTextIcon, GearIcon, LightningIcon, SolarRoofIcon, StackIcon } from "@phosphor-icons/react";
+import { FileTextIcon, GearIcon, LightningIcon, SolarRoofIcon, StackIcon, WrenchIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 function NavLink({
@@ -45,6 +45,7 @@ export default function App() {
 					<nav className="flex items-center gap-3 text-xs text-muted-foreground">
 						<NavLink to="/sessions" icon={StackIcon} label="Sessions" />
 						<NavLink to="/agents" icon={LightningIcon} label="Agents" />
+						<NavLink to="/tools" icon={WrenchIcon} label="Tools" />
 						<NavLink to="/providers" icon={SolarRoofIcon} label="Providers" />
 						<NavLink to="/logs" icon={FileTextIcon} label="Logs" />
 						<NavLink to="/settings" icon={GearIcon} label="Settings" />
