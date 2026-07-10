@@ -60,7 +60,7 @@ Example:
         "auth": false
       },
       "models": {
-        "gpt-5.5": {
+        "gpt-5.6-terra": {
           "api": "openai_responses",
           "context_window": 1050000,
           "max_output": 128000,

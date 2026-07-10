@@ -15,7 +15,7 @@ Examples:
 
 ```text
 anthropic/claude-sonnet-5
-openai/gpt-5.5
+openai/gpt-5.6-terra
 google/gemini-3.5-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
@@ -47,7 +47,7 @@ Message requests can override the agent's model for one turn:
 ```json
 {
   "agent_id": "agt_...",
-  "model_ref": "openai/gpt-5.5",
+  "model_ref": "openai/gpt-5.6-terra",
   "message": "Use this model for this turn."
 }
 ```
@@ -78,7 +78,7 @@ Agents still use normal refs:
 ```json
 {
   "name": "Assistant",
-  "model_ref": "openai/gpt-5.5"
+  "model_ref": "openai/gpt-5.6-terra"
 }
 ```
 
@@ -88,7 +88,7 @@ Use provider route overlays when a known provider should go through a proxy, loc
 
 Use config-defined providers for daemon-wide custom providers and models. Use `model_route` only when a specific agent/request needs explicit route metadata that should travel with that agent or request.
 
-For example, a custom provider in `~/.config/wingman/wingman.json` can add `exe-openai/gpt-5.5` to the normal provider and model APIs:
+For example, a custom provider in `~/.config/wingman/wingman.json` can add `exe-openai/gpt-5.6-terra` to the normal provider and model APIs:
 
 ```json
 {
@@ -100,7 +100,7 @@ For example, a custom provider in `~/.config/wingman/wingman.json` can add `exe-
         "auth": false
       },
       "models": {
-        "gpt-5.5": {
+        "gpt-5.6-terra": {
           "api": "openai_responses",
           "context_window": 1050000,
           "max_output": 128000,
@@ -122,7 +122,7 @@ Agents can then use the custom ref directly:
 ```json
 {
   "name": "Assistant",
-  "model_ref": "exe-openai/gpt-5.5"
+  "model_ref": "exe-openai/gpt-5.6-terra"
 }
 ```
 

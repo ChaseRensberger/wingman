@@ -15,7 +15,7 @@ Provider configuration has three separate pieces:
 | Provider credentials | SQLite auth store through `/provider/auth` | API keys used by the Wingman server. |
 | Provider route and model config | `~/.config/wingman/wingman.json` | Runtime routing changes and custom provider/model definitions. |
 
-Agents store `model_ref` values such as `openai/gpt-5.5`. Provider route overlays can change where that ref is sent without changing the agent.
+Agents store `model_ref` values such as `openai/gpt-5.6-terra`. Provider route overlays can change where that ref is sent without changing the agent.
 
 ## Store Provider Auth
 
@@ -81,17 +81,17 @@ With that config, agents keep normal catalog model refs:
 {
   "name": "Assistant",
   "instructions": "Be helpful and concise.",
-  "model_ref": "openai/gpt-5.5"
+  "model_ref": "openai/gpt-5.6-terra"
 }
 ```
 
-The route changes at runtime. The persisted agent still says `openai/gpt-5.5`.
+The route changes at runtime. The persisted agent still says `openai/gpt-5.6-terra`.
 
 ## Add A Custom Provider
 
 Use a config-defined provider when you want a separate provider ID and model list instead of rewriting an existing catalog provider.
 
-This keeps gateway refs separate from direct provider refs. Agents can use refs like `exe-openai/gpt-5.5`, while regular `openai/*` refs keep using OpenAI directly.
+This keeps gateway refs separate from direct provider refs. Agents can use refs like `exe-openai/gpt-5.6-terra`, while regular `openai/*` refs keep using OpenAI directly.
 
 ```json
 {
@@ -103,7 +103,7 @@ This keeps gateway refs separate from direct provider refs. Agents can use refs 
         "auth": false
       },
       "models": {
-        "gpt-5.5": {
+        "gpt-5.6-terra": {
           "api": "openai_responses",
           "context_window": 1050000,
           "max_output": 128000,
@@ -123,7 +123,7 @@ This keeps gateway refs separate from direct provider refs. Agents can use refs 
 After restarting the server, the provider appears in `/provider`, its models appear in `/provider/exe-openai/models`, and agents can use:
 
 ```text
-exe-openai/gpt-5.5
+exe-openai/gpt-5.6-terra
 ```
 
 ## Auth Behavior
@@ -154,7 +154,7 @@ Use custom provider IDs when you want to keep direct provider refs and exe.dev g
         "auth": false
       },
       "models": {
-        "gpt-5.5": {
+        "gpt-5.6-terra": {
           "api": "openai_responses",
           "context_window": 1050000,
           "max_output": 128000,
@@ -193,7 +193,7 @@ Use custom provider IDs when you want to keep direct provider refs and exe.dev g
 Use these refs after restarting Wingman:
 
 ```text
-exe-openai/gpt-5.5
+exe-openai/gpt-5.6-terra
 exe-anthropic/claude-sonnet-5
 ```
 
@@ -221,7 +221,7 @@ If you want all existing `openai/*` and `anthropic/*` refs to route through exe.
 Use normal model refs with the overlay approach:
 
 ```text
-openai/gpt-5.5
+openai/gpt-5.6-terra
 anthropic/claude-sonnet-5
 ```
 
@@ -243,7 +243,7 @@ If a provider call fails, check these in order:
 
 1. Is the server using the config file you edited?
 2. Does `curl -sS http://localhost:2323/provider/auth | jq` show the provider as configured, unless you intentionally set `auth: false`?
-3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.5`, `anthropic/claude-sonnet-5`, `google/gemini-3.5-flash`, or `deepseek/deepseek-v4-pro`?
+3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.6-terra`, `anthropic/claude-sonnet-5`, `google/gemini-3.5-flash`, or `deepseek/deepseek-v4-pro`?
 4. If you set `baseURL`, does it include the provider's expected API prefix, such as `/v1`?
 5. If you set `auth: false`, does the gateway actually accept unauthenticated requests?
 6. If you use `model_route`, does the endpoint speak the selected protocol?

@@ -325,7 +325,7 @@ type Request struct {
 }
 
 // ModelRef identifies one concrete provider/model route. New WingModels APIs
-// use provider-qualified model refs such as "openai/gpt-5.5" instead of
+// use provider-qualified model refs such as "openai/gpt-5.6-terra" instead of
 // separate conceptual provider and model fields.
 type ModelRef struct {
 	Provider      string            `json:"provider,omitempty"`

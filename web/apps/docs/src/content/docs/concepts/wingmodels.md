@@ -55,7 +55,7 @@ Examples:
 
 ```text
 anthropic/claude-sonnet-5
-openai/gpt-5.5
+openai/gpt-5.6-terra
 google/gemini-3.5-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
@@ -118,7 +118,7 @@ Wingman's config can overlay catalog provider routes for the running daemon. The
 }
 ```
 
-This keeps persisted agents simple: `model_ref` remains `openai/gpt-5.5`, while the daemon decides where OpenAI requests are routed.
+This keeps persisted agents simple: `model_ref` remains `openai/gpt-5.6-terra`, while the daemon decides where OpenAI requests are routed.
 
 See [Providers](/configure/providers) for auth and gateway details.
 

@@ -31,7 +31,7 @@ func Generate(ctx context.Context, c Client, req Request) (*Message, error) {
 	return stream.Drain()
 }
 
-// ParseModelRef splits a provider-qualified model ref like "openai/gpt-5.5".
+// ParseModelRef splits a provider-qualified model ref like "openai/gpt-5.6-terra".
 func ParseModelRef(ref string) (ModelRef, bool) {
 	for i := 0; i < len(ref); i++ {
 		if ref[i] == '/' && i > 0 && i+1 < len(ref) {
