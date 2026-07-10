@@ -308,18 +308,18 @@ function ComingSoonSection() {
 				<SectionHeader title="Coming Soon" markerId="07" />
 				<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
 			</div>
-			<div className="grid gap-3 sm:grid-cols-2">
-				<div className="rounded-sm border bg-card p-4">
+			<div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
+				<div className="h-full rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">Plugin Registry</h3>
 					<p className="mt-1 text-sm text-muted-foreground">Discover and install community plugins from a shared registry.</p>
 				</div>
 
-				<div className="rounded-sm border bg-card p-4">
+				<div className="h-full rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">Provider Debug Tools</h3>
 					<p className="mt-1 text-sm text-muted-foreground">Inspect model resolution, prepared provider requests, and normalized streams without writing a client.</p>
 				</div>
 
-				<div className="rounded-sm border bg-card p-4">
+				<div className="h-full rounded-sm border bg-card p-4">
 					<h3 className="font-semibold">TypeScript SDK</h3>
 					<p className="mt-1 text-sm text-muted-foreground">I want to make sure you can use Wingman in any language you would like.</p>
 				</div>
