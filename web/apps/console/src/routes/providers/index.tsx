@@ -7,6 +7,7 @@ import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { ClientPagination, useClientPagination } from "@/components/client-pagination";
 
 function formatAuthType(authType: Provider["auth_types"][number]) {
   return authType.name || authType.type.replaceAll("_", " ");
@@ -58,6 +59,7 @@ function ProvidersPage() {
     const haystack = `${provider.name} ${provider.id}`.toLowerCase();
     return haystack.includes(filter.toLowerCase());
   });
+  const providerPages = useClientPagination(filteredProviders, 12, filter);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -91,6 +93,7 @@ function ProvidersPage() {
       {loading ? (
         <div className="py-8 text-sm text-muted-foreground">Loading...</div>
       ) : (
+        <>
         <Table>
           <TableHeader>
             <TableRow>
@@ -102,7 +105,7 @@ function ProvidersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredProviders.map((provider) => {
+            {providerPages.pageItems.map((provider) => {
               return (
                 <TableRow
                   key={provider.id}
@@ -132,6 +135,8 @@ function ProvidersPage() {
             })}
           </TableBody>
         </Table>
+        <ClientPagination {...providerPages} onPageChange={providerPages.setPage} />
+        </>
       )}
     </div>
   );

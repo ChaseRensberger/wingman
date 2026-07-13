@@ -27,6 +27,7 @@ import { timeAgo } from "@/lib/utils";
 import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { ClientPagination, useClientPagination } from "@/components/client-pagination";
 
 interface AgentForm {
   name: string;
@@ -145,6 +146,7 @@ function AgentsPage() {
     const haystack = `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
     return haystack.includes(filter.toLowerCase());
   });
+  const agentPages = useClientPagination(filteredAgents, 12, filter);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -312,6 +314,7 @@ function AgentsPage() {
           <EmptyDescription>Create an agent to define reusable model instructions and tools.</EmptyDescription>
         </Empty>
       ) : (
+        <>
         <Table>
           <TableHeader>
             <TableRow>
@@ -322,7 +325,7 @@ function AgentsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAgents.map((agent) => (
+            {agentPages.pageItems.map((agent) => (
               <TableRow
                 key={agent.id}
                 className="cursor-pointer"
@@ -344,6 +347,8 @@ function AgentsPage() {
             ))}
           </TableBody>
         </Table>
+        <ClientPagination {...agentPages} onPageChange={agentPages.setPage} />
+        </>
       )}
     </div>
   );

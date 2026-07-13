@@ -5,6 +5,7 @@ import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@wingman/core/components/core/card";
 import { Input } from "@wingman/core/components/core/input";
+import { ClientPagination, useClientPagination } from "@/components/client-pagination";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import type { LogEntry } from "@/lib/types";
@@ -53,6 +54,7 @@ function LogsPage() {
 		const haystack = `${log.time || ""} ${log.level || ""} ${log.msg || ""} ${log.raw}`.toLowerCase();
 		return haystack.includes(filter.toLowerCase());
 	});
+	const logPages = useClientPagination(filtered, 50, `${level}:${filter}`);
 
 	return (
 		<div className="mx-auto max-w-7xl px-4 py-6">
@@ -106,12 +108,13 @@ function LogsPage() {
 							<div className="p-6 text-sm text-muted-foreground">{loading ? "Loading logs..." : "No logs match the current filters."}</div>
 						) : (
 							<div className="max-h-[70vh] overflow-auto">
-								{filtered.map((log, index) => (
+								{logPages.pageItems.map((log, index) => (
 									<LogRow key={`${log.time || "raw"}-${index}`} log={log} />
 								))}
 							</div>
 						)}
 					</div>
+					<ClientPagination {...logPages} onPageChange={logPages.setPage} />
 				</CardContent>
 			</Card>
 		</div>
