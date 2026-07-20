@@ -54,6 +54,10 @@ export function getClientId(): string | null {
   return localStorage.getItem(CLIENT_ID_KEY);
 }
 
+export function setClientId(clientID: string) {
+  localStorage.setItem(CLIENT_ID_KEY, clientID);
+}
+
 export async function wfetch(
   input: RequestInfo | URL,
   init?: RequestInit,
