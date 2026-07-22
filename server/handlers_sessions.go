@@ -22,6 +22,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
+	_ "github.com/chaserensberger/wingman/models/providers/opencodego"
 	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 )
 
@@ -131,6 +132,24 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+
+	calls, err := s.store.ListModelCalls(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, calls)
+}
+
 type SessionDetailResponse struct {
 	*store.Session
 	History         []models.Message `json:"history"`
@@ -170,7 +189,7 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 	if history == nil {
 		history = []models.Message{}
 	}
-	return history, nil
+	return models.NormalizeMessages(history), nil
 }
 
 type UpdateSessionRequest struct {

@@ -146,7 +146,9 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 				Client:    r.cfg.Client,
 				Model:     r.cfg.Model,
 				ModelInfo: r.cfg.ModelInfo,
-				Sink:      r.cfg.Sink,
+				// Transform hooks must enqueue through the runner rather than
+				// bypassing its serialized sink drain.
+				Sink: SinkFunc(r.emit),
 			}
 			newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
 			if err != nil {
@@ -179,6 +181,9 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 
 		turn, err := r.runTurn(ctx, step)
 		if err != nil {
+			if turn.Assistant.Role != "" {
+				r.turns = append(r.turns, turn)
+			}
 			r.emitError(err)
 			// Distinguish abort from generic error so callers can decide
 			// whether to retry or surface the error.
@@ -362,18 +367,22 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CachedInputTokens += turnUsage.CachedInputTokens
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
-	r.messages = append(r.messages, *assistantMsg)
-	r.emit(MessageEvent{Message: *assistantMsg})
-
 	calls := extractToolCalls(*assistantMsg)
 	turn := Turn{
-		Step:      step,
-		Assistant: *assistantMsg,
-		Usage:     turnUsage,
+		Step:  step,
+		Usage: turnUsage,
 	}
 	if len(calls) == 0 {
+		r.messages = append(r.messages, *assistantMsg)
+		r.emit(MessageEvent{Message: *assistantMsg})
+		turn.Assistant = *assistantMsg
 		return turn, nil
 	}
+
+	// Retain the assistant turn before executing tools so a hook failure does
+	// not discard the model's tool calls. The terminal state is emitted below.
+	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, nil)
+	r.messages = append(r.messages, *assistantMsg)
 
 	// Resolve each call against the registry. Unknown-tool calls get a
 	// nil Tool; BeforeToolCall still fires so hooks can synthesize.
@@ -403,6 +412,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		for i := range resolved {
 			res, err := r.executeOne(ctx, resolved[i])
 			if err != nil {
+				r.finalizeToolTurn(&turn, assistantMsg, results)
 				return turn, err
 			}
 			results[i] = res
@@ -435,22 +445,84 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			}
 		}
 		if firstErr != nil {
+			r.finalizeToolTurn(&turn, assistantMsg, results)
 			return turn, firstErr
 		}
 	default:
 		return turn, fmt.Errorf("unknown ToolExecutionMode: %q", mode)
 	}
 
-	turn.Results = results
-
-	// Build a single tool result message containing all results in
-	// source order. Providers expect this shape: one message with
-	// role=tool whose content is a sequence of ToolResultPart blocks.
-	resultMsg := buildToolResultMessage(results)
-	r.messages = append(r.messages, resultMsg)
-	r.emit(MessageEvent{Message: resultMsg})
+	r.finalizeToolTurn(&turn, assistantMsg, results)
 
 	return turn, nil
+}
+
+func (r *runner) finalizeToolTurn(turn *Turn, assistantMsg *models.Message, results []ToolResult) {
+	turn.Results = completedToolResults(results)
+	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, turn.Results)
+	turn.Assistant = *assistantMsg
+	r.messages[len(r.messages)-1] = *assistantMsg
+	r.emit(MessageEvent{Message: *assistantMsg})
+}
+
+func completedToolResults(results []ToolResult) []ToolResult {
+	out := make([]ToolResult, 0, len(results))
+	for _, result := range results {
+		if result.CallID != "" {
+			out = append(out, result)
+		}
+	}
+	return out
+}
+
+func toolPartsFromResults(content models.Content, results []ToolResult) models.Content {
+	byCallID := make(map[string]ToolResult, len(results))
+	for _, result := range results {
+		byCallID[result.CallID] = result
+	}
+	out := make(models.Content, 0, len(content))
+	for _, part := range content {
+		var call models.ToolCallPart
+		switch p := part.(type) {
+		case models.ToolCallPart:
+			call = p
+		case models.ToolPart:
+			call = models.ToolCallPart{CallID: p.CallID, Name: p.Name, Input: p.Input}
+		default:
+			out = append(out, part)
+			continue
+		}
+		result, ok := byCallID[call.CallID]
+		if !ok {
+			out = append(out, models.ToolPart{
+				CallID: call.CallID,
+				Name:   call.Name,
+				State:  models.ToolStatePending,
+				Input:  call.Input,
+			})
+			continue
+		}
+		state := models.ToolStateCompleted
+		errorText := ""
+		if result.IsError {
+			state = models.ToolStateError
+			errorText = result.Output
+		}
+		completedAt := time.Now().UTC().UnixMilli()
+		startedAt := completedAt - result.Duration.Milliseconds()
+		out = append(out, models.ToolPart{
+			CallID:      call.CallID,
+			Name:        call.Name,
+			State:       state,
+			Input:       result.Args,
+			Output:      result.Output,
+			Metadata:    result.Metadata,
+			Error:       errorText,
+			StartedAt:   startedAt,
+			CompletedAt: completedAt,
+		})
+	}
+	return out
 }
 
 // executeOne runs the BeforeToolCall hook, dispatches the tool, runs the

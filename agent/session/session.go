@@ -521,12 +521,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		if extraSink != nil {
 			extraSink.OnEvent(e)
 		}
-		if ie, ok := e.(run.IterationEndEvent); ok && s.store != nil {
-			msgID := assistantMessageIDs[ie.Step]
-			if err := s.persistModelCall(ctx, msgID, ie.Step, ie.Turn.Assistant, model, modelInfo, ""); err != nil && persistErr == nil {
-				persistErr = err
-			}
-		}
 	})
 
 	cfg := run.Config{

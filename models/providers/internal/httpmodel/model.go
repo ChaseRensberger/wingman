@@ -183,6 +183,7 @@ func (m *Model) auth(req *http.Request) {
 }
 
 func (m *Model) body(req models.Request) (map[string]any, error) {
+	req.Messages = models.ExpandToolMessages(models.NormalizeMessages(req.Messages))
 	switch m.Protocol {
 	case OpenAIResponses:
 		return m.openAIResponsesBody(req)
@@ -502,8 +503,10 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 
 func parseOpenAIChat(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
 	choices, _ := event["choices"].([]any)
+	var choiceUsage models.Usage
 	if len(choices) > 0 {
 		choice, _ := choices[0].(map[string]any)
+		choiceUsage = openAIChatUsage(choice["usage"])
 		delta, _ := choice["delta"].(map[string]any)
 		if text, _ := delta["content"].(string); text != "" {
 			pushText(state, stream, "text-0", text)
@@ -541,7 +544,11 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 			state.finish = finishReason(reason, len(state.tools) > 0)
 		}
 	}
-	state.usage = openAIChatUsage(event["usage"])
+	if usage := openAIChatUsage(event["usage"]); !usage.Empty() {
+		state.usage = usage
+	} else if !choiceUsage.Empty() {
+		state.usage = choiceUsage
+	}
 }
 
 func parseAnthropic(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {

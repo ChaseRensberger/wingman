@@ -120,8 +120,10 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 - Text.
 - Image.
 - Reasoning.
-- Tool call.
-- Tool result.
+- Tool invocation. A tool part belongs to the assistant message that requested
+  it and records pending, running, completed, or error state. The provider
+  receives a derived tool result when the session continues; separate
+  tool-role messages are not stored in session history.
 - Structured output.
 - Plugin-defined opaque content.
 

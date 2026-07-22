@@ -124,4 +124,11 @@ See [Plugins](/concepts/plugins) for plugin installation and manifest details.
 
 ## Tool Results
 
-Tool outputs are returned to the model as text. Optional metadata is stored on the tool result part but is not sent as model-visible output. Tool errors become error-shaped tool results for the model to react to; they do not automatically fail the whole session turn unless the surrounding loop or request is cancelled.
+Tool outputs are returned to the model as text. Session history keeps each
+invocation on its assistant message as a tool part with pending, running,
+completed, or error state. Optional metadata is retained on that part but is
+not sent as model-visible output. If a pre-tool hook stops a run, Wingman keeps
+the pending tool part in history rather than discarding the model action. Tool
+errors become error-shaped results for the model to react to; they do not
+automatically fail the whole session turn unless the surrounding loop or
+request is cancelled.

@@ -250,6 +250,7 @@ func (s *Server) setupRoutes() {
 		r.Post("/", s.handleCreateSession)
 		r.Get("/", s.handleListSessions)
 		r.Get("/{id}", s.handleGetSession)
+		r.Get("/{id}/model-calls", s.handleListSessionModelCalls)
 		r.Put("/{id}", s.handleUpdateSession)
 		r.Delete("/{id}", s.handleDeleteSession)
 		r.Get("/{id}/events", s.handleSessionEvents)

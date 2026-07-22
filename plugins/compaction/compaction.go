@@ -465,6 +465,9 @@ func msgHasToolCall(msg models.Message) bool {
 		if _, ok := p.(models.ToolCallPart); ok {
 			return true
 		}
+		if _, ok := p.(models.ToolPart); ok {
+			return true
+		}
 	}
 	return false
 }
@@ -538,6 +541,8 @@ func stripForSummarization(msgs []models.Message) []models.Message {
 				b.WriteString(fmt.Sprintf("[tool_call %s(%s)]", v.Name, summarizeArgs(v.Input)))
 			case models.ToolResultPart:
 				b.WriteString(fmt.Sprintf("[tool_result %s] %s", flagError(v.IsError), truncate(extractText(v.Output), 500)))
+			case models.ToolPart:
+				b.WriteString(fmt.Sprintf("[tool %s %s(%s)] %s", v.State, v.Name, summarizeArgs(v.Input), truncate(v.Output, 500)))
 			default:
 				if mk, ok := DecodeMarker(p); ok {
 					b.WriteString("[prior compaction] ")
@@ -618,12 +623,18 @@ func collectMarkerState(msgs []models.Message) (summary string, readFiles []stri
 func collectFileOps(msgs []models.Message) (readFiles []string, modifiedFiles []string) {
 	for _, msg := range msgs {
 		for _, part := range msg.Content {
-			call, ok := part.(models.ToolCallPart)
-			if !ok {
+			var name string
+			var input map[string]any
+			switch call := part.(type) {
+			case models.ToolCallPart:
+				name, input = call.Name, call.Input
+			case models.ToolPart:
+				name, input = call.Name, call.Input
+			default:
 				continue
 			}
-			path := stringArg(call.Input, "path")
-			switch call.Name {
+			path := stringArg(input, "path")
+			switch name {
 			case "read", "grep", "glob":
 				readFiles = appendIfNonEmpty(readFiles, path)
 			case "edit", "write":
@@ -709,6 +720,11 @@ func approxMessageChars(msg models.Message) int {
 				if t, ok := op.(models.TextPart); ok {
 					chars += len(t.Text)
 				}
+			}
+		case models.ToolPart:
+			chars += len(v.Name) + len(v.Output)
+			for k, val := range v.Input {
+				chars += len(k) + len(fmt.Sprintf("%v", val))
 			}
 		default:
 			if mk, ok := DecodeMarker(p); ok {

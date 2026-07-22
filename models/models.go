@@ -94,6 +94,7 @@ type Part interface {
 func (TextPart) isPart()       {}
 func (ImagePart) isPart()      {}
 func (ReasoningPart) isPart()  {}
+func (ToolPart) isPart()       {}
 func (ToolCallPart) isPart()   {}
 func (ToolResultPart) isPart() {}
 func (OpaquePart) isPart()     {}
@@ -124,6 +125,31 @@ type ReasoningPart struct {
 }
 
 func (ReasoningPart) Type() string { return "reasoning" }
+
+// ToolPart is an assistant-owned tool invocation and its current execution state.
+// Session history stores this part; providers receive a derived tool-result message.
+type ToolPart struct {
+	CallID      string         `json:"call_id"`
+	Name        string         `json:"name"`
+	State       ToolState      `json:"state"`
+	Input       map[string]any `json:"input"`
+	Output      string         `json:"output,omitempty"`
+	Metadata    Meta           `json:"metadata,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	StartedAt   int64          `json:"started_at,omitempty"`
+	CompletedAt int64          `json:"completed_at,omitempty"`
+}
+
+func (ToolPart) Type() string { return "tool" }
+
+type ToolState string
+
+const (
+	ToolStatePending   ToolState = "pending"
+	ToolStateRunning   ToolState = "running"
+	ToolStateCompleted ToolState = "completed"
+	ToolStateError     ToolState = "error"
+)
 
 // ToolCallPart is a completed tool call inside a message.
 type ToolCallPart struct {
@@ -254,6 +280,11 @@ var (
 			err := json.Unmarshal(data, &p)
 			return p, err
 		},
+		"tool": func(data []byte) (Part, error) {
+			var p ToolPart
+			err := json.Unmarshal(data, &p)
+			return p, err
+		},
 		"tool_call": func(data []byte) (Part, error) {
 			var p ToolCallPart
 			err := json.Unmarshal(data, &p)
@@ -271,6 +302,106 @@ func RegisterPart(typeName string, fn PartUnmarshaler) {
 	partRegistryMu.Lock()
 	defer partRegistryMu.Unlock()
 	partRegistry[typeName] = fn
+}
+
+// NormalizeMessages folds legacy tool-role messages into the assistant tool
+// parts that produced them. It leaves no role=tool messages in the result.
+func NormalizeMessages(messages []Message) []Message {
+	out := make([]Message, 0, len(messages))
+	for _, message := range messages {
+		if message.Role != RoleTool {
+			message.Content = normalizeToolCalls(message.Content)
+			out = append(out, message)
+			continue
+		}
+		for _, part := range message.Content {
+			result, ok := part.(ToolResultPart)
+			if !ok {
+				continue
+			}
+			tool := ToolPart{CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: toolResultText(result), Metadata: result.Metadata}
+			if result.IsError {
+				tool.State = ToolStateError
+				tool.Error = tool.Output
+			}
+			if !replaceToolPart(out, tool) {
+				out = append(out, Message{Role: RoleAssistant, Content: Content{tool}})
+			}
+		}
+	}
+	return out
+}
+
+// ExpandToolMessages derives the provider-facing tool-result messages from
+// canonical assistant-owned tool parts.
+func ExpandToolMessages(messages []Message) []Message {
+	out := make([]Message, 0, len(messages)*2)
+	for _, message := range messages {
+		if message.Role != RoleAssistant {
+			out = append(out, message)
+			continue
+		}
+		var results Content
+		content := make(Content, 0, len(message.Content))
+		for _, part := range message.Content {
+			tool, ok := part.(ToolPart)
+			if !ok {
+				content = append(content, part)
+				continue
+			}
+			content = append(content, ToolCallPart{CallID: tool.CallID, Name: tool.Name, Input: tool.Input})
+			if tool.State == ToolStateCompleted || tool.State == ToolStateError {
+				results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: tool.Output}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
+			}
+		}
+		message.Content = content
+		out = append(out, message)
+		if len(results) > 0 {
+			out = append(out, Message{Role: RoleTool, Content: results})
+		}
+	}
+	return out
+}
+
+func normalizeToolCalls(content Content) Content {
+	out := make(Content, 0, len(content))
+	for _, part := range content {
+		if call, ok := part.(ToolCallPart); ok {
+			out = append(out, ToolPart{CallID: call.CallID, Name: call.Name, State: ToolStatePending, Input: call.Input})
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+func replaceToolPart(messages []Message, tool ToolPart) bool {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != RoleAssistant {
+			continue
+		}
+		for j, part := range messages[i].Content {
+			current, ok := part.(ToolPart)
+			if !ok || current.CallID != tool.CallID {
+				continue
+			}
+			tool.Input = current.Input
+			tool.StartedAt = current.StartedAt
+			messages[i].Content[j] = tool
+			return true
+		}
+	}
+	return false
+}
+
+func toolResultText(part ToolResultPart) string {
+	var out string
+	for _, item := range part.Output {
+		if text, ok := item.(TextPart); ok {
+			out += text.Text
+		}
+	}
+	return out
 }
 
 func MarshalPart(p Part) ([]byte, error) {

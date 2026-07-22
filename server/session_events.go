@@ -274,6 +274,14 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		data["tool"] = v.Call.Name
 		data["input"] = v.Call.Args
 		s.persistRunEvent(ctx, sessionID, "session.tool.called", data)
+		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
+			"run_id":     runID,
+			"call_id":    v.Call.ID,
+			"tool":       v.Call.Name,
+			"status":     "running",
+			"input":      v.Call.Args,
+			"started_at": time.Now().UTC(),
+		})
 	case run.ToolExecutionEndEvent:
 		data["call_id"] = v.Result.CallID
 		data["tool"] = v.Result.Name
@@ -284,6 +292,24 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		} else {
 			s.persistRunEvent(ctx, sessionID, "session.tool.completed", data)
 		}
+		status := "completed"
+		errorText := ""
+		if v.Result.IsError {
+			status = "error"
+			errorText = v.Result.Output
+		}
+		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
+			"run_id":       runID,
+			"call_id":      v.Result.CallID,
+			"tool":         v.Result.Name,
+			"status":       status,
+			"input":        v.Result.Args,
+			"output":       v.Result.Output,
+			"metadata":     v.Result.Metadata,
+			"error":        errorText,
+			"completed_at": time.Now().UTC(),
+			"duration_ms":  v.Result.Duration.Milliseconds(),
+		})
 	case run.StreamPartEvent:
 		s.forwardStreamPart(sessionID, runID, v)
 	case run.StructuredOutputEvent:
@@ -297,6 +323,11 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 func (s *Server) forwardStreamPart(sessionID, runID string, e run.StreamPartEvent) {
 	base := map[string]any{"run_id": runID, "step": e.Step}
 	switch p := e.Part.(type) {
+	case models.ToolInputStartPart:
+		base["call_id"] = p.ID
+		base["tool"] = p.ToolName
+		base["status"] = "pending"
+		s.publishRunEvent(sessionID, "session.tool.updated", base)
 	case models.TextDeltaPart:
 		base["delta"] = p.Delta
 		s.publishRunEvent(sessionID, "session.text.delta", base)
