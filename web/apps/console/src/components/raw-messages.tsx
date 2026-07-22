@@ -34,7 +34,7 @@ function RawMessage({ index, message }: { index: number; message: Message }) {
           <Button type="button" variant="ghost" size="icon-xs" className="absolute right-2 top-2 z-10 bg-background/80" onClick={() => void copy()} aria-label={copied ? "Copied message JSON" : "Copy message JSON"} title={copied ? "Copied" : "Copy JSON"}>
             {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
           </Button>
-          <pre className="max-h-[32rem] overflow-auto rounded-lg border bg-muted/40 p-3 pr-10 text-xs leading-5"><code>{raw}</code></pre>
+          <pre data-scrollable tabIndex={0} className="max-h-[32rem] overflow-auto rounded-lg border bg-muted/40 p-3 pr-10 text-xs leading-5"><code>{raw}</code></pre>
         </div>
       </AccordionContent>
     </AccordionItem>

@@ -55,14 +55,14 @@ function ToolDetails({ part, call }: { part: ToolResultPart; call?: ToolCallPart
   if (call?.name === "bash") return <BashDetails part={part} call={call} />;
 
   const text = toolText(part);
-  return <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 pl-3 text-xs leading-5">{text || JSON.stringify(part.output, null, 2)}</pre>;
+  return <pre data-scrollable tabIndex={0} className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 pl-3 text-xs leading-5">{text || JSON.stringify(part.output, null, 2)}</pre>;
 }
 
 function BashDetails({ part, call }: { part: ToolResultPart; call: ToolCallPart }) {
   const output = toolText(part);
   const command = typeof call.input.command === "string" ? call.input.command : "";
   return (
-    <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-100">
+    <pre data-scrollable tabIndex={0} className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-100">
       <code>{`$ ${command}${output ? `\n\n${output}` : ""}`}</code>
     </pre>
   );
@@ -74,7 +74,7 @@ function ReadDetails({ part }: { part: ToolResultPart }) {
   return (
     <>
       {parsed.path && <div className="ml-5 mt-1 truncate border-l border-border/60 pl-3 text-xs text-muted-foreground">{parsed.path}</div>}
-      <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">
+      <pre data-scrollable tabIndex={0} className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">
         <code>{parsed.body || text}</code>
       </pre>
     </>
@@ -84,7 +84,7 @@ function ReadDetails({ part }: { part: ToolResultPart }) {
 function FileMutationDetails({ part }: { part: ToolResultPart }) {
   const files = patchFiles(part.metadata?.files);
   if (files.length === 0) {
-    return <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">{toolText(part)}</pre>;
+    return <pre data-scrollable tabIndex={0} className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">{toolText(part)}</pre>;
   }
 
   return (
@@ -109,7 +109,7 @@ function FileMutationDetails({ part }: { part: ToolResultPart }) {
 
 function DiffBlock({ patch }: { patch: string }) {
   return (
-    <pre className="mt-1 max-h-[32rem] overflow-auto bg-muted/35 px-3 py-2 text-xs leading-5">
+    <pre data-scrollable tabIndex={0} className="mt-1 max-h-[32rem] overflow-auto bg-muted/35 px-3 py-2 text-xs leading-5">
       <code>
         {patch.split("\n").map((line, idx) => (
           <div key={idx} className={diffLineClass(line)}>

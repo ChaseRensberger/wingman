@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import WingmanIcon from "@/assets/icon-128.png";
 import { wfetch, getClientId } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
@@ -76,6 +77,8 @@ const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
 const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
 const DEFAULT_SESSION_TITLE = "New session";
 
+type TranscriptScrollKey = "page-down" | "page-up" | "home" | "end" | "up" | "down";
+
 type SessionDetailSearch = {
 	workspace?: string;
 };
@@ -96,6 +99,38 @@ type FailedRun = {
 	modelRef: string;
 	error: string;
 };
+
+function transcriptScrollKey(event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">): TranscriptScrollKey | undefined {
+	if (event.altKey || event.ctrlKey || event.metaKey) return;
+	if (event.shiftKey && event.key !== " ") return;
+	switch (event.key) {
+		case "PageDown": return "page-down";
+		case "PageUp": return "page-up";
+		case "Home": return "home";
+		case "End": return "end";
+		case "ArrowUp": return "up";
+		case "ArrowDown": return "down";
+		case " ": return event.shiftKey ? "page-up" : "page-down";
+	}
+}
+
+function canScrollForKey(element: HTMLElement, key: TranscriptScrollKey) {
+	const up = key === "up" || key === "page-up" || key === "home";
+	return up ? element.scrollTop > 0 : element.scrollTop + element.clientHeight < element.scrollHeight;
+}
+
+function scrollKeyOwner(root: HTMLElement, target: EventTarget | null, key: TranscriptScrollKey) {
+	const element = target instanceof Element ? target.closest<HTMLElement>("[data-scrollable]") : undefined;
+	if (!element || element === root || !root.contains(element)) return root;
+	return canScrollForKey(element, key) ? element : root;
+}
+
+function isTranscriptScrollTarget(target: EventTarget | null, key: TranscriptScrollKey) {
+	const element = target instanceof HTMLElement ? target : undefined;
+	if (!element) return true;
+	if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.isContentEditable) return false;
+	return (key !== "page-up" && key !== "page-down") || !element.closest("button, a[href], [role=button]");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -380,6 +415,7 @@ function SessionDetailPage() {
 	const activeSessionIdRef = useRef(sessionId);
 	const skipNextSessionLoadRef = useRef(false);
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const composerRef = useRef<HTMLTextAreaElement>(null);
 	const scrollFrameRef = useRef<number | null>(null);
 	const scrollbarIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const scrollbarDragRef = useRef<{ pointerId: number; grabOffset: number } | null>(null);
@@ -559,6 +595,12 @@ function SessionDetailPage() {
 		};
 	}, [loading, session?.id]);
 
+	useEffect(() => {
+		if (!isDraft || loading || isStreaming || session?.history.length) return;
+		const frame = requestAnimationFrame(() => composerRef.current?.focus());
+		return () => cancelAnimationFrame(frame);
+	}, [isDraft, isStreaming, loading, session?.history.length]);
+
 	useEffect(() => () => {
 		if (scrollFrameRef.current) cancelAnimationFrame(scrollFrameRef.current);
 		if (scrollbarIdleTimeoutRef.current) clearTimeout(scrollbarIdleTimeoutRef.current);
@@ -670,6 +712,27 @@ function SessionDetailPage() {
 			stickToBottomRef.current = isNearBottom;
 			setIsNearTranscriptBottom((current) => current === isNearBottom ? current : isNearBottom);
 		});
+	}
+
+	function handleTranscriptKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+		const key = transcriptScrollKey(event.nativeEvent);
+		if (!key || !isTranscriptScrollTarget(event.target, key)) return;
+		const root = scrollRef.current;
+		if (!root) return;
+		const owner = scrollKeyOwner(root, event.target, key);
+		if (!canScrollForKey(owner, key)) return;
+
+		event.preventDefault();
+		const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+		const page = owner.clientHeight * 0.8;
+		switch (key) {
+			case "page-down": owner.scrollBy({ top: page, behavior }); break;
+			case "page-up": owner.scrollBy({ top: -page, behavior }); break;
+			case "home": owner.scrollTo({ top: 0, behavior }); break;
+			case "end": owner.scrollTo({ top: owner.scrollHeight, behavior }); break;
+			case "up": owner.scrollBy({ top: -40, behavior }); break;
+			case "down": owner.scrollBy({ top: 40, behavior }); break;
+		}
 	}
 
 	function jumpToTranscriptBottom() {
@@ -1165,6 +1228,11 @@ function SessionDetailPage() {
 				<div
 					ref={scrollRef}
 					onScroll={handleTranscriptScroll}
+					onKeyDown={handleTranscriptKeyDown}
+					tabIndex={0}
+					role="region"
+					aria-label="Session transcript"
+					data-scrollable
 					className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 				>
 					<div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
@@ -1173,8 +1241,9 @@ function SessionDetailPage() {
 								<RawMessages messages={session.history} />
 							</div>
 						) : transcriptHistory.length === 0 && !visibleStreamingText ? (
-							<div className="flex flex-1 items-start justify-center pt-[25dvh] pb-12 text-center">
-								<div>
+							<div className="flex flex-1 items-start justify-center pt-[20dvh] pb-12 text-center">
+								<div className="flex flex-col items-center gap-4">
+									<img src={WingmanIcon} className="size-16" alt="Wingman logo" />
 									<div className="text-2xl font-semibold sm:text-3xl">{greeting}</div>
 								</div>
 							</div>
@@ -1191,7 +1260,7 @@ function SessionDetailPage() {
 											<WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" />
 											<div className="min-w-0 flex-1">
 												<div className="font-medium text-destructive">Message failed</div>
-												<pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre>
+											<pre data-scrollable tabIndex={0} className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre>
 											</div>
 										</div>
 										<div className="mt-3 flex justify-end gap-2">
@@ -1239,6 +1308,7 @@ function SessionDetailPage() {
 						</Button>
 					)}
 					<Textarea
+						ref={composerRef}
 						value={messageText}
 						onChange={(e) => setMessageText(e.target.value)}
 						onKeyDown={handleKeyDown}
