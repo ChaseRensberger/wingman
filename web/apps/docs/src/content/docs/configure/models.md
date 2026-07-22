@@ -20,6 +20,7 @@ google/gemini-3.5-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
 opencode/claude-sonnet-5
+opencode-go/kimi-k3
 ```
 
 The provider part selects the provider catalog entry. The model part selects a model under that provider.

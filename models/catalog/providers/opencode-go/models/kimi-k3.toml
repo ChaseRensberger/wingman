@@ -1,0 +1,13 @@
+id = "kimi-k3"
+provider = "opencode-go"
+api = "openai_compatible_chat"
+context_window = 1048576
+max_output = 131072
+input_cost_per_mtok = 3
+output_cost_per_mtok = 15
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true
