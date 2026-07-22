@@ -1167,48 +1167,48 @@ function SessionDetailPage() {
 					onScroll={handleTranscriptScroll}
 					className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 				>
-				<div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
-					{jsonMode ? (
-						<div className="px-4 pb-6 sm:px-6">
-							<RawMessages messages={session.history} />
-						</div>
-					) : transcriptHistory.length === 0 && !visibleStreamingText ? (
-						<div className="flex flex-1 items-start justify-center pt-[25dvh] pb-12 text-center">
-							<div>
-								<div className="text-2xl font-semibold sm:text-3xl">{greeting}</div>
+					<div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
+						{jsonMode ? (
+							<div className="px-4 pb-6 sm:px-6">
+								<RawMessages messages={session.history} />
 							</div>
-						</div>
-					) : (
-						<div>
-							{transcriptHistory.map((msg, idx) => (
-								<ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivities} />
-							))}
-							{visibleStreamingText && <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />}
-							{isStreaming && <ThinkingIndicator summary={liveReasoningHeading} />}
-							{failedRun && (
-								<div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6">
-									<div className="flex items-start gap-2">
-										<WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" />
-										<div className="min-w-0 flex-1">
-											<div className="font-medium text-destructive">Message failed</div>
-											<pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre>
+						) : transcriptHistory.length === 0 && !visibleStreamingText ? (
+							<div className="flex flex-1 items-start justify-center pt-[25dvh] pb-12 text-center">
+								<div>
+									<div className="text-2xl font-semibold sm:text-3xl">{greeting}</div>
+								</div>
+							</div>
+						) : (
+							<div>
+								{transcriptHistory.map((msg, idx) => (
+									<ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivities} />
+								))}
+								{visibleStreamingText && <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />}
+								{isStreaming && <ThinkingIndicator summary={liveReasoningHeading} />}
+								{failedRun && (
+									<div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6">
+										<div className="flex items-start gap-2">
+											<WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" />
+											<div className="min-w-0 flex-1">
+												<div className="font-medium text-destructive">Message failed</div>
+												<pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre>
+											</div>
+										</div>
+										<div className="mt-3 flex justify-end gap-2">
+											<Button size="sm" variant="ghost" type="button" onClick={() => void copyFailedRunError()}>
+												{copiedFailedRunError ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+												{copiedFailedRunError ? "Copied" : "Copy error"}
+											</Button>
+											<Button size="sm" type="button" onClick={() => void handleSend(undefined, failedRun)} disabled={isStreaming}>
+												<ArrowClockwiseIcon className="size-4" />
+												Retry
+											</Button>
 										</div>
 									</div>
-									<div className="mt-3 flex justify-end gap-2">
-										<Button size="sm" variant="ghost" type="button" onClick={() => void copyFailedRunError()}>
-											{copiedFailedRunError ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
-											{copiedFailedRunError ? "Copied" : "Copy error"}
-										</Button>
-										<Button size="sm" type="button" onClick={() => void handleSend(undefined, failedRun)} disabled={isStreaming}>
-											<ArrowClockwiseIcon className="size-4" />
-											Retry
-										</Button>
-									</div>
-								</div>
-							)}
-						</div>
-					)}
-				</div>
+								)}
+							</div>
+						)}
+					</div>
 				</div>
 				{transcriptScrollbar.height > 0 && (
 					<div
