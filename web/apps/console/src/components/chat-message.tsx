@@ -1,5 +1,5 @@
-import type { Message, Part, ToolCallPart, ToolResultPart } from "@/lib/types";
-import { CheckIcon } from "@phosphor-icons/react";
+import type { Message, Part, ToolActivity, ToolCallPart, ToolPart, ToolResultPart } from "@/lib/types";
+import { CircleNotchIcon } from "@phosphor-icons/react";
 import { Markdown } from "./markdown";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@wingman/core/components/core/collapsible";
 
@@ -11,139 +11,105 @@ type PatchFile = {
   deletions: number;
 };
 
-function ToolCallCard({ part }: { part: ToolCallPart }) {
+function InlineToolRow({ call, isError = false, isRunning = false }: { call?: ToolCallPart; isError?: boolean; isRunning?: boolean }) {
+  const summary = toolSummary(call);
   return (
-    <Collapsible>
-      <CollapsibleTrigger className="text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">Calling {part.name}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <pre className="mt-1 overflow-auto rounded border bg-muted p-2 text-xs">
-          {JSON.stringify(part.input, null, 2)}
-        </pre>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className={`flex min-w-0 items-center gap-2 py-0.5 text-xs leading-5 ${isError ? "text-destructive" : isRunning ? "text-foreground" : "text-muted-foreground"}`}>
+      <span className="w-4 shrink-0 text-center">{toolGlyph(call?.name)}</span>
+      {isRunning && <CircleNotchIcon className="size-3 shrink-0 animate-spin" />}
+      <span className="truncate">{summary}</span>
+    </div>
   );
 }
 
-function ToolResultCard({ part, call }: { part: ToolResultPart; call?: ToolCallPart }) {
-  if (call?.name === "apply_patch") return <ApplyPatchResult part={part} />;
-  if (call?.name === "write" || call?.name === "edit") return <FileMutationResult part={part} title={call.name} />;
-  if (call?.name === "read") return <ReadResult part={part} call={call} />;
-  if (call?.name === "bash") return <BashResult part={part} call={call} />;
+function ToolActivityItem({ call, result, activity }: { call: ToolCallPart; result?: ToolResultPart; activity?: ToolActivity }) {
+  const status = activity?.status ?? (result ? (result.is_error ? "error" : "completed") : "pending");
+  const displayCall = activity?.input ? { ...call, input: activity.input } : call;
+  const displayResult = result ?? (activity && (activity.status === "completed" || activity.status === "error")
+    ? { type: "tool_result" as const, call_id: call.call_id, name: call.name, output: activity.output ? [{ type: "text" as const, text: activity.output }] : [], is_error: activity.status === "error", metadata: activity.metadata }
+    : undefined);
+  const hasStructuredDetails = Boolean(displayResult && ["bash", "read", "write", "edit", "apply_patch"].includes(displayCall.name));
 
-  const text = toolText(part);
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-xs">
-        <span className="min-w-0 truncate font-medium">{call?.name ?? "Tool"}</span>
-        <ToolStatus isError={part.is_error} />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <pre className="mt-1 overflow-auto rounded border bg-muted p-2 text-xs">
-          {text || JSON.stringify(part.output, null, 2)}
-        </pre>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function BashResult({ part, call }: { part: ToolResultPart; call: ToolCallPart }) {
-  const output = toolText(part);
-  const command = typeof call.input.command === "string" ? call.input.command : "";
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-xs">
-        <span className="min-w-0 truncate font-medium" title={command || undefined}>{command || "Shell"}</span>
-        <ToolStatus isError={part.is_error} />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <pre className="mt-2 max-h-96 overflow-auto rounded-lg border bg-zinc-950 p-3 text-xs leading-5 text-zinc-100">
-          <code>{`$ ${command}${output ? `\n\n${output}` : ""}`}</code>
-        </pre>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function ReadResult({ part, call }: { part: ToolResultPart; call: ToolCallPart }) {
-  const text = toolText(part);
-  const parsed = parseReadOutput(text);
-  const path = parsed.path || stringInput(call, "filePath") || "read";
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-xs">
-        <span className="min-w-0 truncate font-semibold">Read {filename(path)}</span>
-        <span className="shrink-0 text-muted-foreground">{parsed.type || "file"}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        {parsed.path && <div className="mt-1 truncate text-xs text-muted-foreground">{parsed.path}</div>}
-        <pre className="mt-2 max-h-96 overflow-auto rounded-lg border bg-muted/45 p-3 text-xs leading-5">
-          <code>{parsed.body || text}</code>
-        </pre>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function ApplyPatchResult({ part }: { part: ToolResultPart }) {
-  return <FileMutationResult part={part} title="Patch" />;
-}
-
-function FileMutationResult({ part, title }: { part: ToolResultPart; title: string }) {
-  const files = patchFiles(part.metadata?.files);
-  const summary = files.length > 0 ? `${capitalize(title)} ${formatFileSummary(files)}` : capitalize(title);
-  if (files.length === 0) {
-    return (
-      <Collapsible>
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-xs">
-          <span className="min-w-0 truncate font-medium">{summary}</span>
-          <ToolStatus isError={part.is_error} />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <pre className="mt-1 overflow-auto rounded border bg-muted p-2 text-xs">{toolText(part)}</pre>
-        </CollapsibleContent>
-      </Collapsible>
-    );
+  if (!hasStructuredDetails) {
+    return <InlineToolRow call={displayCall} isError={status === "error"} isRunning={status === "pending" || status === "running"} />;
   }
 
   return (
     <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-xs">
-        <span className="min-w-0 truncate font-medium">{summary}</span>
-        <span className="flex shrink-0 items-center gap-3">
-          <span className="flex items-center gap-2 font-mono">
-            <span className="text-emerald-600">+{sumPatchField(files, "additions")}</span>
-            <span className="text-red-600">-{sumPatchField(files, "deletions")}</span>
-          </span>
-          <ToolStatus isError={part.is_error} />
-        </span>
+      <CollapsibleTrigger className="w-full text-left">
+        <InlineToolRow call={displayCall} isError={status === "error"} isRunning={status === "pending" || status === "running"} />
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 space-y-2">
-          {files.map((file) => (
-            <Collapsible key={file.relativePath}>
-              <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-xs">
-                <span className="min-w-0 truncate font-medium">{file.relativePath}</span>
-                <span className="flex shrink-0 items-center gap-2 font-mono">
-                  <span className="text-emerald-600">+{file.additions}</span>
-                  <span className="text-red-600">-{file.deletions}</span>
-                </span>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <DiffBlock patch={file.patch} />
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
-        </div>
-      </CollapsibleContent>
+      {displayResult && (
+        <CollapsibleContent>
+          <ToolDetails part={displayResult} call={displayCall} />
+        </CollapsibleContent>
+      )}
     </Collapsible>
+  );
+}
+
+function ToolDetails({ part, call }: { part: ToolResultPart; call?: ToolCallPart }) {
+  if (call?.name === "apply_patch") return <FileMutationDetails part={part} />;
+  if (call?.name === "write" || call?.name === "edit") return <FileMutationDetails part={part} />;
+  if (call?.name === "read") return <ReadDetails part={part} />;
+  if (call?.name === "bash") return <BashDetails part={part} call={call} />;
+
+  const text = toolText(part);
+  return <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 pl-3 text-xs leading-5">{text || JSON.stringify(part.output, null, 2)}</pre>;
+}
+
+function BashDetails({ part, call }: { part: ToolResultPart; call: ToolCallPart }) {
+  const output = toolText(part);
+  const command = typeof call.input.command === "string" ? call.input.command : "";
+  return (
+    <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-100">
+      <code>{`$ ${command}${output ? `\n\n${output}` : ""}`}</code>
+    </pre>
+  );
+}
+
+function ReadDetails({ part }: { part: ToolResultPart }) {
+  const text = toolText(part);
+  const parsed = parseReadOutput(text);
+  return (
+    <>
+      {parsed.path && <div className="ml-5 mt-1 truncate border-l border-border/60 pl-3 text-xs text-muted-foreground">{parsed.path}</div>}
+      <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">
+        <code>{parsed.body || text}</code>
+      </pre>
+    </>
+  );
+}
+
+function FileMutationDetails({ part }: { part: ToolResultPart }) {
+  const files = patchFiles(part.metadata?.files);
+  if (files.length === 0) {
+    return <pre className="ml-5 mt-1 max-h-96 overflow-auto border-l border-border/60 bg-muted/45 px-3 py-2 text-xs leading-5">{toolText(part)}</pre>;
+  }
+
+  return (
+    <div className="ml-5 mt-1 space-y-1 border-l border-border/60 pl-3">
+      {files.map((file) => (
+        <Collapsible key={file.relativePath}>
+          <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 py-0.5 text-left text-xs">
+            <span className="min-w-0 truncate">{file.relativePath}</span>
+            <span className="flex shrink-0 items-center gap-2 font-mono">
+              <span className="text-emerald-600">+{file.additions}</span>
+              <span className="text-red-600">-{file.deletions}</span>
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <DiffBlock patch={file.patch} />
+          </CollapsibleContent>
+        </Collapsible>
+      ))}
+    </div>
   );
 }
 
 function DiffBlock({ patch }: { patch: string }) {
   return (
-    <pre className="mt-2 max-h-[32rem] overflow-auto rounded-lg border bg-muted/35 p-0 text-xs leading-5">
+    <pre className="mt-1 max-h-[32rem] overflow-auto bg-muted/35 px-3 py-2 text-xs leading-5">
       <code>
         {patch.split("\n").map((line, idx) => (
           <div key={idx} className={diffLineClass(line)}>
@@ -155,26 +121,30 @@ function DiffBlock({ patch }: { patch: string }) {
   );
 }
 
-export function ChatMessage({ message, isStreaming = false, toolCallsById, toolResultsById }: { message: Message; isStreaming?: boolean; toolCallsById?: Map<string, ToolCallPart>; toolResultsById?: Map<string, true> }) {
+export function ChatMessage({ message, isStreaming = false, toolCallsById, toolResultsById, toolActivitiesById }: { message: Message; isStreaming?: boolean; toolCallsById?: Map<string, ToolCallPart>; toolResultsById?: Map<string, ToolResultPart>; toolActivitiesById?: Map<string, ToolActivity> }) {
+  if (message.role === "tool") return null;
+  const visibleParts = message.content.filter((part) => part.type !== "reasoning");
+  if (visibleParts.length === 0) return null;
+
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
 
   return (
     <div
-      className={`border-b border-border/60 py-5 last:border-b-0 ${
-        isUser ? "bg-primary/[0.03]" : message.role === "tool" ? "bg-muted/35" : ""
+      className={`relative border-b border-border/60 py-5 last:border-b-0 ${
+        isUser ? "mx-2 bg-primary/[0.03] before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']" : ""
       }`}
     >
       <div
-        className={`min-w-0 border-l-2 px-4 text-sm leading-6 ${
+        className={`min-w-0 ${isUser ? "px-2" : "px-4"} text-sm leading-6 ${
           isUser
-            ? "border-primary/35 text-foreground"
+            ? "text-foreground"
             : isAssistant
-              ? "border-transparent text-foreground"
-              : "border-muted-foreground/25 text-muted-foreground"
+              ? "text-foreground"
+              : "text-muted-foreground"
         }`}
       >
-        {message.content.map((part, idx) => {
+        {visibleParts.map((part, idx) => {
           if (part.type === "text") {
             const textPart = part as { text: string };
             if (isAssistant) {
@@ -187,27 +157,26 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
             );
           }
           if (part.type === "tool_call") {
-            if (toolResultsById?.has((part as ToolCallPart).call_id)) return null;
+            const call = part as ToolCallPart;
             return (
               <div key={idx} className="mt-1">
-                <ToolCallCard part={part as ToolCallPart} />
+                <ToolActivityItem call={call} result={toolResultsById?.get(call.call_id)} activity={toolActivitiesById?.get(call.call_id)} />
               </div>
             );
+          }
+          if (part.type === "tool") {
+            const tool = part as ToolPart;
+            const call = { type: "tool_call" as const, call_id: tool.call_id, name: tool.name, input: tool.input };
+            const result = tool.state === "completed" || tool.state === "error"
+              ? { type: "tool_result" as const, call_id: tool.call_id, name: tool.name, output: tool.output ? [{ type: "text" as const, text: tool.output }] : [], is_error: tool.state === "error", metadata: tool.metadata }
+              : undefined;
+            return <div key={idx} className="mt-1"><ToolActivityItem call={call} result={result} activity={{ call_id: tool.call_id, tool: tool.name, status: tool.state, input: tool.input, output: tool.output, metadata: tool.metadata, error: tool.error }} /></div>;
           }
           if (part.type === "tool_result") {
             const result = part as ToolResultPart;
-            return (
-              <div key={idx} className="mt-1">
-                <ToolResultCard part={result} call={toolCallsById?.get(result.call_id)} />
-              </div>
-            );
-          }
-          if (part.type === "reasoning") {
-            return (
-              <div key={idx} className="mt-1 rounded border border-dashed p-2 text-xs text-muted-foreground italic">
-                {(part as { reasoning: string }).reasoning}
-              </div>
-            );
+            if (toolCallsById?.has(result.call_id)) return null;
+            const call = { type: "tool_call" as const, call_id: result.call_id, name: result.name || "tool", input: {} };
+            return <div key={idx} className="mt-1"><ToolActivityItem call={call} result={result} activity={toolActivitiesById?.get(result.call_id)} /></div>;
           }
           return (
             <div key={idx} className="text-xs text-muted-foreground">
@@ -236,22 +205,34 @@ function filename(path: string) {
   return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
 }
 
-function capitalize(value: string) {
-  return value ? value[0]!.toUpperCase() + value.slice(1) : value;
+function toolGlyph(name?: string) {
+  if (name === "bash") return "$";
+  if (name === "read") return "->";
+  if (name === "grep" || name === "glob" || name === "websearch") return "*";
+  if (name === "write" || name === "edit" || name === "apply_patch") return "%";
+  return "+";
 }
 
-function ToolStatus({ isError }: { isError?: boolean }) {
-  if (isError) return <span className="shrink-0 text-destructive">error</span>;
-  return <CheckIcon className="size-4 shrink-0 text-muted-foreground" aria-label="done" />;
+function toolSummary(call?: ToolCallPart) {
+  if (!call) return "Tool";
+  if (call.name === "bash") return stringInput(call, "command") || "Running command";
+  if (call.name === "read") return `Read ${filename(stringInput(call, "filePath")) || "file"}`;
+  if (call.name === "grep") return `Grep ${quote(stringInput(call, "pattern"))}${inPath(stringInput(call, "path"))}`;
+  if (call.name === "glob") return `Glob ${quote(stringInput(call, "pattern"))}${inPath(stringInput(call, "path"))}`;
+  if (call.name === "write") return `Write ${filename(stringInput(call, "filePath")) || "file"}`;
+  if (call.name === "edit") return `Edit ${filename(stringInput(call, "filePath")) || "file"}`;
+  if (call.name === "apply_patch") return "Apply patch";
+  if (call.name === "websearch") return `Search ${quote(stringInput(call, "query"))}`;
+  if (call.name === "webfetch") return `Fetch ${stringInput(call, "url") || "URL"}`;
+  return call.name ? call.name[0]!.toUpperCase() + call.name.slice(1) : "Tool";
 }
 
-function formatFileSummary(files: PatchFile[]) {
-  if (files.length === 1) return files[0]!.relativePath;
-  return `${files.length} files`;
+function quote(value: string) {
+  return value ? `"${value}"` : "";
 }
 
-function sumPatchField(files: PatchFile[], field: "additions" | "deletions") {
-  return files.reduce((total, file) => total + file[field], 0);
+function inPath(path: string) {
+  return path ? ` in ${path}` : "";
 }
 
 function parseReadOutput(text: string) {

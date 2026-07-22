@@ -35,24 +35,29 @@ function NavLink({
 }
 
 export default function App() {
+	const { location } = useRouterState();
+	const isSessionDetail = /^\/sessions\/[^/]+$/.test(location.pathname);
+
 	return (
-		<div className="flex min-h-screen flex-col">
-			<header className="flex items-center justify-between gap-4 border-b px-4 py-3">
-				<div className="flex items-center gap-5">
-					<Link to="/">
-						<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />
-					</Link>
-					<nav className="flex items-center gap-3 text-xs text-muted-foreground">
-						<NavLink to="/sessions" icon={StackIcon} label="Sessions" />
-						<NavLink to="/agents" icon={LightningIcon} label="Agents" />
-						<NavLink to="/tools" icon={WrenchIcon} label="Tools" />
-						<NavLink to="/providers" icon={SolarRoofIcon} label="Providers" />
-						<NavLink to="/logs" icon={FileTextIcon} label="Logs" />
-						<NavLink to="/settings" icon={GearIcon} label="Settings" />
-					</nav>
-				</div>
-			</header>
-			<main className="flex-1">
+		<div className={cn("flex flex-col", isSessionDetail ? "h-dvh" : "min-h-screen")}>
+			{!isSessionDetail && (
+				<header className="flex items-center justify-between gap-4 border-b px-4 py-3">
+					<div className="flex items-center gap-5">
+						<Link to="/">
+							<img src={WingmanIcon} className="w-8 h-8" alt="Wingman logo" />
+						</Link>
+						<nav className="flex items-center gap-3 text-xs text-muted-foreground">
+							<NavLink to="/sessions" icon={StackIcon} label="Sessions" />
+							<NavLink to="/agents" icon={LightningIcon} label="Agents" />
+							<NavLink to="/tools" icon={WrenchIcon} label="Tools" />
+							<NavLink to="/providers" icon={SolarRoofIcon} label="Providers" />
+							<NavLink to="/logs" icon={FileTextIcon} label="Logs" />
+							<NavLink to="/settings" icon={GearIcon} label="Settings" />
+						</nav>
+					</div>
+				</header>
+			)}
+			<main className="flex-1 min-h-0">
 				<Outlet />
 			</main>
 		</div>

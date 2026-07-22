@@ -104,12 +104,15 @@ export interface ModelCall {
   step: number;
   attempt: number;
   status: string;
+  agent_id?: string;
   model_ref?: string;
   provider?: string;
   api?: string;
   model_id?: string;
   finish_reason?: string;
   stop_reason?: string;
+  error_type?: string;
+  error_message?: string;
   input_tokens: number;
   output_tokens: number;
   reasoning_tokens?: number;
@@ -126,6 +129,7 @@ export type Part =
   | TextPart
   | ReasoningPart
   | ImagePart
+  | ToolPart
   | ToolCallPart
   | ToolResultPart
   | OpaquePart;
@@ -161,9 +165,36 @@ export interface ToolCallPart {
   provider_options?: unknown;
 }
 
-export interface ToolResultPart {
-  type: "tool_result";
+export interface ToolPart {
+  type: "tool";
   call_id: string;
+  name: string;
+  state: "pending" | "running" | "completed" | "error";
+  input: Record<string, unknown>;
+  output?: string;
+  metadata?: Record<string, unknown>;
+  error?: string;
+  started_at?: number;
+  completed_at?: number;
+}
+
+export interface ToolActivity {
+  call_id: string;
+  tool: string;
+  status: "pending" | "running" | "completed" | "error";
+  input?: Record<string, unknown>;
+  output?: string;
+  metadata?: Record<string, unknown>;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_ms?: number;
+}
+
+export interface ToolResultPart {
+	type: "tool_result";
+	call_id: string;
+	name?: string;
   output: Part[];
   is_error?: boolean;
   metadata?: Record<string, unknown>;
