@@ -48,6 +48,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@wingman/core/components/core/table";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
@@ -271,7 +272,10 @@ function SessionsPage() {
 			</div>
 
 			{loading ? (
-				<div className="py-8 text-sm text-muted-foreground">Loading...</div>
+				<div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+					<HexWaveSpinner size={24} />
+					<span>Loading...</span>
+				</div>
 			) : (
 				<div className="space-y-4">
 					<div className="space-y-3">

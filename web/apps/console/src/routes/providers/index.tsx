@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 function formatAuthType(authType: Provider["auth_types"][number]) {
@@ -89,7 +90,10 @@ function ProvidersPage() {
       />
 
       {loading ? (
-        <div className="py-8 text-sm text-muted-foreground">Loading...</div>
+        <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+          <HexWaveSpinner size={24} />
+          <span>Loading...</span>
+        </div>
       ) : (
         <Table>
           <TableHeader>

@@ -46,6 +46,7 @@ import {
 	SelectItem,
 } from "@wingman/core/components/core/select";
 import { ChatMessage } from "@/components/chat-message";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { RawMessages } from "@/components/raw-messages";
 import { SessionContextSheet } from "@/components/session-context-sheet";
 import {
@@ -54,7 +55,6 @@ import {
 	ArrowLeftIcon,
 	CheckIcon,
 	ClipboardTextIcon,
-	CircleNotchIcon,
 	CodeIcon,
 	ClockIcon,
 	CopyIcon,
@@ -199,8 +199,8 @@ function reasoningHeading(reasoning: string): string {
 
 function ThinkingIndicator({ summary }: { summary: string }) {
 	return (
-		<div className="flex min-h-5 items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground" role="status">
-			<CircleNotchIcon className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+		<div className="flex min-h-5 items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground">
+			<HexWaveSpinner size={16} className="size-3.5 shrink-0" label="Thinking" />
 			<span>Thinking</span>
 			{summary && <span className="min-w-0 truncate font-normal text-muted-foreground/80">{summary}</span>}
 		</div>
@@ -1089,7 +1089,12 @@ function SessionDetailPage() {
 	const liveReasoningHeading = reasoningHeading(streamingReasoning);
 
 	if (loading) {
-		return <div className="px-4 py-6 text-sm text-muted-foreground">Loading...</div>;
+		return (
+			<div className="flex items-center gap-3 px-4 py-6 text-sm text-muted-foreground">
+				<HexWaveSpinner size={24} />
+				<span>Loading...</span>
+			</div>
+		);
 	}
 
 	if (!session) {

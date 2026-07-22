@@ -3,6 +3,19 @@
 
 @source "../../../packages/core/src/**/*.{ts,tsx}";
 
+/* HexWaveSpinner — sweep rotates left → top → right → bottom */
+@keyframes hexwave-0 { 0.0%{opacity:var(--off)} 8.0%{opacity:var(--off)} 11.0%{opacity:1} 16.0%{opacity:var(--off)} 33.0%{opacity:var(--off)} 36.0%{opacity:1} 41.0%{opacity:var(--off)} 58.0%{opacity:var(--off)} 61.0%{opacity:1} 66.0%{opacity:var(--off)} 83.0%{opacity:var(--off)} 86.0%{opacity:1} 91.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-1 { 0.0%{opacity:var(--off)} 4.0%{opacity:var(--off)} 7.0%{opacity:1} 12.0%{opacity:var(--off)} 25.0%{opacity:var(--off)} 28.0%{opacity:1} 33.0%{opacity:var(--off)} 62.0%{opacity:var(--off)} 65.0%{opacity:1} 70.0%{opacity:var(--off)} 91.0%{opacity:var(--off)} 94.0%{opacity:1} 99.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-2 { 0.0%{opacity:var(--off)} 12.0%{opacity:var(--off)} 15.0%{opacity:1} 20.0%{opacity:var(--off)} 25.0%{opacity:var(--off)} 28.0%{opacity:1} 33.0%{opacity:var(--off)} 54.0%{opacity:var(--off)} 57.0%{opacity:1} 62.0%{opacity:var(--off)} 91.0%{opacity:var(--off)} 94.0%{opacity:1} 99.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-3 { 0.0%{opacity:var(--off)} 16.0%{opacity:var(--off)} 19.0%{opacity:1} 24.0%{opacity:var(--off)} 33.0%{opacity:var(--off)} 36.0%{opacity:1} 41.0%{opacity:var(--off)} 50.0%{opacity:var(--off)} 53.0%{opacity:1} 58.0%{opacity:var(--off)} 83.0%{opacity:var(--off)} 86.0%{opacity:1} 91.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-4 { 0.0%{opacity:var(--off)} 12.0%{opacity:var(--off)} 15.0%{opacity:1} 20.0%{opacity:var(--off)} 41.0%{opacity:var(--off)} 44.0%{opacity:1} 49.0%{opacity:var(--off)} 54.0%{opacity:var(--off)} 57.0%{opacity:1} 62.0%{opacity:var(--off)} 75.0%{opacity:var(--off)} 78.0%{opacity:1} 83.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-5 { 0.0%{opacity:var(--off)} 4.0%{opacity:var(--off)} 7.0%{opacity:1} 12.0%{opacity:var(--off)} 41.0%{opacity:var(--off)} 44.0%{opacity:1} 49.0%{opacity:var(--off)} 62.0%{opacity:var(--off)} 65.0%{opacity:1} 70.0%{opacity:var(--off)} 75.0%{opacity:var(--off)} 78.0%{opacity:1} 83.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+@keyframes hexwave-6 { 0.0%{opacity:var(--off)} 3.0%{opacity:1} 8.0%{opacity:var(--off)} 33.0%{opacity:var(--off)} 36.0%{opacity:1} 41.0%{opacity:var(--off)} 66.0%{opacity:var(--off)} 69.0%{opacity:1} 74.0%{opacity:var(--off)} 83.0%{opacity:var(--off)} 86.0%{opacity:1} 91.0%{opacity:var(--off)} 100.0%{opacity:var(--off)} }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-hexwave] polygon { animation: none !important; opacity: 0.5 !important; }
+}
+
 .katex-display {
   margin: 0.75rem 0;
   overflow-x: auto;
