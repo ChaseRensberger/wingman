@@ -131,8 +131,10 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
 
   return (
     <div
-      className={`relative border-b border-border/60 py-5 last:border-b-0 ${
-        isUser ? "mx-2 bg-primary/[0.03] before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']" : ""
+      className={`relative py-5 ${
+        isUser
+          ? "mx-2 bg-primary/[0.03] before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']"
+          : ""
       }`}
     >
       <div
