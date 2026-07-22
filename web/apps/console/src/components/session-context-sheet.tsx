@@ -50,6 +50,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
   const contextTokens = latest?.context_tokens ?? 0;
   const contextWindow = latest?.context_window;
   const hasUsage = calls.some((call) => call.total_tokens > 0 || call.input_tokens > 0 || call.output_tokens > 0);
+  const hasCost = calls.length > 0 && calls.every((call) => call.cost !== undefined);
   const totalCost = calls.reduce((total, call) => total + (call.cost ?? 0), 0);
 	const totalInput = calls.reduce((total, call) => total + call.input_tokens, 0);
 	const totalOutput = calls.reduce((total, call) => total + call.output_tokens, 0);
@@ -64,7 +65,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
 				</TooltipTrigger>
         <TooltipContent className="w-44 bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
           <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5">
-            <span className="text-muted-foreground">Estimated cost</span><span>{hasUsage ? formatCost(totalCost) : "—"}</span>
+            <span className="text-muted-foreground">Estimated cost</span><span>{hasCost ? formatCost(totalCost) : "Not reported"}</span>
             <span className="text-muted-foreground">Usage</span><span>{hasUsage ? `${Math.round(contextPercent)}%` : "Not reported"}</span>
             <span className="text-muted-foreground">Tokens</span><span>{hasUsage ? formatTokenCount(contextTokens) : "Not reported"}</span>
 					</div>
@@ -78,7 +79,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
             <div className="grid grid-cols-2 gap-2">
               <Stat label="Context" value={hasUsage ? (contextWindow ? `${formatTokenCount(contextTokens)} / ${formatTokenCount(contextWindow)}` : formatTokenCount(contextTokens)) : "Not reported"} />
               <Stat label="Context usage" value={hasUsage ? `${Math.round(contextPercent)}%` : "Not reported"} />
-              <Stat label="Estimated cost" value={hasUsage ? formatCost(totalCost) : "Not reported"} />
+              <Stat label="Estimated cost" value={hasCost ? formatCost(totalCost) : "Not reported"} />
 							<Stat label="Model calls" value={String(calls.length)} />
 							<Stat label="Input tokens" value={hasUsage ? formatTokenCount(totalInput) : "Not reported"} />
 							<Stat label="Output tokens" value={hasUsage ? formatTokenCount(totalOutput) : "Not reported"} />
@@ -95,7 +96,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
 										<div key={call.id} className="border-b px-3 py-3 last:border-b-0">
 											<div className="flex items-start justify-between gap-3">
 												<div className="min-w-0"><div className="truncate text-sm font-medium">{call.model_ref || call.model_id || "Unknown model"}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">Step {call.step} · {call.status}{call.finish_reason ? ` · ${call.finish_reason}` : ""}</div></div>
-												<span className="shrink-0 text-xs text-muted-foreground">{formatCost(call.cost ?? 0)}</span>
+											<span className="shrink-0 text-xs text-muted-foreground">{call.cost === undefined ? "Not reported" : formatCost(call.cost)}</span>
 											</div>
                       {call.total_tokens > 0 || call.input_tokens > 0 || call.output_tokens > 0 ? (
                         <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground"><span>In {formatTokenCount(call.input_tokens)}</span><span>Out {formatTokenCount(call.output_tokens)}</span><span>{Math.round(call.context_percent ?? 0)}% context</span></div>

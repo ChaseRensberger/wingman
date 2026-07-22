@@ -135,7 +135,7 @@ type ModelCall struct {
 	ContextTokens        int       `json:"context_tokens"`
 	ContextWindow        int       `json:"context_window,omitempty"`
 	ContextPercent       float64   `json:"context_percent,omitempty"`
-	Cost                 float64   `json:"cost,omitempty"`
+	Cost                 *float64  `json:"cost,omitempty"`
 	StructuredOutputJSON []byte    `json:"-"`
 	MetadataJSON         []byte    `json:"-"`
 	StartedAt            time.Time `json:"-"`

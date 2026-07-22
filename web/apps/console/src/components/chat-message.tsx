@@ -28,9 +28,9 @@ function ToolActivityItem({ call, result, activity }: { call: ToolCallPart; resu
   const displayResult = result ?? (activity && (activity.status === "completed" || activity.status === "error")
     ? { type: "tool_result" as const, call_id: call.call_id, name: call.name, output: activity.output ? [{ type: "text" as const, text: activity.output }] : [], is_error: activity.status === "error", metadata: activity.metadata }
     : undefined);
-  const hasStructuredDetails = Boolean(displayResult && ["bash", "read", "write", "edit", "apply_patch"].includes(displayCall.name));
+  const hasDetails = Boolean(displayResult);
 
-  if (!hasStructuredDetails) {
+  if (!hasDetails) {
     return <InlineToolRow call={displayCall} isError={status === "error"} isRunning={status === "pending" || status === "running"} />;
   }
 

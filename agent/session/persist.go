@@ -154,9 +154,13 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, 
 	return s.store.UpsertModelCall(ctx, call)
 }
 
-func estimatedCost(usage models.Usage, info models.ModelInfo) float64 {
-	return float64(usage.InputTokens)/1_000_000*info.InputCostPerMTok +
+func estimatedCost(usage models.Usage, info models.ModelInfo) *float64 {
+	if usage.Empty() || (info.InputCostPerMTok == 0 && info.OutputCostPerMTok == 0) {
+		return nil
+	}
+	cost := float64(usage.InputTokens)/1_000_000*info.InputCostPerMTok +
 		float64(usage.OutputTokens)/1_000_000*info.OutputCostPerMTok
+	return &cost
 }
 
 func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {

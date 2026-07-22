@@ -343,16 +343,22 @@ func ExpandToolMessages(messages []Message) []Message {
 		}
 		var results Content
 		content := make(Content, 0, len(message.Content))
+		hasUnresolvedTool := false
 		for _, part := range message.Content {
 			tool, ok := part.(ToolPart)
 			if !ok {
 				content = append(content, part)
 				continue
 			}
-			content = append(content, ToolCallPart{CallID: tool.CallID, Name: tool.Name, Input: tool.Input})
-			if tool.State == ToolStateCompleted || tool.State == ToolStateError {
-				results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: tool.Output}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
+			if tool.State != ToolStateCompleted && tool.State != ToolStateError {
+				hasUnresolvedTool = true
+				continue
 			}
+			content = append(content, ToolCallPart{CallID: tool.CallID, Name: tool.Name, Input: tool.Input})
+			results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: tool.Output}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
+		}
+		if hasUnresolvedTool && len(content) == 0 {
+			continue
 		}
 		message.Content = content
 		out = append(out, message)

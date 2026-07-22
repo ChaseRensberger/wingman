@@ -30,3 +30,16 @@ func TestExpandToolMessagesDerivesProviderResult(t *testing.T) {
 		t.Fatalf("result = %#v", expanded[1].Content[0])
 	}
 }
+
+func TestExpandToolMessagesOmitsUnresolvedTool(t *testing.T) {
+	messages := []Message{{Role: RoleAssistant, Content: Content{ToolPart{
+		CallID: "call_1",
+		Name:   "bash",
+		State:  ToolStatePending,
+		Input:  map[string]any{"command": "pwd"},
+	}}}}
+
+	if expanded := ExpandToolMessages(messages); len(expanded) != 0 {
+		t.Fatalf("expanded messages = %#v, want unresolved tool omitted", expanded)
+	}
+}

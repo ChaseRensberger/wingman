@@ -425,6 +425,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		s.mu.Unlock()
 		return nil, err
 	}
+	finalizeUnsettledTools(s.history)
 
 	// Append the user message before starting the loop so it ends up in
 	// history even if the loop fails immediately.
@@ -632,6 +633,26 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		return out, fmt.Errorf("persist: %w", persistErr)
 	}
 	return out, nil
+}
+
+func finalizeUnsettledTools(messages []models.Message) {
+	completedAt := time.Now().UTC().UnixMilli()
+	for i := range messages {
+		if messages[i].Role != models.RoleAssistant {
+			continue
+		}
+		for j, part := range messages[i].Content {
+			tool, ok := part.(models.ToolPart)
+			if !ok || (tool.State != models.ToolStatePending && tool.State != models.ToolStateRunning) {
+				continue
+			}
+			tool.State = models.ToolStateError
+			tool.Error = "Tool execution interrupted"
+			tool.Output = tool.Error
+			tool.CompletedAt = completedAt
+			messages[i].Content[j] = tool
+		}
+	}
 }
 
 func logLoopEvent(logger *slog.Logger, e run.Event) {
