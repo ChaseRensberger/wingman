@@ -29,7 +29,6 @@ import (
 type Server struct {
 	store            store.Store
 	router           *chi.Mux
-	aborts           *abortRegistry
 	runs             *sessionRunManager
 	events           *sessionEventBroker
 	webDevURL        string
@@ -77,7 +76,6 @@ func New(cfg Config) *Server {
 	s := &Server{
 		store:            cfg.Store,
 		router:           chi.NewRouter(),
-		aborts:           newAbortRegistry(),
 		events:           newSessionEventBroker(),
 		webDevURL:        cfg.WebDevURL,
 		logger:           logger,
@@ -164,9 +162,6 @@ func timeoutWithBypass(timeout time.Duration, bypass func(*http.Request) bool) f
 
 func shouldBypassTimeout(r *http.Request) bool {
 	path := r.URL.Path
-	if strings.HasPrefix(path, "/sessions/") && strings.HasSuffix(path, "/message/stream") {
-		return true
-	}
 	if strings.HasPrefix(path, "/sessions/") && strings.Contains(path, "/events") {
 		return true
 	}
