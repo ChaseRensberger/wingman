@@ -106,14 +106,12 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -d "{\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response includes the assistant's final text, any tool calls, token usage, and step count:
+The response confirms durable admission. Use the session event stream below for progress and completion:
 
 ```json
 {
-  "response": "...",
-  "tool_calls": [],
-  "usage": { "input_tokens": 0, "output_tokens": 0 },
-  "steps": 1
+  "run_id": "run_...",
+  "status": "queued"
 }
 ```
 

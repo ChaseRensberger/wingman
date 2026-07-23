@@ -17,6 +17,7 @@ WingModels currently includes catalog entries for:
 - Gemini
 - OpenAI
 - OpenCode Zen
+- OpenCode Go
 - OpenRouter
 
 Custom routes may target endpoints that speak one of Wingman's supported protocols.
@@ -60,6 +61,7 @@ google/gemini-3.5-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
 opencode/claude-sonnet-5
+opencode-go/kimi-k3
 ```
 
 ## Provider-Neutral Messages

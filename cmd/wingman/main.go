@@ -27,6 +27,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/openai"
 	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
 	_ "github.com/chaserensberger/wingman/models/providers/opencode"
+	_ "github.com/chaserensberger/wingman/models/providers/opencodego"
 	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"

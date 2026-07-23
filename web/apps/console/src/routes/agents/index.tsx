@@ -26,6 +26,7 @@ import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
 import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 interface AgentForm {
@@ -300,7 +301,10 @@ function AgentsPage() {
       )}
 
       {loading ? (
-        <div className="py-8 text-sm text-muted-foreground">Loading...</div>
+        <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+          <HexWaveSpinner size={24} />
+          <span>Loading...</span>
+        </div>
       ) : filteredAgents.length === 0 && filter ? (
         <Empty>
           <EmptyTitle>No agents found</EmptyTitle>

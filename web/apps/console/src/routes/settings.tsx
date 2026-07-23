@@ -13,8 +13,10 @@ import {
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { type Theme, useTheme } from "@wingman/core/components/theme-provider";
 import { getClientId, setClientId, wfetch, type Client } from "@/lib/client";
+import { getDisplayName, setDisplayName } from "@/lib/greeting";
 import { showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { Input } from "@wingman/core/components/core/input";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -24,6 +26,7 @@ function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [activeClientID, setActiveClientID] = useState(getClientId() ?? "");
+  const [displayName, setDisplayNameInput] = useState(getDisplayName());
   const activeClientName = clients.find((client) => client.id === activeClientID)?.name;
   const options = [
     { value: "light", label: "Light", icon: SunIcon },
@@ -60,6 +63,23 @@ function SettingsPage() {
       </div>
 
       <div className="space-y-4">
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Display name</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Input
+              className="max-w-md"
+              value={displayName}
+              onChange={(event) => {
+                setDisplayNameInput(event.target.value);
+                setDisplayName(event.target.value);
+              }}
+              placeholder="Your name"
+            />
+            <p className="text-sm text-muted-foreground">Used for personalized greetings when starting a new session. Leave blank to stay incognito.</p>
+          </CardContent>
+        </Card>
         <Card size="sm">
           <CardHeader>
             <CardTitle>Active client</CardTitle>

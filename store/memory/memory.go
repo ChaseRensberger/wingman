@@ -27,6 +27,7 @@ type Store struct {
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
 	events     map[string]*store.SessionEvent
+	runs       map[string]*store.SessionRun
 	auth       *store.Auth
 }
 
@@ -41,11 +42,102 @@ func NewStore() *Store {
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
 		events:     make(map[string]*store.SessionEvent),
+		runs:       make(map[string]*store.SessionRun),
 	}
 }
 
 // Close is a no-op for the in-memory store.
 func (s *Store) Close() error { return nil }
+
+func (s *Store) CreateSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.sessions[run.SessionID]; !ok {
+		return store.SessionRun{}, store.ErrSessionNotFound
+	}
+	if run.ID == "" {
+		run.ID = store.NewID(store.PrefixRun)
+	}
+	for _, existing := range s.runs {
+		if existing.SessionID == run.SessionID && existing.Sequence >= run.Sequence {
+			run.Sequence = existing.Sequence + 1
+		}
+	}
+	now := time.Now().UTC()
+	run.Status = store.SessionRunStatusQueued
+	run.CreatedAt = now
+	run.UpdatedAt = now
+	cp := copySessionRun(&run)
+	s.runs[run.ID] = &cp
+	return copySessionRun(&cp), nil
+}
+
+func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (*store.SessionRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var next *store.SessionRun
+	for _, run := range s.runs {
+		if run.SessionID == sessionID && run.Status == store.SessionRunStatusQueued && (next == nil || run.Sequence < next.Sequence) {
+			next = run
+		}
+	}
+	if next == nil {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	next.Status = store.SessionRunStatusRunning
+	next.StartedAt = now
+	next.UpdatedAt = now
+	cp := copySessionRun(next)
+	return &cp, nil
+}
+
+func (s *Store) CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, ok := s.runs[id]
+	if !ok {
+		return store.ErrSessionNotFound
+	}
+	now := time.Now().UTC()
+	run.Status = status
+	run.ErrorMessage = errorMessage
+	run.CompletedAt = now
+	run.UpdatedAt = now
+	return nil
+}
+
+func (s *Store) ListQueuedSessionRunSessions(ctx context.Context) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := map[string]bool{}
+	for _, run := range s.runs {
+		if run.Status == store.SessionRunStatusQueued {
+			seen[run.SessionID] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func (s *Store) AbortRunningSessionRuns(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for _, run := range s.runs {
+		if run.Status == store.SessionRunStatusRunning {
+			run.Status = store.SessionRunStatusAborted
+			run.ErrorMessage = "server shutdown"
+			run.CompletedAt = now
+			run.UpdatedAt = now
+		}
+	}
+	return nil
+}
 
 // ---- defensive copying helpers ------------------------------------------
 
@@ -69,6 +161,13 @@ func copyAgent(a *store.Agent) *store.Agent {
 	cp.Options = deepCopyMap(a.Options)
 	cp.OutputSchema = deepCopyMap(a.OutputSchema)
 	return &cp
+}
+
+func copySessionRun(run *store.SessionRun) store.SessionRun {
+	cp := *run
+	cp.Agent = *copyAgent(&run.Agent)
+	cp.OutputSchemaJSON = append([]byte(nil), run.OutputSchemaJSON...)
+	return cp
 }
 
 func copySession(sess *store.Session) *store.Session {

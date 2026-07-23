@@ -5,7 +5,7 @@ description: "Configure provider auth, provider routes, and model gateways."
 
 # Providers
 
-Providers are the model services Wingman can call, such as Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, or OpenCode.
+Providers are the model services Wingman can call, such as Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, OpenCode Zen, or OpenCode Go.
 
 Provider configuration has three separate pieces:
 
@@ -16,6 +16,8 @@ Provider configuration has three separate pieces:
 | Provider route and model config | `~/.config/wingman/wingman.json` | Runtime routing changes and custom provider/model definitions. |
 
 Agents store `model_ref` values such as `openai/gpt-5.6-terra`. Provider route overlays can change where that ref is sent without changing the agent.
+
+OpenCode Go uses the `opencode-go` provider ID and the same `OPENCODE_API_KEY` environment variable as OpenCode Zen. Stored credentials are keyed by provider ID, so configure `opencode-go` separately when using the auth API.
 
 ## Store Provider Auth
 

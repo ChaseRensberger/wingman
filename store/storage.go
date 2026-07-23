@@ -23,6 +23,11 @@ type Store interface {
 	// UpdateSession persists mutable session metadata.
 	UpdateSession(session *Session) error
 	DeleteSession(id string) error
+	CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
+	ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
+	CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
+	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
+	AbortRunningSessionRuns(ctx context.Context) error
 
 	// UpsertMessage inserts or updates a message row keyed by ID.
 	// It does not touch parts.

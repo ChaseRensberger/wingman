@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS model_calls (
     context_tokens         INTEGER NOT NULL DEFAULT 0,
     context_window         INTEGER NOT NULL DEFAULT 0,
     context_percent        REAL,
-    cost                   REAL NOT NULL DEFAULT 0,
+    cost                   REAL,
     structured_output_json TEXT,
     metadata_json          TEXT,
     started_at             TEXT NOT NULL,

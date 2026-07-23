@@ -56,7 +56,7 @@ func (s *Session) hydrate(ctx context.Context) error {
 		}
 		msgs[i] = m
 	}
-	s.history = msgs
+	s.history = models.NormalizeMessages(msgs)
 	return nil
 }
 
@@ -110,11 +110,14 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 }
 
 func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, msg models.Message, model models.ModelRef, info models.ModelInfo, stopReason string) error {
-	if s.store == nil || msg.Usage == nil || msg.Usage.Empty() {
+	if s.store == nil {
 		return nil
 	}
 	now := time.Now().UTC()
-	usage := *msg.Usage
+	usage := models.Usage{}
+	if msg.Usage != nil {
+		usage = *msg.Usage
+	}
 	call := store.ModelCall{
 		ID:                 store.NewID(store.PrefixModelCall),
 		SessionID:          s.id,
@@ -137,6 +140,7 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, 
 		ContextTokens:      usage.ContextTokens(),
 		ContextWindow:      info.ContextWindow,
 		ContextPercent:     usage.ContextPercent(info.ContextWindow),
+		Cost:               estimatedCost(usage, info),
 		StartedAt:          now,
 		CompletedAt:        now,
 		CreatedAt:          now,
@@ -148,6 +152,15 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, 
 		call.ModelID = msg.Origin.ModelID
 	}
 	return s.store.UpsertModelCall(ctx, call)
+}
+
+func estimatedCost(usage models.Usage, info models.ModelInfo) *float64 {
+	if usage.Empty() || (info.InputCostPerMTok == 0 && info.OutputCostPerMTok == 0) {
+		return nil
+	}
+	cost := float64(usage.InputTokens)/1_000_000*info.InputCostPerMTok +
+		float64(usage.OutputTokens)/1_000_000*info.OutputCostPerMTok
+	return &cost
 }
 
 func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {

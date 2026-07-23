@@ -22,6 +22,7 @@ import {
 } from "@wingman/core/components/core/alert-dialog";
 import { Input } from "@wingman/core/components/core/input";
 import { Textarea } from "@wingman/core/components/core/textarea";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
@@ -183,7 +184,10 @@ function AgentDetailPage() {
       </div>
 
       {loading ? (
-        <div className="py-8 text-sm text-muted-foreground">Loading...</div>
+        <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+          <HexWaveSpinner size={24} />
+          <span>Loading...</span>
+        </div>
       ) : !agent || !form ? (
         <div className="py-8 text-sm text-muted-foreground">Agent not found.</div>
       ) : (

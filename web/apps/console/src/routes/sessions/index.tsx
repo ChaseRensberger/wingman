@@ -48,6 +48,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@wingman/core/components/core/table";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
@@ -263,7 +264,6 @@ function SessionsPage() {
 	}
 
 	const selectedWorkspaceColor = selectedWorkspace ? workspaceColor(selectedWorkspace.id) : "bg-muted-foreground";
-	const createLabel = selectedWorkspace ? `New session in ${selectedWorkspace.name}` : "New session";
 
 	return (
 		<div className="mx-auto max-w-[118rem] px-4 py-6">
@@ -272,10 +272,14 @@ function SessionsPage() {
 			</div>
 
 			{loading ? (
-				<div className="py-8 text-sm text-muted-foreground">Loading...</div>
+				<div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+					<HexWaveSpinner size={24} />
+					<span>Loading...</span>
+				</div>
 			) : (
 				<div className="space-y-4">
-					<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+					<div className="space-y-3">
+						<div className="flex items-center justify-between gap-3">
 						<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
 							<DropdownMenu>
 								<DropdownMenuTrigger render={<Button variant="outline" className="h-10 justify-between gap-2 px-3 font-mono uppercase tracking-[0.16em] text-muted-foreground" />}>
@@ -331,12 +335,14 @@ function SessionsPage() {
 									<XIcon className="size-4" />
 								</Button>
 							)}
-							<Button onClick={handleCreate}>
-								<PlusIcon className="size-4" />{createLabel}
+						</div>
+
+							<Button className="h-10 px-5" onClick={handleCreate}>
+								New
 							</Button>
 						</div>
 
-						<div className="relative w-full lg:w-96">
+						<div className="relative">
 							<MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 							<Input className="h-10 pl-9" placeholder="Search sessions..." value={search} onChange={(e) => setSearch(e.target.value)} />
 						</div>

@@ -15,6 +15,7 @@ import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
 import { Input } from "@wingman/core/components/core/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
+import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
@@ -99,7 +100,10 @@ function ProviderDetailPage() {
       </div>
 
       {loading ? (
-        <div className="py-8 text-sm text-muted-foreground">Loading...</div>
+        <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+          <HexWaveSpinner size={24} />
+          <span>Loading...</span>
+        </div>
       ) : !provider ? (
         <div className="py-8 text-sm text-muted-foreground">Provider not found.</div>
       ) : (
