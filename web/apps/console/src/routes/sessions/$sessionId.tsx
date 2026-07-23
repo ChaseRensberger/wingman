@@ -1,74 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import WingmanIcon from "@/assets/icon-128.png";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
+import { generateSessionTitle, readSSE, type SessionEvent } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, Message, ModelCall, Part, Provider, ProviderModel, ToolActivity, ToolCallPart, ToolResultPart, Usage } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@wingman/core/components/core/alert-dialog";
-import { Button } from "@wingman/core/components/core/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@wingman/core/components/core/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@wingman/core/components/core/dropdown-menu";
-import { Input } from "@wingman/core/components/core/input";
-import { Textarea } from "@wingman/core/components/core/textarea";
-import {
-	Select,
-	SelectTrigger,
-	SelectValue,
-	SelectContent,
-	SelectGroup,
-	SelectLabel,
-	SelectItem,
-} from "@wingman/core/components/core/select";
-import { ChatMessage } from "@/components/chat-message";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
-import { RawMessages } from "@/components/raw-messages";
-import { SessionContextSheet } from "@/components/session-context-sheet";
-import {
-	ArrowDownIcon,
-	ArrowClockwiseIcon,
-	ArrowLeftIcon,
-	CheckIcon,
-	ClipboardTextIcon,
-	CodeIcon,
-	ClockIcon,
-	CopyIcon,
-	DotsThreeIcon,
-	FolderIcon,
-	PauseIcon,
-	PaperPlaneIcon,
-	PencilSimpleIcon,
-	PlayIcon,
-	StopIcon,
-	TrashIcon,
-	WarningCircleIcon,
-} from "@phosphor-icons/react";
+import { SessionComposer } from "@/components/session-composer";
+import { SessionDialogs } from "@/components/session-dialogs";
+import { SessionHeader } from "@/components/session-header";
+import { SessionTranscript } from "@/components/session-transcript";
+import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
 
 const STREAM_MIN_CHARS_PER_FRAME = 1;
 const STREAM_MAX_CHARS_PER_FRAME = 18;
@@ -77,20 +21,8 @@ const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
 const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
 const DEFAULT_SESSION_TITLE = "New session";
 
-type TranscriptScrollKey = "page-down" | "page-up" | "home" | "end" | "up" | "down";
-
 type SessionDetailSearch = {
 	workspace?: string;
-};
-
-type SessionEvent = {
-	id: string;
-	type: string;
-	cursor?: {
-		session_id: string;
-		seq: number;
-	};
-	data?: Record<string, unknown>;
 };
 
 type FailedRun = {
@@ -100,104 +32,8 @@ type FailedRun = {
 	error: string;
 };
 
-function transcriptScrollKey(event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">): TranscriptScrollKey | undefined {
-	if (event.altKey || event.ctrlKey || event.metaKey) return;
-	if (event.shiftKey && event.key !== " ") return;
-	switch (event.key) {
-		case "PageDown": return "page-down";
-		case "PageUp": return "page-up";
-		case "Home": return "home";
-		case "End": return "end";
-		case "ArrowUp": return "up";
-		case "ArrowDown": return "down";
-		case " ": return event.shiftKey ? "page-up" : "page-down";
-	}
-}
-
-function canScrollForKey(element: HTMLElement, key: TranscriptScrollKey) {
-	const up = key === "up" || key === "page-up" || key === "home";
-	return up ? element.scrollTop > 0 : element.scrollTop + element.clientHeight < element.scrollHeight;
-}
-
-function scrollKeyOwner(root: HTMLElement, target: EventTarget | null, key: TranscriptScrollKey) {
-	const element = target instanceof Element ? target.closest<HTMLElement>("[data-scrollable]") : undefined;
-	if (!element || element === root || !root.contains(element)) return root;
-	return canScrollForKey(element, key) ? element : root;
-}
-
-function isTranscriptScrollTarget(target: EventTarget | null, key: TranscriptScrollKey) {
-	const element = target instanceof HTMLElement ? target : undefined;
-	if (!element) return true;
-	if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.isContentEditable) return false;
-	return (key !== "page-up" && key !== "page-down") || !element.closest("button, a[href], [role=button]");
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseSSE(buffer: string): {
-	events: Array<{ event: string; data: string }>;
-	remainder: string;
-} {
-	const events: Array<{ event: string; data: string }> = [];
-	const chunks = buffer.split("\n\n");
-	const remainder = chunks.pop() ?? "";
-	for (const chunk of chunks) {
-		const lines = chunk.split("\n");
-		let event = "";
-		let data = "";
-		for (const line of lines) {
-			if (line.startsWith("event: ")) {
-				event = line.slice(7);
-			} else if (line.startsWith("data: ")) {
-				data = line.slice(6);
-			}
-		}
-		if (event || data) {
-			events.push({ event, data });
-		}
-	}
-	return { events, remainder };
-}
-
-async function* readSSE(
-	response: Response,
-): AsyncGenerator<{ event: string; data: unknown }> {
-	const reader = response.body!.getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-		const { events, remainder } = parseSSE(buffer);
-		buffer = remainder;
-		for (const ev of events) {
-			try {
-				yield { event: ev.event, data: JSON.parse(ev.data) };
-			} catch {
-				yield { event: ev.event, data: ev.data };
-			}
-		}
-	}
-	if (buffer.trim()) {
-		const { events } = parseSSE(buffer + "\n\n");
-		for (const ev of events) {
-			try {
-				yield { event: ev.event, data: JSON.parse(ev.data) };
-			} catch {
-				yield { event: ev.event, data: ev.data };
-			}
-		}
-	}
-}
-
-function buildStreamingMessage(text: string): Message {
-	return {
-		role: "assistant",
-		content: [{ type: "text", text } as Part],
-	};
 }
 
 function buildUserMessage(text: string): Message {
@@ -205,14 +41,6 @@ function buildUserMessage(text: string): Message {
 		role: "user",
 		content: [{ type: "text", text } as Part],
 	};
-}
-
-function sanitizeGeneratedTitle(title: string): string {
-	return title
-		.replace(/\s+/g, " ")
-		.replace(/^[[\]"'`]+|[[\]"'`.!?]+$/g, "")
-		.trim()
-		.slice(0, 80);
 }
 
 function cleanReasoningHeading(value: string): string {
@@ -230,22 +58,6 @@ function reasoningHeading(reasoning: string): string {
 	const markdown = reasoning.replace(/\r\n?/g, "\n");
 	const heading = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>|^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
 	return cleanReasoningHeading(heading?.[1] ?? heading?.[2] ?? "");
-}
-
-function ThinkingIndicator({ summary }: { summary: string }) {
-	return (
-		<div className="flex min-h-5 items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground">
-			<HexWaveSpinner size={16} className="size-3.5 shrink-0" label="Thinking" />
-			<span>Thinking</span>
-			{summary && <span className="min-w-0 truncate font-normal text-muted-foreground/80">{summary}</span>}
-		</div>
-	);
-}
-
-function eventField<T>(data: unknown, lower: string, upper: string): T | undefined {
-	if (!data || typeof data !== "object") return undefined;
-	const record = data as Record<string, unknown>;
-	return (record[lower] ?? record[upper]) as T | undefined;
 }
 
 async function latestSessionEventSeq(sessionId: string): Promise<number> {
@@ -294,70 +106,6 @@ function shouldAutoGenerateTitle(session: Session | null): boolean {
 	return title === "" || title === DEFAULT_SESSION_TITLE;
 }
 
-async function generateSessionTitle(
-	message: string,
-	modelRef: string,
-	signal: AbortSignal,
-	onTitle: (title: string) => void,
-): Promise<string> {
-	if (!modelRef) return "";
-
-	const headers = new Headers({ "Content-Type": "application/json" });
-	const clientId = getClientId();
-	if (clientId) headers.set("X-Wingman-Client", clientId);
-
-	const res = await fetch("/run", {
-		method: "POST",
-		headers,
-		body: JSON.stringify({
-			agent: {
-				id: "session_title_generator",
-				name: "Session Title Generator",
-				instructions: [
-					"Generate a concise, specific title for a chat session from the user's first message.",
-					"Use 3 to 7 words.",
-					"Respond with only the title text.",
-					"Do not use JSON, markdown, quotes, labels, or trailing punctuation.",
-				].join("\n"),
-				tools: [],
-			},
-			model_ref: modelRef,
-			message,
-		}),
-		signal,
-	});
-
-	if (!res.ok) {
-		const text = await res.text();
-		throw new Error(`HTTP ${res.status}: ${text}`);
-	}
-
-	let textBuffer = "";
-	let finalTitle = "";
-	for await (const ev of readSSE(res)) {
-		if (ev.event === "error") {
-			const message =
-				typeof ev.data === "string"
-					? ev.data
-					: eventField<{ error?: string }>(ev.data, "data", "Data")?.error;
-			throw new Error(message || "Title generation failed");
-		}
-		if (ev.event === "stream_part") {
-			const envelope = ev.data as { data?: unknown; Data?: unknown };
-			const data = envelope.data ?? envelope.Data;
-			const part = eventField<{ type: string; delta?: string }>(data, "part", "Part");
-			if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
-				textBuffer += part.delta;
-				const title = sanitizeGeneratedTitle(textBuffer);
-				if (title) onTitle(title);
-			}
-		}
-	}
-
-	finalTitle = sanitizeGeneratedTitle(textBuffer);
-	return finalTitle;
-}
-
 export const Route = createFileRoute("/sessions/$sessionId")({
 	validateSearch: (search: Record<string, unknown>): SessionDetailSearch => ({
 		workspace: typeof search.workspace === "string" ? search.workspace : undefined,
@@ -390,11 +138,6 @@ function SessionDetailPage() {
 	const [isTitleStreaming, setIsTitleStreaming] = useState(false);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [isStreamPaused, setIsStreamPaused] = useState(false);
-	const [isNearTranscriptBottom, setIsNearTranscriptBottom] = useState(true);
-	const [isTranscriptHovered, setIsTranscriptHovered] = useState(false);
-	const [isTranscriptScrolling, setIsTranscriptScrolling] = useState(false);
-	const [isTranscriptScrollbarDragging, setIsTranscriptScrollbarDragging] = useState(false);
-	const [transcriptScrollbar, setTranscriptScrollbar] = useState({ height: 0, top: 0 });
 	const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
 	const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
 	const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
@@ -414,25 +157,20 @@ function SessionDetailPage() {
 	const retryRequestRef = useRef<Omit<FailedRun, "error"> | null>(null);
 	const activeSessionIdRef = useRef(sessionId);
 	const skipNextSessionLoadRef = useRef(false);
-	const scrollRef = useRef<HTMLDivElement>(null);
 	const composerRef = useRef<HTMLTextAreaElement>(null);
-	const scrollFrameRef = useRef<number | null>(null);
-	const scrollbarIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const scrollbarDragRef = useRef<{ pointerId: number; grabOffset: number } | null>(null);
-	const stickToBottomRef = useRef(true);
 	const streamingTextRef = useRef("");
 	const visibleStreamingTextRef = useRef("");
 	const streamingTitleRef = useRef("");
 	const visibleStreamingTitleRef = useRef("");
 	const titleSessionIdRef = useRef(sessionId);
+	const transcriptScroll = useTranscriptScroll(`${session?.id}:${session?.history.length}:${visibleStreamingText.length}:${jsonMode}`, `${loading}:${session?.id}`);
 
 	useEffect(() => {
 		activeSessionIdRef.current = sessionId;
 		lastEventSeqRef.current = 0;
 		activeRunRef.current = null;
 		retryRequestRef.current = null;
-		stickToBottomRef.current = true;
-		setIsNearTranscriptBottom(true);
+		transcriptScroll.reset();
 		setFailedRun(null);
 		setToolActivities(new Map());
 		setJSONMode(false);
@@ -575,36 +313,10 @@ function SessionDetailPage() {
 	}, [draftWorkspaceId, isDraft, sessionId]);
 
 	useEffect(() => {
-		if (scrollRef.current && stickToBottomRef.current) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-		}
-		updateTranscriptScrollbar();
-	}, [session?.history, visibleStreamingText]);
-
-	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const observer = new ResizeObserver(updateTranscriptScrollbar);
-		observer.observe(el);
-		if (el.firstElementChild instanceof HTMLElement) observer.observe(el.firstElementChild);
-		window.addEventListener("resize", updateTranscriptScrollbar);
-		updateTranscriptScrollbar();
-		return () => {
-			observer.disconnect();
-			window.removeEventListener("resize", updateTranscriptScrollbar);
-		};
-	}, [loading, session?.id]);
-
-	useEffect(() => {
 		if (!isDraft || loading || isStreaming || session?.history.length) return;
 		const frame = requestAnimationFrame(() => composerRef.current?.focus());
 		return () => cancelAnimationFrame(frame);
 	}, [isDraft, isStreaming, loading, session?.history.length]);
-
-	useEffect(() => () => {
-		if (scrollFrameRef.current) cancelAnimationFrame(scrollFrameRef.current);
-		if (scrollbarIdleTimeoutRef.current) clearTimeout(scrollbarIdleTimeoutRef.current);
-	}, []);
 
 	useEffect(() => {
 		streamingTextRef.current = streamingText;
@@ -677,101 +389,6 @@ function SessionDetailPage() {
 		frameId = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(frameId);
 	}, [isTitleStreaming, streamingTitle]);
-
-	function updateTranscriptScrollbar() {
-		const el = scrollRef.current;
-		if (!el) return;
-		const trackPadding = 8;
-		const trackHeight = el.clientHeight - trackPadding * 2;
-		if (el.scrollHeight <= el.clientHeight || trackHeight <= 0) {
-			setTranscriptScrollbar((current) => current.height === 0 ? current : { height: 0, top: 0 });
-			return;
-		}
-		setTranscriptScrollbar((current) => {
-			const height = Math.max(32, (el.clientHeight / el.scrollHeight) * trackHeight);
-			const maxThumbTop = trackHeight - height;
-			const maxScrollTop = el.scrollHeight - el.clientHeight;
-			const top = trackPadding + (maxScrollTop > 0 ? (el.scrollTop / maxScrollTop) * maxThumbTop : 0);
-			return current.height === height && current.top === top ? current : { height, top };
-		});
-	}
-
-	function handleTranscriptScroll() {
-		setIsTranscriptScrolling(true);
-		if (scrollbarIdleTimeoutRef.current) clearTimeout(scrollbarIdleTimeoutRef.current);
-		scrollbarIdleTimeoutRef.current = window.setTimeout(() => {
-			setIsTranscriptScrolling(false);
-		}, 800);
-		if (scrollFrameRef.current) return;
-		scrollFrameRef.current = requestAnimationFrame(() => {
-			scrollFrameRef.current = null;
-			const el = scrollRef.current;
-			if (!el) return;
-			updateTranscriptScrollbar();
-			const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-			stickToBottomRef.current = isNearBottom;
-			setIsNearTranscriptBottom((current) => current === isNearBottom ? current : isNearBottom);
-		});
-	}
-
-	function handleTranscriptKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-		const key = transcriptScrollKey(event.nativeEvent);
-		if (!key || !isTranscriptScrollTarget(event.target, key)) return;
-		const root = scrollRef.current;
-		if (!root) return;
-		const owner = scrollKeyOwner(root, event.target, key);
-		if (!canScrollForKey(owner, key)) return;
-
-		event.preventDefault();
-		const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-		const page = owner.clientHeight * 0.8;
-		switch (key) {
-			case "page-down": owner.scrollBy({ top: page, behavior }); break;
-			case "page-up": owner.scrollBy({ top: -page, behavior }); break;
-			case "home": owner.scrollTo({ top: 0, behavior }); break;
-			case "end": owner.scrollTo({ top: owner.scrollHeight, behavior }); break;
-			case "up": owner.scrollBy({ top: -40, behavior }); break;
-			case "down": owner.scrollBy({ top: 40, behavior }); break;
-		}
-	}
-
-	function jumpToTranscriptBottom() {
-		const el = scrollRef.current;
-		if (!el) return;
-		stickToBottomRef.current = true;
-		setIsNearTranscriptBottom(true);
-		el.scrollTop = el.scrollHeight;
-	}
-
-	function handleTranscriptScrollbarPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-		e.preventDefault();
-		const thumb = e.currentTarget;
-		thumb.setPointerCapture(e.pointerId);
-		scrollbarDragRef.current = {
-			pointerId: e.pointerId,
-			grabOffset: e.clientY - thumb.getBoundingClientRect().top,
-		};
-		setIsTranscriptScrollbarDragging(true);
-	}
-
-	function handleTranscriptScrollbarPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-		const drag = scrollbarDragRef.current;
-		const el = scrollRef.current;
-		if (!drag || drag.pointerId !== e.pointerId || !el) return;
-		const trackPadding = 8;
-		const trackHeight = el.clientHeight - trackPadding * 2;
-		const maxThumbTop = trackHeight - transcriptScrollbar.height;
-		if (maxThumbTop <= 0) return;
-		const thumbTop = Math.max(0, Math.min(e.clientY - el.getBoundingClientRect().top - trackPadding - drag.grabOffset, maxThumbTop));
-		el.scrollTop = (thumbTop / maxThumbTop) * (el.scrollHeight - el.clientHeight);
-	}
-
-	function handleTranscriptScrollbarPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-		if (scrollbarDragRef.current?.pointerId !== e.pointerId) return;
-		e.currentTarget.releasePointerCapture(e.pointerId);
-		scrollbarDragRef.current = null;
-		setIsTranscriptScrollbarDragging(false);
-	}
 
 	async function copyFailedRunError() {
 		if (!failedRun) return;
@@ -948,8 +565,7 @@ function SessionDetailPage() {
 		persistLastModelRef(outboundModelRef);
 		setFailedRun(null);
 		setMessageText("");
-		stickToBottomRef.current = true;
-		setIsNearTranscriptBottom(true);
+		transcriptScroll.reset();
 		setSession((prev) => {
 			if (!prev) return prev;
 			return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
@@ -1018,8 +634,6 @@ function SessionDetailPage() {
 			persistGeneratedTitle(activeSessionId);
 
 			lastEventSeqRef.current = await latestSessionEventSeq(activeSessionId);
-			activeRunRef.current = { sessionId: activeSessionId, completed: false };
-			void startEventSubscription(activeSessionId);
 
 			const headers = new Headers({
 				"Content-Type": "application/json",
@@ -1049,6 +663,7 @@ function SessionDetailPage() {
 				throw new Error("Message was not accepted for execution");
 			}
 			activeRunRef.current = { sessionId: activeSessionId, runId: admitted.run_id, completed: false };
+			void startEventSubscription(activeSessionId);
 			completed = true;
 		} catch (err) {
 			if ((err as Error).name !== "AbortError") {
@@ -1075,13 +690,6 @@ function SessionDetailPage() {
 		}
 	}
 
-	function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			handleSend();
-		}
-	}
-
 	function openEditSession() {
 		if (!session) return;
 		setSessionTitleInput(session.title ?? "");
@@ -1089,8 +697,7 @@ function SessionDetailPage() {
 		setEditingSession(true);
 	}
 
-	async function handleSaveSession(e: React.FormEvent) {
-		e.preventDefault();
+	async function handleSaveSession() {
 		if (!session || isDraft) return;
 		setSavingSession(true);
 		try {
@@ -1139,8 +746,6 @@ function SessionDetailPage() {
 	const selectableProviders = providers.filter(isProviderSelectable);
 	const selectedProviderName = selectableProviders.find((provider) => provider.id === selectedProvider)?.name;
 	const selectedModelInfo = (models[selectedProvider] ?? []).find((model) => model.id === selectedModel);
-	const modelSelectValue = selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "";
-	const modelSelectLabel = selectedProviderName && selectedModel ? `${selectedProviderName} / ${selectedModel}` : undefined;
 	const hasModels = Object.values(models).some((providerModels) => providerModels.length > 0);
 	const latestUsage = latestAssistantUsage(session?.history ?? []) ?? latestRunUsage;
 	const persistedCall = session?.latest_model_call;
@@ -1185,211 +790,10 @@ function SessionDetailPage() {
 
 	return (
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
-			<header className="flex h-12 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
-				<Button render={<Link to="/sessions" />} nativeButton={false} variant="ghost" size="icon-sm" aria-label="Back to sessions">
-					<ArrowLeftIcon className="size-4" />
-				</Button>
-				<div className="min-w-0 flex-1">
-					<h1 className="truncate text-sm font-semibold tracking-tight">{sessionTitle || "Untitled session"}</h1>
-				</div>
-				<div className="hidden items-center gap-1 sm:flex">
-					{workspace && (
-						<span className="inline-flex max-w-48 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground" title={workspace.path || "Workspace has no directory"}>
-							<FolderIcon className="size-3.5 shrink-0" />
-							<span className="truncate">{workspace.name}</span>
-						</span>
-					)}
-				</div>
-				<SessionContextSheet session={session} calls={modelCalls} />
-				<Button type="button" variant={jsonMode ? "secondary" : "ghost"} size="icon-sm" aria-label={jsonMode ? "Exit JSON mode" : "Enter JSON mode"} title={jsonMode ? "Exit JSON mode" : "JSON mode"} onClick={() => setJSONMode((value) => !value)}>
-					<CodeIcon className="size-4" />
-				</Button>
-				<DropdownMenu>
-					<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Session actions" />}>
-						<DotsThreeIcon className="size-4" weight="bold" />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-64">
-						<DropdownMenuGroup>
-							<DropdownMenuLabel>{isDraft ? "New session" : "Session"}</DropdownMenuLabel>
-							<div className="px-1.5 pb-1 text-xs text-muted-foreground">
-								<div className="flex items-center gap-1.5"><ClockIcon className="size-3.5" />{isDraft ? "Not saved yet" : new Date(session.created_at).toLocaleString()}</div>
-								{session.work_dir && <div className="mt-1 flex items-start gap-1.5"><FolderIcon className="mt-0.5 size-3.5 shrink-0" /><span className="break-all">{session.work_dir}</span></div>}
-								<div className="mt-1 flex items-center gap-1.5"><ClipboardTextIcon className="size-3.5" />{contextLabel}</div>
-							</div>
-						</DropdownMenuGroup>
-						<DropdownMenuSeparator />
-						{!isDraft && (
-							<DropdownMenuItem onClick={() => void copySessionValue(session.id, "id")}>
-								{copiedValue === "id" ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}Copy session ID
-							</DropdownMenuItem>
-						)}
-						{session.work_dir && (
-							<DropdownMenuItem onClick={() => void copySessionValue(session.work_dir!, "path")}>
-								{copiedValue === "path" ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}Copy working directory
-							</DropdownMenuItem>
-						)}
-						{!isDraft && (
-							<>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem onClick={openEditSession}><PencilSimpleIcon className="size-4" />Edit session</DropdownMenuItem>
-								<DropdownMenuItem variant="destructive" onClick={() => setDeleteSessionOpen(true)}><TrashIcon className="size-4" />Delete session</DropdownMenuItem>
-							</>
-						)}
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</header>
-
-			<div
-				className="relative min-h-0 flex-1"
-				onPointerEnter={() => setIsTranscriptHovered(true)}
-				onPointerLeave={() => setIsTranscriptHovered(false)}
-			>
-				<div
-					ref={scrollRef}
-					onScroll={handleTranscriptScroll}
-					onKeyDown={handleTranscriptKeyDown}
-					tabIndex={0}
-					role="region"
-					aria-label="Session transcript"
-					data-scrollable
-					className="h-full overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-				>
-					<div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
-						{jsonMode ? (
-							<div className="px-4 pb-6 sm:px-6">
-								<RawMessages messages={session.history} />
-							</div>
-						) : transcriptHistory.length === 0 && !visibleStreamingText ? (
-							<div className="flex flex-1 items-start justify-center pt-[20dvh] pb-12 text-center">
-								<div className="flex flex-col items-center gap-4">
-									<img src={WingmanIcon} className="size-16" alt="Wingman logo" />
-									<div className="text-2xl font-semibold sm:text-3xl">{greeting}</div>
-								</div>
-							</div>
-						) : (
-							<div>
-								{transcriptHistory.map((msg, idx) => (
-									<ChatMessage key={idx} message={msg} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivities} />
-								))}
-								{visibleStreamingText && <ChatMessage message={buildStreamingMessage(visibleStreamingText)} isStreaming />}
-								{isStreaming && <ThinkingIndicator summary={liveReasoningHeading} />}
-								{failedRun && (
-									<div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6">
-										<div className="flex items-start gap-2">
-											<WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" />
-											<div className="min-w-0 flex-1">
-												<div className="font-medium text-destructive">Message failed</div>
-											<pre data-scrollable tabIndex={0} className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre>
-											</div>
-										</div>
-										<div className="mt-3 flex justify-end gap-2">
-											<Button size="sm" variant="ghost" type="button" onClick={() => void copyFailedRunError()}>
-												{copiedFailedRunError ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
-												{copiedFailedRunError ? "Copied" : "Copy error"}
-											</Button>
-											<Button size="sm" type="button" onClick={() => void handleSend(undefined, failedRun)} disabled={isStreaming}>
-												<ArrowClockwiseIcon className="size-4" />
-												Retry
-											</Button>
-										</div>
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-				</div>
-				{transcriptScrollbar.height > 0 && (
-					<div
-						className={`absolute right-0 z-10 w-3 select-none transition-opacity duration-200 ${isTranscriptHovered || isTranscriptScrolling || isTranscriptScrollbarDragging ? "opacity-100" : "pointer-events-none opacity-0"}`}
-						style={{ height: transcriptScrollbar.height, top: transcriptScrollbar.top }}
-						onPointerDown={handleTranscriptScrollbarPointerDown}
-						onPointerMove={handleTranscriptScrollbarPointerMove}
-						onPointerUp={handleTranscriptScrollbarPointerUp}
-						onPointerCancel={handleTranscriptScrollbarPointerUp}
-					>
-						<div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-border/70 transition-colors hover:bg-foreground/40" />
-					</div>
-				)}
-			</div>
-
-			<form onSubmit={handleSend} className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
-				<div className="relative mx-auto max-w-4xl rounded-xl border bg-card p-2 shadow-lg shadow-primary/10">
-					{!isNearTranscriptBottom && (
-						<Button
-							className="absolute -top-10 right-2 z-20 rounded-full shadow-md"
-							size="icon-sm"
-							type="button"
-							onClick={jumpToTranscriptBottom}
-							aria-label="Jump to latest message"
-							title="Jump to latest message"
-						>
-							<ArrowDownIcon className="size-4" />
-						</Button>
-					)}
-					<Textarea
-						ref={composerRef}
-						value={messageText}
-						onChange={(e) => setMessageText(e.target.value)}
-						onKeyDown={handleKeyDown}
-						placeholder="Ask anything..."
-						className="min-h-20 max-h-60 resize-none overflow-y-auto border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
-						disabled={isStreaming}
-					/>
-					<div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
-						<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-							<Select value={selectedAgent} onValueChange={(v) => {
-								const agentId = v ?? "";
-								setSelectedAgent(agentId);
-								persistLastAgentId(agentId);
-							}}>
-								<SelectTrigger className="h-8 w-40 border-0 bg-muted/60 text-xs shadow-none sm:w-56"><SelectValue placeholder="Select agent">{selectedAgentName}</SelectValue></SelectTrigger>
-								<SelectContent>{agents.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-							</Select>
-							<Select value={modelSelectValue} onValueChange={(v) => {
-								const modelRef = splitModelRef(v ?? "");
-								setSelectedProvider(modelRef.provider);
-								setSelectedModel(modelRef.model);
-								persistLastModelRef(v ?? "");
-							}} disabled={!hasModels}>
-								<SelectTrigger className="h-8 w-44 border-0 bg-muted/60 text-xs shadow-none sm:w-72"><SelectValue placeholder="Select model">{modelSelectLabel}</SelectValue></SelectTrigger>
-								<SelectContent>{selectableProviders.map((provider) => <SelectGroup key={provider.id}><SelectLabel>{provider.name}</SelectLabel>{(models[provider.id] ?? []).map((model) => <SelectItem key={`${provider.id}/${model.id}`} value={`${provider.id}/${model.id}`}>{model.id}</SelectItem>)}</SelectGroup>)}</SelectContent>
-							</Select>
-						</div>
-						<div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-							{isStreaming ? (
-								<>
-									<Button size="icon-sm" variant="secondary" type="button" onClick={isStreamPaused ? handleResumeStream : handlePauseStream} aria-label={isStreamPaused ? "Resume stream" : "Pause stream"} title={isStreamPaused ? "Resume stream" : "Pause stream"}>{isStreamPaused ? <PlayIcon className="size-4" /> : <PauseIcon className="size-4" />}</Button>
-									<Button size="sm" variant="destructive" type="button" onClick={handleAbort}><StopIcon className="size-4" /><span className="hidden sm:inline">Abort</span></Button>
-								</>
-							) : (
-								<Button size="icon-sm" type="submit" aria-label="Send message" title="Send message" disabled={!messageText.trim() || !selectedAgent}>
-									<PaperPlaneIcon className="size-4" />
-								</Button>
-							)}
-						</div>
-					</div>
-				</div>
-			</form>
-
-			<Dialog open={editingSession} onOpenChange={setEditingSession}>
-				<DialogContent>
-					<form onSubmit={handleSaveSession} className="grid gap-4">
-						<DialogHeader><DialogTitle>Edit session</DialogTitle><DialogDescription>Changing the working directory removes the workspace link.</DialogDescription></DialogHeader>
-						<div className="grid gap-3">
-							<label className="grid gap-1 text-sm font-medium">Name<Input value={sessionTitleInput} onChange={(e) => setSessionTitleInput(e.target.value)} placeholder="Session name" /></label>
-							<label className="grid gap-1 text-sm font-medium">Working directory<Input value={sessionWorkDirInput} onChange={(e) => setSessionWorkDirInput(e.target.value)} placeholder="Optional working directory" /></label>
-						</div>
-						<DialogFooter><Button type="button" variant="outline" onClick={() => setEditingSession(false)} disabled={savingSession}>Cancel</Button><Button type="submit" disabled={savingSession}>{savingSession ? "Saving..." : "Save changes"}</Button></DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
-
-			<AlertDialog open={deleteSessionOpen} onOpenChange={setDeleteSessionOpen}>
-				<AlertDialogContent>
-					<AlertDialogHeader><AlertDialogTitle>Delete session?</AlertDialogTitle><AlertDialogDescription>This will permanently delete {session.title || session.id}. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-					<AlertDialogFooter><AlertDialogCancel disabled={deletingSession}>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={deletingSession} onClick={handleDeleteSession}>{deletingSession ? "Deleting..." : "Delete"}</AlertDialogAction></AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
+			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} isStreaming={isStreaming} reasoningHeading={liveReasoningHeading} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivities} failedRun={failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, failedRun ?? undefined)} scroll={transcriptScroll} />
+			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={isStreaming} isStreamPaused={isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={handlePauseStream} onResume={handleResumeStream} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
+			<SessionDialogs sessionTitle={session.title ?? ""} sessionId={session.id} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} titleInput={sessionTitleInput} workDirInput={sessionWorkDirInput} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onTitleChange={setSessionTitleInput} onWorkDirChange={setSessionWorkDirInput} onSave={() => void handleSaveSession()} onDelete={() => void handleDeleteSession()} />
 		</div>
 	);
 }
