@@ -3,108 +3,23 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { wfetch, getClientId } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
-import { generateSessionTitle, readSSE, type SessionEvent } from "@/lib/session-stream";
+import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, reasoningHeading, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
+import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
-import type { Session, Agent, Workspace, Message, ModelCall, Part, Provider, ProviderModel, ToolActivity, ToolCallPart, ToolResultPart, Usage } from "@/lib/types";
+import type { Session, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
 import { SessionTranscript } from "@/components/session-transcript";
+import { useSessionRun, type FailedRun } from "@/hooks/use-session-run";
+import { useStreamReveal } from "@/hooks/use-stream-reveal";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
-
-const STREAM_MIN_CHARS_PER_FRAME = 1;
-const STREAM_MAX_CHARS_PER_FRAME = 18;
-const STREAM_BACKLOG_DIVISOR = 14;
-const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
-const LAST_MODEL_REF_KEY = "wingman_last_model_ref";
-const DEFAULT_SESSION_TITLE = "New session";
 
 type SessionDetailSearch = {
 	workspace?: string;
 };
-
-type FailedRun = {
-	message: string;
-	agentId: string;
-	modelRef: string;
-	error: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function buildUserMessage(text: string): Message {
-	return {
-		role: "user",
-		content: [{ type: "text", text } as Part],
-	};
-}
-
-function cleanReasoningHeading(value: string): string {
-	return value
-		.replace(/`([^`]+)`/g, "$1")
-		.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-		.replace(/[*_~]+/g, "")
-		.replace(/<[^>]+>/g, " ")
-		.replace(/\s+/g, " ")
-		.trim()
-		.slice(0, 120);
-}
-
-function reasoningHeading(reasoning: string): string {
-	const markdown = reasoning.replace(/\r\n?/g, "\n");
-	const heading = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>|^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
-	return cleanReasoningHeading(heading?.[1] ?? heading?.[2] ?? "");
-}
-
-async function latestSessionEventSeq(sessionId: string): Promise<number> {
-	let after = 0;
-	for (; ;) {
-		const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEvent[]; has_more?: boolean };
-		const events = page.data ?? [];
-		if (events.length === 0) return after;
-		after = events.at(-1)?.cursor?.seq ?? after;
-		if (!page.has_more) return after;
-	}
-}
-
-function modelRefExists(models: Record<string, ProviderModel[]>, modelRef: string): boolean {
-	const ref = splitModelRef(modelRef);
-	return Boolean(ref.provider && ref.model && models[ref.provider]?.some((model) => model.id === ref.model));
-}
-
-function agentExists(agents: Agent[], agentId: string): boolean {
-	return Boolean(agentId && agents.some((agent) => agent.id === agentId));
-}
-
-function persistLastAgentId(agentId: string) {
-	if (agentId) {
-		localStorage.setItem(LAST_AGENT_ID_KEY, agentId);
-	}
-}
-
-function persistLastModelRef(modelRef: string) {
-	if (modelRef) {
-		localStorage.setItem(LAST_MODEL_REF_KEY, modelRef);
-	}
-}
-
-function formatSessionError(err: unknown): string {
-	const message = String(err instanceof Error ? err.message : err);
-	if (message.includes("requires a working directory, but session has none")) {
-		return "This session has no working directory. The selected agent tried to use a tool that requires one. Create a new session with a working directory to use this agent.";
-	}
-	return message.replace(/^Error:\s*/, "");
-}
-
-function shouldAutoGenerateTitle(session: Session | null): boolean {
-	if (!session || session.history.length > 0) return false;
-	const title = (session.title ?? "").trim();
-	return title === "" || title === DEFAULT_SESSION_TITLE;
-}
 
 export const Route = createFileRoute("/sessions/$sessionId")({
 	validateSearch: (search: Record<string, unknown>): SessionDetailSearch => ({
@@ -130,17 +45,8 @@ function SessionDetailPage() {
 	const [selectedProvider, setSelectedProvider] = useState("");
 	const [selectedModel, setSelectedModel] = useState("");
 	const [messageText, setMessageText] = useState("");
-	const [streamingText, setStreamingText] = useState("");
-	const [visibleStreamingText, setVisibleStreamingText] = useState("");
-	const [streamingReasoning, setStreamingReasoning] = useState("");
 	const [streamingTitle, setStreamingTitle] = useState("");
-	const [visibleStreamingTitle, setVisibleStreamingTitle] = useState("");
 	const [isTitleStreaming, setIsTitleStreaming] = useState(false);
-	const [isStreaming, setIsStreaming] = useState(false);
-	const [isStreamPaused, setIsStreamPaused] = useState(false);
-	const [latestRunUsage, setLatestRunUsage] = useState<Usage | undefined>();
-	const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
-	const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
 	const [copiedFailedRunError, setCopiedFailedRunError] = useState(false);
 	const [editingSession, setEditingSession] = useState(false);
 	const [sessionTitleInput, setSessionTitleInput] = useState("");
@@ -150,37 +56,16 @@ function SessionDetailPage() {
 	const [deletingSession, setDeletingSession] = useState(false);
 	const [copiedValue, setCopiedValue] = useState<"id" | "path" | "">("");
 	const [jsonMode, setJSONMode] = useState(false);
-	const abortControllerRef = useRef<AbortController | null>(null);
-	const eventControllerRef = useRef<AbortController | null>(null);
-	const lastEventSeqRef = useRef(0);
-	const activeRunRef = useRef<{ sessionId: string; runId?: string; completed: boolean } | null>(null);
-	const retryRequestRef = useRef<Omit<FailedRun, "error"> | null>(null);
 	const activeSessionIdRef = useRef(sessionId);
 	const skipNextSessionLoadRef = useRef(false);
 	const composerRef = useRef<HTMLTextAreaElement>(null);
-	const streamingTextRef = useRef("");
-	const visibleStreamingTextRef = useRef("");
-	const streamingTitleRef = useRef("");
-	const visibleStreamingTitleRef = useRef("");
 	const titleSessionIdRef = useRef(sessionId);
-	const transcriptScroll = useTranscriptScroll(`${session?.id}:${session?.history.length}:${visibleStreamingText.length}:${jsonMode}`, `${loading}:${session?.id}`);
 
 	useEffect(() => {
 		activeSessionIdRef.current = sessionId;
-		lastEventSeqRef.current = 0;
-		activeRunRef.current = null;
-		retryRequestRef.current = null;
-		transcriptScroll.reset();
-		setFailedRun(null);
-		setToolActivities(new Map());
 		setJSONMode(false);
-		eventControllerRef.current?.abort();
-		eventControllerRef.current = null;
-		setIsStreamPaused(false);
-		setStreamingReasoning("");
 		if (titleSessionIdRef.current !== sessionId) {
 			setStreamingTitle("");
-			setVisibleStreamingTitle("");
 			setIsTitleStreaming(false);
 		}
 	}, [sessionId]);
@@ -229,6 +114,15 @@ function SessionDetailPage() {
 			setLoading(false);
 		}
 	}, [draftWorkspaceId, sessionId]);
+
+	const run = useSessionRun({ sessionId, loadSession, setSession });
+	const visibleStreamingText = useStreamReveal(run.streamingText, run.isStreaming);
+	const visibleStreamingTitle = useStreamReveal(streamingTitle, isTitleStreaming);
+	const transcriptScroll = useTranscriptScroll(`${session?.id}:${session?.history.length}:${visibleStreamingText.length}:${jsonMode}`, `${loading}:${session?.id}`);
+
+	useEffect(() => {
+		transcriptScroll.reset();
+	}, [sessionId]);
 
 	useEffect(() => {
 		if (skipNextSessionLoadRef.current) {
@@ -313,87 +207,15 @@ function SessionDetailPage() {
 	}, [draftWorkspaceId, isDraft, sessionId]);
 
 	useEffect(() => {
-		if (!isDraft || loading || isStreaming || session?.history.length) return;
+		if (!isDraft || loading || run.isStreaming || session?.history.length) return;
 		const frame = requestAnimationFrame(() => composerRef.current?.focus());
 		return () => cancelAnimationFrame(frame);
-	}, [isDraft, isStreaming, loading, session?.history.length]);
-
-	useEffect(() => {
-		streamingTextRef.current = streamingText;
-	}, [streamingText]);
-
-	useEffect(() => {
-		visibleStreamingTextRef.current = visibleStreamingText;
-	}, [visibleStreamingText]);
-
-	useEffect(() => {
-		streamingTitleRef.current = streamingTitle;
-	}, [streamingTitle]);
-
-	useEffect(() => {
-		visibleStreamingTitleRef.current = visibleStreamingTitle;
-	}, [visibleStreamingTitle]);
-
-	useEffect(() => {
-		if (!isStreaming && !streamingText) return;
-
-		let frameId = 0;
-		const tick = () => {
-			const target = streamingTextRef.current;
-			const visible = visibleStreamingTextRef.current;
-
-			if (visible.length < target.length) {
-				const backlog = target.length - visible.length;
-				const charsThisFrame = Math.min(
-					STREAM_MAX_CHARS_PER_FRAME,
-					Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(backlog / STREAM_BACKLOG_DIVISOR)),
-				);
-				const next = target.slice(0, visible.length + charsThisFrame);
-				visibleStreamingTextRef.current = next;
-				setVisibleStreamingText(next);
-			}
-
-			if (isStreaming || visibleStreamingTextRef.current.length < streamingTextRef.current.length) {
-				frameId = requestAnimationFrame(tick);
-			}
-		};
-
-		frameId = requestAnimationFrame(tick);
-		return () => cancelAnimationFrame(frameId);
-	}, [isStreaming, streamingText]);
-
-	useEffect(() => {
-		if (!isTitleStreaming && !streamingTitle) return;
-
-		let frameId = 0;
-		const tick = () => {
-			const target = streamingTitleRef.current;
-			const visible = visibleStreamingTitleRef.current;
-
-			if (visible.length < target.length) {
-				const backlog = target.length - visible.length;
-				const charsThisFrame = Math.min(
-					STREAM_MAX_CHARS_PER_FRAME,
-					Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(backlog / STREAM_BACKLOG_DIVISOR)),
-				);
-				const next = target.slice(0, visible.length + charsThisFrame);
-				visibleStreamingTitleRef.current = next;
-				setVisibleStreamingTitle(next);
-			}
-
-			if (isTitleStreaming || visibleStreamingTitleRef.current.length < streamingTitleRef.current.length) {
-				frameId = requestAnimationFrame(tick);
-			}
-		};
-
-		frameId = requestAnimationFrame(tick);
-		return () => cancelAnimationFrame(frameId);
-	}, [isTitleStreaming, streamingTitle]);
+	}, [isDraft, run.isStreaming, loading, session?.history.length]);
 
 	async function copyFailedRunError() {
-		if (!failedRun) return;
+		if (!run.failedRun) return;
 		try {
-			await navigator.clipboard.writeText(failedRun.error);
+			await navigator.clipboard.writeText(run.failedRun.error);
 			setCopiedFailedRunError(true);
 			window.setTimeout(() => setCopiedFailedRunError(false), 1200);
 		} catch (err) {
@@ -401,156 +223,8 @@ function SessionDetailPage() {
 		}
 	}
 
-	function applySessionEvent(ev: SessionEvent) {
-		if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) {
-			lastEventSeqRef.current = ev.cursor.seq;
-		}
-		const data = ev.data ?? {};
-		if (ev.type === "session.tool.updated") {
-			const callID = typeof data.call_id === "string" ? data.call_id : "";
-			const tool = typeof data.tool === "string" ? data.tool : "";
-			const status = data.status;
-			if (!callID || !tool || !["pending", "running", "completed", "error"].includes(String(status))) return;
-			setToolActivities((previous) => {
-				const next = new Map(previous);
-				next.set(callID, {
-					call_id: callID,
-					tool,
-					status: status as ToolActivity["status"],
-					input: isRecord(data.input) ? data.input : undefined,
-					output: typeof data.output === "string" ? data.output : undefined,
-					metadata: isRecord(data.metadata) ? data.metadata : undefined,
-					error: typeof data.error === "string" ? data.error : undefined,
-					started_at: typeof data.started_at === "string" ? data.started_at : undefined,
-					completed_at: typeof data.completed_at === "string" ? data.completed_at : undefined,
-					duration_ms: typeof data.duration_ms === "number" ? data.duration_ms : undefined,
-				});
-				return next;
-			});
-			return;
-		}
-		if (ev.type === "session.text.delta") {
-			const delta = typeof data.delta === "string" ? data.delta : "";
-			if (delta) {
-				const next = streamingTextRef.current + delta;
-				streamingTextRef.current = next;
-				setStreamingText(next);
-			}
-			return;
-		}
-		if (ev.type === "session.reasoning.delta") {
-			const delta = typeof data.delta === "string" ? data.delta : "";
-			if (delta) setStreamingReasoning((previous) => previous + delta);
-			return;
-		}
-		if (ev.type === "session.reasoning.completed") {
-			const text = typeof data.text === "string" ? data.text : "";
-			if (text) setStreamingReasoning(text);
-			return;
-		}
-		if (ev.type === "session.message.created") {
-			const message = data.message as Message | undefined;
-			if (!message) return;
-			setSession((prev) => {
-				if (!prev) return prev;
-				return { ...prev, history: [...prev.history, message] };
-			});
-			if (message.role === "assistant") {
-				streamingTextRef.current = "";
-				visibleStreamingTextRef.current = "";
-				setStreamingText("");
-				setVisibleStreamingText("");
-			}
-			return;
-		}
-		if (ev.type === "session.run.completed") {
-			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
-			const usage = data.usage as Usage | undefined;
-			if (usage) setLatestRunUsage(usage);
-			activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
-			return;
-		}
-		if (ev.type === "session.run.failed") {
-			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
-			const error = typeof data.error === "string" ? data.error : "Run failed";
-			activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
-			throw new Error(error);
-		}
-	}
-
-	async function subscribeSessionEvents(sessionId: string, signal: AbortSignal): Promise<void> {
-		const headers = new Headers();
-		const clientId = getClientId();
-		if (clientId) headers.set("X-Wingman-Client", clientId);
-		const res = await fetch(`/sessions/${sessionId}/events?after=${lastEventSeqRef.current}`, { headers, signal });
-		if (!res.ok) {
-			const text = await res.text();
-			throw new Error(`HTTP ${res.status}: ${text}`);
-		}
-		for await (const ev of readSSE(res)) {
-			if (!ev.event || ev.event.startsWith(":")) continue;
-			applySessionEvent(ev.data as SessionEvent);
-			if (activeRunRef.current?.completed) return;
-		}
-	}
-
-	async function startEventSubscription(sessionId: string) {
-		eventControllerRef.current?.abort();
-		const controller = new AbortController();
-		eventControllerRef.current = controller;
-		setIsStreamPaused(false);
-		try {
-			await subscribeSessionEvents(sessionId, controller.signal);
-		} catch (err) {
-			if ((err as Error).name !== "AbortError") {
-				console.error("Event stream failed", err);
-				const request = retryRequestRef.current;
-				if (request) setFailedRun({ ...request, error: formatSessionError(err) });
-			}
-		} finally {
-			if (activeRunRef.current?.sessionId === sessionId && activeRunRef.current.completed) {
-				setIsStreaming(false);
-				setIsStreamPaused(false);
-				setStreamingText("");
-				setVisibleStreamingText("");
-				setStreamingReasoning("");
-				activeRunRef.current = null;
-				await loadSession(sessionId);
-			}
-		}
-	}
-
-	function handlePauseStream() {
-		eventControllerRef.current?.abort();
-		eventControllerRef.current = null;
-		setIsStreamPaused(true);
-	}
-
-	function handleResumeStream() {
-		const run = activeRunRef.current;
-		if (!run || run.completed) return;
-		void startEventSubscription(run.sessionId);
-	}
-
 	async function handleAbort() {
-		try {
-			await wfetch(`/sessions/${activeSessionIdRef.current}/abort`, { method: "POST" });
-		} catch (err) {
-			console.error("Abort failed", err);
-		}
-		if (abortControllerRef.current) {
-			abortControllerRef.current.abort();
-			abortControllerRef.current = null;
-		}
-		eventControllerRef.current?.abort();
-		eventControllerRef.current = null;
-		activeRunRef.current = null;
-		setIsStreaming(false);
-		setIsStreamPaused(false);
-		setStreamingText("");
-		setVisibleStreamingText("");
-		setStreamingReasoning("");
-		await loadSession();
+		await run.abort(activeSessionIdRef.current);
 	}
 
 	async function handleSend(e?: React.FormEvent, retry?: Omit<FailedRun, "error">) {
@@ -563,7 +237,6 @@ function SessionDetailPage() {
 		const shouldGenerateTitle = shouldAutoGenerateTitle(session);
 		persistLastAgentId(outboundAgentId);
 		persistLastModelRef(outboundModelRef);
-		setFailedRun(null);
 		setMessageText("");
 		transcriptScroll.reset();
 		setSession((prev) => {
@@ -571,16 +244,8 @@ function SessionDetailPage() {
 			return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
 		});
 
-		const controller = new AbortController();
-		abortControllerRef.current = controller;
-		retryRequestRef.current = { message: outboundText, agentId: outboundAgentId, modelRef: outboundModelRef };
-		setIsStreaming(true);
-		setIsStreamPaused(false);
-		setStreamingText("");
-		setVisibleStreamingText("");
-		setStreamingReasoning("");
-		setLatestRunUsage(undefined);
-		let completed = false;
+		const controller = run.begin({ message: outboundText, agentId: outboundAgentId, modelRef: outboundModelRef });
+		let accepted = false;
 		let activeSessionId = sessionId;
 		let titlePromise: Promise<string> | null = null;
 
@@ -588,7 +253,6 @@ function SessionDetailPage() {
 			titleSessionIdRef.current = sessionId;
 			setIsTitleStreaming(true);
 			setStreamingTitle("");
-			setVisibleStreamingTitle("");
 			titlePromise = generateSessionTitle(outboundText, outboundModelRef, controller.signal, (title) => {
 				if (!title) return;
 				setStreamingTitle(title);
@@ -633,7 +297,7 @@ function SessionDetailPage() {
 			}
 			persistGeneratedTitle(activeSessionId);
 
-			lastEventSeqRef.current = await latestSessionEventSeq(activeSessionId);
+			await run.captureCursor(activeSessionId);
 
 			const headers = new Headers({
 				"Content-Type": "application/json",
@@ -662,31 +326,19 @@ function SessionDetailPage() {
 			if (!admitted.run_id || admitted.status !== "queued") {
 				throw new Error("Message was not accepted for execution");
 			}
-			activeRunRef.current = { sessionId: activeSessionId, runId: admitted.run_id, completed: false };
-			void startEventSubscription(activeSessionId);
-			completed = true;
+			run.start(activeSessionId, admitted.run_id);
+			accepted = true;
 		} catch (err) {
 			if ((err as Error).name !== "AbortError") {
 				console.error("Send failed", err);
 				setMessageText(outboundText);
-				setFailedRun({ message: outboundText, agentId: outboundAgentId, modelRef: outboundModelRef, error: formatSessionError(err) });
+				await run.fail(err, activeSessionId);
 			}
 		} finally {
-			if (!completed) {
-				setIsStreaming(false);
-				setIsStreamPaused(false);
-				setStreamingText("");
-				setVisibleStreamingText("");
-				setStreamingReasoning("");
-				eventControllerRef.current?.abort();
-				eventControllerRef.current = null;
-				activeRunRef.current = null;
-			}
-			abortControllerRef.current = null;
-			if (!completed && controller.signal.aborted) {
+			run.finishSubmission();
+			if (!accepted && controller.signal.aborted) {
 				setMessageText(outboundText);
 			}
-			if (!completed) await loadSession(activeSessionId);
 		}
 	}
 
@@ -747,7 +399,7 @@ function SessionDetailPage() {
 	const selectedProviderName = selectableProviders.find((provider) => provider.id === selectedProvider)?.name;
 	const selectedModelInfo = (models[selectedProvider] ?? []).find((model) => model.id === selectedModel);
 	const hasModels = Object.values(models).some((providerModels) => providerModels.length > 0);
-	const latestUsage = latestAssistantUsage(session?.history ?? []) ?? latestRunUsage;
+	const latestUsage = latestAssistantUsage(session?.history ?? []) ?? run.latestRunUsage;
 	const persistedCall = session?.latest_model_call;
 	const sessionTitle = visibleStreamingTitle || (streamingTitle || isTitleStreaming ? "Generating title..." : session?.title);
 	const contextTokens = persistedCall?.context_tokens ?? contextTokenCount(latestUsage);
@@ -773,7 +425,7 @@ function SessionDetailPage() {
 		}
 	}
 	const transcriptHistory = (session?.history ?? []).filter((message) => message.role !== "tool");
-	const liveReasoningHeading = reasoningHeading(streamingReasoning);
+	const liveReasoningHeading = reasoningHeading(run.streamingReasoning);
 
 	if (loading) {
 		return (
@@ -791,8 +443,8 @@ function SessionDetailPage() {
 	return (
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
-			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} isStreaming={isStreaming} reasoningHeading={liveReasoningHeading} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivities} failedRun={failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, failedRun ?? undefined)} scroll={transcriptScroll} />
-			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={isStreaming} isStreamPaused={isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={handlePauseStream} onResume={handleResumeStream} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
+			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} isStreaming={run.isStreaming} reasoningHeading={liveReasoningHeading} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
+			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isStreamPaused={run.isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={run.pause} onResume={run.resume} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
 			<SessionDialogs sessionTitle={session.title ?? ""} sessionId={session.id} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} titleInput={sessionTitleInput} workDirInput={sessionWorkDirInput} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onTitleChange={setSessionTitleInput} onWorkDirChange={setSessionWorkDirInput} onSave={() => void handleSaveSession()} onDelete={() => void handleDeleteSession()} />
 		</div>
 	);
