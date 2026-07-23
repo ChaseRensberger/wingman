@@ -30,6 +30,7 @@ type Server struct {
 	store            store.Store
 	router           *chi.Mux
 	aborts           *abortRegistry
+	runs             *sessionRunManager
 	events           *sessionEventBroker
 	webDevURL        string
 	logger           *slog.Logger
@@ -89,6 +90,7 @@ func New(cfg Config) *Server {
 		shutdownCtx:      ctx,
 		shutdownCancel:   cancel,
 	}
+	s.runs = newSessionRunManager(s)
 
 	s.setupMiddleware()
 	s.setupRoutes()
@@ -256,7 +258,6 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}/events", s.handleSessionEvents)
 		r.Get("/{id}/events/history", s.handleSessionEventsHistory)
 		r.Post("/{id}/message", s.handleMessageSession)
-		r.Post("/{id}/message/stream", s.handleMessageStreamSession)
 		r.Post("/{id}/abort", s.handleAbortSession)
 	})
 
@@ -327,6 +328,10 @@ func (s *Server) ListenAndServe(addr string) error {
 // Handler is overwritten with our router. Returns nil on a graceful
 // shutdown, the underlying error otherwise.
 func (s *Server) Serve(srv *http.Server) error {
+	if s.store != nil {
+		_ = s.store.AbortRunningSessionRuns(context.Background())
+		s.runs.resumeQueued(context.Background())
+	}
 	srv.Handler = s.router
 	s.logger.Info("server starting", "addr", srv.Addr)
 	err := srv.ListenAndServe()
@@ -352,8 +357,13 @@ func (s *Server) Serve(srv *http.Server) error {
 // (which is itself idempotent).
 func (s *Server) Shutdown(ctx context.Context, srv *http.Server) error {
 	s.shutdownCancel()
-
 	var firstErr error
+	if s.runs != nil {
+		if err := s.runs.wait(ctx); err != nil {
+			firstErr = err
+		}
+	}
+
 	if err := srv.Shutdown(ctx); err != nil {
 		firstErr = err
 	}

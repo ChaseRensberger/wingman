@@ -996,6 +996,135 @@ func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]M
 	return out, nil
 }
 
+func (s *SQLiteStore) CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error) {
+	if run.ID == "" {
+		run.ID = NewID(PrefixRun)
+	}
+	agentJSON, err := json.Marshal(run.Agent)
+	if err != nil {
+		return SessionRun{}, fmt.Errorf("marshal run agent: %w", err)
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SessionRun{}, err
+	}
+	defer tx.Rollback()
+	var next int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_runs WHERE session_id = ?`, run.SessionID).Scan(&next); err != nil {
+		return SessionRun{}, err
+	}
+	run.Sequence = next
+	run.Status = SessionRunStatusQueued
+	run.CreatedAt = now
+	run.UpdatedAt = now
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO session_runs (id, session_id, sequence, status, message, agent_json, output_schema_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, run.ID, run.SessionID, run.Sequence, run.Status, run.Message, string(agentJSON), nullableJSON(run.OutputSchemaJSON), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		return SessionRun{}, fmt.Errorf("insert session run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return SessionRun{}, err
+	}
+	return run, nil
+}
+
+func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	run, err := scanSessionRun(tx.QueryRowContext(ctx, `
+		SELECT id, session_id, sequence, status, message, agent_json, output_schema_json, error_message, created_at, started_at, completed_at, updated_at
+		FROM session_runs WHERE session_id = ? AND status = ? ORDER BY sequence LIMIT 1
+	`, sessionID, SessionRunStatusQueued))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, `UPDATE session_runs SET status = ?, started_at = ?, updated_at = ? WHERE id = ?`, SessionRunStatusRunning, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), run.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	run.Status, run.StartedAt, run.UpdatedAt = SessionRunStatusRunning, now, now
+	return &run, nil
+}
+
+func (s *SQLiteStore) CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := s.db.ExecContext(ctx, `UPDATE session_runs SET status = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE id = ?`, status, errorMessage, now, now, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrSessionNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListQueuedSessionRunSessions(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT session_id FROM session_runs WHERE status = ?`, SessionRunStatusQueued)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStore) AbortRunningSessionRuns(ctx context.Context) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.db.ExecContext(ctx, `UPDATE session_runs SET status = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE status = ?`, SessionRunStatusAborted, "server shutdown", now, now, SessionRunStatusRunning)
+	return err
+}
+
+func nullableJSON(v []byte) any {
+	if len(v) == 0 {
+		return nil
+	}
+	return string(v)
+}
+
+func scanSessionRun(row rowScanner) (SessionRun, error) {
+	var run SessionRun
+	var agentJSON string
+	var schema, errorMessage, started, completed sql.NullString
+	var created, updated string
+	if err := row.Scan(&run.ID, &run.SessionID, &run.Sequence, &run.Status, &run.Message, &agentJSON, &schema, &errorMessage, &created, &started, &completed, &updated); err != nil {
+		return SessionRun{}, err
+	}
+	if err := json.Unmarshal([]byte(agentJSON), &run.Agent); err != nil {
+		return SessionRun{}, fmt.Errorf("unmarshal run agent: %w", err)
+	}
+	if schema.Valid {
+		run.OutputSchemaJSON = []byte(schema.String)
+	}
+	run.ErrorMessage = errorMessage.String
+	run.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+	run.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	if started.Valid {
+		run.StartedAt, _ = time.Parse(time.RFC3339Nano, started.String)
+	}
+	if completed.Valid {
+		run.CompletedAt, _ = time.Parse(time.RFC3339Nano, completed.String)
+	}
+	return run, nil
+}
+
 // AppendSessionEvent stores one durable session event and assigns the next
 // session-scoped sequence number.
 func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error) {

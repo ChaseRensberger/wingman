@@ -30,6 +30,31 @@ type Session struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+const (
+	SessionRunStatusQueued    = "queued"
+	SessionRunStatusRunning   = "running"
+	SessionRunStatusCompleted = "completed"
+	SessionRunStatusFailed    = "failed"
+	SessionRunStatusAborted   = "aborted"
+)
+
+// SessionRun is a durably admitted prompt and its immutable effective agent
+// configuration. Runs are claimed in sequence order per session.
+type SessionRun struct {
+	ID               string    `json:"id"`
+	SessionID        string    `json:"session_id"`
+	Sequence         int       `json:"sequence"`
+	Status           string    `json:"status"`
+	Message          string    `json:"message"`
+	Agent            Agent     `json:"agent"`
+	OutputSchemaJSON []byte    `json:"-"`
+	ErrorMessage     string    `json:"error_message,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	StartedAt        time.Time `json:"started_at,omitempty"`
+	CompletedAt      time.Time `json:"completed_at,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
 type Workspace struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

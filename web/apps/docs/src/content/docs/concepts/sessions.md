@@ -57,6 +57,8 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
 
 `POST /sessions/{id}/message` requires the session to exist. A typo in the ID returns `404`; it does not create a new session.
 
+The endpoint returns `202 Accepted` with a `run_id` as soon as the message is durably queued. A daemon-owned worker executes queued messages serially for each session, so clients observe progress and completion through the event stream instead of waiting for this request.
+
 ## Per-Message Agent and Model
 
 Agents and models are selected per message:
@@ -81,6 +83,8 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
 ```
 
 The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, and `data`. Durable events also include `cursor`.
+
+Each accepted message emits `session.run.queued`, then `session.run.started` when execution begins. Terminal events are `session.run.completed` and `session.run.failed`; all carry the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run and leaves later queued messages intact.
 
 ## Ephemeral Sessions
 

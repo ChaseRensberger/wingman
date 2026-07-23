@@ -299,10 +299,8 @@ type MessageSessionRequest struct {
 }
 
 type MessageSessionResponse struct {
-	Response  string                   `json:"response"`
-	ToolCalls []session.ToolCallResult `json:"tool_calls"`
-	Usage     models.Usage             `json:"usage"`
-	Steps     int                      `json:"steps"`
+	RunID  string `json:"run_id"`
+	Status string `json:"status"`
 }
 
 // RunRequest is the body for POST /run. In ephemeral mode agent is
@@ -361,57 +359,32 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runSession, err := s.buildSession(s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute), sess)
-	if err != nil {
+	effectiveAgent := s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
+	if _, err := s.buildSession(effectiveAgent, sess); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
+	var outputSchemaJSON []byte
 	if req.OutputSchema != nil {
-		runSession.SetOutputSchema(&models.OutputSchema{
-			Name:   req.OutputSchema.Name,
-			Schema: req.OutputSchema.Schema,
-		})
+		outputSchemaJSON, err = json.Marshal(req.OutputSchema)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid output schema")
+			return
+		}
 	}
-
-	// Register for abort. Aborting the session via POST /abort cancels
-	// runCtx, which propagates through the loop and provider stream;
-	// the loop emits a terminal turn with FinishReasonAborted and
-	// returns. We still persist whatever history was produced before
-	// the cancel because AppendMessage runs synchronously per
-	// MessageEvent during the run.
-	runCtx, release := s.aborts.register(id, r.Context())
-	defer release()
-
-	runID := store.NewID(store.PrefixRun)
-	s.persistRunEvent(runCtx, id, "session.run.started", map[string]any{"run_id": runID})
-	stream, err := runSession.RunStream(runCtx, req.Message)
-	if err != nil {
-		s.persistRunEvent(runCtx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for stream.Next() {
-		s.forwardRunEvent(runCtx, id, runID, stream.Event())
-	}
-	if err := stream.Err(); err != nil {
-		s.persistRunEvent(runCtx, id, "session.run.failed", map[string]any{"run_id": runID, "error": err.Error()})
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	result := stream.Result()
-	s.persistRunEvent(runCtx, id, "session.run.completed", map[string]any{"run_id": runID, "usage": result.Usage, "steps": result.Steps})
-
-	toolCalls := result.ToolCalls
-	if toolCalls == nil {
-		toolCalls = []session.ToolCallResult{}
-	}
-	writeJSON(w, http.StatusOK, MessageSessionResponse{
-		Response:  result.Response,
-		ToolCalls: toolCalls,
-		Usage:     result.Usage,
-		Steps:     result.Steps,
+	queued, err := s.store.CreateSessionRun(r.Context(), store.SessionRun{
+		SessionID:        id,
+		Message:          req.Message,
+		Agent:            *effectiveAgent,
+		OutputSchemaJSON: outputSchemaJSON,
 	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.persistRunEvent(context.Background(), id, "session.run.queued", map[string]any{"run_id": queued.ID, "message": queued.Message})
+	s.runs.wake(id)
+	writeJSON(w, http.StatusAccepted, MessageSessionResponse{RunID: queued.ID, Status: queued.Status})
 }
 
 func (s *Server) handleMessageStreamSession(w http.ResponseWriter, r *http.Request) {
@@ -574,7 +547,7 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	n := s.aborts.abort(id)
+	n := s.runs.abort(id)
 	writeJSON(w, http.StatusOK, AbortSessionResponse{SessionID: id, Aborted: n})
 }
 

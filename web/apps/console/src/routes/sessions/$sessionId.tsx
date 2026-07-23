@@ -410,7 +410,7 @@ function SessionDetailPage() {
 	const abortControllerRef = useRef<AbortController | null>(null);
 	const eventControllerRef = useRef<AbortController | null>(null);
 	const lastEventSeqRef = useRef(0);
-	const activeRunRef = useRef<{ sessionId: string; completed: boolean } | null>(null);
+	const activeRunRef = useRef<{ sessionId: string; runId?: string; completed: boolean } | null>(null);
 	const retryRequestRef = useRef<Omit<FailedRun, "error"> | null>(null);
 	const activeSessionIdRef = useRef(sessionId);
 	const skipNextSessionLoadRef = useRef(false);
@@ -847,12 +847,14 @@ function SessionDetailPage() {
 			return;
 		}
 		if (ev.type === "session.run.completed") {
+			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
 			const usage = data.usage as Usage | undefined;
 			if (usage) setLatestRunUsage(usage);
 			activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
 			return;
 		}
 		if (ev.type === "session.run.failed") {
+			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
 			const error = typeof data.error === "string" ? data.error : "Run failed";
 			activeRunRef.current = activeRunRef.current ? { ...activeRunRef.current, completed: true } : null;
 			throw new Error(error);
@@ -887,6 +889,16 @@ function SessionDetailPage() {
 				console.error("Event stream failed", err);
 				const request = retryRequestRef.current;
 				if (request) setFailedRun({ ...request, error: formatSessionError(err) });
+			}
+		} finally {
+			if (activeRunRef.current?.sessionId === sessionId && activeRunRef.current.completed) {
+				setIsStreaming(false);
+				setIsStreamPaused(false);
+				setStreamingText("");
+				setVisibleStreamingText("");
+				setStreamingReasoning("");
+				activeRunRef.current = null;
+				await loadSession(sessionId);
 			}
 		}
 	}
@@ -1032,6 +1044,11 @@ function SessionDetailPage() {
 				const text = await res.text();
 				throw new Error(`HTTP ${res.status}: ${text}`);
 			}
+			const admitted = await res.json() as { run_id?: string; status?: string };
+			if (!admitted.run_id || admitted.status !== "queued") {
+				throw new Error("Message was not accepted for execution");
+			}
+			activeRunRef.current = { sessionId: activeSessionId, runId: admitted.run_id, completed: false };
 			completed = true;
 		} catch (err) {
 			if ((err as Error).name !== "AbortError") {
@@ -1040,19 +1057,21 @@ function SessionDetailPage() {
 				setFailedRun({ message: outboundText, agentId: outboundAgentId, modelRef: outboundModelRef, error: formatSessionError(err) });
 			}
 		} finally {
-			setIsStreaming(false);
-			setIsStreamPaused(false);
-			setStreamingText("");
-			setVisibleStreamingText("");
-			setStreamingReasoning("");
-			eventControllerRef.current?.abort();
-			eventControllerRef.current = null;
-			activeRunRef.current = null;
+			if (!completed) {
+				setIsStreaming(false);
+				setIsStreamPaused(false);
+				setStreamingText("");
+				setVisibleStreamingText("");
+				setStreamingReasoning("");
+				eventControllerRef.current?.abort();
+				eventControllerRef.current = null;
+				activeRunRef.current = null;
+			}
 			abortControllerRef.current = null;
 			if (!completed && controller.signal.aborted) {
 				setMessageText(outboundText);
 			}
-			await loadSession(activeSessionId);
+			if (!completed) await loadSession(activeSessionId);
 		}
 	}
 

@@ -97,15 +97,17 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `GET` | `/sessions/{id}` | Get session including history |
 | `PUT` | `/sessions/{id}` | Update session metadata (title, work_dir) |
 | `DELETE` | `/sessions/{id}` | Delete session |
-| `POST` | `/sessions/{id}/message` | Send a message and wait for the final result |
+| `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
 | `GET` | `/sessions/{id}/events` | Replay session events after `after`, then stream new events |
 | `GET` | `/sessions/{id}/events/history` | Read a finite page of session events |
-| `POST` | `/sessions/{id}/abort` | Cancel every in-flight run for the session |
+| `POST` | `/sessions/{id}/abort` | Cancel the active run; queued messages remain scheduled |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
 
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly.
+
+The response is `{ "run_id": "run_...", "status": "queued" }`. Read `/sessions/{id}/events` for execution progress and the terminal result.
 
 ### Create request
 
@@ -136,16 +138,12 @@ Or create the session from a Workspace:
 }
 ```
 
-### Blocking response
+### Accepted response
 
 ```json
 {
-  "response": "Here is the script...",
-  "tool_calls": [
-    { "tool_name": "write", "input": {"filePath": "x.py"}, "output": "" }
-  ],
-  "usage": { "input_tokens": 120, "output_tokens": 45 },
-  "steps": 2
+  "run_id": "run_...",
+  "status": "queued"
 }
 ```
 
