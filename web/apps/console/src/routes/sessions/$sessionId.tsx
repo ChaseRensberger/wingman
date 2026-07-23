@@ -1313,7 +1313,7 @@ function SessionDetailPage() {
 						onChange={(e) => setMessageText(e.target.value)}
 						onKeyDown={handleKeyDown}
 						placeholder="Ask anything..."
-						className="min-h-20 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
+						className="min-h-20 max-h-60 resize-none overflow-y-auto border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
 						disabled={isStreaming}
 					/>
 					<div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
