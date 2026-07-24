@@ -1,4 +1,4 @@
-id = "claude-opus-4-8"
+id = "claude-opus-5"
 provider = "anthropic"
 api = "anthropic_messages"
 context_window = 1000000

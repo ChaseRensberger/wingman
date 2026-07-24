@@ -1,0 +1,13 @@
+id = "kimi-k2.7-code"
+provider = "opencode"
+api = "openai_compatible_chat"
+context_window = 262144
+max_output = 262144
+input_cost_per_mtok = 0.95
+output_cost_per_mtok = 4
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true
