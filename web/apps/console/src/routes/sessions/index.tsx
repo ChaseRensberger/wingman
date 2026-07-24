@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	CheckIcon,
+	CaretLeftIcon,
 	DotsThreeVerticalIcon,
 	FolderIcon,
 	MagnifyingGlassIcon,
@@ -52,6 +53,7 @@ import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
+import type { DirectoryListing } from "@/lib/types";
 import { cn, timeAgo, workspaceColor } from "@/lib/utils";
 
 type SessionsSearch = {
@@ -85,6 +87,12 @@ function SessionsPage() {
 	const [workspaceName, setWorkspaceName] = useState("");
 	const [workspacePath, setWorkspacePath] = useState("");
 	const [workspaceHasNoDirectory, setWorkspaceHasNoDirectory] = useState(false);
+	const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
+	const [directoryListing, setDirectoryListing] = useState<DirectoryListing | null>(null);
+	const [directoryPickerPath, setDirectoryPickerPath] = useState("");
+	const [directoryFilter, setDirectoryFilter] = useState("");
+	const [directoryPickerError, setDirectoryPickerError] = useState("");
+	const [loadingDirectories, setLoadingDirectories] = useState(false);
 	const [savingWorkspace, setSavingWorkspace] = useState(false);
 	const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
 	const [deletingWorkspaceId, setDeletingWorkspaceId] = useState("");
@@ -185,6 +193,27 @@ function SessionsPage() {
 		setSessionWorkDir(session.work_dir || "");
 	}
 
+	async function loadDirectories(path = "") {
+		setLoadingDirectories(true);
+		setDirectoryPickerError("");
+		try {
+			const query = path ? `?path=${encodeURIComponent(path)}` : "";
+			const listing = (await wfetch(`/filesystem/directories${query}`)) as DirectoryListing;
+			setDirectoryListing(listing);
+			setDirectoryPickerPath(listing.path);
+		} catch (err) {
+			setDirectoryPickerError(err instanceof Error ? err.message : "Could not open this directory.");
+		} finally {
+			setLoadingDirectories(false);
+		}
+	}
+
+	function openDirectoryPicker() {
+		setDirectoryFilter("");
+		setDirectoryPickerOpen(true);
+		void loadDirectories(workspacePath || "~");
+	}
+
 	async function handleSaveWorkspace(e: React.FormEvent) {
 		e.preventDefault();
 		setSavingWorkspace(true);
@@ -264,6 +293,7 @@ function SessionsPage() {
 	}
 
 	const selectedWorkspaceColor = selectedWorkspace ? workspaceColor(selectedWorkspace.id) : "bg-muted-foreground";
+	const visibleDirectories = directoryListing?.entries.filter((entry) => entry.name.toLowerCase().includes(directoryFilter.toLowerCase())) ?? [];
 
 	return (
 		<div className="mx-auto max-w-[118rem] px-4 py-6">
@@ -425,8 +455,8 @@ function SessionsPage() {
 						</DialogHeader>
 						<div className="grid gap-3">
 							<div className="grid gap-1">
-								<label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Name</label>
-								<Input value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="e.g. wingman" required />
+								<label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Name <span className="normal-case tracking-normal">Optional</span></label>
+								<Input value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="Defaults to the directory name" required={workspaceHasNoDirectory} />
 							</div>
 							<div className="grid gap-2">
 								<div className="flex items-center justify-between gap-3">
@@ -436,8 +466,10 @@ function SessionsPage() {
 										No directory
 									</label>
 								</div>
-								<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="/path/to/project" disabled={workspaceHasNoDirectory} />
-								<p className="text-xs text-muted-foreground">Use an absolute path on the machine running Wingman.</p>
+								<div className="flex gap-2">
+									<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="~/Projects/wingman" disabled={workspaceHasNoDirectory} />
+									<Button type="button" variant="outline" onClick={openDirectoryPicker} disabled={workspaceHasNoDirectory}>Browse</Button>
+								</div>
 							</div>
 						</div>
 						<DialogFooter className="items-center sm:justify-between">
@@ -452,6 +484,30 @@ function SessionsPage() {
 							</div>
 						</DialogFooter>
 					</form>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={directoryPickerOpen} onOpenChange={setDirectoryPickerOpen}>
+				<DialogContent className="sm:max-w-2xl">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2"><FolderIcon className="size-4" />Choose working directory</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-3">
+						<div className="flex gap-2">
+							<Input value={directoryPickerPath} onChange={(e) => setDirectoryPickerPath(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void loadDirectories(directoryPickerPath); } }} placeholder="~/Projects" />
+							<Button type="button" variant="outline" onClick={() => void loadDirectories(directoryPickerPath)} disabled={loadingDirectories}>Open</Button>
+						</div>
+						<Input value={directoryFilter} onChange={(e) => setDirectoryFilter(e.target.value)} placeholder="Filter directories..." />
+						{directoryPickerError ? <p className="text-sm text-destructive">{directoryPickerError}</p> : null}
+						<div className="max-h-80 overflow-y-auto rounded-md border">
+							{directoryListing?.parent && <button type="button" className="flex min-h-10 w-full items-center gap-2 border-b px-3 text-left text-sm hover:bg-muted" onClick={() => { setDirectoryFilter(""); void loadDirectories(directoryListing.parent!); }}><CaretLeftIcon className="size-4" />Parent directory</button>}
+							{loadingDirectories ? <p className="px-3 py-6 text-sm text-muted-foreground">Loading directories...</p> : visibleDirectories.length ? visibleDirectories.map((entry) => <button key={entry.path} type="button" className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-sm hover:bg-muted" onClick={() => { setDirectoryFilter(""); void loadDirectories(entry.path); }}><FolderIcon className="size-4 text-muted-foreground" />{entry.name}</button>) : <p className="px-3 py-6 text-sm text-muted-foreground">{directoryFilter ? "No matching directories." : "No child directories."}</p>}
+						</div>
+					</div>
+					<DialogFooter>
+						<Button type="button" variant="outline" onClick={() => setDirectoryPickerOpen(false)}>Cancel</Button>
+						<Button type="button" disabled={!directoryListing} onClick={() => { if (directoryListing) { setWorkspacePath(directoryListing.path); setDirectoryPickerOpen(false); } }}>Use</Button>
+					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 

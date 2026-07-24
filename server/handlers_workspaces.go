@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,6 +20,55 @@ type CreateWorkspaceRequest struct {
 	Path string `json:"path"`
 }
 
+type directoryListing struct {
+	Path    string           `json:"path"`
+	Parent  string           `json:"parent,omitempty"`
+	Entries []directoryEntry `json:"entries"`
+}
+
+type directoryEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func (s *Server) handleListDirectories(w http.ResponseWriter, r *http.Request) {
+	dir := r.URL.Query().Get("path")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "resolve home directory")
+			return
+		}
+		dir = home
+	}
+	resolved, err := session.ResolveWorkDir(dir)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	listing := directoryListing{Path: resolved, Entries: make([]directoryEntry, 0, len(entries))}
+	if parent := filepath.Dir(resolved); parent != resolved {
+		listing.Parent = parent
+	}
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		listing.Entries = append(listing.Entries, directoryEntry{Name: entry.Name(), Path: filepath.Join(resolved, entry.Name())})
+	}
+	sort.Slice(listing.Entries, func(i, j int) bool {
+		return strings.ToLower(listing.Entries[i].Name) < strings.ToLower(listing.Entries[j].Name)
+	})
+	writeJSON(w, http.StatusOK, listing)
+}
+
 func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
@@ -26,17 +79,21 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
-		return
-	}
 	path, err := session.ResolveWorkDir(req.Path)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	workspace := &store.Workspace{Name: req.Name, Path: path}
+	name := strings.TrimSpace(req.Name)
+	if name == "" && path != "" {
+		name = filepath.Base(path)
+	}
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "name is required when no directory is set")
+		return
+	}
+	workspace := &store.Workspace{Name: name, Path: path}
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -113,7 +170,7 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Name != nil {
-		workspace.Name = *req.Name
+		workspace.Name = strings.TrimSpace(*req.Name)
 	}
 	if req.Path != nil {
 		path, err := session.ResolveWorkDir(*req.Path)

@@ -242,6 +242,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/{id}", s.handleDeleteWorkspace)
 		r.Get("/{id}/sessions", s.handleListWorkspaceSessions)
 	})
+	s.router.Get("/filesystem/directories", s.handleListDirectories)
 
 	s.router.Route("/sessions", func(r chi.Router) {
 		r.Post("/", s.handleCreateSession)
