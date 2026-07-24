@@ -69,5 +69,3 @@ wingman up
 - **HTTP API** - Communicate with Wingman via HTTP from your own clients.
 
 **Want to learn more?** [Check out the site](https://wingman.actor) & [Read the docs](https://docs.wingman.actor)
-
-Also I made [a hackernews client](https://news.wingman.actor).
