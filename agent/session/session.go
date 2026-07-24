@@ -574,7 +574,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 					ToolName: tr.Name,
 					Input:    tr.Args,
 					Output:   tr.Output,
-					Error:    errStringIf(tr.IsError, tr.Output),
+					Error:    errStringIf(tr.IsError, tr.Error),
 					Metadata: tr.Metadata,
 				})
 			}
@@ -648,7 +648,7 @@ func finalizeUnsettledTools(messages []models.Message) {
 			}
 			tool.State = models.ToolStateError
 			tool.Error = "Tool execution interrupted"
-			tool.Output = tool.Error
+			tool.Output = ""
 			tool.CompletedAt = completedAt
 			messages[i].Content[j] = tool
 		}

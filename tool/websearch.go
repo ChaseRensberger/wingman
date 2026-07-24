@@ -74,8 +74,8 @@ func (t *WebSearchTool) Definition() Definition {
 	}
 }
 
-func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	query, ok := params["query"].(string)
+func (t *WebSearchTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	query, ok := inv.Input["query"].(string)
 	if !ok || strings.TrimSpace(query) == "" {
 		return Result{}, fmt.Errorf("query is required")
 	}
@@ -89,7 +89,7 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any, work
 		return Result{}, fmt.Errorf("unsupported websearch provider %q (expected exa or parallel)", provider)
 	}
 
-	body, endpoint, headers, err := webSearchRequest(provider, query, params)
+	body, endpoint, headers, err := webSearchRequest(provider, query, inv.Input)
 	if err != nil {
 		return Result{}, err
 	}

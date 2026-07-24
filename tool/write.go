@@ -40,20 +40,20 @@ func (t *WriteTool) Definition() Definition {
 
 func (t *WriteTool) DirectoryScoped() {}
 
-func (t *WriteTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	filePath, ok := params["filePath"].(string)
+func (t *WriteTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	filePath, ok := inv.Input["filePath"].(string)
 	if !ok || filePath == "" {
 		return Result{}, fmt.Errorf("filePath is required")
 	}
-	content, ok := params["content"].(string)
+	content, ok := inv.Input["content"].(string)
 	if !ok {
 		return Result{}, fmt.Errorf("content is required")
 	}
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for write tool")
 	}
 
-	path, rel, err := resolveWorkPath(workDir, filePath)
+	path, rel, err := resolveWorkPath(inv.WorkDir, filePath)
 	if err != nil {
 		return Result{}, err
 	}

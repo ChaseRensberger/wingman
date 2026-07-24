@@ -319,10 +319,12 @@ func NormalizeMessages(messages []Message) []Message {
 			if !ok {
 				continue
 			}
-			tool := ToolPart{CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: toolResultText(result), Metadata: result.Metadata}
+			text := toolResultText(result)
+			tool := ToolPart{CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata}
 			if result.IsError {
 				tool.State = ToolStateError
-				tool.Error = tool.Output
+				tool.Output = ""
+				tool.Error = text
 			}
 			if !replaceToolPart(out, tool) {
 				out = append(out, Message{Role: RoleAssistant, Content: Content{tool}})
@@ -355,7 +357,15 @@ func ExpandToolMessages(messages []Message) []Message {
 				continue
 			}
 			content = append(content, ToolCallPart{CallID: tool.CallID, Name: tool.Name, Input: tool.Input})
-			results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: tool.Output}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
+			text := tool.Output
+			if tool.State == ToolStateError {
+				if tool.Output != "" && tool.Error != "" {
+					text = tool.Output + "\n" + tool.Error
+				} else if tool.Error != "" {
+					text = tool.Error
+				}
+			}
+			results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
 		}
 		if hasUnresolvedTool && len(content) == 0 {
 			continue

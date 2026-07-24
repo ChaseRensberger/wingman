@@ -31,6 +31,35 @@ func TestExpandToolMessagesDerivesProviderResult(t *testing.T) {
 	}
 }
 
+func TestExpandToolMessagesCombinesOutputAndError(t *testing.T) {
+	messages := []Message{{Role: RoleAssistant, Content: Content{ToolPart{
+		CallID: "call_1",
+		Name:   "bash",
+		State:  ToolStateError,
+		Input:  map[string]any{"command": "pwd"},
+		Output: "partial",
+		Error:  "failed",
+	}}}}
+
+	expanded := ExpandToolMessages(messages)
+	if len(expanded) != 2 || expanded[1].Role != RoleTool {
+		t.Fatalf("expanded messages = %#v", expanded)
+	}
+	result, ok := expanded[1].Content[0].(ToolResultPart)
+	if !ok || !result.IsError {
+		t.Fatalf("result = %#v, want error", result)
+	}
+	var text string
+	for _, p := range result.Output {
+		if tp, ok := p.(TextPart); ok {
+			text = tp.Text
+		}
+	}
+	if text != "partial\nfailed" {
+		t.Fatalf("result text = %q, want combined output+error", text)
+	}
+}
+
 func TestExpandToolMessagesOmitsUnresolvedTool(t *testing.T) {
 	messages := []Message{{Role: RoleAssistant, Content: Content{ToolPart{
 		CallID: "call_1",

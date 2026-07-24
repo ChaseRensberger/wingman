@@ -8,10 +8,13 @@ import (
 
 func TestGrepRejectsAbsolutePathOutsideWorkDir(t *testing.T) {
 	workDir := t.TempDir()
-	_, err := NewGrepTool().Execute(context.Background(), map[string]any{
-		"pattern": "root",
-		"path":    "/etc",
-	}, workDir)
+	_, err := NewGrepTool().Execute(context.Background(), Invocation{
+		Input: map[string]any{
+			"pattern": "root",
+			"path":    "/etc",
+		},
+		WorkDir: workDir,
+	})
 	if err == nil || !strings.Contains(err.Error(), "path escapes working directory") {
 		t.Fatalf("err = %v, want path escape", err)
 	}
@@ -19,10 +22,13 @@ func TestGrepRejectsAbsolutePathOutsideWorkDir(t *testing.T) {
 
 func TestGlobRejectsAbsolutePathOutsideWorkDir(t *testing.T) {
 	workDir := t.TempDir()
-	_, err := NewGlobTool().Execute(context.Background(), map[string]any{
-		"pattern": "*",
-		"path":    "/etc",
-	}, workDir)
+	_, err := NewGlobTool().Execute(context.Background(), Invocation{
+		Input: map[string]any{
+			"pattern": "*",
+			"path":    "/etc",
+		},
+		WorkDir: workDir,
+	})
 	if err == nil || !strings.Contains(err.Error(), "path escapes working directory") {
 		t.Fatalf("err = %v, want path escape", err)
 	}

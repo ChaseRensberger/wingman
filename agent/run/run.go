@@ -503,10 +503,8 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 			continue
 		}
 		state := models.ToolStateCompleted
-		errorText := ""
 		if result.IsError {
 			state = models.ToolStateError
-			errorText = result.Output
 		}
 		completedAt := time.Now().UTC().UnixMilli()
 		startedAt := completedAt - result.Duration.Milliseconds()
@@ -517,7 +515,7 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 			Input:       result.Args,
 			Output:      result.Output,
 			Metadata:    result.Metadata,
-			Error:       errorText,
+			Error:       result.Error,
 			StartedAt:   startedAt,
 			CompletedAt: completedAt,
 		})
@@ -547,7 +545,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 					CallID:  call.ID,
 					Name:    call.Name,
 					Args:    args,
-					Output:  err.Error(),
+					Error:   err.Error(),
 					IsError: true,
 				}
 				res = r.runAfterToolCall(ctx, call, res) // hook still fires
@@ -568,7 +566,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 			CallID:  call.ID,
 			Name:    call.Name,
 			Args:    call.Args,
-			Output:  fmt.Sprintf("tool %q is not registered", call.Name),
+			Error:   fmt.Sprintf("tool %q is not registered", call.Name),
 			IsError: true,
 		}
 		res = r.runAfterToolCall(ctx, call, res)
@@ -583,7 +581,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 			CallID:  call.ID,
 			Name:    call.Name,
 			Args:    call.Args,
-			Output:  err.Error(),
+			Error:   err.Error(),
 			IsError: true,
 		}
 		res = r.runAfterToolCall(ctx, call, res)
@@ -596,7 +594,19 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		return res, nil
 	}
 	start := time.Now()
-	toolResult, execErr := call.Tool.Execute(ctx, call.Args, r.cfg.WorkDir)
+	inv := tool.Invocation{
+		Input:   call.Args,
+		WorkDir: r.cfg.WorkDir,
+		Progress: tool.NewProgress(func(delta string, metadata map[string]any) {
+			r.emit(ToolExecutionProgressEvent{
+				CallID:      call.ID,
+				Name:        call.Name,
+				OutputDelta: delta,
+				Metadata:    metadata,
+			})
+		}),
+	}
+	toolResult, execErr := call.Tool.Execute(ctx, inv)
 	duration := time.Since(start)
 
 	res := ToolResult{
@@ -609,7 +619,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		Duration: duration,
 	}
 	if execErr != nil {
-		res.Output = execErr.Error()
+		res.Error = execErr.Error()
 	}
 
 	res = r.runAfterToolCall(ctx, call, res)
@@ -627,7 +637,7 @@ func (r *runner) checkPermission(call ToolCall) (ToolResult, bool) {
 			CallID:  call.ID,
 			Name:    call.Name,
 			Args:    call.Args,
-			Output:  err.Error(),
+			Error:   err.Error(),
 			IsError: true,
 		}, false
 	}
@@ -659,7 +669,7 @@ func permissionToolResult(call ToolCall, effect permission.Effect, action, resou
 		CallID:  call.ID,
 		Name:    call.Name,
 		Args:    call.Args,
-		Output:  fmt.Sprintf("%s: %s %s", label, action, resource),
+		Error:   fmt.Sprintf("%s: %s %s", label, action, resource),
 		IsError: true,
 		Metadata: map[string]any{
 			"permission": map[string]any{
@@ -673,7 +683,7 @@ func permissionToolResult(call ToolCall, effect permission.Effect, action, resou
 
 func permissionTarget(call ToolCall, workDir string) (string, []string, error) {
 	if permissioned, ok := call.Tool.(tool.PermissionedTool); ok {
-		check, err := permissioned.Permission(call.Args, workDir)
+		check, err := permissioned.Permission(tool.Invocation{Input: call.Args, WorkDir: workDir})
 		if err != nil {
 			return "", nil, err
 		}
@@ -774,12 +784,12 @@ func validateToolInput(t tool.Tool, args map[string]any) error {
 // Implementation note: we deliberately swallow hook errors here and let
 // executeOne's caller handle them. That keeps executeOne's signature
 // clean and avoids an extra error return path. The hook's effect on the
-// result (the new output text) is applied iff it returns no error.
+// result is applied iff it returns no error.
 func (r *runner) runAfterToolCall(ctx context.Context, call ToolCall, res ToolResult) ToolResult {
 	if r.cfg.Hooks.AfterToolCall == nil {
 		return res
 	}
-	newOutput, err := r.cfg.Hooks.AfterToolCall(ctx, call, res.Output, res.IsError)
+	updated, err := r.cfg.Hooks.AfterToolCall(ctx, call, res)
 	if err != nil {
 		// Surface as part of the result; the loop's caller will see the
 		// hook error path through the next executeOne return. We DO NOT
@@ -788,12 +798,18 @@ func (r *runner) runAfterToolCall(ctx context.Context, call ToolCall, res ToolRe
 		// on. To make the loop fail on AfterToolCall errors, we'd need a
 		// second return value here. v0.1 trade-off: AfterToolCall
 		// errors are advisory only.
-		res.Output = fmt.Sprintf("%s\n[after_tool_call hook error: %v]", res.Output, err)
+		if res.Error != "" {
+			res.Error += "\n"
+		}
+		res.Error += fmt.Sprintf("after_tool_call hook error: %v", err)
 		res.IsError = true
 		return res
 	}
-	res.Output = newOutput
-	return res
+	updated.CallID = res.CallID
+	updated.Name = res.Name
+	updated.Args = res.Args
+	updated.Duration = res.Duration
+	return updated
 }
 
 // emit forwards an event to the sink via the drain goroutine. Safe to
@@ -936,15 +952,31 @@ func anySequential(calls []ToolCall) bool {
 func buildToolResultMessage(results []ToolResult) models.Message {
 	content := make(models.Content, 0, len(results))
 	for _, r := range results {
+		text := toolResultText(r)
 		content = append(content, models.ToolResultPart{
 			CallID:   r.CallID,
 			Name:     r.Name,
-			Output:   []models.Part{models.TextPart{Text: r.Output}},
+			Output:   []models.Part{models.TextPart{Text: text}},
 			IsError:  r.IsError,
 			Metadata: r.Metadata,
 		})
 	}
 	return models.Message{Role: models.RoleTool, Content: content}
+}
+
+// toolResultText builds the model-facing text from a ToolResult. When
+// an error occurred, the partial output is preserved and the error is
+// appended so the model can see both.
+func toolResultText(r ToolResult) string {
+	if r.IsError {
+		if r.Output != "" && r.Error != "" {
+			return r.Output + "\n" + r.Error
+		}
+		if r.Error != "" {
+			return r.Error
+		}
+	}
+	return r.Output
 }
 
 // CoerceArgs turns an arbitrary value (typically the model's parsed tool

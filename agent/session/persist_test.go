@@ -55,7 +55,7 @@ func TestFinalizeUnsettledToolsMarksCallsAsInterrupted(t *testing.T) {
 
 	finalizeUnsettledTools(messages)
 	tool := messages[0].Content[0].(models.ToolPart)
-	if tool.State != models.ToolStateError || tool.Error != "Tool execution interrupted" || tool.Output != tool.Error || tool.CompletedAt == 0 {
+	if tool.State != models.ToolStateError || tool.Error != "Tool execution interrupted" || tool.Output != "" || tool.CompletedAt == 0 {
 		t.Fatalf("tool = %#v, want interrupted error", tool)
 	}
 }

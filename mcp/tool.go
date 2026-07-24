@@ -31,8 +31,8 @@ func (t *mcpTool) Definition() tool.Definition {
 	}
 }
 
-func (t *mcpTool) Execute(ctx context.Context, params map[string]any, workDir string) (tool.Result, error) {
-	res, err := t.manager.callTool(ctx, t.server, t.remoteName, params)
+func (t *mcpTool) Execute(ctx context.Context, inv tool.Invocation) (tool.Result, error) {
+	res, err := t.manager.callTool(ctx, t.server, t.remoteName, inv.Input)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -41,7 +41,7 @@ func (t *mcpTool) Execute(ctx context.Context, params map[string]any, workDir st
 		if text == "" {
 			text = "MCP tool returned an error"
 		}
-		return tool.Result{Text: text, Metadata: resultMetadata(t.server, t.remoteName, res)}, fmt.Errorf("%s", text)
+		return tool.Result{Metadata: resultMetadata(t.server, t.remoteName, res)}, fmt.Errorf("%s", text)
 	}
 	if text == "" && res.StructuredContent != nil {
 		if b, err := json.Marshal(res.StructuredContent); err == nil {

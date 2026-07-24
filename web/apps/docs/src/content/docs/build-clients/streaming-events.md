@@ -101,6 +101,7 @@ Durable events are stored and replayed. They reconstruct the transcript and fina
 | `session.text.completed` | A text block reached its final value. |
 | `session.reasoning.completed` | A reasoning block reached its final value. |
 | `session.tool.called` | The model requested a tool. |
+| `session.tool.updated` | A tool reached a running or terminal state, including its latest durable input, output, metadata, error, and timing. |
 | `session.tool.completed` | A tool finished successfully. |
 | `session.tool.failed` | A tool failed. |
 | `session.message.created` | A message was appended to history. |
@@ -119,8 +120,9 @@ Live events are not replayed. They exist for latency-sensitive rendering while t
 | `session.text.delta` | Partial assistant text. |
 | `session.reasoning.delta` | Partial reasoning text. |
 | `session.tool.input.delta` | Partial tool-call input. |
+| `session.tool.progress` | Incremental tool output and metadata reported during execution. |
 
-Live events include the run and step needed to merge them with the later durable boundary event:
+Live events include the correlation identifiers needed to merge them with the later durable boundary event. Provider deltas include `run_id` and `step`; tool progress also includes `call_id`:
 
 ```json
 {
@@ -134,6 +136,10 @@ Live events include the run and step needed to merge them with the later durable
   }
 }
 ```
+
+Tool progress uses `call_id` to merge updates into the corresponding tool part.
+Append `output_delta` to the visible output and shallow-merge `metadata`; replace
+both with the values from the later durable `session.tool.updated` event.
 
 ## Recovery
 

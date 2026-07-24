@@ -315,8 +315,9 @@ type TransformContextHook func(ctx context.Context, info TransformContextInfo) (
 // reference the type without re-stating the signature.
 type BeforeToolCallFunc func(ctx context.Context, call ToolCall) (newArgs map[string]any, err error)
 
-// AfterToolCallFunc is the signature for Hooks.AfterToolCall.
-type AfterToolCallFunc func(ctx context.Context, call ToolCall, result string, isError bool) (newResult string, err error)
+// AfterToolCallFunc is the signature for Hooks.AfterToolCall. Hooks receive
+// and return the structured result so output, errors, and metadata stay distinct.
+type AfterToolCallFunc func(ctx context.Context, call ToolCall, result ToolResult) (ToolResult, error)
 
 // AfterRunInfo is the input to an AfterRunHook.
 type AfterRunInfo struct {
@@ -394,6 +395,7 @@ type ToolResult struct {
 	Name     string
 	Args     map[string]any
 	Output   string
+	Error    string
 	Metadata map[string]any
 	IsError  bool
 	// Duration is the wall-clock time spent in Tool.Execute (excluding
@@ -511,6 +513,16 @@ type ToolExecutionStartEvent struct {
 	Call ToolCall `json:"call"`
 }
 
+// ToolExecutionProgressEvent fires when a tool reports incremental
+// output or metadata during execution. Only tools that opt into
+// streaming produce these events.
+type ToolExecutionProgressEvent struct {
+	CallID      string         `json:"call_id"`
+	Name        string         `json:"name"`
+	OutputDelta string         `json:"output_delta,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+}
+
 // ToolExecutionEndEvent fires after Tool.Execute returns or after the
 // skip/error path produces a synthetic result. Events are delivered
 // serially via the sink goroutine; for parallel batches the delivery
@@ -577,12 +589,13 @@ type ContextTransformedEvent struct {
 	Head          *models.Message
 }
 
-func (IterationStartEvent) isEvent()     {}
-func (IterationEndEvent) isEvent()       {}
-func (MessageEvent) isEvent()            {}
-func (ToolExecutionStartEvent) isEvent() {}
-func (ToolExecutionEndEvent) isEvent()   {}
-func (StreamPartEvent) isEvent()         {}
-func (ErrorEvent) isEvent()              {}
-func (ContextTransformedEvent) isEvent() {}
-func (StructuredOutputEvent) isEvent()   {}
+func (IterationStartEvent) isEvent()        {}
+func (IterationEndEvent) isEvent()          {}
+func (MessageEvent) isEvent()               {}
+func (ToolExecutionStartEvent) isEvent()    {}
+func (ToolExecutionProgressEvent) isEvent() {}
+func (ToolExecutionEndEvent) isEvent()      {}
+func (StreamPartEvent) isEvent()            {}
+func (ErrorEvent) isEvent()                 {}
+func (ContextTransformedEvent) isEvent()    {}
+func (StructuredOutputEvent) isEvent()      {}

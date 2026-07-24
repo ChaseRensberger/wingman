@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 type ApplyPatchTool struct{}
@@ -58,12 +60,12 @@ func (t *ApplyPatchTool) Definition() Definition {
 
 func (t *ApplyPatchTool) DirectoryScoped() {}
 
-func (t *ApplyPatchTool) Permission(params map[string]any, workDir string) (PermissionCheck, error) {
-	patchText, ok := params["patchText"].(string)
+func (t *ApplyPatchTool) Permission(inv Invocation) (PermissionCheck, error) {
+	patchText, ok := inv.Input["patchText"].(string)
 	if !ok || strings.TrimSpace(patchText) == "" {
 		return PermissionCheck{}, fmt.Errorf("patchText is required")
 	}
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return PermissionCheck{}, fmt.Errorf("workDir is required for apply_patch tool")
 	}
 	sections, err := parsePatchSections(patchText)
@@ -76,7 +78,7 @@ func (t *ApplyPatchTool) Permission(params map[string]any, workDir string) (Perm
 		if raw == "" {
 			return nil
 		}
-		_, rel, err := resolveWorkPath(workDir, raw)
+		_, rel, err := resolveWorkPath(inv.WorkDir, raw)
 		if err != nil {
 			return err
 		}
@@ -100,12 +102,12 @@ func (t *ApplyPatchTool) Permission(params map[string]any, workDir string) (Perm
 	return PermissionCheck{Action: "edit", Resources: resources, Save: []string{"*"}}, nil
 }
 
-func (t *ApplyPatchTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	patchText, ok := params["patchText"].(string)
+func (t *ApplyPatchTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	patchText, ok := inv.Input["patchText"].(string)
 	if !ok || strings.TrimSpace(patchText) == "" {
 		return Result{}, fmt.Errorf("patchText is required")
 	}
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for apply_patch tool")
 	}
 
@@ -123,7 +125,7 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, params map[string]any, wor
 		default:
 		}
 
-		change, err := applyPatchSection(workDir, section)
+		change, err := applyPatchSection(inv.WorkDir, section)
 		if err != nil {
 			return Result{}, err
 		}
@@ -136,7 +138,11 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, params map[string]any, wor
 			"deletions":    change.Deletions,
 			"movePath":     change.MovePath,
 		})
-		summaries = append(summaries, fmt.Sprintf("%s %s", patchSummaryPrefix(change.Type), change.RelativePath))
+		summaryPath := change.RelativePath
+		if change.MovePath != "" {
+			summaryPath += " -> " + change.MovePath
+		}
+		summaries = append(summaries, fmt.Sprintf("%s %s", patchSummaryPrefix(change.Type), summaryPath))
 	}
 
 	output := "Success. Updated the following files:\n" + strings.Join(summaries, "\n")
@@ -240,9 +246,10 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 	}
 	changeType := section.Type
 	movePath := ""
+	moveRel := ""
 	if section.MovePath != "" {
 		changeType = "move"
-		movePath, rel, err = resolveWorkPath(workDir, section.MovePath)
+		movePath, moveRel, err = resolveWorkPath(workDir, section.MovePath)
 		if err != nil {
 			return patchChange{}, err
 		}
@@ -306,7 +313,7 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 		}
 	}
 
-	return patchChange{Path: path, RelativePath: rel, MovePath: movePath, Type: changeType, Patch: patch, Additions: additions, Deletions: deletions}, nil
+	return patchChange{Path: path, RelativePath: rel, MovePath: moveRel, Type: changeType, Patch: patch, Additions: additions, Deletions: deletions}, nil
 }
 
 func applyUpdateLines(oldContent string, patchLines []string) (string, error) {
@@ -376,39 +383,49 @@ func findLine(lines []string, start int, expected string) int {
 }
 
 func unifiedPatch(name, oldContent, newContent string) (string, int, int) {
-	oldLines := splitLinesKeepEnd(oldContent)
-	newLines := splitLinesKeepEnd(newContent)
-	var b strings.Builder
-	b.WriteString("--- a/" + name + "\n")
-	b.WriteString("+++ b/" + name + "\n")
-	b.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines)))
-	max := len(oldLines)
-	if len(newLines) > max {
-		max = len(newLines)
+	diff := difflib.UnifiedDiff{
+		A:        splitDiffLines(oldContent),
+		B:        splitDiffLines(newContent),
+		FromFile: "a/" + name,
+		ToFile:   "b/" + name,
+		Context:  3,
+	}
+	patch, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil {
+		// Fallback: return a minimal marker so consumers don't crash.
+		return fmt.Sprintf("--- a/%s\n+++ b/%s\n", name, name), 0, 0
 	}
 	additions, deletions := 0, 0
-	for i := 0; i < max; i++ {
-		var oldLine, newLine string
-		if i < len(oldLines) {
-			oldLine = oldLines[i]
-		}
-		if i < len(newLines) {
-			newLine = newLines[i]
-		}
-		if oldLine == newLine && oldLine != "" {
-			b.WriteString(" " + oldLine)
+	inHunk := false
+	for _, line := range strings.Split(patch, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			inHunk = true
 			continue
 		}
-		if oldLine != "" {
-			b.WriteString("-" + oldLine)
-			deletions++
+		if !inHunk {
+			continue
 		}
-		if newLine != "" {
-			b.WriteString("+" + newLine)
+		if strings.HasPrefix(line, "+") {
 			additions++
 		}
+		if strings.HasPrefix(line, "-") {
+			deletions++
+		}
 	}
-	return b.String(), additions, deletions
+	return patch, additions, deletions
+}
+
+func splitDiffLines(content string) []string {
+	if content == "" {
+		return nil
+	}
+	lines := strings.SplitAfter(content, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	} else if !strings.HasSuffix(lines[len(lines)-1], "\n") {
+		lines[len(lines)-1] += "\n\\ No newline at end of file\n"
+	}
+	return lines
 }
 
 func patchSummaryPrefix(kind string) string {

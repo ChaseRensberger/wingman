@@ -56,8 +56,8 @@ func (t *WebFetchTool) Definition() Definition {
 	}
 }
 
-func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	url, ok := params["url"].(string)
+func (t *WebFetchTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	url, ok := inv.Input["url"].(string)
 	if !ok || url == "" {
 		return Result{}, fmt.Errorf("url is required")
 	}
@@ -67,12 +67,12 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, workD
 	}
 
 	format := "markdown"
-	if f, ok := params["format"].(string); ok && f != "" {
+	if f, ok := inv.Input["format"].(string); ok && f != "" {
 		format = f
 	}
 
 	timeout := defaultTimeout
-	if t, ok := params["timeout"].(float64); ok {
+	if t, ok := inv.Input["timeout"].(float64); ok {
 		timeout = time.Duration(t) * time.Second
 		if timeout > maxTimeout {
 			timeout = maxTimeout

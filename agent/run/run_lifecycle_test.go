@@ -26,7 +26,7 @@ func TestRunRetainsToolCallWhenBeforeToolCallFails(t *testing.T) {
 			Name:        "test",
 			Description: "test",
 			InputSchema: tool.InputSchema{Type: "object"},
-		}, func(context.Context, map[string]any, string) (tool.Result, error) {
+		}, func(context.Context, tool.Invocation) (tool.Result, error) {
 			return tool.Result{}, nil
 		})},
 		Hooks: Hooks{BeforeToolCall: func(context.Context, ToolCall) (map[string]any, error) {

@@ -282,10 +282,19 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 			"input":      v.Call.Args,
 			"started_at": time.Now().UTC(),
 		})
+	case run.ToolExecutionProgressEvent:
+		s.publishRunEvent(sessionID, "session.tool.progress", map[string]any{
+			"run_id":       runID,
+			"call_id":      v.CallID,
+			"tool":         v.Name,
+			"output_delta": v.OutputDelta,
+			"metadata":     v.Metadata,
+		})
 	case run.ToolExecutionEndEvent:
 		data["call_id"] = v.Result.CallID
 		data["tool"] = v.Result.Name
 		data["output"] = v.Result.Output
+		data["error"] = v.Result.Error
 		data["metadata"] = v.Result.Metadata
 		if v.Result.IsError {
 			s.persistRunEvent(ctx, sessionID, "session.tool.failed", data)
@@ -293,10 +302,8 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 			s.persistRunEvent(ctx, sessionID, "session.tool.completed", data)
 		}
 		status := "completed"
-		errorText := ""
 		if v.Result.IsError {
 			status = "error"
-			errorText = v.Result.Output
 		}
 		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
 			"run_id":       runID,
@@ -306,7 +313,7 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 			"input":        v.Result.Args,
 			"output":       v.Result.Output,
 			"metadata":     v.Result.Metadata,
-			"error":        errorText,
+			"error":        v.Result.Error,
 			"completed_at": time.Now().UTC(),
 			"duration_ms":  v.Result.Duration.Milliseconds(),
 		})

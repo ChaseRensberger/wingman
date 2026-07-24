@@ -45,19 +45,19 @@ func (t *GlobTool) Definition() Definition {
 
 func (t *GlobTool) DirectoryScoped() {}
 
-func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	pattern, ok := params["pattern"].(string)
+func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	pattern, ok := inv.Input["pattern"].(string)
 	if !ok || pattern == "" {
 		return Result{}, fmt.Errorf("pattern is required")
 	}
 
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for glob tool")
 	}
 
-	baseDir := workDir
-	if path, ok := params["path"].(string); ok && path != "" {
-		resolved, _, err := resolveWorkPath(workDir, path)
+	baseDir := inv.WorkDir
+	if path, ok := inv.Input["path"].(string); ok && path != "" {
+		resolved, _, err := resolveWorkPath(inv.WorkDir, path)
 		if err != nil {
 			return Result{}, err
 		}
@@ -103,10 +103,10 @@ func (t *GlobTool) Execute(ctx context.Context, params map[string]any, workDir s
 	}
 
 	if len(matches) == 0 {
-		return Result{Text: "No files found matching pattern: " + pattern}, nil
+		return Result{Text: "No files found matching pattern: " + pattern, Metadata: map[string]any{"count": 0}}, nil
 	}
 
-	return Result{Text: strings.Join(matches, "\n")}, nil
+	return Result{Text: strings.Join(matches, "\n"), Metadata: map[string]any{"count": len(matches)}}, nil
 }
 
 func matchDoubleGlob(pattern, path string) bool {

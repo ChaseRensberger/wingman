@@ -78,7 +78,13 @@ type Tool interface {
     Name() string
     Description() string
     Definition() Definition
-    Execute(ctx context.Context, params map[string]any, workDir string) (Result, error)
+    Execute(ctx context.Context, invocation Invocation) (Result, error)
+}
+
+type Invocation struct {
+    Input    map[string]any
+    WorkDir  string
+    Progress *Progress
 }
 
 type Result struct {
@@ -87,7 +93,12 @@ type Result struct {
 }
 ```
 
-`Definition()` returns the JSON-Schema-shaped declaration sent to the model. `Execute` runs after the model emits a matching tool call. `Result.Text` is returned to the model as the tool result. `Result.Metadata` is persisted for clients that want richer rendering, such as file diff cards in the web UI.
+`Definition()` returns the JSON-Schema-shaped declaration sent to the model. `Execute` runs after the model emits a matching tool call. A tool may call `invocation.Progress.Report(outputDelta, metadata)` to publish live progress; tools without incremental work ignore it. `Result.Text` is returned to the model as the final tool result. `Result.Metadata` is persisted for clients that want richer rendering, such as file diff cards in the web UI.
+
+Progress events are live-only. The final result, metadata, error, and timing are
+stored on the assistant-owned tool part, so reconnecting clients recover the
+completed state without replaying every output chunk. If execution fails after
+producing output, Wingman retains that partial output separately from the error.
 
 File-oriented tools use OpenCode-style model-facing argument names: `filePath`, `oldString`, `newString`, `replaceAll`, `content`, and `patchText`. Search-scoped tools use `path` where it means the base path for a search (`glob`, `grep`).
 

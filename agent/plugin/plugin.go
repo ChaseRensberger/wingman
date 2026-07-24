@@ -371,12 +371,12 @@ func composeBeforeToolCall(hooks []run.BeforeToolCallFunc) run.BeforeToolCallFun
 }
 
 // composeAfterToolCall chains AfterToolCall hooks: each receives the
-// previous hook's output string and isError flag.
+// previous hook's structured result.
 func composeAfterToolCall(hooks []run.AfterToolCallFunc) run.AfterToolCallFunc {
-	return func(ctx context.Context, call run.ToolCall, result string, isError bool) (string, error) {
+	return func(ctx context.Context, call run.ToolCall, result run.ToolResult) (run.ToolResult, error) {
 		out := result
 		for i, h := range hooks {
-			newOut, err := h(ctx, call, out, isError)
+			newOut, err := h(ctx, call, out)
 			if err != nil {
 				return out, fmt.Errorf("after_tool_call[%d]: %w", i, err)
 			}

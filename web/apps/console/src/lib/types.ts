@@ -75,6 +75,12 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface DirectoryListing {
+	path: string;
+	parent?: string;
+	entries: Array<{ name: string; path: string }>;
+}
+
 export interface Message {
   role: "user" | "assistant" | "tool";
   content: Part[];
@@ -183,6 +189,7 @@ export interface ToolActivity {
   tool: string;
   status: "pending" | "running" | "completed" | "error";
   input?: Record<string, unknown>;
+  input_text?: string;
   output?: string;
   metadata?: Record<string, unknown>;
   error?: string;

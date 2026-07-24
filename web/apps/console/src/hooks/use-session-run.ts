@@ -64,6 +64,55 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	function applySessionEvent(ev: SessionEvent) {
 		if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) lastEventSeqRef.current = ev.cursor.seq;
 		const data = ev.data ?? {};
+		if (activeRunRef.current?.runId && typeof data.run_id === "string" && data.run_id !== activeRunRef.current.runId) return;
+		if (ev.type === "session.tool.input.delta") {
+			const callID = typeof data.call_id === "string" ? data.call_id : "";
+			const delta = typeof data.delta === "string" ? data.delta : "";
+			if (!callID || !delta) return;
+			setToolActivities((previous) => {
+				const next = new Map(previous);
+				const current = next.get(callID);
+				const inputText = (current?.input_text ?? "") + delta;
+				let input = current?.input;
+				try {
+					const parsed = JSON.parse(inputText);
+					if (isRecord(parsed)) input = parsed;
+				} catch {
+					// Partial tool input is not valid JSON until the provider finishes it.
+				}
+				next.set(callID, {
+					call_id: callID,
+					tool: typeof data.tool === "string" ? data.tool : (current?.tool ?? "tool"),
+					status: current?.status ?? "pending",
+					...current,
+					input,
+					input_text: inputText,
+				});
+				return next;
+			});
+			return;
+		}
+		if (ev.type === "session.tool.progress") {
+			const callID = typeof data.call_id === "string" ? data.call_id : "";
+			if (!callID) return;
+			setToolActivities((previous) => {
+				const next = new Map(previous);
+				const current = next.get(callID);
+				const metadata = isRecord(data.metadata)
+					? { ...(current?.metadata ?? {}), ...data.metadata }
+					: current?.metadata;
+				next.set(callID, {
+					call_id: callID,
+					tool: typeof data.tool === "string" ? data.tool : (current?.tool ?? "tool"),
+					status: current?.status ?? "running",
+					...current,
+					output: (current?.output ?? "") + (typeof data.output_delta === "string" ? data.output_delta : ""),
+					metadata,
+				});
+				return next;
+			});
+			return;
+		}
 		if (ev.type === "session.tool.updated") {
 			const callID = typeof data.call_id === "string" ? data.call_id : "";
 			const tool = typeof data.tool === "string" ? data.tool : "";
@@ -71,7 +120,20 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			if (!callID || !tool || !["pending", "running", "completed", "error"].includes(String(status))) return;
 			setToolActivities((previous) => {
 				const next = new Map(previous);
-				next.set(callID, { call_id: callID, tool, status: status as ToolActivity["status"], input: isRecord(data.input) ? data.input : undefined, output: typeof data.output === "string" ? data.output : undefined, metadata: isRecord(data.metadata) ? data.metadata : undefined, error: typeof data.error === "string" ? data.error : undefined, started_at: typeof data.started_at === "string" ? data.started_at : undefined, completed_at: typeof data.completed_at === "string" ? data.completed_at : undefined, duration_ms: typeof data.duration_ms === "number" ? data.duration_ms : undefined });
+				const current = next.get(callID);
+				next.set(callID, {
+					...current,
+					call_id: callID,
+					tool,
+					status: status as ToolActivity["status"],
+					input: isRecord(data.input) ? data.input : current?.input,
+					output: typeof data.output === "string" ? data.output : current?.output,
+					metadata: Object.hasOwn(data, "metadata") ? (isRecord(data.metadata) ? data.metadata : undefined) : current?.metadata,
+					error: typeof data.error === "string" ? data.error : current?.error,
+					started_at: typeof data.started_at === "string" ? data.started_at : current?.started_at,
+					completed_at: typeof data.completed_at === "string" ? data.completed_at : current?.completed_at,
+					duration_ms: typeof data.duration_ms === "number" ? data.duration_ms : current?.duration_ms,
+				});
 				return next;
 			});
 			return;

@@ -13,7 +13,7 @@ func TestCheckPermissionDenyReturnsStructuredMetadata(t *testing.T) {
 	if ok {
 		t.Fatal("permission check allowed denied command")
 	}
-	if !res.IsError || res.Output != "permission denied: bash pwd" {
+	if !res.IsError || res.Error != "permission denied: bash pwd" {
 		t.Fatalf("result = %#v", res)
 	}
 	meta := permissionMetadata(t, res.Metadata)
@@ -28,7 +28,7 @@ func TestCheckPermissionAskReturnsStructuredMetadata(t *testing.T) {
 	if ok {
 		t.Fatal("permission check allowed ask command")
 	}
-	if !res.IsError || res.Output != "permission required: bash pwd" {
+	if !res.IsError || res.Error != "permission required: bash pwd" {
 		t.Fatalf("result = %#v", res)
 	}
 	meta := permissionMetadata(t, res.Metadata)

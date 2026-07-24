@@ -17,6 +17,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -35,7 +36,7 @@ type Tool interface {
 	Name() string
 	Description() string
 	Definition() Definition
-	Execute(ctx context.Context, params map[string]any, workDir string) (Result, error)
+	Execute(ctx context.Context, inv Invocation) (Result, error)
 }
 
 // Result is the structured outcome a tool returns. Text is model-facing output;
@@ -43,6 +44,48 @@ type Tool interface {
 type Result struct {
 	Text     string         `json:"text"`
 	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// Progress is the callback a tool may use to stream intermediate output
+// and JSON-serializable metadata updates during execution.
+type Progress struct {
+	report func(delta string, metadata map[string]any)
+}
+
+// NewProgress returns a Progress that delegates to the supplied callback.
+// Nil callbacks are no-ops.
+func NewProgress(report func(delta string, metadata map[string]any)) *Progress {
+	return &Progress{report: report}
+}
+
+// Report emits an output delta and/or metadata update. Safe to call from
+// any goroutine; nil receivers are no-ops.
+func (p *Progress) Report(delta string, metadata map[string]any) {
+	if p != nil && p.report != nil {
+		p.report(delta, cloneProgressMetadata(metadata))
+	}
+}
+
+func cloneProgressMetadata(metadata map[string]any) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return nil
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		return nil
+	}
+	return cloned
+}
+
+// Invocation carries everything a tool needs to execute a single call.
+type Invocation struct {
+	Input    map[string]any
+	WorkDir  string
+	Progress *Progress
 }
 
 // SequentialTool is an optional interface a Tool can implement to force
@@ -67,7 +110,7 @@ type PermissionCheck struct {
 // own permission target from validated input parameters.
 type PermissionedTool interface {
 	Tool
-	Permission(params map[string]any, workDir string) (PermissionCheck, error)
+	Permission(inv Invocation) (PermissionCheck, error)
 }
 
 // DirectoryScopedTool is a marker interface for tools that operate on the
@@ -228,21 +271,21 @@ func (b BaseTool) Definition() Definition { return b.definition }
 // defined inline in user code without declaring a new type.
 type FuncTool struct {
 	BaseTool
-	fn func(ctx context.Context, params map[string]any, workDir string) (Result, error)
+	fn func(ctx context.Context, inv Invocation) (Result, error)
 }
 
 // NewFuncTool returns a FuncTool. The Definition's Name should match the
 // passed name to avoid a mismatch between the LLM's tool schema view and
 // the registry's lookup key.
 func NewFuncTool(name, description string, def Definition,
-	fn func(ctx context.Context, params map[string]any, workDir string) (Result, error),
+	fn func(ctx context.Context, inv Invocation) (Result, error),
 ) *FuncTool {
 	return &FuncTool{BaseTool: NewBaseTool(name, description, def), fn: fn}
 }
 
 // Execute delegates to the wrapped function.
-func (f *FuncTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	return f.fn(ctx, params, workDir)
+func (f *FuncTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	return f.fn(ctx, inv)
 }
 
 // Compile-time conformance checks for built-in tools. Adding a new

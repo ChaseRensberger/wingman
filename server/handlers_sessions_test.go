@@ -138,3 +138,42 @@ func TestForwardRunEventPublishesToolUpdates(t *testing.T) {
 		t.Fatalf("duration_ms = %#v, want 1000", updates[1]["duration_ms"])
 	}
 }
+
+func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_test", Title: "Test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := New(Config{Store: data})
+	events, unsubscribe := server.events.subscribe("ses_test")
+	defer unsubscribe()
+
+	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{
+		Data: run.ToolExecutionProgressEvent{CallID: "call_test", Name: "bash", OutputDelta: "partial"},
+	})
+
+	select {
+	case event := <-events:
+		if event.Type != "session.tool.progress" || event.Seq != 0 {
+			t.Fatalf("event = %#v, want live tool progress", event)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.DataJSON, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["run_id"] != "run_test" || payload["call_id"] != "call_test" || payload["output_delta"] != "partial" {
+			t.Fatalf("payload = %#v", payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for tool progress")
+	}
+
+	stored, err := data.ListSessionEvents(context.Background(), "ses_test", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("persisted progress events = %d, want 0", len(stored))
+	}
+}

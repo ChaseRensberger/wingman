@@ -55,22 +55,22 @@ func (t *ReadTool) Definition() Definition {
 
 func (t *ReadTool) DirectoryScoped() {}
 
-func (t *ReadTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	rawPath, _ := params["filePath"].(string)
+func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	rawPath, _ := inv.Input["filePath"].(string)
 	if rawPath == "" {
 		return Result{}, fmt.Errorf("filePath is required")
 	}
 
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for read tool")
 	}
 
-	path, _, err := resolveWorkPath(workDir, rawPath)
+	path, _, err := resolveWorkPath(inv.WorkDir, rawPath)
 	if err != nil {
 		return Result{}, err
 	}
-	offset := intParam(params["offset"], 1)
-	limit := intParam(params["limit"], defaultReadLimit)
+	offset := intParam(inv.Input["offset"], 1)
+	limit := intParam(inv.Input["limit"], defaultReadLimit)
 	if offset < 1 {
 		return Result{}, fmt.Errorf("offset must be >= 1")
 	}

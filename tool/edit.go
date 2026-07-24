@@ -48,27 +48,27 @@ func (t *EditTool) Definition() Definition {
 
 func (t *EditTool) DirectoryScoped() {}
 
-func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	filePath, ok := params["filePath"].(string)
+func (t *EditTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	filePath, ok := inv.Input["filePath"].(string)
 	if !ok || filePath == "" {
 		return Result{}, fmt.Errorf("filePath is required")
 	}
-	oldString, ok := params["oldString"].(string)
+	oldString, ok := inv.Input["oldString"].(string)
 	if !ok {
 		return Result{}, fmt.Errorf("oldString is required")
 	}
-	newString, ok := params["newString"].(string)
+	newString, ok := inv.Input["newString"].(string)
 	if !ok {
 		return Result{}, fmt.Errorf("newString is required")
 	}
 	if oldString == newString {
 		return Result{}, fmt.Errorf("oldString and newString are identical")
 	}
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for edit tool")
 	}
 
-	path, rel, err := resolveWorkPath(workDir, filePath)
+	path, rel, err := resolveWorkPath(inv.WorkDir, filePath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -87,7 +87,7 @@ func (t *EditTool) Execute(ctx context.Context, params map[string]any, workDir s
 	if count == 0 {
 		return Result{}, fmt.Errorf("oldString not found in file")
 	}
-	replaceAll, _ := params["replaceAll"].(bool)
+	replaceAll, _ := inv.Input["replaceAll"].(bool)
 	if count > 1 && !replaceAll {
 		return Result{}, fmt.Errorf("oldString found %d times, must be unique or replaceAll must be true", count)
 	}

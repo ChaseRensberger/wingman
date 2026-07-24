@@ -57,13 +57,13 @@ type grepMatch struct {
 
 func (t *GrepTool) DirectoryScoped() {}
 
-func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	pattern, ok := params["pattern"].(string)
+func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	pattern, ok := inv.Input["pattern"].(string)
 	if !ok || pattern == "" {
 		return Result{}, fmt.Errorf("pattern is required")
 	}
 
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for grep tool")
 	}
 
@@ -72,9 +72,9 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 		return Result{}, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	searchPath := workDir
-	if path, ok := params["path"].(string); ok && path != "" {
-		resolved, _, err := resolveWorkPath(workDir, path)
+	searchPath := inv.WorkDir
+	if path, ok := inv.Input["path"].(string); ok && path != "" {
+		resolved, _, err := resolveWorkPath(inv.WorkDir, path)
 		if err != nil {
 			return Result{}, err
 		}
@@ -82,7 +82,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 	}
 
 	includePattern := ""
-	if include, ok := params["include"].(string); ok {
+	if include, ok := inv.Input["include"].(string); ok {
 		includePattern = include
 	}
 
@@ -121,7 +121,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 				return nil
 			}
 
-			relPath, _ := filepath.Rel(workDir, path)
+			relPath, _ := filepath.Rel(inv.WorkDir, path)
 			for i := range fileMatches {
 				fileMatches[i].File = relPath
 			}
@@ -136,7 +136,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 		if err != nil {
 			return Result{}, fmt.Errorf("failed to search file: %w", err)
 		}
-		relPath, _ := filepath.Rel(workDir, searchPath)
+		relPath, _ := filepath.Rel(inv.WorkDir, searchPath)
 		for i := range fileMatches {
 			fileMatches[i].File = relPath
 		}
@@ -144,7 +144,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 	}
 
 	if len(matches) == 0 {
-		return Result{Text: "No matches found for pattern: " + pattern}, nil
+		return Result{Text: "No matches found for pattern: " + pattern, Metadata: map[string]any{"matches": 0}}, nil
 	}
 
 	var result strings.Builder
@@ -152,7 +152,7 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]any, workDir s
 		result.WriteString(fmt.Sprintf("%s:%d: %s\n", m.File, m.Line, strings.TrimSpace(m.Content)))
 	}
 
-	return Result{Text: result.String()}, nil
+	return Result{Text: result.String(), Metadata: map[string]any{"matches": len(matches)}}, nil
 }
 
 func searchFile(path string, re *regexp.Regexp) ([]grepMatch, error) {

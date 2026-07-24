@@ -1,10 +1,11 @@
 package tool
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,18 +50,18 @@ func (t *BashTool) Definition() Definition {
 
 func (t *BashTool) DirectoryScoped() {}
 
-func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir string) (Result, error) {
-	command, ok := params["command"].(string)
+func (t *BashTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
+	command, ok := inv.Input["command"].(string)
 	if !ok || command == "" {
 		return Result{}, fmt.Errorf("command is required")
 	}
 
-	if workDir == "" {
+	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for bash tool")
 	}
 
 	timeout := t.timeout
-	if ts, ok := params["timeout"].(string); ok && ts != "" {
+	if ts, ok := inv.Input["timeout"].(string); ok && ts != "" {
 		if d, err := time.ParseDuration(ts); err == nil {
 			timeout = d
 		}
@@ -70,28 +71,56 @@ func (t *BashTool) Execute(ctx context.Context, params map[string]any, workDir s
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
-	cmd.Dir = workDir
+	cmd.Dir = inv.WorkDir
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	metadata := map[string]any{"work_dir": inv.WorkDir}
+	inv.Progress.Report("", map[string]any{"work_dir": inv.WorkDir})
+	w := newProgressWriter(inv.Progress)
+	cmd.Stdout = w
+	cmd.Stderr = w
 
 	err := cmd.Run()
-
-	output := stdout.String()
-	if stderr.Len() > 0 {
-		if output != "" {
-			output += "\n"
-		}
-		output += stderr.String()
-	}
+	output := w.String()
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return Result{Text: output}, fmt.Errorf("command timed out after %v", timeout)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			metadata["exit_code"] = exitErr.ExitCode()
 		}
-		return Result{Text: output}, fmt.Errorf("command failed: %w", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return Result{Text: output, Metadata: metadata}, fmt.Errorf("command timed out after %v", timeout)
+		}
+		return Result{Text: output, Metadata: metadata}, fmt.Errorf("command failed: %w", err)
 	}
 
-	return Result{Text: output}, nil
+	metadata["exit_code"] = 0
+	return Result{Text: output, Metadata: metadata}, nil
+}
+
+// progressWriter is a concurrency-safe writer that accumulates output and
+// forwards chunks through a tool Progress callback.
+type progressWriter struct {
+	mu       sync.Mutex
+	b        strings.Builder
+	progress *Progress
+}
+
+func newProgressWriter(p *Progress) *progressWriter {
+	return &progressWriter{progress: p}
+}
+
+func (w *progressWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err = w.b.Write(p)
+	delta := string(p)
+	if w.progress != nil && delta != "" {
+		w.progress.Report(delta, nil)
+	}
+	return n, err
+}
+
+func (w *progressWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.String()
 }

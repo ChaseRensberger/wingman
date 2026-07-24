@@ -135,6 +135,8 @@ func classify(e run.Event) (string, any) {
 		return "message", v
 	case run.ToolExecutionStartEvent:
 		return "tool_start", v
+	case run.ToolExecutionProgressEvent:
+		return "tool_progress", v
 	case run.ToolExecutionEndEvent:
 		return "tool_end", v
 	case run.StreamPartEvent:
