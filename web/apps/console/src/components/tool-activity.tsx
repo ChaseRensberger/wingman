@@ -91,7 +91,7 @@ function ToolHeader({ view, title, changes }: { view: ToolView; title: string; c
 			<span className="shrink-0"><StatusIcon status={view.status} /></span>
 			<span className="min-w-0 truncate text-xs font-medium">{title}</span>
 			{sourceLabel(view) && <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">{sourceLabel(view)}</span>}
-			{changes && <span className="ml-auto flex shrink-0 gap-2 font-mono text-xs"><span className="text-emerald-600 dark:text-emerald-400">+{changes.additions}</span><span className="text-red-600 dark:text-red-400">-{changes.deletions}</span></span>}
+			{changes && <span className="ml-auto flex shrink-0 gap-2 font-mono text-xs"><span className="text-[var(--console-diff-add-foreground)]">+{changes.additions}</span><span className="text-[var(--console-diff-delete-foreground)]">-{changes.deletions}</span></span>}
 			{duration && <span className={cn("shrink-0 text-[11px] tabular-nums", !changes && "ml-auto")}>{duration}</span>}
 		</div>
 	);
@@ -105,13 +105,13 @@ function BashTool({ view }: { view: ToolView }) {
 	const command = typeof view.call.input.command === "string" ? view.call.input.command : "";
 	const workDir = typeof view.metadata.work_dir === "string" ? view.metadata.work_dir : "";
 	return (
-		<div className={cn("my-2 overflow-hidden rounded-lg border bg-zinc-950 text-zinc-100", view.status === "error" && "border-destructive/50")}>
-			<div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+		<div className={cn("my-2 overflow-hidden rounded-lg border bg-[var(--console-command-background)] text-[var(--console-command-foreground)]", view.status === "error" ? "border-destructive/50" : "border-[var(--console-command-border)]")}>
+			<div className="flex items-center gap-2 border-b border-[var(--console-command-border)] px-3 py-2">
 				<ToolHeader view={view} title={command || "Running command"} />
 			</div>
-			{workDir && <div className="border-b border-white/10 px-3 py-1 font-mono text-[10px] text-zinc-500">{workDir}</div>}
+			{workDir && <div className="border-b border-[var(--console-command-border)] px-3 py-1 font-mono text-[10px] text-[var(--console-command-muted)]">{workDir}</div>}
 			{(output || view.error) && <pre data-scrollable tabIndex={0} className="max-h-96 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-5"><code>{visibleOutput}{view.error && view.error !== output ? `${output ? "\n" : ""}${view.error}` : ""}</code></pre>}
-			{collapsed.overflow && <button type="button" onClick={() => setExpanded((value) => !value)} className="w-full border-t border-white/10 px-3 py-1.5 text-left text-[11px] text-zinc-400 hover:text-zinc-200">{expanded ? "Collapse output" : "Show full output"}</button>}
+			{collapsed.overflow && <button type="button" onClick={() => setExpanded((value) => !value)} className="w-full border-t border-[var(--console-command-border)] px-3 py-1.5 text-left text-[11px] text-[var(--console-command-muted)] hover:text-[var(--console-command-foreground)]">{expanded ? "Collapse output" : "Show full output"}</button>}
 		</div>
 	);
 }

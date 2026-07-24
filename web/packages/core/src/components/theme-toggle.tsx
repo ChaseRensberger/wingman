@@ -9,7 +9,7 @@ import {
 import { useTheme } from "#components/theme-provider"
 
 export function ThemeToggle() {
-	const { setTheme } = useTheme()
+	const { setColorMode } = useTheme()
 
 	return (
 		<DropdownMenu>
@@ -19,13 +19,13 @@ export function ThemeToggle() {
 				<span className="sr-only">Toggle theme</span>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuItem onClick={() => setTheme("light")}>
+				<DropdownMenuItem onClick={() => setColorMode("light")}>
 					Light
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => setTheme("dark")}>
+				<DropdownMenuItem onClick={() => setColorMode("dark")}>
 					Dark
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => setTheme("system")}>
+				<DropdownMenuItem onClick={() => setColorMode("system")}>
 					System
 				</DropdownMenuItem>
 			</DropdownMenuContent>

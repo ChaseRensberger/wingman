@@ -42,6 +42,9 @@ async function createMarkdownHighlighter() {
     { createJavaScriptRegexEngine },
     githubDark,
     githubLight,
+		gruvboxDark,
+		gruvboxLight,
+		dracula,
     bash,
     css,
     go,
@@ -61,6 +64,9 @@ async function createMarkdownHighlighter() {
     import("shiki/engine/javascript"),
     import("shiki/themes/github-dark.mjs"),
     import("shiki/themes/github-light.mjs"),
+		import("shiki/themes/gruvbox-dark-medium.mjs"),
+		import("shiki/themes/gruvbox-light-medium.mjs"),
+		import("shiki/themes/dracula.mjs"),
     import("shiki/langs/bash.mjs"),
     import("shiki/langs/css.mjs"),
     import("shiki/langs/go.mjs"),
@@ -79,7 +85,7 @@ async function createMarkdownHighlighter() {
 
   return createHighlighterCore({
     engine: createJavaScriptRegexEngine(),
-    themes: [githubDark.default, githubLight.default],
+    themes: [githubDark.default, githubLight.default, gruvboxDark.default, gruvboxLight.default, dracula.default],
     langs: [
       bash.default,
       css.default,
@@ -112,13 +118,9 @@ function normalizeLanguage(lang?: string) {
   return supportedLanguages.has(normalized) ? normalized : "text"
 }
 
-function useIsDarkTheme() {
-  const { theme } = useTheme()
-
-  if (theme === "dark") return true
-  if (theme === "light") return false
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
+function useCodeTheme() {
+  const { theme, resolvedColorMode } = useTheme()
+  return theme.shiki[resolvedColorMode] ?? theme.shiki.dark ?? "github-dark"
 }
 
 function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
@@ -142,8 +144,8 @@ type HighlightedCode = {
 }
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const isDark = useIsDarkTheme()
-  const highlightKey = `${code}\u0000${lang}\u0000${isDark}`
+  const theme = useCodeTheme()
+  const highlightKey = `${code}\u0000${lang}\u0000${theme}`
   const [highlightedCode, setHighlightedCode] = useState<HighlightedCode | null>(null)
 
   useEffect(() => {
@@ -155,7 +157,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
       const highlighted = highlighter.codeToHtml(code, {
         lang: shikiLang,
-        theme: isDark ? "github-dark" : "github-light",
+        theme,
       })
 
       if (mounted) setHighlightedCode({ key: highlightKey, html: highlighted })
@@ -166,7 +168,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     return () => {
       mounted = false
     }
-  }, [code, lang, isDark, highlightKey])
+  }, [code, lang, theme, highlightKey])
 
   if (highlightedCode?.key !== highlightKey) return <PlainCodeBlock code={code} lang={lang} />
 

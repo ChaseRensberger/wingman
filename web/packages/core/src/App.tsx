@@ -1,4 +1,5 @@
 import { ThemeToggle } from './components/theme-toggle'
+import { ThemePreviewSwitcherShowcase } from './showcases/theme-preview-switcher-showcase'
 import { AccordionShowcase } from './showcases/accordion-showcase'
 import { CollapsibleShowcase } from './showcases/collapsible-showcase'
 import { AlertShowcase } from './showcases/alert-showcase'
@@ -77,6 +78,7 @@ export default function App() {
 				<ButtonShowcase />
 				<ButtonGroupShowcase />
 				<TypographyShowcase />
+				<ThemePreviewSwitcherShowcase />
 				<MarkdownShowcase />
 				<InputShowcase />
 				<InputGroupShowcase />

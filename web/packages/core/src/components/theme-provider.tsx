@@ -1,58 +1,85 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import {
+	getTheme,
+	normalizeColorMode,
+	type ColorMode,
+	type ResolvedColorMode,
+	type Theme,
+	type ThemeID,
+} from "#themes/registry"
 
-export type Theme = "dark" | "light" | "system"
+export type { ColorMode, ResolvedColorMode, Theme, ThemeID } from "#themes/registry"
 
 type ThemeProviderProps = {
 	children: React.ReactNode
-	defaultTheme?: Theme
+	defaultTheme?: ThemeID
+	defaultColorMode?: ColorMode
 	storageKey?: string
 }
 
 type ThemeProviderState = {
 	theme: Theme
-	setTheme: (theme: Theme) => void
+	colorMode: ColorMode
+	resolvedColorMode: ResolvedColorMode
+	setTheme: (theme: ThemeID, colorMode?: ColorMode) => void
+	setColorMode: (mode: ColorMode) => void
 }
 
 const initialState: ThemeProviderState = {
-	theme: "system",
+	theme: getTheme("default"),
+	colorMode: "system",
+	resolvedColorMode: "light",
 	setTheme: () => null,
+	setColorMode: () => null,
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export function ThemeProvider({
 	children,
-	defaultTheme = "system",
+	defaultTheme = "default",
+	defaultColorMode = "system",
 	storageKey = "wingman-theme",
 	...props
 }: ThemeProviderProps) {
-	const [theme, setTheme] = useState<Theme>(
-		() => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-	)
+	const [theme, setThemeState] = useState(() => getTheme(localStorage.getItem(storageKey) ?? defaultTheme))
+	const [colorMode, setColorModeState] = useState<ColorMode>(() => normalizeColorMode(theme, (localStorage.getItem(`${storageKey}-mode`) as ColorMode) || defaultColorMode))
+	const [systemColorMode, setSystemColorMode] = useState<ResolvedColorMode>(() => window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+	const resolvedColorMode = colorMode === "system" ? systemColorMode : colorMode
+
+	useEffect(() => {
+		if (colorMode !== "system") return
+		const media = window.matchMedia("(prefers-color-scheme: dark)")
+		const updateSystemColorMode = () => setSystemColorMode(media.matches ? "dark" : "light")
+		updateSystemColorMode()
+		media.addEventListener("change", updateSystemColorMode)
+		return () => media.removeEventListener("change", updateSystemColorMode)
+	}, [colorMode])
 
 	useEffect(() => {
 		const root = window.document.documentElement
-
-		root.classList.remove("light", "dark")
-
-		if (theme === "system") {
-			const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-				.matches
-				? "dark"
-				: "light"
-
-			root.classList.add(systemTheme)
-			return
-		}
-
-		root.classList.add(theme)
-	}, [theme])
+		root.dataset.theme = theme.id
+		root.dataset.mode = resolvedColorMode
+		root.classList.toggle("dark", resolvedColorMode === "dark")
+		root.classList.toggle("light", resolvedColorMode === "light")
+	}, [resolvedColorMode, theme])
 
 	const value = {
 		theme,
-		setTheme: (theme: Theme) => {
-			localStorage.setItem(storageKey, theme)
-			setTheme(theme)
+		colorMode,
+		resolvedColorMode,
+		setTheme: (id: ThemeID, mode?: ColorMode) => {
+			const nextTheme = getTheme(id)
+			const nextColorMode = normalizeColorMode(nextTheme, mode ?? colorMode)
+			localStorage.setItem(storageKey, nextTheme.id)
+			localStorage.setItem(`${storageKey}-mode`, nextColorMode)
+			setThemeState(nextTheme)
+			setColorModeState(nextColorMode)
+		},
+		setColorMode: (mode: ColorMode) => {
+			const nextColorMode = normalizeColorMode(theme, mode)
+			localStorage.setItem(`${storageKey}-mode`, nextColorMode)
+			setColorModeState(nextColorMode)
 		},
 	}
 

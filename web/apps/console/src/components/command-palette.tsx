@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { PlusIcon } from "@phosphor-icons/react";
+import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
+import { useTheme } from "@wingman/core/components/theme-provider";
+import { themes } from "@wingman/core/themes/registry";
 
 function isEditableTarget(target: EventTarget | null) {
 	return target instanceof HTMLElement && (
@@ -12,6 +14,7 @@ function isEditableTarget(target: EventTarget | null) {
 
 export function CommandPalette() {
 	const navigate = useNavigate();
+	const { theme, colorMode, resolvedColorMode, setColorMode, setTheme } = useTheme();
 	const [open, setOpen] = useState(false);
 	const toggle = useEffectEvent(() => setOpen((current) => !current));
 
@@ -32,6 +35,16 @@ export function CommandPalette() {
 		navigate({ to: "/sessions/$sessionId", params: { sessionId: "new" } });
 	}
 
+	function selectTheme(themeID: typeof theme.id, colorMode: "light" | "dark") {
+		setTheme(themeID, colorMode);
+		setOpen(false);
+	}
+
+	function selectSystemColorMode() {
+		setColorMode("system");
+		setOpen(false);
+	}
+
 	return (
 		<Command.Dialog open={open} onOpenChange={setOpen} label="Command menu">
 			<Command.Input placeholder="Type a command..." />
@@ -42,6 +55,23 @@ export function CommandPalette() {
 						<PlusIcon className="size-4" />
 						<span>New session</span>
 					</Command.Item>
+				</Command.Group>
+				<Command.Group heading="Theme">
+					{themes.flatMap((option) => option.modes.map((colorMode) => {
+						const active = theme.id === option.id && resolvedColorMode === colorMode;
+						return (
+							<Command.Item key={`${option.id}-${colorMode}`} value={`${option.label} ${colorMode}`} onSelect={() => selectTheme(option.id, colorMode)}>
+								<span>{option.label} {colorMode}</span>
+								{active && <CheckIcon className="ml-auto size-4" weight="bold" />}
+							</Command.Item>
+						);
+					}))}
+					{theme.modes.length === 2 && (
+						<Command.Item value="system preference" onSelect={selectSystemColorMode}>
+							<span>System preference</span>
+							{colorMode === "system" && <CheckIcon className="ml-auto size-4" weight="bold" />}
+						</Command.Item>
+					)}
 				</Command.Group>
 			</Command.List>
 		</Command.Dialog>

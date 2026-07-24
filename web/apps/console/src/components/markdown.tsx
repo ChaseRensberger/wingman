@@ -7,14 +7,14 @@ import { getSingletonHighlighter } from "shiki";
 import { useTheme } from "@wingman/core/components/theme-provider";
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const { theme } = useTheme();
+  const { theme, resolvedColorMode } = useTheme();
   const [html, setHtml] = useState("");
 
   useEffect(() => {
     let mounted = true;
     async function run() {
       const highlighter = await getSingletonHighlighter({
-        themes: ["github-dark", "github-light"],
+        themes: ["github-dark", "github-light", "gruvbox-dark-medium", "gruvbox-light-medium", "dracula"],
         langs: [
           "javascript",
           "typescript",
@@ -32,13 +32,10 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
           "sql",
         ],
       });
-      const isDark =
-        theme === "dark" ||
-        (theme === "system" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      const syntaxTheme = theme.shiki[resolvedColorMode] ?? theme.shiki.dark ?? "github-dark";
       const result = highlighter.codeToHtml(code, {
         lang: lang || "text",
-        theme: isDark ? "github-dark" : "github-light",
+        theme: syntaxTheme,
       });
       if (mounted) setHtml(result);
     }
@@ -46,7 +43,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     return () => {
       mounted = false;
     };
-  }, [code, lang, theme]);
+  }, [code, lang, resolvedColorMode, theme]);
 
   if (!html) {
     return (

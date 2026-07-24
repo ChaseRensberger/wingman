@@ -1,0 +1,10 @@
+:root {
+  --console-command-background: var(--code-background);
+  --console-command-foreground: var(--code-foreground);
+  --console-command-muted: var(--code-muted);
+  --console-command-border: var(--code-border);
+  --console-diff-add-background: color-mix(in srgb, var(--success) 16%, transparent);
+  --console-diff-add-foreground: var(--success);
+  --console-diff-delete-background: color-mix(in srgb, var(--destructive) 16%, transparent);
+  --console-diff-delete-foreground: var(--destructive);
+}

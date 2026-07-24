@@ -22,8 +22,8 @@ export function ToolDiff({ files }: { files: PatchFile[] }) {
 							<span className="truncate font-mono text-xs">{file.relativePath}</span>
 							{file.movePath && <span className="truncate text-xs text-muted-foreground">→ {file.movePath}</span>}
 							<span className="ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{operationLabel(file.type)}</span>
-							<span className="shrink-0 font-mono text-xs text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
-							<span className="shrink-0 font-mono text-xs text-red-600 dark:text-red-400">-{file.deletions}</span>
+							<span className="shrink-0 font-mono text-xs text-[var(--console-diff-add-foreground)]">+{file.additions}</span>
+							<span className="shrink-0 font-mono text-xs text-[var(--console-diff-delete-foreground)]">-{file.deletions}</span>
 						</div>
 					</CollapsibleTrigger>
 					<CollapsibleContent className="pb-0">
@@ -46,7 +46,7 @@ function DiffTable({ patch }: { patch: string }) {
 						return <div key={index} className="border-y bg-muted/50 px-3 py-1 text-muted-foreground first:border-t-0">{line.text}</div>;
 					}
 					return (
-						<div key={index} className={cn("grid grid-cols-[3.25rem_3.25rem_1fr]", line.kind === "addition" && "bg-emerald-500/12 text-emerald-950 dark:text-emerald-100", line.kind === "deletion" && "bg-red-500/12 text-red-950 dark:text-red-100")}>
+						<div key={index} className={cn("grid grid-cols-[3.25rem_3.25rem_1fr]", line.kind === "addition" && "bg-[var(--console-diff-add-background)] text-[var(--console-diff-add-foreground)]", line.kind === "deletion" && "bg-[var(--console-diff-delete-background)] text-[var(--console-diff-delete-foreground)]")}>
 							<span className="select-none border-r px-2 text-right text-muted-foreground/70">{line.oldLine ?? ""}</span>
 							<span className="select-none border-r px-2 text-right text-muted-foreground/70">{line.newLine ?? ""}</span>
 							<code className="whitespace-pre px-3"><span className="mr-2 inline-block w-2 select-none text-muted-foreground">{line.kind === "addition" ? "+" : line.kind === "deletion" ? "-" : " "}</span>{line.text || " "}</code>

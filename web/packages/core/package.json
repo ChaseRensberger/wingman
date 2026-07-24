@@ -6,13 +6,15 @@
   "imports": {
     "#assets/*": "./src/assets/*",
     "#components/*": "./src/components/*.tsx",
-    "#lib/*": "./src/lib/*.ts"
+    "#lib/*": "./src/lib/*.ts",
+    "#themes/*": "./src/themes/*.ts"
   },
   "exports": {
     "./globals.css": "./src/globals.css",
     "./assets/*": "./src/assets/*",
     "./components/*": "./src/components/*.tsx",
-    "./lib/*": "./src/lib/*.ts"
+    "./lib/*": "./src/lib/*.ts",
+    "./themes/*": "./src/themes/*.ts"
   },
   "scripts": {
     "dev": "vite",

@@ -3,7 +3,7 @@ import { ThemeProvider } from '@wingman/core/components/theme-provider'
 import WingmanIcon from '../assets/WingmanBlue.png'
 
 const RootLayout = () => (
-	<ThemeProvider defaultTheme='system' storageKey='wingman-ui-theme'>
+	<ThemeProvider defaultColorMode='system' storageKey='wingman-ui-theme'>
 		<Outlet />
 	</ThemeProvider>
 )

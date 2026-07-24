@@ -46,7 +46,9 @@ bun --filter ui lint
 src/components/core/       Reusable component primitives
 src/components/            Theme controls and app-level showcase helpers
 src/showcases/             Component examples used by the showcase app
-src/globals.css            Tailwind import and design tokens
+src/themes/                Named theme registry and theme metadata
+src/themes.css             Shared semantic token values for each theme and mode
+src/globals.css            Tailwind import and design-token bindings
 src/lib/utils.ts           Shared className helpers
 ```
 

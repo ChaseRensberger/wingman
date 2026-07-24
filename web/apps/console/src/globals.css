@@ -1,5 +1,6 @@
 @import "@wingman/core/globals.css";
 @import "katex/dist/katex.min.css";
+@import "./theme.css";
 
 @source "../../../packages/core/src/**/*.{ts,tsx}";
 
