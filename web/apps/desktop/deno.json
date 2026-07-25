@@ -1,0 +1,14 @@
+{
+  "desktop": {
+    "app": {
+      "name": "Wingman",
+      "identifier": "dev.wingman.console"
+    },
+    "backend": "webview",
+    "output": {
+      "macos": "./dist/Wingman.app",
+      "windows": "./dist/Wingman.msi",
+      "linux": "./dist/wingman.AppImage"
+    }
+  }
+}
