@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
 import { useTheme } from "@wingman/core/components/theme-provider";
 import { themes } from "@wingman/core/themes/registry";
+import { navItems } from "@/lib/navigation";
 
 function isEditableTarget(target: EventTarget | null) {
 	return target instanceof HTMLElement && (
@@ -35,6 +36,11 @@ export function CommandPalette() {
 		navigate({ to: "/sessions/$sessionId", params: { sessionId: "new" } });
 	}
 
+	function navigateTo(to: (typeof navItems)[number]["to"]) {
+		setOpen(false);
+		navigate({ to });
+	}
+
 	function selectTheme(themeID: typeof theme.id, colorMode: "light" | "dark") {
 		setTheme(themeID, colorMode);
 		setOpen(false);
@@ -50,6 +56,14 @@ export function CommandPalette() {
 			<Command.Input placeholder="Type a command..." />
 			<Command.List>
 				<Command.Empty>No commands found.</Command.Empty>
+				<Command.Group heading="Navigation">
+					{navItems.map(({ to, icon: Icon, label }) => (
+						<Command.Item key={to} value={label} onSelect={() => navigateTo(to)}>
+							<Icon className="size-4" />
+							<span>{label}</span>
+						</Command.Item>
+					))}
+				</Command.Group>
 				<Command.Group heading="Actions">
 					<Command.Item value="new session" onSelect={createSession}>
 						<PlusIcon className="size-4" />

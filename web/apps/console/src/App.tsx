@@ -3,18 +3,10 @@ import { useState } from "react";
 import WingmanIcon from "@/assets/icon-128.png";
 import { Button } from "@wingman/core/components/core/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@wingman/core/components/core/sheet";
-import { FileTextIcon, GearIcon, LightningIcon, ListIcon, SolarRoofIcon, StackIcon, WrenchIcon } from "@phosphor-icons/react";
+import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
+import { navItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-
-const navItems = [
-	{ to: "/sessions", icon: StackIcon, label: "Sessions" },
-	{ to: "/agents", icon: LightningIcon, label: "Agents" },
-	{ to: "/tools", icon: WrenchIcon, label: "Tools" },
-	{ to: "/providers", icon: SolarRoofIcon, label: "Providers" },
-	{ to: "/logs", icon: FileTextIcon, label: "Logs" },
-	{ to: "/settings", icon: GearIcon, label: "Settings" },
-];
 
 function NavLink({
 	to,
