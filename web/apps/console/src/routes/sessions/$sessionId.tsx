@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { wfetch, getClientId } from "@/lib/client";
+import { wfetch } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
-import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, reasoningHeading, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
+import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
 import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
@@ -49,8 +49,6 @@ function SessionDetailPage() {
 	const [isTitleStreaming, setIsTitleStreaming] = useState(false);
 	const [copiedFailedRunError, setCopiedFailedRunError] = useState(false);
 	const [editingSession, setEditingSession] = useState(false);
-	const [sessionTitleInput, setSessionTitleInput] = useState("");
-	const [sessionWorkDirInput, setSessionWorkDirInput] = useState("");
 	const [savingSession, setSavingSession] = useState(false);
 	const [deleteSessionOpen, setDeleteSessionOpen] = useState(false);
 	const [deletingSession, setDeletingSession] = useState(false);
@@ -302,11 +300,6 @@ function SessionDetailPage() {
 			const headers = new Headers({
 				"Content-Type": "application/json",
 			});
-			const clientId = getClientId();
-			if (clientId) {
-				headers.set("X-Wingman-Client", clientId);
-			}
-
 			const res = await fetch(`/sessions/${activeSessionId}/message`, {
 				method: "POST",
 				headers,
@@ -344,21 +337,19 @@ function SessionDetailPage() {
 
 	function openEditSession() {
 		if (!session) return;
-		setSessionTitleInput(session.title ?? "");
-		setSessionWorkDirInput(session.work_dir ?? "");
 		setEditingSession(true);
 	}
 
-	async function handleSaveSession() {
+	async function handleSaveSession(title: string, workDir: string) {
 		if (!session || isDraft) return;
 		setSavingSession(true);
 		try {
-			const workingDirectoryChanged = sessionWorkDirInput.trim() !== (session.work_dir ?? "");
+			const workingDirectoryChanged = workDir.trim() !== (session.work_dir ?? "");
 			const updated = (await wfetch(`/sessions/${session.id}`, {
 				method: "PUT",
 				body: JSON.stringify({
-					title: sessionTitleInput.trim(),
-					...(workingDirectoryChanged ? { working_directory: sessionWorkDirInput.trim() } : {}),
+					title: title.trim(),
+					...(workingDirectoryChanged ? { working_directory: workDir.trim() } : {}),
 				}),
 			})) as Session;
 			setSession((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
@@ -425,7 +416,6 @@ function SessionDetailPage() {
 		}
 	}
 	const transcriptHistory = (session?.history ?? []).filter((message) => message.role !== "tool");
-	const liveReasoningHeading = reasoningHeading(run.streamingReasoning);
 
 	if (loading) {
 		return (
@@ -443,9 +433,9 @@ function SessionDetailPage() {
 	return (
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
-			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} isStreaming={run.isStreaming} reasoningHeading={liveReasoningHeading} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
+			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
 			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isStreamPaused={run.isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={run.pause} onResume={run.resume} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
-			<SessionDialogs sessionTitle={session.title ?? ""} sessionId={session.id} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} titleInput={sessionTitleInput} workDirInput={sessionWorkDirInput} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onTitleChange={setSessionTitleInput} onWorkDirChange={setSessionWorkDirInput} onSave={() => void handleSaveSession()} onDelete={() => void handleDeleteSession()} />
+			<SessionDialogs session={session} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onSave={(title, workDir) => void handleSaveSession(title, workDir)} onDelete={() => void handleDeleteSession()} />
 		</div>
 	);
 }

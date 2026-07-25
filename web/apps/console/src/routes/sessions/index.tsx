@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import {
 	CheckIcon,
 	CaretLeftIcon,
@@ -24,7 +26,6 @@ import {
 	AlertDialogTitle,
 } from "@wingman/core/components/core/alert-dialog";
 import { Button } from "@wingman/core/components/core/button";
-import { Checkbox } from "@wingman/core/components/core/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -41,6 +42,7 @@ import {
 	DropdownMenuTrigger,
 } from "@wingman/core/components/core/dropdown-menu";
 import { Input } from "@wingman/core/components/core/input";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@wingman/core/components/core/field";
 import {
 	Table,
 	TableBody,
@@ -59,6 +61,16 @@ import { cn, timeAgo, workspaceColor } from "@/lib/utils";
 type SessionsSearch = {
 	workspace?: string;
 };
+
+const workspaceFormSchema = z.object({
+	name: z.string().trim().min(1, "Name is required."),
+	path: z.string(),
+});
+
+const sessionFormSchema = z.object({
+	title: z.string(),
+	workDir: z.string(),
+});
 
 export const Route = createFileRoute("/sessions/")({
 	validateSearch: (search: Record<string, unknown>): SessionsSearch => ({
@@ -84,9 +96,6 @@ function SessionsPage() {
 	const [workspaceMenuFilter, setWorkspaceMenuFilter] = useState("");
 	const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
 	const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
-	const [workspaceName, setWorkspaceName] = useState("");
-	const [workspacePath, setWorkspacePath] = useState("");
-	const [workspaceHasNoDirectory, setWorkspaceHasNoDirectory] = useState(false);
 	const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
 	const [directoryListing, setDirectoryListing] = useState<DirectoryListing | null>(null);
 	const [directoryPickerPath, setDirectoryPickerPath] = useState("");
@@ -98,11 +107,69 @@ function SessionsPage() {
 	const [deletingWorkspaceId, setDeletingWorkspaceId] = useState("");
 
 	const [editingSession, setEditingSession] = useState<Session | null>(null);
-	const [sessionTitle, setSessionTitle] = useState("");
-	const [sessionWorkDir, setSessionWorkDir] = useState("");
 	const [savingSession, setSavingSession] = useState(false);
 	const [deleteSession, setDeleteSession] = useState<Session | null>(null);
 	const [deletingSessionId, setDeletingSessionId] = useState("");
+
+	const workspaceForm = useForm({
+		defaultValues: { name: "", path: "" },
+		validators: {
+			onBlur: workspaceFormSchema,
+			onSubmit: workspaceFormSchema,
+		},
+		onSubmit: async ({ value }) => {
+			setSavingWorkspace(true);
+			try {
+				const payload = { name: value.name.trim(), path: value.path.trim() };
+				let saved: Workspace;
+				if (editingWorkspace) {
+					saved = (await wfetch(`/workspaces/${editingWorkspace.id}`, {
+						method: "PUT",
+						body: JSON.stringify(payload),
+					})) as Workspace;
+				} else {
+					saved = (await wfetch("/workspaces", {
+						method: "POST",
+						body: JSON.stringify(payload),
+					})) as Workspace;
+					setWorkspaceFilter(saved.id);
+				}
+				await loadData();
+				setWorkspaceDialogOpen(false);
+			} catch (err) {
+				showErrorToast(err);
+			} finally {
+				setSavingWorkspace(false);
+			}
+		},
+	});
+
+	const sessionForm = useForm({
+		defaultValues: { title: "", workDir: "" },
+		validators: {
+			onBlur: sessionFormSchema,
+			onSubmit: sessionFormSchema,
+		},
+		onSubmit: async ({ value }) => {
+			if (!editingSession) return;
+			setSavingSession(true);
+			try {
+				const updated = (await wfetch(`/sessions/${editingSession.id}`, {
+					method: "PUT",
+					body: JSON.stringify({
+						title: value.title.trim(),
+						working_directory: value.workDir.trim(),
+					}),
+				})) as Session;
+				setSessions((prev) => prev.map((session) => (session.id === updated.id ? updated : session)));
+				setEditingSession(null);
+			} catch (err) {
+				showErrorToast(err);
+			} finally {
+				setSavingSession(false);
+			}
+		},
+	});
 
 	const workspacesById = useMemo(() => new Map(workspaces.map((workspace) => [workspace.id, workspace])), [workspaces]);
 	const selectedWorkspace = workspaceFilter && workspaceFilter !== "none" ? workspacesById.get(workspaceFilter) ?? null : null;
@@ -173,24 +240,19 @@ function SessionsPage() {
 
 	function openCreateWorkspace() {
 		setEditingWorkspace(null);
-		setWorkspaceName("");
-		setWorkspacePath("");
-		setWorkspaceHasNoDirectory(false);
+		workspaceForm.reset();
 		setWorkspaceDialogOpen(true);
 	}
 
 	function openEditWorkspace(workspace: Workspace) {
 		setEditingWorkspace(workspace);
-		setWorkspaceName(workspace.name);
-		setWorkspacePath(workspace.path);
-		setWorkspaceHasNoDirectory(workspace.path === "");
+		workspaceForm.reset({ name: workspace.name, path: workspace.path });
 		setWorkspaceDialogOpen(true);
 	}
 
 	function openEditSession(session: Session) {
 		setEditingSession(session);
-		setSessionTitle(session.title || "");
-		setSessionWorkDir(session.work_dir || "");
+		sessionForm.reset({ title: session.title || "", workDir: session.work_dir || "" });
 	}
 
 	async function loadDirectories(path = "") {
@@ -211,34 +273,7 @@ function SessionsPage() {
 	function openDirectoryPicker() {
 		setDirectoryFilter("");
 		setDirectoryPickerOpen(true);
-		void loadDirectories(workspacePath || "~");
-	}
-
-	async function handleSaveWorkspace(e: React.FormEvent) {
-		e.preventDefault();
-		setSavingWorkspace(true);
-		try {
-			const payload = { name: workspaceName.trim(), path: workspaceHasNoDirectory ? "" : workspacePath.trim() };
-			let saved: Workspace;
-			if (editingWorkspace) {
-				saved = (await wfetch(`/workspaces/${editingWorkspace.id}`, {
-					method: "PUT",
-					body: JSON.stringify(payload),
-				})) as Workspace;
-			} else {
-				saved = (await wfetch("/workspaces", {
-					method: "POST",
-					body: JSON.stringify(payload),
-				})) as Workspace;
-				setWorkspaceFilter(saved.id);
-			}
-			await loadData();
-			setWorkspaceDialogOpen(false);
-		} catch (err) {
-			showErrorToast(err);
-		} finally {
-			setSavingWorkspace(false);
-		}
+		void loadDirectories(workspaceForm.state.values.path || "~");
 	}
 
 	async function handleDeleteWorkspace() {
@@ -254,27 +289,6 @@ function SessionsPage() {
 			showErrorToast(err);
 		} finally {
 			setDeletingWorkspaceId("");
-		}
-	}
-
-	async function handleSaveSession(e: React.FormEvent) {
-		e.preventDefault();
-		if (!editingSession) return;
-		setSavingSession(true);
-		try {
-			const updated = (await wfetch(`/sessions/${editingSession.id}`, {
-				method: "PUT",
-				body: JSON.stringify({
-					title: sessionTitle.trim(),
-					working_directory: sessionWorkDir.trim(),
-				}),
-			})) as Session;
-			setSessions((prev) => prev.map((session) => (session.id === updated.id ? updated : session)));
-			setEditingSession(null);
-		} catch (err) {
-			showErrorToast(err);
-		} finally {
-			setSavingSession(false);
 		}
 	}
 
@@ -340,7 +354,7 @@ function SessionsPage() {
 										<span className="flex items-center gap-2 italic text-muted-foreground"><span className="size-2 rounded-sm border border-dashed" />No workspace</span>
 										<span className="flex items-center gap-2 text-muted-foreground"><span>{noWorkspaceCount}</span>{workspaceFilter === "none" && <CheckIcon className="size-4 text-primary" />}</span>
 									</DropdownMenuItem>
-									<DropdownMenuSeparator />
+									{filteredWorkspaces.length > 0 && <DropdownMenuSeparator />}
 									{filteredWorkspaces.map((workspace) => {
 										const color = workspaceColor(workspace.id);
 										return (
@@ -448,30 +462,37 @@ function SessionsPage() {
 
 			<Dialog open={workspaceDialogOpen} onOpenChange={(open) => !open && setWorkspaceDialogOpen(false)}>
 				<DialogContent className="sm:max-w-2xl">
-					<form onSubmit={handleSaveWorkspace} className="grid gap-4">
+					<form noValidate onSubmit={(e) => { e.preventDefault(); workspaceForm.handleSubmit(); }} className="grid gap-4">
 						<DialogHeader>
 							<DialogTitle className="flex items-center gap-2"><FolderIcon className="size-4" />{editingWorkspace ? "Edit workspace" : "New workspace"}</DialogTitle>
-							<DialogDescription>A workspace is an optional saved context for creating and filtering sessions.</DialogDescription>
+							<DialogDescription>A workspace groups sessions and can set their initial working directory.</DialogDescription>
 						</DialogHeader>
-						<div className="grid gap-3">
-							<div className="grid gap-1">
-								<label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Name <span className="normal-case tracking-normal">Optional</span></label>
-								<Input value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="Defaults to the directory name" required={workspaceHasNoDirectory} />
-							</div>
-							<div className="grid gap-2">
-								<div className="flex items-center justify-between gap-3">
-									<label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Working directory</label>
-									<label className="flex items-center gap-2 text-xs text-muted-foreground">
-										<Checkbox checked={workspaceHasNoDirectory} onCheckedChange={(checked) => setWorkspaceHasNoDirectory(checked === true)} />
-										No directory
-									</label>
-								</div>
-								<div className="flex gap-2">
-									<Input value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="~/Projects/wingman" disabled={workspaceHasNoDirectory} />
-									<Button type="button" variant="outline" onClick={openDirectoryPicker} disabled={workspaceHasNoDirectory}>Browse</Button>
-								</div>
-							</div>
-						</div>
+						<FieldGroup className="gap-3">
+							<workspaceForm.Field
+								name="name"
+								children={(field) => (
+									<Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+										<FieldLabel htmlFor="workspace-name" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Name <span aria-hidden="true">*</span><span className="sr-only"> required</span></FieldLabel>
+										<Input id="workspace-name" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} placeholder="e.g. Research project" aria-invalid={field.state.meta.errors.length > 0} />
+										<FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+									</Field>
+								)}
+							/>
+							<workspaceForm.Field
+								name="path"
+								children={(field) => (
+									<Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+										<FieldLabel htmlFor="workspace-directory" className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Working directory</FieldLabel>
+										<div className="flex gap-2">
+											<Input id="workspace-directory" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} placeholder="~/Projects/wingman" aria-invalid={field.state.meta.errors.length > 0} />
+											<Button type="button" variant="outline" onClick={openDirectoryPicker}>Browse</Button>
+										</div>
+										<FieldDescription>Optional. New sessions use this as their working directory.</FieldDescription>
+										<FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+									</Field>
+								)}
+							/>
+						</FieldGroup>
 						<DialogFooter className="items-center sm:justify-between">
 							{editingWorkspace ? (
 								<Button type="button" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDeleteWorkspace(editingWorkspace)} disabled={savingWorkspace}>
@@ -506,26 +527,35 @@ function SessionsPage() {
 					</div>
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={() => setDirectoryPickerOpen(false)}>Cancel</Button>
-						<Button type="button" disabled={!directoryListing} onClick={() => { if (directoryListing) { setWorkspacePath(directoryListing.path); setDirectoryPickerOpen(false); } }}>Use</Button>
+						<Button type="button" disabled={!directoryListing} onClick={() => { if (directoryListing) { workspaceForm.setFieldValue("path", directoryListing.path); setDirectoryPickerOpen(false); } }}>Use</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 
 			<Dialog open={editingSession !== null} onOpenChange={(open) => !open && setEditingSession(null)}>
 				<DialogContent>
-					<form onSubmit={handleSaveSession} className="grid gap-4">
+					<form noValidate onSubmit={(e) => { e.preventDefault(); sessionForm.handleSubmit(); }} className="grid gap-4">
 						<DialogHeader>
 							<DialogTitle>Edit session</DialogTitle>
 							<DialogDescription>Change the session name or working directory. Editing the directory removes any workspace link.</DialogDescription>
 						</DialogHeader>
-						<div className="grid gap-3">
-							<div className="grid gap-1"><label className="text-xs font-medium">Name</label><Input placeholder="Session name" value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} /></div>
-							<div className="grid gap-1">
-								<label className="text-xs font-medium">Working directory</label>
-								<Input placeholder="Optional working directory" value={sessionWorkDir} onChange={(e) => setSessionWorkDir(e.target.value)} />
-								<p className="text-xs text-muted-foreground">Clear this field to remove the working directory.</p>
-							</div>
-						</div>
+						<FieldGroup className="gap-3">
+							<sessionForm.Field name="title" children={(field) => (
+								<Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+									<FieldLabel htmlFor="session-name" className="text-xs">Name</FieldLabel>
+									<Input id="session-name" placeholder="Session name" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} aria-invalid={field.state.meta.errors.length > 0} />
+									<FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+								</Field>
+							)} />
+							<sessionForm.Field name="workDir" children={(field) => (
+								<Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+									<FieldLabel htmlFor="session-directory" className="text-xs">Working directory</FieldLabel>
+									<Input id="session-directory" placeholder="Optional working directory" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} aria-invalid={field.state.meta.errors.length > 0} />
+									<FieldDescription>Clear this field to remove the working directory.</FieldDescription>
+									<FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+								</Field>
+							)} />
+						</FieldGroup>
 						<DialogFooter><Button type="button" variant="outline" onClick={() => setEditingSession(null)} disabled={savingSession}>Cancel</Button><Button type="submit" disabled={savingSession}>{savingSession ? "Saving..." : "Save changes"}</Button></DialogFooter>
 					</form>
 				</DialogContent>
