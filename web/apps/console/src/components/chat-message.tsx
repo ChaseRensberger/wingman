@@ -1,11 +1,11 @@
 import type { Message, ToolActivity, ToolCallPart, ToolPart, ToolResultPart } from "@/lib/types";
+import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { Markdown } from "./markdown";
 
 export function ChatMessage({ message, isStreaming = false, toolCallsById, toolResultsById, toolActivitiesById }: { message: Message; isStreaming?: boolean; toolCallsById?: Map<string, ToolCallPart>; toolResultsById?: Map<string, ToolResultPart>; toolActivitiesById?: Map<string, ToolActivity> }) {
   if (message.role === "tool") return null;
-  const visibleParts = message.content.filter((part) => part.type !== "reasoning");
-  if (visibleParts.length === 0) return null;
+  if (message.content.length === 0) return null;
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -27,7 +27,7 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
               : "text-muted-foreground"
         }`}
       >
-        {visibleParts.map((part, idx) => {
+        {message.content.map((part, idx) => {
           if (part.type === "text") {
             const textPart = part as { text: string };
             if (isAssistant) {
@@ -38,6 +38,10 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
                 {textPart.text}
               </div>
             );
+          }
+          if (part.type === "reasoning") {
+            const reasoningPart = part as { reasoning: string };
+            return <ReasoningPart key={idx} reasoning={reasoningPart.reasoning} />;
           }
           if (part.type === "tool_call") {
             const call = part as ToolCallPart;

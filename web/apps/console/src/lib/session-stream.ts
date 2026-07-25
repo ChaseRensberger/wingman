@@ -1,5 +1,3 @@
-import { getClientId } from "@/lib/client";
-
 export type SessionEvent = {
 	id: string;
 	type: string;
@@ -83,12 +81,9 @@ export async function generateSessionTitle(
 ): Promise<string> {
 	if (!modelRef) return "";
 
-	const headers = new Headers({ "Content-Type": "application/json" });
-	const clientId = getClientId();
-	if (clientId) headers.set("X-Wingman-Client", clientId);
-	const res = await fetch("/run", {
-		method: "POST",
-		headers,
+  const res = await fetch("/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			agent: {
 				id: "session_title_generator",

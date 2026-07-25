@@ -17,10 +17,21 @@ function cleanReasoningHeading(value: string): string {
 	return value.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_~]+/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
-export function reasoningHeading(reasoning: string): string {
-	const markdown = reasoning.replace(/\r\n?/g, "\n");
-	const heading = markdown.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>|^\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m);
-	return cleanReasoningHeading(heading?.[1] ?? heading?.[2] ?? "");
+export function reasoningSummary(reasoning: string) {
+	const markdown = reasoning.replace(/\r\n?/g, "\n").trim();
+	const boldHeading = markdown.match(/^\*\*([^*\n]+)\*\*(?:\n\s*\n|$)/);
+	if (boldHeading) {
+		return { title: cleanReasoningHeading(boldHeading[1] ?? ""), body: markdown.slice(boldHeading[0].length).trim() };
+	}
+	const heading = markdown.match(/^(?:<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>|\s{0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?)\n?/);
+	if (heading) {
+		return { title: cleanReasoningHeading(heading[1] ?? heading[2] ?? ""), body: markdown.slice(heading[0].length).trim() };
+	}
+	return { title: "", body: markdown };
+}
+
+export function shouldShowThinking(isStreaming: boolean, hasVisibleActivity: boolean) {
+	return isStreaming && !hasVisibleActivity;
 }
 
 export function modelRefExists(models: Record<string, ProviderModel[]>, modelRef: string): boolean {

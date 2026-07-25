@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
-import { getClientId, wfetch } from "@/lib/client";
+import { wfetch } from "@/lib/client";
 import { formatSessionError, isRecord } from "@/lib/session-detail";
 import { readSSE, type SessionEvent } from "@/lib/session-stream";
 import type { Message, Session, ToolActivity, Usage } from "@/lib/types";
@@ -157,7 +157,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			const message = data.message as Message | undefined;
 			if (!message) return;
 			setSession((previous) => previous ? { ...previous, history: [...previous.history, message] } : previous);
-			if (message.role === "assistant") setStreamingText("");
+			if (message.role === "assistant") {
+				setStreamingText("");
+				setStreamingReasoning("");
+			}
 			return;
 		}
 		if (ev.type === "session.run.completed") {
@@ -174,11 +177,8 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		}
 	}
 
-	async function subscribe(id: string, signal: AbortSignal) {
-		const headers = new Headers();
-		const clientId = getClientId();
-		if (clientId) headers.set("X-Wingman-Client", clientId);
-		const response = await fetch(`/sessions/${id}/events?after=${lastEventSeqRef.current}`, { headers, signal });
+  async function subscribe(id: string, signal: AbortSignal) {
+    const response = await fetch(`/sessions/${id}/events?after=${lastEventSeqRef.current}`, { signal });
 		if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
 		for await (const event of readSSE(response)) {
 			if (!event.event || event.event.startsWith(":")) continue;
