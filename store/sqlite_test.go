@@ -69,7 +69,7 @@ func TestSQLiteModelCallPreservesTimestampPrecision(t *testing.T) {
 	}
 }
 
-func TestSQLiteSeedsFridayAgent(t *testing.T) {
+func TestSQLiteSeedsWingAgent(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -80,21 +80,21 @@ func TestSQLiteSeedsFridayAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(agents) != 3 {
-		t.Fatalf("seeded agents = %d, want 3", len(agents))
+	if len(agents) != 1 {
+		t.Fatalf("seeded agents = %d, want 1", len(agents))
 	}
 
 	for _, agent := range agents {
-		if agent.Name != "Friday" {
+		if agent.Name != "WingAgent" {
 			continue
 		}
-		if agent.Instructions != fridayAgentInstructions {
-			t.Fatal("Friday instructions do not match the default")
+		if agent.Instructions != wingAgentInstructions {
+			t.Fatal("WingAgent instructions do not match the default")
 		}
-		if got, want := agent.Tools, []string{"webfetch", "websearch"}; !slices.Equal(got, want) {
+		if got, want := agent.Tools, []string{"read", "grep", "glob", "write", "edit", "bash", "webfetch", "websearch", "question"}; !slices.Equal(got, want) {
 			t.Fatalf("Friday tools = %v, want %v", got, want)
 		}
 		return
 	}
-	t.Fatal("Friday agent was not seeded")
+	t.Fatal("WingAgent was not seeded")
 }

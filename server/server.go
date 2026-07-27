@@ -30,6 +30,7 @@ type Server struct {
 	store            store.Store
 	router           *chi.Mux
 	runs             *sessionRunManager
+	questions        *questionBroker
 	events           *sessionEventBroker
 	webDevURL        string
 	logger           *slog.Logger
@@ -91,6 +92,7 @@ func New(cfg Config) *Server {
 		shutdownCancel:   cancel,
 	}
 	s.runs = newSessionRunManager(s)
+	s.questions = newQuestionBroker()
 
 	s.setupMiddleware()
 	s.setupRoutes()
@@ -252,12 +254,16 @@ func (s *Server) setupRoutes() {
 	s.router.Route("/sessions", func(r chi.Router) {
 		r.Post("/", s.handleCreateSession)
 		r.Get("/", s.handleListSessions)
+		r.Get("/active", s.handleActiveSessions)
 		r.Get("/{id}", s.handleGetSession)
 		r.Get("/{id}/model-calls", s.handleListSessionModelCalls)
 		r.Put("/{id}", s.handleUpdateSession)
 		r.Delete("/{id}", s.handleDeleteSession)
 		r.Get("/{id}/events", s.handleSessionEvents)
 		r.Get("/{id}/events/history", s.handleSessionEventsHistory)
+		r.Get("/{id}/questions", s.handleListSessionQuestions)
+		r.Post("/{id}/questions/{questionID}/reply", s.handleReplySessionQuestion)
+		r.Post("/{id}/questions/{questionID}/dismiss", s.handleDismissSessionQuestion)
 		r.Post("/{id}/message", s.handleMessageSession)
 		r.Post("/{id}/abort", s.handleAbortSession)
 	})

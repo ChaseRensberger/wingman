@@ -90,6 +90,7 @@ function SessionsPage() {
 	const { workspace: workspaceFilter } = Route.useSearch();
 	const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
 	const [sessions, setSessions] = useState<Session[]>([]);
+	const [activeSessions, setActiveSessions] = useState<Record<string, string>>({});
 	const [loading, setLoading] = useState(true);
 	const [search, setSearch] = useState("");
 
@@ -200,12 +201,14 @@ function SessionsPage() {
 		.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
 
 	async function loadData() {
-		const [workspaceData, sessionData] = await Promise.all([
+		const [workspaceData, sessionData, activeData] = await Promise.all([
 			wfetch("/workspaces") as Promise<Workspace[]>,
 			wfetch("/sessions") as Promise<Session[]>,
+			wfetch("/sessions/active") as Promise<Record<string, string>>,
 		]);
 		setWorkspaces(workspaceData);
 		setSessions(sessionData);
+		setActiveSessions(activeData);
 	}
 
 	useEffect(() => {
@@ -225,6 +228,8 @@ function SessionsPage() {
 			cancelled = true;
 		};
 	}, []);
+
+	useEffect(() => { const timer = window.setInterval(() => { void loadData(); }, 2000); return () => window.clearInterval(timer); }, []);
 
 	function setWorkspaceFilter(workspace?: string) {
 		navigate({ to: "/sessions", search: workspace ? { workspace } : {} });
@@ -426,7 +431,7 @@ function SessionsPage() {
 									const color = workspace ? workspaceColor(workspace.id) : "bg-muted-foreground";
 									return (
 										<TableRow key={session.id} className="cursor-pointer" onClick={() => navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })}>
-											<TableCell className="font-medium">{session.title || session.id}</TableCell>
+											<TableCell className="font-medium"><span className="flex items-center gap-2">{activeSessions[session.id] && <HexWaveSpinner size={16} className="size-4 text-primary" label="Running" />}{session.title || session.id}</span></TableCell>
 											<TableCell className="max-w-[420px]">
 												{workspace ? (
 													<div className="flex min-w-0 items-center gap-2">

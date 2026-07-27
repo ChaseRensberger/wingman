@@ -227,6 +227,10 @@ func parseEventQuery(r *http.Request) (int64, int) {
 }
 
 func (s *Server) authorizeSessionForRequest(w http.ResponseWriter, r *http.Request, sessionID string) (*store.Session, bool) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return nil, false
+	}
 	sess, err := s.store.GetSession(sessionID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())

@@ -126,6 +126,16 @@ func (m *sessionRunManager) abort(sessionID string) int {
 	return 1
 }
 
+func (m *sessionRunManager) activeSessions() map[string]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	active := make(map[string]bool, len(m.active))
+	for sessionID := range m.active {
+		active[sessionID] = true
+	}
+	return active
+}
+
 func (m *sessionRunManager) resumeQueued(ctx context.Context) {
 	sessions, err := m.server.store.ListQueuedSessionRunSessions(ctx)
 	if err != nil {

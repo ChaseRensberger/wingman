@@ -75,6 +75,12 @@ export interface Session {
   updated_at: string;
 }
 
+export interface QuestionRequest {
+  id: string;
+  session_id: string;
+  questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiple?: boolean; custom?: boolean }>;
+}
+
 export interface Workspace {
   id: string;
   name: string;

@@ -27,6 +27,7 @@ func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
 	for _, t := range nativeTools() {
 		items = append(items, catalogItem(t, "native"))
 	}
+	items = append(items, catalogItem(tool.NewQuestionTool(nil), "native"))
 	if s.plugins != nil {
 		plugins, _ := s.plugins.Status()
 		owners := map[string]string{}
