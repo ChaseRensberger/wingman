@@ -1,4 +1,4 @@
-export type ThemeID = "default" | "gruvbox" | "dracula";
+export type ThemeID = "default" | "gruvbox" | "dracula" | "nord" | "rose-pine";
 export type ColorMode = "light" | "dark" | "system";
 export type ResolvedColorMode = Exclude<ColorMode, "system">;
 
@@ -27,6 +27,18 @@ export const themes: readonly Theme[] = [
     label: "Dracula",
     modes: ["dark"],
     shiki: { dark: "dracula" },
+  },
+  {
+    id: "nord",
+    label: "Nord",
+    modes: ["light", "dark"],
+    shiki: { light: "nord", dark: "nord" },
+  },
+  {
+    id: "rose-pine",
+    label: "Rosé Pine",
+    modes: ["light", "dark"],
+    shiki: { light: "rose-pine-dawn", dark: "rose-pine" },
   },
 ] as const;
 

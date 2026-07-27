@@ -15,7 +15,7 @@ function isEditableTarget(target: EventTarget | null) {
 
 export function CommandPalette() {
 	const navigate = useNavigate();
-	const { theme, colorMode, resolvedColorMode, setColorMode, setTheme } = useTheme();
+	const { theme, colorMode, setColorMode, setTheme } = useTheme();
 	const [open, setOpen] = useState(false);
 	const toggle = useEffectEvent(() => setOpen((current) => !current));
 
@@ -41,13 +41,13 @@ export function CommandPalette() {
 		navigate({ to });
 	}
 
-	function selectTheme(themeID: typeof theme.id, colorMode: "light" | "dark") {
-		setTheme(themeID, colorMode);
+	function selectTheme(themeID: typeof theme.id) {
+		setTheme(themeID);
 		setOpen(false);
 	}
 
-	function selectSystemColorMode() {
-		setColorMode("system");
+	function selectColorMode(colorMode: "light" | "dark" | "system") {
+		setColorMode(colorMode);
 		setOpen(false);
 	}
 
@@ -70,22 +70,19 @@ export function CommandPalette() {
 						<span>New session</span>
 					</Command.Item>
 				</Command.Group>
-				<Command.Group heading="Theme">
-					{themes.flatMap((option) => option.modes.map((colorMode) => {
-						const active = theme.id === option.id && resolvedColorMode === colorMode;
-						return (
-							<Command.Item key={`${option.id}-${colorMode}`} value={`${option.label} ${colorMode}`} onSelect={() => selectTheme(option.id, colorMode)}>
-								<span>{option.label} {colorMode}</span>
-								{active && <CheckIcon className="ml-auto size-4" weight="bold" />}
-							</Command.Item>
-						);
-					}))}
-					{theme.modes.length === 2 && (
-						<Command.Item value="system preference" onSelect={selectSystemColorMode}>
-							<span>System preference</span>
-							{colorMode === "system" && <CheckIcon className="ml-auto size-4" weight="bold" />}
+				<Command.Group heading="Settings">
+					{themes.map((option) => (
+						<Command.Item key={option.id} value={`change theme ${option.label}`} onSelect={() => selectTheme(option.id)}>
+							<span>Change theme &gt; {option.label}</span>
+							{theme.id === option.id && <CheckIcon className="ml-auto size-4" weight="bold" />}
 						</Command.Item>
-					)}
+					))}
+					{[...theme.modes, ...(theme.modes.length === 2 ? ["system" as const] : [])].map((mode) => (
+						<Command.Item key={mode} value={`change color mode ${mode}`} onSelect={() => selectColorMode(mode)}>
+							<span>Change color mode &gt; {mode}</span>
+							{colorMode === mode && <CheckIcon className="ml-auto size-4" weight="bold" />}
+						</Command.Item>
+					))}
 				</Command.Group>
 			</Command.List>
 		</Command.Dialog>
