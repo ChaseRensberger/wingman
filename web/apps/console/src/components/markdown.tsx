@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { getSingletonHighlighter } from "shiki";
 import { useTheme } from "@wingman/core/components/theme-provider";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@wingman/core/components/core/table";
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const { theme, resolvedColorMode } = useTheme();
@@ -14,7 +22,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     let mounted = true;
     async function run() {
       const highlighter = await getSingletonHighlighter({
-        themes: ["github-dark", "github-light", "gruvbox-dark-medium", "gruvbox-light-medium", "dracula"],
+        themes: ["github-dark", "github-light", "gruvbox-dark-medium", "gruvbox-light-medium", "dracula", "nord", "rose-pine", "rose-pine-dawn"],
         langs: [
           "javascript",
           "typescript",
@@ -90,9 +98,33 @@ function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
   );
 }
 
+function MarkdownTable({ children }: ComponentProps<"table">) {
+  return <Table>{children}</Table>;
+}
+
+function MarkdownTableHeader({ children }: ComponentProps<"thead">) {
+  return <TableHeader>{children}</TableHeader>;
+}
+
+function MarkdownTableBody({ children }: ComponentProps<"tbody">) {
+  return <TableBody>{children}</TableBody>;
+}
+
+function MarkdownTableRow({ children }: ComponentProps<"tr">) {
+  return <TableRow>{children}</TableRow>;
+}
+
+function MarkdownTableHead({ children }: ComponentProps<"th">) {
+  return <TableHead>{children}</TableHead>;
+}
+
+function MarkdownTableCell({ children }: ComponentProps<"td">) {
+  return <TableCell>{children}</TableCell>;
+}
+
 export function Markdown({ text, isStreaming = false }: { text: string; isStreaming?: boolean }) {
   return (
-    <div className="space-y-2 text-sm leading-relaxed [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li::marker]:text-[var(--markdown-list-marker)] [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-[var(--markdown-heading)] [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-[var(--markdown-heading)] [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-[var(--markdown-heading)] [&_strong]:font-semibold [&_strong]:text-[var(--markdown-strong)] [&_b]:font-semibold [&_b]:text-[var(--markdown-strong)] [&_em]:text-[var(--markdown-emph)] [&_i]:text-[var(--markdown-emph)] [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[color:var(--markdown-quote)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--markdown-quote)] [&_blockquote]:italic [&_hr]:my-3 [&_table]:w-full [&_table]:text-left [&_td]:py-1 [&_th]:border-b [&_th]:py-1">
+    <div className="space-y-2 text-sm leading-relaxed [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li::marker]:text-[var(--markdown-list-marker)] [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-[var(--markdown-heading)] [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-[var(--markdown-heading)] [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-[var(--markdown-heading)] [&_strong]:font-semibold [&_strong]:text-[var(--markdown-strong)] [&_b]:font-semibold [&_b]:text-[var(--markdown-strong)] [&_em]:text-[var(--markdown-emph)] [&_i]:text-[var(--markdown-emph)] [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[color:var(--markdown-quote)] [&_blockquote]:pl-3 [&_blockquote]:text-[var(--markdown-quote)] [&_blockquote]:italic [&_hr]:my-3">
       <ReactMarkdown
         remarkPlugins={isStreaming ? [remarkGfm] : [remarkGfm, remarkMath]}
         rehypePlugins={isStreaming ? [] : [rehypeKatex]}
@@ -115,6 +147,12 @@ export function Markdown({ text, isStreaming = false }: { text: string; isStream
             }
             return <CodeBlock code={code} lang={match[1]} />;
           },
+          table: MarkdownTable,
+          thead: MarkdownTableHeader,
+          tbody: MarkdownTableBody,
+          tr: MarkdownTableRow,
+          th: MarkdownTableHead,
+          td: MarkdownTableCell,
         }}
       >
         {text}
