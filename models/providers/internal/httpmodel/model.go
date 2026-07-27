@@ -131,6 +131,19 @@ func (m *Model) Generate(ctx context.Context, req models.Request) (*models.Messa
 	return models.Generate(ctx, m, req)
 }
 
+// LoweredOptions returns provider-calculated lowered request flags for the
+// given request. It implements the optional LoweredOptionsProvider interface.
+func (m *Model) LoweredOptions(ctx context.Context, req models.Request) models.LoweredOptions {
+	var opts models.LoweredOptions
+	switch m.Protocol {
+	case OpenAIResponses:
+		if req.Capabilities.Thinking {
+			opts.ReasoningSummaryAuto = true
+		}
+	}
+	return opts
+}
+
 // Info returns static model metadata.
 func (m *Model) Info() models.ModelInfo { return m.Info_ }
 
@@ -209,6 +222,7 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 		case models.RoleUser:
 			input = append(input, map[string]any{"role": "user", "content": openAIResponsesInputContent(msg.Content)})
 		case models.RoleAssistant:
+			input = append(input, openAIResponsesReasoningContent(msg.Content)...)
 			texts := openAIResponsesTextContent(msg.Content, "output_text")
 			if len(texts) > 0 {
 				input = append(input, map[string]any{"role": "assistant", "content": texts})
@@ -223,6 +237,10 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 		}
 	}
 	body := map[string]any{"model": m.Info_.ID, "input": input, "stream": true}
+	if req.Capabilities.Thinking {
+		body["reasoning"] = map[string]any{"summary": "auto"}
+		body["include"] = []string{"reasoning.encrypted_content"}
+	}
 	addTools(body, req.Tools, "responses")
 	addOpenAIToolChoice(body, req.ToolChoice, "responses")
 	addOpenAIResponseFormat(body, req.OutputSchema, req.ResponseFormat, "responses")
@@ -450,7 +468,11 @@ func (s *parseState) message() *models.Message {
 		content = append(content, models.TextPart{Text: text})
 	}
 	if reasoning := s.reason.String(); reasoning != "" {
-		content = append(content, models.ReasoningPart{Reasoning: reasoning, Encrypted: s.sig})
+		part := models.ReasoningPart{Reasoning: reasoning, Encrypted: s.sig}
+		if s.api == models.APIOpenAIResponses && (s.reasonID != "" || s.sig != "") {
+			part.ProviderMetadata = models.Meta{"openai": map[string]any{"item_id": s.reasonID, "reasoning_encrypted_content": s.sig}}
+		}
+		content = append(content, part)
 	}
 	for _, call := range s.tools {
 		content = append(content, call)
@@ -475,6 +497,14 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 		}
 	case "response.output_item.done":
 		item, _ := event["item"].(map[string]any)
+		if itemType, _ := item["type"].(string); itemType == "reasoning" {
+			if id := stringValue(item["id"]); id != "" {
+				state.reasonID = id
+			}
+			if encrypted := stringValue(item["encrypted_content"]); encrypted != "" {
+				state.sig = encrypted
+			}
+		}
 		if itemType, _ := item["type"].(string); itemType == "function_call" {
 			itemID := stringValue(item["id"])
 			arguments := stringValue(item["arguments"])
@@ -852,6 +882,26 @@ func openAIResponsesTextContent(content models.Content, typ string) []any {
 		if t, ok := part.(models.TextPart); ok {
 			out = append(out, map[string]any{"type": typ, "text": t.Text})
 		}
+	}
+	return out
+}
+
+func openAIResponsesReasoningContent(content models.Content) []any {
+	var out []any
+	for _, part := range content {
+		reasoning, ok := part.(models.ReasoningPart)
+		if !ok || reasoning.Encrypted == "" {
+			continue
+		}
+		openAI, ok := reasoning.ProviderMetadata["openai"].(map[string]any)
+		if !ok || stringValue(openAI["reasoning_encrypted_content"]) != reasoning.Encrypted {
+			continue
+		}
+		itemID := stringValue(openAI["item_id"])
+		if itemID == "" {
+			continue
+		}
+		out = append(out, map[string]any{"type": "reasoning", "id": itemID, "summary": []any{}, "encrypted_content": reasoning.Encrypted})
 	}
 	return out
 }

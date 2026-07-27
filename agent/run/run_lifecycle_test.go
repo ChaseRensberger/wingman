@@ -63,6 +63,103 @@ func (c lifecycleClient) Generate(context.Context, models.Request) (*models.Mess
 	return nil, errors.New("unexpected Generate")
 }
 
+func TestRunTurnRecordsTimingAndTrace(t *testing.T) {
+	t.Parallel()
+	client := &timingTestClient{}
+	result, err := Run(context.Background(), Config{
+		Client: client,
+		Model:  models.ModelRef{Provider: "test", ID: "model"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Turns) != 1 {
+		t.Fatalf("turns = %d, want 1", len(result.Turns))
+	}
+	turn := result.Turns[0]
+	if turn.StartedAt.IsZero() {
+		t.Fatal("StartedAt is zero")
+	}
+	if turn.CompletedAt.IsZero() {
+		t.Fatal("CompletedAt is zero")
+	}
+	if turn.CompletedAt.Before(turn.StartedAt) {
+		t.Fatal("CompletedAt before StartedAt")
+	}
+	if turn.Trace.Version != "1" {
+		t.Fatalf("trace version = %q, want 1", turn.Trace.Version)
+	}
+	if turn.Trace.Provider != "test" {
+		t.Fatalf("trace provider = %q, want test", turn.Trace.Provider)
+	}
+}
+
+func TestRunRetainsStartedFailedTurn(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		client *failingStreamClient
+	}{
+		{name: "stream", client: &failingStreamClient{streamErr: errors.New("stream failed")}},
+		{name: "final", client: &failingStreamClient{finalErr: errors.New("stream final failed")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := Run(context.Background(), Config{
+				Client: test.client,
+				Model:  models.ModelRef{Provider: "test", ID: "model"},
+			})
+			if err == nil {
+				t.Fatal("Run succeeded, want stream error")
+			}
+			if len(result.Turns) != 1 {
+				t.Fatalf("turns = %d, want 1", len(result.Turns))
+			}
+			turn := result.Turns[0]
+			if turn.Failure == nil || turn.StartedAt.IsZero() || turn.CompletedAt.IsZero() || turn.Trace.Version != "1" {
+				t.Fatalf("turn = %#v, want failed traced attempt", turn)
+			}
+		})
+	}
+}
+
+type timingTestClient struct{}
+
+type failingStreamClient struct {
+	streamErr error
+	finalErr  error
+}
+
+func (c *timingTestClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return &models.PreparedRequest{Model: models.ModelRef{Provider: "test", ID: "model"}}, nil
+}
+
+func (c *timingTestClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *timingTestClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+	stream.Close(&models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "ok"}}}, nil)
+	return stream, nil
+}
+
+func (c *failingStreamClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *failingStreamClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *failingStreamClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	if c.streamErr != nil {
+		return nil, c.streamErr
+	}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+	stream.Close(nil, c.finalErr)
+	return stream, nil
+}
+
 func (c lifecycleClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
 	stream.Close(&c.message, nil)

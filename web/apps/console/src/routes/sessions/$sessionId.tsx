@@ -404,6 +404,8 @@ function SessionDetailPage() {
 		: `${contextTokenLabel} context`;
 	const toolCallsById = new Map<string, ToolCallPart>();
 	const toolResultsById = new Map<string, ToolResultPart>();
+	const modelCallsByMessageId = new Map(modelCalls.filter((call) => call.assistant_message_id).map((call) => [call.assistant_message_id!, call]));
+	const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
 	for (const msg of session?.history ?? []) {
 		for (const part of msg.content) {
 			if (part.type === "tool_call") {
@@ -433,7 +435,7 @@ function SessionDetailPage() {
 	return (
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
-			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
+			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} modelCallsByMessageId={modelCallsByMessageId} agentNames={agentNames} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
 			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isStreamPaused={run.isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={run.pause} onResume={run.resume} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
 			<SessionDialogs session={session} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onSave={(title, workDir) => void handleSaveSession(title, workDir)} onDelete={() => void handleDeleteSession()} />
 		</div>

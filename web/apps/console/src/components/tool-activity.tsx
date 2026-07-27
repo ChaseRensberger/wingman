@@ -40,10 +40,11 @@ function normalizeTool({ call, result, activity }: Props): ToolView {
 	};
 }
 
-export function ToolActivityItem(props: Props) {
+export function ToolActivityItem({ compact = false, ...props }: Props & { compact?: boolean }) {
 	const view = normalizeTool(props);
 	if (view.call.name === "bash") return <BashTool view={view} />;
 	if (["apply_patch", "edit", "write"].includes(view.call.name)) return <FileMutationTool view={view} />;
+	if (["read", "grep", "glob", "webfetch", "websearch"].includes(view.call.name)) return <TimelineTool view={view} compact={compact} />;
 	return <CompactTool view={view} />;
 }
 
@@ -127,6 +128,16 @@ function FileMutationTool({ view }: { view: ToolView }) {
 			{view.error && <ErrorText error={view.error} />}
 		</div>
 	);
+}
+
+function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
+	const baseTitle = view.call.name === "websearch" && typeof view.metadata.provider === "string"
+		? `${view.metadata.provider === "exa" ? "Exa Web Search" : humanizeToolName(view.metadata.provider)} ${compactInput(view.call.input)}`
+		: toolSummary(view.call);
+	const count = view.call.name === "grep" ? view.metadata.matches : view.call.name === "glob" ? view.metadata.count : view.call.name === "websearch" ? view.metadata.numResults : undefined;
+	const countLabel = typeof count === "number" ? `${count} ${count === 1 ? "result" : "results"}` : "";
+	const title = countLabel ? `${baseTitle} (${countLabel})` : baseTitle;
+	return <div className={compact ? "my-0" : "my-1.5"}><div className="flex min-h-7 items-center"><ToolHeader view={view} title={title} /></div>{view.error && <ErrorText error={view.error} />}</div>;
 }
 
 function CompactTool({ view }: { view: ToolView }) {

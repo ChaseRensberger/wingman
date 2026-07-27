@@ -226,6 +226,10 @@ func copyModelCall(c *store.ModelCall) store.ModelCall {
 		cp.MetadataJSON = make([]byte, len(c.MetadataJSON))
 		copy(cp.MetadataJSON, c.MetadataJSON)
 	}
+	if c.Trace != nil {
+		cp.Trace = make([]byte, len(c.Trace))
+		copy(cp.Trace, c.Trace)
+	}
 	return cp
 }
 

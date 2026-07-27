@@ -54,6 +54,7 @@ type Session struct {
 	tools       []tool.Tool
 	permissions permission.Ruleset
 	logger      *slog.Logger
+	agentID     string
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -171,6 +172,11 @@ func WithPermissions(rules permission.Ruleset) Option {
 // expected to already carry request/session attributes supplied by the caller.
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Session) { s.logger = logger }
+}
+
+// WithAgentID sets the effective agent identifier persisted with model calls.
+func WithAgentID(id string) Option {
+	return func(s *Session) { s.agentID = id }
 }
 
 // WithTransformHistory installs a raw hook that runs before each loop step
@@ -398,6 +404,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	model := s.model
 	modelInfo := s.modelInfo
 	system := s.system
+	currentDate := "Current date: " + time.Now().Format(time.DateOnly) + "."
+	if system == "" {
+		system = currentDate
+	} else {
+		system += "\n\n" + currentDate
+	}
 	tools := append([]tool.Tool(nil), s.tools...)
 	permissions := append(permission.Ruleset(nil), s.permissions...)
 	workDir := s.workDir
@@ -528,6 +540,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		Client:       client,
 		Model:        model,
 		ModelInfo:    modelInfo,
+		Capabilities: models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
 		System:       system,
 		Tools:        tools,
 		WorkDir:      workDir,
@@ -599,7 +612,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 				if turn.Step == res.Steps {
 					stopReason = string(res.StopReason)
 				}
-				if err := s.persistModelCall(ctx, assistantMessageIDs[turn.Step], turn.Step, turn.Assistant, model, modelInfo, stopReason); err != nil && persistErr == nil {
+				if err := s.persistModelCall(ctx, assistantMessageIDs[turn.Step], turn, model, modelInfo, stopReason); err != nil && persistErr == nil {
 					persistErr = err
 				}
 			}

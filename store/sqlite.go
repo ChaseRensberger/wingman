@@ -884,14 +884,14 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 	if call.UpdatedAt.IsZero() {
 		call.UpdatedAt = now
 	}
-	startedAt := call.StartedAt.UTC().Format(time.RFC3339)
+	startedAt := call.StartedAt.UTC().Format(time.RFC3339Nano)
 	var completedAt *string
 	if !call.CompletedAt.IsZero() {
-		v := call.CompletedAt.UTC().Format(time.RFC3339)
+		v := call.CompletedAt.UTC().Format(time.RFC3339Nano)
 		completedAt = &v
 	}
-	createdAt := call.CreatedAt.UTC().Format(time.RFC3339)
-	updatedAt := call.UpdatedAt.UTC().Format(time.RFC3339)
+	createdAt := call.CreatedAt.UTC().Format(time.RFC3339Nano)
+	updatedAt := call.UpdatedAt.UTC().Format(time.RFC3339Nano)
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO model_calls (
@@ -1297,13 +1297,14 @@ func scanModelCall(r rowScanner) (ModelCall, error) {
 	}
 	if metadataJSON.Valid {
 		call.MetadataJSON = []byte(metadataJSON.String)
+		call.Trace = json.RawMessage(call.MetadataJSON)
 	}
-	call.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+	call.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt)
 	if completedAt.Valid {
-		call.CompletedAt, _ = time.Parse(time.RFC3339, completedAt.String)
+		call.CompletedAt, _ = time.Parse(time.RFC3339Nano, completedAt.String)
 	}
-	call.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	call.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	call.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	call.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return call, nil
 }
 

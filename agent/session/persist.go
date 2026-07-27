@@ -3,9 +3,11 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -109,11 +111,12 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 	return sm.ID, nil
 }
 
-func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, msg models.Message, model models.ModelRef, info models.ModelInfo, stopReason string) error {
+func (s *Session) persistModelCall(ctx context.Context, msgID string, turn run.Turn, model models.ModelRef, info models.ModelInfo, stopReason string) error {
 	if s.store == nil {
 		return nil
 	}
 	now := time.Now().UTC()
+	msg := turn.Assistant
 	usage := models.Usage{}
 	if msg.Usage != nil {
 		usage = *msg.Usage
@@ -122,9 +125,10 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, 
 		ID:                 store.NewID(store.PrefixModelCall),
 		SessionID:          s.id,
 		AssistantMessageID: msgID,
-		Step:               step,
+		Step:               turn.Step,
 		Attempt:            1,
 		Status:             store.ModelCallStatusCompleted,
+		AgentID:            s.agentID,
 		ModelRef:           model.Ref(),
 		Provider:           model.Provider,
 		API:                string(model.API),
@@ -141,15 +145,30 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, step int, 
 		ContextWindow:      info.ContextWindow,
 		ContextPercent:     usage.ContextPercent(info.ContextWindow),
 		Cost:               estimatedCost(usage, info),
-		StartedAt:          now,
-		CompletedAt:        now,
+		StartedAt:          turn.StartedAt.UTC(),
+		CompletedAt:        turn.CompletedAt.UTC(),
 		CreatedAt:          now,
 		UpdatedAt:          now,
+	}
+	if turn.Failure != nil {
+		call.ErrorMessage = turn.Failure.Error()
+		if errors.Is(turn.Failure, context.Canceled) || errors.Is(turn.Failure, context.DeadlineExceeded) {
+			call.Status = store.ModelCallStatusAborted
+		} else {
+			call.Status = store.ModelCallStatusFailed
+		}
 	}
 	if msg.Origin != nil {
 		call.Provider = msg.Origin.Provider
 		call.API = string(msg.Origin.API)
 		call.ModelID = msg.Origin.ModelID
+	}
+	if turn.Trace.Version != "" {
+		b, err := json.Marshal(turn.Trace)
+		if err == nil {
+			call.MetadataJSON = b
+			call.Trace = b
+		}
 	}
 	return s.store.UpsertModelCall(ctx, call)
 }

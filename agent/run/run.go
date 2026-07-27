@@ -181,7 +181,8 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 
 		turn, err := r.runTurn(ctx, step)
 		if err != nil {
-			if turn.Assistant.Role != "" {
+			if !turn.StartedAt.IsZero() {
+				turn.Failure = err
 				r.turns = append(r.turns, turn)
 			}
 			r.emitError(err)
@@ -331,9 +332,19 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
+	turn := Turn{Step: step}
+	turn.Trace = models.NewCallTrace(req, models.LoweredOptions{})
+	if lop, ok := r.cfg.Client.(interface {
+		LoweredOptions(context.Context, models.Request) models.LoweredOptions
+	}); ok {
+		turn.Trace.Lowered = lop.LoweredOptions(ctx, req)
+	}
+	turn.StartedAt = time.Now()
+
 	stream, err := r.cfg.Client.Stream(ctx, req)
 	if err != nil {
-		return Turn{}, fmt.Errorf("model stream: %w", err)
+		turn.CompletedAt = time.Now()
+		return turn, fmt.Errorf("model stream: %w", err)
 	}
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's
@@ -348,11 +359,12 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		r.emit(StreamPartEvent{Step: step, Part: part})
 	}
 	assistantMsg, err := stream.Final()
+	turn.CompletedAt = time.Now()
 	if err != nil {
-		return Turn{}, fmt.Errorf("stream.Final: %w", err)
+		return turn, fmt.Errorf("stream.Final: %w", err)
 	}
 	if assistantMsg == nil {
-		return Turn{}, errors.New("model returned nil assistant message without error")
+		return turn, errors.New("model returned nil assistant message without error")
 	}
 	if !turnUsage.Empty() {
 		assistantMsg.Usage = &turnUsage
@@ -368,10 +380,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
 	calls := extractToolCalls(*assistantMsg)
-	turn := Turn{
-		Step:  step,
-		Usage: turnUsage,
-	}
+	turn.Usage = turnUsage
 	if len(calls) == 0 {
 		r.messages = append(r.messages, *assistantMsg)
 		r.emit(MessageEvent{Message: *assistantMsg})

@@ -153,6 +153,15 @@ func (c *Client) Prepare(ctx context.Context, req models.Request) (*models.Prepa
 	return m.Prepare(ctx, req)
 }
 
+// LoweredOptions reports safe provider-specific request options for a model call.
+func (c *Client) LoweredOptions(ctx context.Context, req models.Request) models.LoweredOptions {
+	m, err := c.model(req.Model)
+	if err != nil {
+		return models.LoweredOptions{}
+	}
+	return m.LoweredOptions(ctx, req)
+}
+
 // Stream sends the request to the selected provider route.
 func (c *Client) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 	m, err := c.model(req.Model)

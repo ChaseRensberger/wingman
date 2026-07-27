@@ -52,3 +52,14 @@ func TestOpenAIOAuthUsesCodexRoute(t *testing.T) {
 		t.Errorf("store = %#v, want false", prepared.Body["store"])
 	}
 }
+
+func TestClientReportsOpenAIReasoningSummaryLowering(t *testing.T) {
+	client := provider.NewClient(map[string]string{openai.ID: "test-key"})
+	opts := client.LoweredOptions(context.Background(), models.Request{
+		Model:        openai.Model("gpt-5.6-terra"),
+		Capabilities: models.Capabilities{Thinking: true},
+	})
+	if !opts.ReasoningSummaryAuto {
+		t.Fatal("ReasoningSummaryAuto = false, want true")
+	}
+}

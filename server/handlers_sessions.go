@@ -184,6 +184,10 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 		if call, ok := callsByMessageID[sm.ID]; ok {
 			session.ApplyModelCall(&msg, call)
 		}
+		if msg.Metadata == nil {
+			msg.Metadata = models.Meta{}
+		}
+		msg.Metadata["message_id"] = sm.ID
 		history[i] = msg
 	}
 	if history == nil {
@@ -569,6 +573,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 		session.WithWorkDir(sess.WorkDir),
 		session.WithPermissions(s.effectivePermissions(stored)),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
+		session.WithAgentID(stored.ID),
 	}
 	if st != nil {
 		opts = append(opts, session.WithStore(st))

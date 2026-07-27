@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestSQLiteModelCallAllowsUnavailableCost(t *testing.T) {
@@ -31,6 +32,40 @@ func TestSQLiteModelCallAllowsUnavailableCost(t *testing.T) {
 	}
 	if len(calls) != 1 || calls[0].Cost != nil {
 		t.Fatalf("calls = %#v, want one call with unavailable cost", calls)
+	}
+}
+
+func TestSQLiteModelCallPreservesTimestampPrecision(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	if err := data.CreateSession(&Session{ID: "ses_test"}); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Date(2026, time.July, 27, 4, 0, 0, 123456789, time.UTC)
+	completedAt := startedAt.Add(987 * time.Millisecond)
+	if err := data.UpsertModelCall(context.Background(), ModelCall{
+		SessionID:   "ses_test",
+		Step:        1,
+		Status:      ModelCallStatusCompleted,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	calls, err := data.ListModelCalls(context.Background(), "ses_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(calls))
+	}
+	if !calls[0].StartedAt.Equal(startedAt) || !calls[0].CompletedAt.Equal(completedAt) {
+		t.Fatalf("timestamps = %s to %s, want %s to %s", calls[0].StartedAt, calls[0].CompletedAt, startedAt, completedAt)
 	}
 }
 

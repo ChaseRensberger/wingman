@@ -138,6 +138,22 @@ export interface ModelCall {
   context_window?: number;
   context_percent?: number;
   cost?: number;
+  trace?: CallTrace;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface CallTrace {
+  version: string;
+  model: { provider?: string; id?: string; api?: string };
+  api?: string;
+  provider?: string;
+  capabilities: { thinking?: boolean };
+  runtime: { current_date: boolean };
+  tools?: Array<{ name: string; schema_hash: string; schema_bytes: number }>;
+  messages: { count: number; by_role: Record<string, number>; part_kinds: Record<string, number> };
+  system: { sha256: string; bytes: number };
+  lowered?: { reasoning_summary_auto?: boolean };
 }
 
 export type Part =

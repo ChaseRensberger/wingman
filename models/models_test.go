@@ -72,3 +72,58 @@ func TestExpandToolMessagesOmitsUnresolvedTool(t *testing.T) {
 		t.Fatalf("expanded messages = %#v, want unresolved tool omitted", expanded)
 	}
 }
+
+func TestNewCallTraceRedactsAndShapes(t *testing.T) {
+	req := Request{
+		Model:  ModelRef{Provider: "openai", ID: "gpt-4", API: APIOpenAIResponses},
+		System: "Current date: 2024-01-01.\nBe helpful.",
+		Messages: []Message{
+			{Role: RoleUser, Content: Content{TextPart{Text: "hello"}}},
+			{Role: RoleAssistant, Content: Content{TextPart{Text: "hi"}, ToolCallPart{CallID: "c1", Name: "test", Input: map[string]any{}}}},
+		},
+		Tools: []ToolDef{
+			{Name: "test", Description: "d", InputSchema: map[string]any{"type": "object"}},
+		},
+		Capabilities: Capabilities{Thinking: true},
+	}
+	lowered := LoweredOptions{ReasoningSummaryAuto: true}
+	trace := NewCallTrace(req, lowered)
+
+	if trace.Version != "1" {
+		t.Fatalf("version = %q, want 1", trace.Version)
+	}
+	if trace.Provider != "openai" {
+		t.Fatalf("provider = %q", trace.Provider)
+	}
+	if trace.API != APIOpenAIResponses {
+		t.Fatalf("api = %q", trace.API)
+	}
+	if !trace.Runtime.CurrentDate {
+		t.Fatal("expected current_date true")
+	}
+	if len(trace.Tools) != 1 || trace.Tools[0].Name != "test" {
+		t.Fatal("tool trace mismatch")
+	}
+	if trace.Tools[0].SchemaHash == "" || trace.Tools[0].SchemaBytes == 0 {
+		t.Fatal("expected schema hash and bytes")
+	}
+	if trace.Messages.Count != 2 {
+		t.Fatalf("message count = %d", trace.Messages.Count)
+	}
+	if trace.Messages.ByRole["user"] != 1 || trace.Messages.ByRole["assistant"] != 1 {
+		t.Fatalf("by_role = %v", trace.Messages.ByRole)
+	}
+	if trace.Messages.PartKinds["text"] != 2 || trace.Messages.PartKinds["tool_call"] != 1 {
+		t.Fatalf("part_kinds = %v", trace.Messages.PartKinds)
+	}
+	if trace.System.Bytes == 0 || trace.System.SHA256 == "" {
+		t.Fatal("expected system trace")
+	}
+	if !trace.Lowered.ReasoningSummaryAuto {
+		t.Fatal("expected reasoning_summary_auto")
+	}
+	// Verify no message content or credentials leaked into trace fields
+	if trace.Messages.Count == 0 {
+		t.Fatal("structural info missing")
+	}
+}

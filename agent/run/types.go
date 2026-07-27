@@ -411,8 +411,13 @@ type Turn struct {
 	// Results is in source order (the order the assistant emitted the
 	// tool calls in), regardless of execution mode. Empty if the
 	// assistant produced no tool calls.
-	Results []ToolResult
-	Usage   models.Usage
+	Results     []ToolResult
+	Usage       models.Usage
+	StartedAt   time.Time
+	CompletedAt time.Time
+	Trace       models.CallTrace
+	// Failure is set when an upstream model attempt fails after it starts.
+	Failure error
 }
 
 // Result is the loop's terminal value, returned from Run.

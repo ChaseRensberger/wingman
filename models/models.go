@@ -3,8 +3,11 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -659,6 +662,96 @@ type OutputSchema struct {
 type ProviderOptions struct {
 	APIKey  string `json:"api_key,omitempty"`
 	BaseURL string `json:"base_url,omitempty"`
+}
+
+// ------------------------------------------------------------------
+// CallTrace
+// ------------------------------------------------------------------
+
+// CallTrace is a safe, versioned structural snapshot of a model call.
+// It contains only structural information and never credentials,
+// request text, message content, raw tool output, HTTP headers, or
+// raw payloads.
+type CallTrace struct {
+	Version      string         `json:"version"`
+	Model        ModelRef       `json:"model"`
+	API          API            `json:"api"`
+	Provider     string         `json:"provider"`
+	Capabilities Capabilities   `json:"capabilities"`
+	Runtime      RuntimeTrace   `json:"runtime"`
+	Tools        []ToolTrace    `json:"tools,omitempty"`
+	Messages     MessageTrace   `json:"messages"`
+	System       SystemTrace    `json:"system"`
+	Lowered      LoweredOptions `json:"lowered,omitempty"`
+}
+
+type RuntimeTrace struct {
+	CurrentDate bool `json:"current_date"`
+}
+
+type ToolTrace struct {
+	Name        string `json:"name"`
+	SchemaHash  string `json:"schema_hash"`
+	SchemaBytes int    `json:"schema_bytes"`
+}
+
+type MessageTrace struct {
+	Count     int            `json:"count"`
+	ByRole    map[string]int `json:"by_role"`
+	PartKinds map[string]int `json:"part_kinds"`
+}
+
+type SystemTrace struct {
+	SHA256 string `json:"sha256"`
+	Bytes  int    `json:"bytes"`
+}
+
+// LoweredOptions captures provider-calculated lowered request flags.
+type LoweredOptions struct {
+	ReasoningSummaryAuto bool `json:"reasoning_summary_auto,omitempty"`
+}
+
+// NewCallTrace builds a CallTrace from a Request and provider lowering info.
+func NewCallTrace(req Request, lowered LoweredOptions) CallTrace {
+	tools := make([]ToolTrace, len(req.Tools))
+	for i, t := range req.Tools {
+		schemaJSON, _ := json.Marshal(t.InputSchema)
+		tools[i] = ToolTrace{
+			Name:        t.Name,
+			SchemaHash:  sha256hex(schemaJSON),
+			SchemaBytes: len(schemaJSON),
+		}
+	}
+
+	byRole := make(map[string]int)
+	partKinds := make(map[string]int)
+	for _, m := range req.Messages {
+		byRole[string(m.Role)]++
+		for _, p := range m.Content {
+			partKinds[p.Type()]++
+		}
+	}
+
+	sysBytes := []byte(req.System)
+	return CallTrace{
+		Version:      "1",
+		Model:        req.Model,
+		API:          req.Model.API,
+		Provider:     req.Model.Provider,
+		Capabilities: req.Capabilities,
+		Runtime: RuntimeTrace{
+			CurrentDate: strings.Contains(req.System, "Current date:"),
+		},
+		Tools:    tools,
+		Messages: MessageTrace{Count: len(req.Messages), ByRole: byRole, PartKinds: partKinds},
+		System:   SystemTrace{SHA256: sha256hex(sysBytes), Bytes: len(sysBytes)},
+		Lowered:  lowered,
+	}
+}
+
+func sha256hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }
 
 // ------------------------------------------------------------------
