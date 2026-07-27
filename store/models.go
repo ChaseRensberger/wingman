@@ -200,8 +200,12 @@ const (
 // _archive/ for reference. Do not add new consumers.
 
 type AuthCredential struct {
-	Type string `json:"type"`
-	Key  string `json:"key,omitempty"`
+	Type      string `json:"type"`
+	Key       string `json:"key,omitempty"`
+	Access    string `json:"access,omitempty"`
+	Refresh   string `json:"refresh,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
+	AccountID string `json:"account_id,omitempty"`
 }
 
 type Auth struct {

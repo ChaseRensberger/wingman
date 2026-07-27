@@ -17,6 +17,6 @@ func init() {
 	provider.Register(provider.ProviderMeta{
 		ID:        ID,
 		Name:      "OpenAI",
-		AuthTypes: []provider.AuthType{{Type: "api_key"}},
+		AuthTypes: []provider.AuthType{{Type: "oauth", Name: "ChatGPT Pro/Plus"}, {Type: "api_key"}},
 	})
 }

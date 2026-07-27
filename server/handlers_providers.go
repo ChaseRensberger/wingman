@@ -94,7 +94,7 @@ func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
 	if s.store != nil {
 		auth, err := s.store.GetAuth()
 		if err == nil {
-			if cred, ok := auth.Providers[providerID]; ok && cred.Key != "" {
+			if cred, ok := auth.Providers[providerID]; ok && credentialConfigured(cred) {
 				return ProviderAuthStatusDTO{Configured: true, Source: "stored"}
 			}
 		}
@@ -142,11 +142,15 @@ func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 	for name, cred := range auth.Providers {
 		resp.Providers[name] = ProviderAuthInfo{
 			Type:       cred.Type,
-			Configured: cred.Key != "",
+			Configured: credentialConfigured(cred),
 		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func credentialConfigured(cred store.AuthCredential) bool {
+	return (cred.Type == "oauth" && cred.Refresh != "") || cred.Key != ""
 }
 
 type SetProvidersAuthRequest struct {

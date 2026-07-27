@@ -623,16 +623,14 @@ func (s *Server) buildModelClient(stored *store.Agent) (models.ModelRef, models.
 	} else {
 		auth = &store.Auth{Providers: make(map[string]store.AuthCredential)}
 	}
-	keys := map[string]string{}
+	credentials := map[string]provider.Credential{}
 	for id, cred := range auth.Providers {
-		if cred.Key != "" {
-			keys[id] = cred.Key
+		credentials[id] = provider.Credential{
+			Type: cred.Type, Key: cred.Key, Access: cred.Access, Refresh: cred.Refresh,
+			ExpiresAt: cred.ExpiresAt, AccountID: cred.AccountID,
 		}
 	}
-	if cred, ok := auth.Providers[ref.Provider]; ok && cred.Key != "" {
-		keys[ref.Provider] = cred.Key
-	}
-	return ref, info, provider.NewClientWithConfig(keys, s.providers), nil
+	return ref, info, provider.NewClientWithCredentials(credentials, s.providers, s.refreshProviderCredential), nil
 }
 
 func (s *Server) resolveModelInfo(ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {

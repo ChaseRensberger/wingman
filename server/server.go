@@ -39,6 +39,7 @@ type Server struct {
 	providers        map[string]provider.ProviderConfig
 	permissions      permission.Ruleset
 	agentPermissions map[string]permission.Ruleset
+	oauth            *oauthManager
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -85,6 +86,7 @@ func New(cfg Config) *Server {
 		providers:        cfg.Providers,
 		permissions:      cfg.Permissions,
 		agentPermissions: cfg.AgentPermissions,
+		oauth:            newOAuthManager(cfg.Store),
 		shutdownCtx:      ctx,
 		shutdownCancel:   cancel,
 	}
@@ -215,6 +217,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/auth", s.handleGetProvidersAuth)
 		r.Put("/auth", s.handleSetProvidersAuth)
 		r.Delete("/auth/{provider}", s.handleDeleteProviderAuth)
+		r.Post("/{name}/oauth/authorize", s.handleProviderOAuthAuthorize)
+		r.Get("/{name}/oauth/{attempt}", s.handleProviderOAuthStatus)
+		r.Delete("/{name}/oauth/{attempt}", s.handleProviderOAuthCancel)
 		r.Get("/{name}", s.handleGetProvider)
 		r.Get("/{name}/models", s.handleListProviderModels)
 		r.Get("/{name}/models/{model}", s.handleGetProviderModel)

@@ -38,6 +38,9 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 | `GET` | `/provider/auth` | Get configured credential status |
 | `PUT` | `/provider/auth` | Set credentials for one or more providers |
 | `DELETE` | `/provider/auth/{provider}` | Remove credentials for a provider |
+| `POST` | `/provider/openai/oauth/authorize` | Begin browser or device OAuth authorization |
+| `GET` | `/provider/openai/oauth/{attempt}` | Read OAuth authorization status |
+| `DELETE` | `/provider/openai/oauth/{attempt}` | Cancel OAuth authorization |
 
 ### Set auth
 
@@ -61,6 +64,25 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
   "updated_at": "2026-04-25T00:00:00Z"
 }
 ```
+
+### OpenAI Codex OAuth
+
+Begin browser or headless authorization by posting a method:
+
+```json
+{ "method": "browser" }
+```
+
+or:
+
+```json
+{ "method": "device" }
+```
+
+`POST /provider/openai/oauth/authorize` returns `202 Accepted` with an attempt
+ID, an authorization URL, and instructions. Poll the attempt URL until its
+`status` is `completed`, `failed`, or `cancelled`. OAuth tokens are never
+returned by these endpoints.
 
 ## Agent endpoints
 

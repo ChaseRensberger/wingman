@@ -54,6 +54,15 @@ export interface ProviderAuthResponse {
   updated_at?: string;
 }
 
+export interface ProviderOAuthAttempt {
+  id: string;
+  method: "browser" | "device";
+  status: "pending" | "completed" | "failed" | "cancelled";
+  url?: string;
+  instructions?: string;
+  error?: string;
+}
+
 export interface Session {
   id: string;
   title?: string;

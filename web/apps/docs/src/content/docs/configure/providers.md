@@ -19,6 +19,23 @@ Agents store `model_ref` values such as `openai/gpt-5.6-terra`. Provider route o
 
 OpenCode Go uses the `opencode-go` provider ID and the same `OPENCODE_API_KEY` environment variable as OpenCode Zen. Stored credentials are keyed by provider ID, so configure `opencode-go` separately when using the auth API.
 
+## OpenAI Codex Subscription
+
+The `openai` provider supports either a metered OpenAI API key or ChatGPT Plus/Pro
+through Codex OAuth. In the console, open **Providers > OpenAI** and choose
+**Connect in browser** on the machine running Wingman. For a remote or headless
+daemon, choose **Connect headless**, open the displayed URL in any browser, and
+enter its code.
+
+Codex OAuth routes supported `openai/*` model refs through the Codex backend;
+for example, use `openai/gpt-5.6-terra`. It is separate from `OPENAI_API_KEY`:
+an API key uses standard OpenAI Platform billing, while OAuth uses the limits of
+the connected ChatGPT subscription. Disconnect OpenAI from the provider page to
+remove either credential.
+
+Only one OpenAI credential is active per Wingman daemon. Starting a new OAuth
+connection replaces a saved API key, and saving an API key replaces OAuth.
+
 ## Store Provider Auth
 
 Store provider API keys with `PUT /provider/auth`:

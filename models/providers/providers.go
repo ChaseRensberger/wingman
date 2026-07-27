@@ -4,8 +4,10 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
@@ -69,8 +71,20 @@ func IsValid(id string) bool {
 
 // Client resolves catalog model refs and explicit custom model routes.
 type Client struct {
-	Auth      map[string]string
-	Providers map[string]ProviderConfig
+	Auth        map[string]string
+	Credentials map[string]Credential
+	Refresh     func(context.Context, string, Credential) (Credential, error)
+	Providers   map[string]ProviderConfig
+}
+
+// Credential is one provider credential resolved by a caller-owned auth store.
+type Credential struct {
+	Type      string
+	Key       string
+	Access    string
+	Refresh   string
+	ExpiresAt int64
+	AccountID string
 }
 
 // ProviderConfig overlays catalog provider behavior for one process.
@@ -99,6 +113,11 @@ func NewClient(auth map[string]string) *Client {
 // process-local provider overlays.
 func NewClientWithConfig(auth map[string]string, providers map[string]ProviderConfig) *Client {
 	return &Client{Auth: auth, Providers: providers}
+}
+
+// NewClientWithCredentials constructs a route-backed client with richer stored credentials.
+func NewClientWithCredentials(credentials map[string]Credential, providers map[string]ProviderConfig, refresh func(context.Context, string, Credential) (Credential, error)) *Client {
+	return &Client{Credentials: credentials, Providers: providers, Refresh: refresh}
 }
 
 // RegisterConfig adds config-defined providers and model metadata for this process.
@@ -165,12 +184,15 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 		return nil, err
 	}
 	apiKey := ""
+	credential := c.Credentials[info.Provider]
 	useAuth := true
 	if cfg.Options.Auth != nil {
 		useAuth = *cfg.Options.Auth
 	}
 	if useAuth {
-		if c.Auth != nil {
+		if credential.Type == "api_key" {
+			apiKey = credential.Key
+		} else if c.Auth != nil {
 			apiKey = c.Auth[info.Provider]
 		}
 		if apiKey == "" {
@@ -182,6 +204,9 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 			}
 		}
 	}
+	if credential.Type == "oauth" && info.Provider == "openai" {
+		info.BaseURL = "https://chatgpt.com/backend-api/codex"
+	}
 	query := cfg.Options.Query
 	if protocol == httpmodel.GeminiGenerate {
 		query = map[string]string{"alt": "sse"}
@@ -190,23 +215,47 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 		}
 	}
 	return &httpmodel.Model{
-		Info_:    info,
-		Protocol: protocol,
-		BaseURL:  info.BaseURL,
-		APIKey:   apiKey,
+		Info_:           info,
+		Protocol:        protocol,
+		BaseURL:         info.BaseURL,
+		APIKey:          apiKey,
+		ForceStoreFalse: credential.Type == "oauth" && info.Provider == "openai",
 		Route: &httpmodel.Route{
 			ID:       string(protocol),
 			Protocol: protocol,
 			Endpoint: httpmodel.Endpoint{BaseURL: info.BaseURL, Query: query, ModelID: info.ID},
-			Auth:     routeAuth(protocol, apiKey, cfg.Options),
-			Headers:  routeHeaders(protocol),
+			Auth:     c.routeAuth(protocol, info.Provider, apiKey, credential, cfg.Options),
+			Headers:  routeHeaders(protocol, credential),
 		},
 	}, nil
 }
 
-func routeAuth(protocol httpmodel.Protocol, apiKey string, options ProviderOptions) httpmodel.Auth {
+func (c *Client) routeAuth(protocol httpmodel.Protocol, providerID, apiKey string, credential Credential, options ProviderOptions) httpmodel.Auth {
 	if options.Auth != nil && !*options.Auth {
 		return httpmodel.NoAuth
+	}
+	if credential.Type == "oauth" && providerID == "openai" {
+		return httpmodel.AuthFunc(func(req *http.Request) error {
+			current := credential
+			if current.Access == "" || current.ExpiresAt <= time.Now().Unix() {
+				if c.Refresh == nil {
+					return fmt.Errorf("openai OAuth token is expired; reconnect the provider")
+				}
+				var err error
+				current, err = c.Refresh(req.Context(), providerID, current)
+				if err != nil {
+					return err
+				}
+			}
+			if current.Access == "" {
+				return fmt.Errorf("openai OAuth access token is missing")
+			}
+			req.Header.Set("authorization", "Bearer "+current.Access)
+			if current.AccountID != "" {
+				req.Header.Set("ChatGPT-Account-Id", current.AccountID)
+			}
+			return nil
+		})
 	}
 	if apiKey == "" {
 		return httpmodel.NoAuth
@@ -228,14 +277,17 @@ func routeAuth(protocol httpmodel.Protocol, apiKey string, options ProviderOptio
 	return httpmodel.BearerAuth(apiKey)
 }
 
-func routeHeaders(protocol httpmodel.Protocol) map[string]string {
-	if protocol != httpmodel.AnthropicMessages {
-		return nil
+func routeHeaders(protocol httpmodel.Protocol, credential Credential) map[string]string {
+	if credential.Type == "oauth" {
+		return map[string]string{"originator": "codex_cli_rs"}
 	}
-	return map[string]string{
-		"anthropic-version": "2023-06-01",
-		"anthropic-beta":    "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+	if protocol == httpmodel.AnthropicMessages {
+		return map[string]string{
+			"anthropic-version": "2023-06-01",
+			"anthropic-beta":    "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+		}
 	}
+	return nil
 }
 
 func resolveModelInfo(ref models.ModelRef) (models.ModelInfo, error) {

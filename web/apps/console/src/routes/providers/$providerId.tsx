@@ -19,7 +19,7 @@ import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type { Provider, ProviderModel } from "@/lib/types";
+import type { Provider, ProviderModel, ProviderOAuthAttempt } from "@/lib/types";
 
 export const Route = createFileRoute("/providers/$providerId")({
   component: ProviderDetailPage,
@@ -33,6 +33,7 @@ function ProviderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [oauthAttempt, setOAuthAttempt] = useState<ProviderOAuthAttempt | null>(null);
 
   async function load() {
     try {
@@ -52,6 +53,20 @@ function ProviderDetailPage() {
   useEffect(() => {
     load().catch((err) => showErrorToast(err));
   }, [providerId]);
+
+  useEffect(() => {
+    if (!oauthAttempt || oauthAttempt.status !== "pending" || !provider) return;
+    const interval = window.setInterval(() => {
+      wfetch(`/provider/${provider.id}/oauth/${oauthAttempt.id}`)
+        .then((attempt) => {
+          const next = attempt as ProviderOAuthAttempt;
+          setOAuthAttempt(next);
+          if (next.status === "completed") void load();
+        })
+        .catch((err) => showErrorToast(err));
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, [oauthAttempt?.id, oauthAttempt?.status, provider?.id]);
 
   async function saveKey() {
     if (!provider || !key.trim()) return;
@@ -83,9 +98,24 @@ function ProviderDetailPage() {
     }
   }
 
+  async function startOAuth(method: "browser" | "device") {
+    if (!provider) return;
+    try {
+      const attempt = (await wfetch(`/provider/${provider.id}/oauth/authorize`, {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      })) as ProviderOAuthAttempt;
+      setOAuthAttempt(attempt);
+      if (method === "browser" && attempt.url) window.open(attempt.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      showErrorToast(err);
+    }
+  }
+
   const configured = provider?.auth.configured ?? false;
   const storedKeyConfigured = provider?.auth.source === "stored";
   const supportsApiKey = provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
+  const supportsOAuth = provider?.auth_types.some((authType) => authType.type === "oauth") ?? false;
   const crumbLabel = provider?.name || providerId;
 
   function formatCost(model: ProviderModel) {
@@ -148,6 +178,24 @@ function ProviderDetailPage() {
             {provider.auth.source === "disabled" && (
               <div className="text-sm text-muted-foreground">
                 Stored and environment credentials are disabled for this provider route by server config.
+              </div>
+            )}
+            {supportsOAuth && (
+              <div className="grid gap-2 rounded-md border bg-muted/25 p-3">
+                <div>
+                  <div className="text-sm font-medium">ChatGPT subscription</div>
+                  <div className="text-sm text-muted-foreground">Use ChatGPT Pro or Plus through Codex OAuth.</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void startOAuth("browser")} disabled={oauthAttempt?.status === "pending"}>Connect in browser</Button>
+                  <Button variant="outline" onClick={() => void startOAuth("device")} disabled={oauthAttempt?.status === "pending"}>Connect headless</Button>
+                </div>
+                {oauthAttempt && (
+                  <div className="text-sm text-muted-foreground">
+                    {oauthAttempt.status === "pending" ? oauthAttempt.instructions : oauthAttempt.status === "completed" ? "Connected to ChatGPT." : oauthAttempt.error || "OAuth attempt cancelled."}
+                    {oauthAttempt.status === "pending" && oauthAttempt.url && <div className="mt-1 break-all"><a className="text-foreground underline" href={oauthAttempt.url} target="_blank" rel="noreferrer">{oauthAttempt.url}</a></div>}
+                  </div>
+                )}
               </div>
             )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">

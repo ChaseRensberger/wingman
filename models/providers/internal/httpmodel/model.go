@@ -25,12 +25,13 @@ const (
 
 // Model is a small HTTP/SSE-backed implementation for the supported providers.
 type Model struct {
-	Info_    models.ModelInfo
-	Protocol Protocol
-	BaseURL  string
-	APIKey   string
-	Route    *Route
-	Client   *http.Client
+	Info_           models.ModelInfo
+	Protocol        Protocol
+	BaseURL         string
+	APIKey          string
+	ForceStoreFalse bool
+	Route           *Route
+	Client          *http.Client
 }
 
 // Stream sends a streaming request and parses provider SSE into WingModels parts.
@@ -226,7 +227,11 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 	addOpenAIToolChoice(body, req.ToolChoice, "responses")
 	addOpenAIResponseFormat(body, req.OutputSchema, req.ResponseFormat, "responses")
 	addCommonOptions(body, req)
-	return overlay(body, req.HTTP.Body), nil
+	body = overlay(body, req.HTTP.Body)
+	if m.ForceStoreFalse {
+		body["store"] = false
+	}
+	return body, nil
 }
 
 func (m *Model) openAIChatBody(req models.Request) (map[string]any, error) {
