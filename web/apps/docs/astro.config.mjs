@@ -33,7 +33,6 @@ export default defineConfig({
           items: [
             { label: "Introduction", link: "/" },
             { label: "Quick Start", slug: "start-here/quickstart" },
-            { label: "What Wingman Is", slug: "start-here/what-is-wingman" },
           ],
         },
         {
@@ -47,13 +46,16 @@ export default defineConfig({
           label: "Build Clients",
           items: [
             { label: "HTTP API Basics", slug: "build-clients/http-api-basics" },
-            { label: "Streaming Events", slug: "build-clients/streaming-events" },
+            {
+              label: "Streaming Events",
+              slug: "build-clients/streaming-events",
+            },
           ],
         },
         {
           label: "Configure",
           items: [
-            { label: "Global Config", slug: "start-here/config" },
+            { label: "Global Config", slug: "configure/config" },
             { label: "Providers", slug: "configure/providers" },
             { label: "Models", slug: "configure/models" },
             { label: "MCP Servers", slug: "configure/mcp" },
@@ -63,9 +65,15 @@ export default defineConfig({
         {
           label: "Extend",
           items: [
-            { label: "Go Plugin Quickstart", slug: "reference/plugin-quickstart" },
-            { label: "RPC Plugin Protocol", slug: "reference/rpc-plugin-protocol" },
-            { label: "Plugin Capabilities", slug: "reference/plugin-capabilities" },
+            { label: "Go Plugin Quickstart", slug: "extend/plugin-quickstart" },
+            {
+              label: "RPC Plugin Protocol",
+              slug: "extend/rpc-plugin-protocol",
+            },
+            {
+              label: "Plugin Capabilities",
+              slug: "extend/plugin-capabilities",
+            },
           ],
         },
         {
