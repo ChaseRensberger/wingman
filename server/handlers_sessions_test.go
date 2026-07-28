@@ -12,7 +12,37 @@ import (
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
+	"github.com/chaserensberger/wingman/tool"
 )
+
+func TestResolveToolsExcludesQuestionWithoutSessionStore(t *testing.T) {
+	t.Parallel()
+	server := New(Config{Store: memory.NewStore()})
+	tools := server.resolveTools("ses_test", []string{"question", "read"}, false)
+	if len(tools) != 1 || tools[0].Name() != "read" {
+		t.Fatalf("tools = %#v, want only read", toolNames(tools))
+	}
+}
+
+func TestEphemeralSessionEndpointsReturnNotImplemented(t *testing.T) {
+	t.Parallel()
+	server := New(Config{})
+	for _, path := range []string{"/sessions/active", "/sessions/ses_test/questions"} {
+		response := httptest.NewRecorder()
+		server.router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotImplemented {
+			t.Errorf("GET %s status = %d, want %d", path, response.Code, http.StatusNotImplemented)
+		}
+	}
+}
+
+func toolNames(tools []tool.Tool) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name()
+	}
+	return names
+}
 
 func TestListSessionModelCalls(t *testing.T) {
 	t.Parallel()

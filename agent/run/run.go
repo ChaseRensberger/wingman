@@ -604,6 +604,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	}
 	start := time.Now()
 	inv := tool.Invocation{
+		CallID:  call.ID,
 		Input:   call.Args,
 		WorkDir: r.cfg.WorkDir,
 		Progress: tool.NewProgress(func(delta string, metadata map[string]any) {

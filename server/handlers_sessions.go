@@ -101,6 +101,31 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessions)
 }
 
+func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sessions, err := s.store.ListSessionsByClient(clientID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	active := s.runs.activeSessions()
+	result := map[string]string{}
+	for _, sess := range sessions {
+		if active[sess.ID] {
+			result[sess.ID] = store.SessionRunStatusRunning
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
@@ -581,7 +606,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 	if s.plugins != nil {
 		s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir)
 	}
-	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
+	if tools := s.resolveTools(sess.ID, stored.Tools, st != nil); len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
 	if len(stored.OutputSchema) > 0 {
@@ -711,8 +736,13 @@ func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, rou
 // resolveTools maps stored tool name strings to live tool.Tool
 // implementations. Unknown names are silently dropped; callers that
 // need strict validation should validate at agent-creation time.
-func (s *Server) resolveTools(toolNames []string) []tool.Tool {
+func (s *Server) resolveTools(sessionID string, toolNames []string, allowQuestion bool) []tool.Tool {
 	builtins := nativeTools()
+	if allowQuestion {
+		builtins["question"] = tool.NewQuestionTool(func(ctx context.Context, inv tool.Invocation, questions []tool.Question) ([][]string, error) {
+			return s.questions.ask(ctx, sessionID, inv.CallID, questions, func(typ string, data any) { s.persistRunEvent(context.Background(), sessionID, typ, data) })
+		})
+	}
 	if s.plugins != nil {
 		for _, t := range s.plugins.Tools() {
 			builtins[t.Name()] = t

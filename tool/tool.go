@@ -83,6 +83,7 @@ func cloneProgressMetadata(metadata map[string]any) map[string]any {
 
 // Invocation carries everything a tool needs to execute a single call.
 type Invocation struct {
+	CallID   string
 	Input    map[string]any
 	WorkDir  string
 	Progress *Progress

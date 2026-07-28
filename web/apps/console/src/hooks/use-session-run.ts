@@ -3,7 +3,8 @@ import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetSta
 import { wfetch } from "@/lib/client";
 import { formatSessionError, isRecord } from "@/lib/session-detail";
 import { readSSE, type SessionEvent } from "@/lib/session-stream";
-import type { Message, Session, ToolActivity, Usage } from "@/lib/types";
+import { showErrorToast } from "@/lib/toast";
+import type { Message, QuestionRequest, Session, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 export type SessionRunRequest = Omit<FailedRun, "error">;
@@ -39,6 +40,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
 	const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
 	const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
+	const [questions, setQuestions] = useState<QuestionRequest[]>([]);
 
 	function reset() {
 		eventControllerRef.current?.abort();
@@ -49,6 +51,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		setIsStreamPaused(false);
 		setStreamingReasoning("");
 		setStreamingText("");
+		setQuestions([]);
 	}
 
 	useEffect(() => {
@@ -153,6 +156,8 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			if (text) setStreamingReasoning(text);
 			return;
 		}
+		if (ev.type === "session.question.asked") { setQuestions((current) => [...current, data as unknown as QuestionRequest]); return; }
+		if (ev.type === "session.question.replied" || ev.type === "session.question.dismissed") { const id = typeof data.question_id === "string" ? data.question_id : ""; if (id) setQuestions((current) => current.filter((question) => question.id !== id)); return; }
 		if (ev.type === "session.message.created") {
 			const message = data.message as Message | undefined;
 			if (!message) return;
@@ -193,6 +198,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		} catch (err) {
 			if ((err as Error).name !== "AbortError") {
 				console.error("Event stream failed", err);
+				showErrorToast(new Error(formatSessionError(err)), "Session run failed");
 				const request = requestRef.current;
 				if (request) setFailedRun({ ...request, error: formatSessionError(err) });
 			}
@@ -228,6 +234,22 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		eventControllerRef.current = controller;
 		setIsStreamPaused(false);
 		void subscribeAndFinish(id, controller);
+	}
+
+	async function attach(id: string) {
+		if (activeRunRef.current?.sessionId === id) return;
+		activeRunRef.current = { sessionId: id, completed: false };
+		setIsStreaming(true);
+		await captureCursor(id);
+		const controller = new AbortController();
+		eventControllerRef.current?.abort();
+		eventControllerRef.current = controller;
+		void subscribeAndFinish(id, controller);
+	}
+
+	async function loadQuestions(id: string) {
+		const response = await wfetch(`/sessions/${id}/questions`);
+		setQuestions(Array.isArray(response) ? response as QuestionRequest[] : []);
 	}
 
 	async function fail(err: unknown, id: string) {
@@ -268,5 +290,5 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		submissionControllerRef.current = null;
 	}
 
-	return { isStreaming, isStreamPaused, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, begin, captureCursor, start, fail, pause, resume, abort, finishSubmission };
+	return { isStreaming, isStreamPaused, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, questions, attach, loadQuestions, begin, captureCursor, start, fail, pause, resume, abort, finishSubmission };
 }

@@ -12,6 +12,7 @@ import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
+import { SessionQuestionDock } from "@/components/session-question-dock";
 import { SessionTranscript } from "@/components/session-transcript";
 import { useSessionRun, type FailedRun } from "@/hooks/use-session-run";
 import { useStreamReveal } from "@/hooks/use-stream-reveal";
@@ -54,6 +55,7 @@ function SessionDetailPage() {
 	const [deletingSession, setDeletingSession] = useState(false);
 	const [copiedValue, setCopiedValue] = useState<"id" | "path" | "">("");
 	const [jsonMode, setJSONMode] = useState(false);
+	const [activeRun, setActiveRun] = useState(false);
 	const activeSessionIdRef = useRef(sessionId);
 	const skipNextSessionLoadRef = useRef(false);
 	const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -94,12 +96,14 @@ function SessionDetailPage() {
 		}
 
 		try {
-			const [data, calls] = await Promise.all([
+			const [data, calls, active] = await Promise.all([
 				wfetch(`/sessions/${id}`) as Promise<Session>,
 				wfetch(`/sessions/${id}/model-calls`) as Promise<ModelCall[]>,
+				wfetch("/sessions/active") as Promise<Record<string, string>>,
 			]);
 			setSession(data);
 			setModelCalls(calls);
+			setActiveRun(Boolean(active[id]));
 			if (data.workspace_id) {
 				setWorkspace((await wfetch(`/workspaces/${data.workspace_id}`)) as Workspace);
 			} else {
@@ -114,6 +118,11 @@ function SessionDetailPage() {
 	}, [draftWorkspaceId, sessionId]);
 
 	const run = useSessionRun({ sessionId, loadSession, setSession });
+	useEffect(() => {
+		if (isDraft) return;
+		void run.loadQuestions(sessionId).catch(() => undefined);
+		if (activeRun) void run.attach(sessionId);
+	}, [activeRun, isDraft, sessionId]);
 	const visibleStreamingText = useStreamReveal(run.streamingText, run.isStreaming);
 	const visibleStreamingTitle = useStreamReveal(streamingTitle, isTitleStreaming);
 	const transcriptScroll = useTranscriptScroll(`${session?.id}:${session?.history.length}:${visibleStreamingText.length}:${jsonMode}`, `${loading}:${session?.id}`);
@@ -131,11 +140,12 @@ function SessionDetailPage() {
 		let cancelled = false;
 		async function load() {
 			try {
-				const [sessData, agentsData, providerData, callsData] = await Promise.all([
+				const [sessData, agentsData, providerData, callsData, activeData] = await Promise.all([
 					isDraft ? Promise.resolve(null) : wfetch(`/sessions/${sessionId}`) as Promise<Session>,
 					wfetch("/agents") as Promise<Agent[]>,
 					wfetch("/provider") as Promise<Provider[]>,
 					isDraft ? Promise.resolve([] as ModelCall[]) : wfetch(`/sessions/${sessionId}/model-calls`) as Promise<ModelCall[]>,
+					isDraft ? Promise.resolve({} as Record<string, string>) : wfetch("/sessions/active") as Promise<Record<string, string>>,
 				]);
 				const selectableProviders = providerData.filter(isProviderSelectable);
 				const modelEntries = await Promise.all(
@@ -176,6 +186,7 @@ function SessionDetailPage() {
 					setProviders(providerData);
 					setModels(modelMap);
 					setModelCalls(callsData);
+					setActiveRun(Boolean(activeData[sessionId]));
 					if (agentsData.length > 0) {
 						const storedAgentId = localStorage.getItem(LAST_AGENT_ID_KEY) ?? "";
 						const initialAgent = agentExists(agentsData, storedAgentId)
@@ -436,7 +447,7 @@ function SessionDetailPage() {
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
 			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} modelCallsByMessageId={modelCallsByMessageId} agentNames={agentNames} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
-			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isStreamPaused={run.isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={run.pause} onResume={run.resume} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
+			{run.questions[0] ? <SessionQuestionDock key={run.questions[0].id} request={run.questions[0]} onReply={async (answers) => { await wfetch(`/sessions/${sessionId}/questions/${run.questions[0].id}/reply`, { method: "POST", body: JSON.stringify({ answers }) }); await run.loadQuestions(sessionId); }} onDismiss={async () => { await wfetch(`/sessions/${sessionId}/questions/${run.questions[0].id}/dismiss`, { method: "POST" }); await run.loadQuestions(sessionId); }} /> : <SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isStreamPaused={run.isStreamPaused} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onPause={run.pause} onResume={run.resume} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />}
 			<SessionDialogs session={session} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onSave={(title, workDir) => void handleSaveSession(title, workDir)} onDelete={() => void handleDeleteSession()} />
 		</div>
 	);
