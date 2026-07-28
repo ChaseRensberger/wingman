@@ -7,7 +7,7 @@ description: "Wingman command-line interface reference."
 
 # CLI
 
-The `wingman` binary runs the local Wingman HTTP server, manages the Linux systemd service, and prints build information.
+The `wingman` binary runs the local Wingman HTTP server, manages its background service, updates release installations, and prints build information.
 
 ```bash
 wingman <command> [flags]
@@ -20,10 +20,11 @@ When working from the repository, replace `wingman` with `go run ./cmd/wingman`.
 | Command | Description |
 |---|---|
 | `serve` | Start the HTTP server in the foreground. |
-| `up` | Install, enable, and start Wingman as a systemd service. |
-| `down` | Stop, disable, and remove the Wingman systemd service. |
-| `restart` | Restart the Wingman systemd service. |
-| `status` | Show the Wingman systemd service status. |
+| `up` | Install, enable, and start Wingman as a background service. |
+| `down` | Stop and remove the Wingman background service. |
+| `restart` | Restart the Wingman background service. |
+| `status` | Show the Wingman background service status. |
+| `update` | Check for or install a verified release update. |
 | `version` | Print version information. |
 
 ## Server Commands
@@ -34,15 +35,15 @@ When working from the repository, replace `wingman` with `go run ./cmd/wingman`.
 wingman serve
 ```
 
-`wingman up` installs `/etc/systemd/system/wingman.service`, enables it at boot, and starts it immediately:
+`wingman up` installs and starts a background service:
 
 ```bash
 wingman up
 ```
 
-`wingman up` re-executes itself through `sudo` when needed. The service runs `wingman serve` as the user that invoked it, so the default database stays under that user's home directory. Linux/systemd is the supported service manager.
+On Linux, `wingman up` re-executes itself through `sudo` when needed, installs `/etc/systemd/system/wingman.service`, and runs `wingman serve` as the invoking user. On macOS, it writes `~/Library/LaunchAgents/actor.wingman.plist` and bootstraps it in the logged-in user's launchd domain without `sudo`. Both service forms set `HOME` so default configuration and storage stay under the invoking user's home directory.
 
-`wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated systemd unit.
+`wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
 
 ## Runtime Flags
 
@@ -71,7 +72,7 @@ Bind to `0.0.0.0` only on trusted networks. Wingman does not provide inbound aut
 
 ## Service Commands
 
-Check the generated systemd service:
+Check the generated service:
 
 ```bash
 wingman status
@@ -113,4 +114,28 @@ Example output:
 
 ```text
 wingman dev (commit: none, built: unknown)
+```
+
+## Update
+
+`wingman update` downloads the latest stable GitHub release for the current Linux or macOS architecture, verifies the downloaded archive against the release's `checksums.txt`, and atomically replaces the resolved executable:
+
+```bash
+wingman update
+```
+
+The executable directory must be writable. This works with the default installer location (`~/.wingman/bin`) and other writable standalone installs. Installations owned by a package manager or another user should be updated through that original installation method.
+
+If Wingman is running through systemd or launchd, the command restarts that running managed service after replacement. It does not start an installed but stopped service.
+
+Check availability without writing files:
+
+```bash
+wingman update --check
+```
+
+Install a particular stable or prerelease version:
+
+```bash
+wingman update --version 0.2.0-beta.1
 ```

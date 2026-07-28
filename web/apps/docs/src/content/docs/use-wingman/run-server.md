@@ -27,15 +27,15 @@ Expected response:
 { "status": "ok" }
 ```
 
-## System Service
+## Background Service
 
-On Linux, install and start Wingman as a systemd service:
+Install and start Wingman in the background:
 
 ```bash
 wingman up
 ```
 
-`wingman up` prompts for `sudo` when it needs to write the systemd unit.
+On Linux, `wingman up` prompts for `sudo` when it needs to write `/etc/systemd/system/wingman.service`. On macOS, it writes the per-user LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist` and does not need `sudo`.
 
 Inspect the service:
 
@@ -47,6 +47,28 @@ Stop and remove it:
 
 ```bash
 wingman down
+```
+
+## Updates
+
+Update a release installation to the latest stable release:
+
+```bash
+wingman update
+```
+
+Wingman downloads the archive for the current Linux or macOS architecture, verifies it against the release's `checksums.txt`, and atomically replaces the resolved executable. A running systemd service or LaunchAgent is restarted after the replacement. The executable's directory must be writable; package-manager-managed or system-wide installations may need to be updated through their original installer instead.
+
+Check for an update without changing anything:
+
+```bash
+wingman update --check
+```
+
+Install a specific release, including a prerelease:
+
+```bash
+wingman update --version 0.2.0-beta.1
 ```
 
 ## Address and Port

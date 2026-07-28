@@ -46,13 +46,13 @@ Expected response:
 { "status": "ok" }
 ```
 
-On Linux, install and start Wingman as a systemd service when you want it running in the background:
+Install and start Wingman in the background when you want it running continuously:
 
 ```bash
 wingman up
 ```
 
-`wingman up` prompts for `sudo` if needed, installs `wingman.service`, and enables it to start when your machine boots.
+On Linux, `wingman up` prompts for `sudo` if needed, installs `wingman.service`, and enables it to start when your machine boots. On macOS, it installs a per-user LaunchAgent without `sudo`.
 
 ## Configure provider auth
 
@@ -128,7 +128,7 @@ Each event is sent as server-sent events with an `event:` type and a JSON `data:
 
 ## Next steps
 
-- Read [Global Config](/start-here/config) for server flags, storage, logs, and plugins.
+- Read [Global Config](/configure/config) for server flags, storage, logs, and plugins.
 - Read [Providers](/configure/providers) for provider auth and gateway routing.
 - Read [Sessions](/concepts/sessions) for the session lifecycle and ephemeral runs.
 - Read [API](/reference/referenceapi) if you are building your own client.

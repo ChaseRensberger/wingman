@@ -51,13 +51,21 @@ Open the bundled web UI:
 http://127.0.0.1:2323/console
 ```
 
-On Linux, install and start Wingman as a systemd service when you want it running in the background:
+Install and start Wingman in the background:
 
 ```bash
 wingman up
 ```
 
-`wingman up` prompts for `sudo` if needed, installs `wingman.service`, and starts it.
+On Linux, `wingman up` prompts for `sudo` if needed, installs a systemd service, and starts it. On macOS, it installs and starts a per-user LaunchAgent without `sudo`.
+
+Update a release installation:
+
+```bash
+wingman update
+```
+
+The command downloads the matching release for your platform, verifies it against the published SHA-256 checksum, replaces a writable installed binary, and restarts a running managed service.
 
 ## Features
 

@@ -6,12 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"os/user"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -40,8 +37,6 @@ var (
 	commit  = "none"
 	date    = "unknown"
 )
-
-const systemdServicePath = "/etc/systemd/system/wingman.service"
 
 type fileConfig struct {
 	Server struct {
@@ -183,23 +178,23 @@ func main() {
 			},
 			{
 				Name:   "up",
-				Usage:  "Install and start Wingman as a systemd service",
+				Usage:  "Install and start Wingman as a background service",
 				Flags:  serveFlags(cfg),
 				Action: runUp,
 			},
 			{
 				Name:   "down",
-				Usage:  "Stop and remove the Wingman systemd service",
+				Usage:  "Stop and remove the Wingman background service",
 				Action: runDown,
 			},
 			{
 				Name:   "restart",
-				Usage:  "Restart the Wingman systemd service",
+				Usage:  "Restart the Wingman background service",
 				Action: runRestart,
 			},
 			{
 				Name:   "status",
-				Usage:  "Show Wingman's systemd service status",
+				Usage:  "Show Wingman's background service status",
 				Action: runStatus,
 			},
 			{
@@ -209,6 +204,12 @@ func main() {
 					fmt.Printf("wingman %s (commit: %s, built: %s)\n", version, commit, date)
 					return nil
 				},
+			},
+			{
+				Name:   "update",
+				Usage:  "Install a verified Wingman release",
+				Flags:  updateFlags(),
+				Action: runUpdate,
 			},
 		},
 	}
@@ -359,122 +360,6 @@ func runServe(cfg fileConfig) cli.ActionFunc {
 	}
 }
 
-func runUp(ctx context.Context, cmd *cli.Command) error {
-	ok, err := ensureSystemdRoot(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve wingman binary: %w", err)
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-
-	serviceUser, homeDir, err := serviceAccount()
-	if err != nil {
-		return err
-	}
-
-	unit := systemdUnit(exe, serviceUser, homeDir, cmd)
-	if err := os.WriteFile(systemdServicePath, []byte(unit), 0644); err != nil {
-		return fmt.Errorf("write %s: %w", systemdServicePath, err)
-	}
-
-	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
-		return err
-	}
-	if err := runSystemctl(ctx, "enable", "--now", "wingman.service"); err != nil {
-		return err
-	}
-
-	fmt.Println("Wingman service installed and started")
-	fmt.Println("Run 'wingman status' to inspect it")
-	return nil
-}
-
-func runDown(ctx context.Context, cmd *cli.Command) error {
-	ok, err := ensureSystemdRoot(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-
-	if err := runSystemctl(ctx, "disable", "--now", "wingman.service"); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-	}
-	if err := os.Remove(systemdServicePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove %s: %w", systemdServicePath, err)
-	}
-	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
-		return err
-	}
-
-	fmt.Println("Wingman service stopped and removed")
-	return nil
-}
-
-func runRestart(ctx context.Context, cmd *cli.Command) error {
-	ok, err := ensureSystemdRoot(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-
-	if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
-		return err
-	}
-
-	fmt.Println("Wingman service restarted")
-	return nil
-}
-
-func runStatus(ctx context.Context, cmd *cli.Command) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("wingman status currently supports Linux/systemd only")
-	}
-	return runSystemctlAttached(ctx, "status", "wingman.service")
-}
-
-func ensureSystemdRoot(ctx context.Context) (bool, error) {
-	if runtime.GOOS != "linux" {
-		return false, fmt.Errorf("systemd service management currently supports Linux only")
-	}
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return false, fmt.Errorf("systemctl not found: %w", err)
-	}
-	if os.Geteuid() == 0 {
-		return true, nil
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return false, fmt.Errorf("resolve wingman binary: %w", err)
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-
-	args := append([]string{exe}, os.Args[1:]...)
-	sudo := exec.CommandContext(ctx, "sudo", args...)
-	sudo.Stdin = os.Stdin
-	sudo.Stdout = os.Stdout
-	sudo.Stderr = os.Stderr
-	if err := sudo.Run(); err != nil {
-		return false, fmt.Errorf("sudo %s: %w", strings.Join(args, " "), err)
-	}
-	return false, nil
-}
-
 func serviceAccount() (string, string, error) {
 	name := os.Getenv("SUDO_USER")
 	if name == "" {
@@ -490,68 +375,4 @@ func serviceAccount() (string, string, error) {
 		return "", "", fmt.Errorf("resolve sudo user %q: %w", name, err)
 	}
 	return u.Username, u.HomeDir, nil
-}
-
-func systemdUnit(exe, serviceUser, homeDir string, cmd *cli.Command) string {
-	args := []string{exe, "serve", "--host", cmd.String("host"), "--port", fmt.Sprint(cmd.Int("port")), "--log-format", cmd.String("log-format"), "--log-level", cmd.String("log-level")}
-	if db := cmd.String("db"); db != "" {
-		args = append(args, "--db", db)
-	}
-	if uiDev := cmd.String("ui-dev"); uiDev != "" {
-		args = append(args, "--ui-dev", uiDev)
-	}
-	if cmd.Bool("ephemeral") {
-		args = append(args, "--ephemeral")
-	}
-	for _, dir := range cmd.StringSlice("plugin-dir") {
-		args = append(args, "--plugin-dir", dir)
-	}
-	if cmd.Bool("no-plugins") {
-		args = append(args, "--no-plugins")
-	}
-
-	return fmt.Sprintf(`[Unit]
-Description=Wingman agent harness
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=%s
-Environment=%s
-ExecStart=%s
-Restart=on-failure
-RestartSec=2s
-
-[Install]
-WantedBy=multi-user.target
-`, serviceUser, strconv.Quote("HOME="+homeDir), systemdCommand(args))
-}
-
-func systemdCommand(args []string) string {
-	quoted := make([]string, len(args))
-	for i, arg := range args {
-		quoted[i] = strconv.Quote(arg)
-	}
-	return strings.Join(quoted, " ")
-}
-
-func runSystemctl(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "systemctl", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("systemctl %s: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
-	}
-	return nil
-}
-
-func runSystemctlAttached(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "systemctl", args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
-	}
-	return nil
 }

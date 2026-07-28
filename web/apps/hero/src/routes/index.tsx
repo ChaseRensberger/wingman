@@ -105,11 +105,17 @@ function InstallSection() {
 			<CopyCommand command={SERVER_COMMAND}>
 				{SERVER_COMMAND}
 			</CopyCommand>
+			<p className="text-xs text-muted-foreground font-mono">
+				SUPPORTED: macOS (Apple Silicon, Intel) · Linux (x86_64, ARM64)
+			</p>
 
 			<p className="text-xs text-muted-foreground uppercase tracking-wider">ENABLE</p>
 			<CopyCommand command={ENABLE_COMMAND}>
 				{ENABLE_COMMAND}
 			</CopyCommand>
+			<p className="text-xs text-muted-foreground">
+				<code>wingman up</code> runs as a LaunchAgent on macOS and systemd service on Linux.
+			</p>
 		</div >
 	);
 }
