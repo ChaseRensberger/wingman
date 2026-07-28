@@ -25,6 +25,9 @@ jobs:
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up deno
+        uses: denoland/setup-deno@v2
+
       - name: Install JavaScript dependencies
         working-directory: web
         run: bun install --frozen-lockfile
