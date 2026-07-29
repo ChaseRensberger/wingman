@@ -83,6 +83,17 @@ func TestOpenAIResponsesBodyRequestsReasoningSummary(t *testing.T) {
 	}
 }
 
+func TestAnthropicBodyUsesAdaptiveThinking(t *testing.T) {
+	model := &Model{Protocol: AnthropicMessages, Info_: models.ModelInfo{ID: "test"}}
+	body, err := model.body(models.Request{Capabilities: models.Capabilities{Thinking: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thinking, ok := body["thinking"].(map[string]any); !ok || thinking["type"] != "adaptive" {
+		t.Fatalf("thinking = %#v, want adaptive thinking", body["thinking"])
+	}
+}
+
 func TestParseOpenAIResponsesKeepsReasoningSummary(t *testing.T) {
 	state := parseState{}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](2)

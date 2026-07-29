@@ -322,11 +322,7 @@ func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
 		addAnthropicToolChoice(body, req.ToolChoice)
 	}
 	if req.Capabilities.Thinking {
-		budget := maxOutput(req, m.Info_.MaxOutput) / 2
-		if budget < 1024 {
-			budget = 1024
-		}
-		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+		body["thinking"] = map[string]any{"type": "adaptive"}
 	}
 	addCommonOptions(body, req)
 	return overlay(body, req.HTTP.Body), nil
