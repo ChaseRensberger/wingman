@@ -16,7 +16,7 @@ This will walk you through basic Wingman usage from a CLI perspective. If you li
 
 ## Install & Enable
 
-For now Wingman is not avaliable on any package managers so the best way to install it is to install it to
+For now Wingman is not available on any package managers so the best way to install it is to install it to
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
