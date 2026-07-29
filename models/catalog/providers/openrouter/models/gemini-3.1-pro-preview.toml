@@ -1,6 +1,7 @@
-id = "gemini-3-pro-preview"
-provider = "google"
-api = "gemini_generate"
+id = "google/gemini-3.1-pro-preview"
+base_model = "google/gemini-3.1-pro-preview"
+provider = "openrouter"
+api = "openai_compatible_chat"
 context_window = 1048576
 max_output = 65536
 input_cost_per_mtok = 2

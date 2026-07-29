@@ -1,0 +1,14 @@
+id = "gemini-3.1-pro-preview"
+base_model = "google/gemini-3.1-pro-preview"
+provider = "google"
+api = "gemini_generate"
+context_window = 1048576
+max_output = 65536
+input_cost_per_mtok = 2
+output_cost_per_mtok = 12
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true
