@@ -38,14 +38,3 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 Wingman records `workspace_id` on the session and copies the Workspace path into the session's `work_dir` when the Workspace has one. Dirless Workspaces create sessions without a working directory. Later Workspace path edits do not rewrite existing sessions.
 
 Do not send both `working_directory` and `workspace_id` when creating or updating a session. Use `workspace_id` when the session belongs to a saved context; use `working_directory` for an ad hoc directory.
-
-## Web UI
-
-The Sessions page treats Workspaces as optional filters, not as required session parents:
-
-- `/console/sessions` shows all sessions.
-- `/console/sessions?workspace=wsp_...` filters sessions to one Workspace.
-- `/console/sessions?workspace=none` filters sessions without a Workspace.
-- `/console/sessions/{session-id}` opens a session, whether or not it belongs to a Workspace.
-
-Workspace create/edit/delete controls stay on the Sessions page instead of a separate top-level Workspace page.
