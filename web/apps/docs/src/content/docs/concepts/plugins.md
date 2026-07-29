@@ -147,4 +147,4 @@ Reload global plugins:
 curl -X POST http://127.0.0.1:2323/plugins/reload
 ```
 
-External plugins run with the same operating-system permissions as the Wingman process that starts them. Install plugins only from sources you trust.
+External plugins run with the same permissions as the Wingman process that starts them. Install plugins only from sources you trust.
