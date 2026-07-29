@@ -31,7 +31,7 @@ import (
 )
 
 msg, err := provider.NewClient(nil).Generate(ctx, models.Request{
-  Model: gemini.Model("gemini-3.5-flash"),
+  Model: gemini.Model("gemini-3.6-flash"),
   Messages: []models.Message{
     models.NewUserText("Explain Wingman in one sentence."),
   },
@@ -106,7 +106,7 @@ function InstallSection() {
 				{SERVER_COMMAND}
 			</CopyCommand>
 			<p className="text-xs text-muted-foreground font-mono">
-				SUPPORTED: macOS (Apple Silicon, Intel) · Linux (x86_64, ARM64)
+				Linux (x86_64, ARM64) · SUPPORTED: macOS (Apple Silicon, Intel)
 			</p>
 
 			<p className="text-xs text-muted-foreground uppercase tracking-wider">ENABLE</p>
@@ -251,7 +251,7 @@ function ProvidersSection() {
 				<ul className="space-y-3">
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
-						<span>OpenAI</span>
+						<span>OpenAI (Can use Codex/GPT Pro subscription)</span>
 					</li>
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
@@ -259,7 +259,7 @@ function ProvidersSection() {
 					</li>
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
-						<span>OpenCode Zen</span>
+						<span>OpenCode Zen/Go</span>
 					</li>
 					<li className="flex items-start gap-2 text-sm text-muted-foreground">
 						<span className="text-primary">[*]</span>
@@ -274,6 +274,10 @@ function ProvidersSection() {
 						<span>DeepSeek</span>
 					</li>
 				</ul>
+
+				<p className='text-sm text-muted-foreground'>
+					I tend to only support the most recent models. This will probably change in the future. If you want a new provider/model not avaliable, create an issue on GitHub.
+				</p>
 			</div>
 		</section>
 	);
@@ -321,12 +325,7 @@ function ComingSoonSection() {
 				</div>
 
 				<div className="h-full rounded-sm border bg-card p-4">
-					<h3 className="font-semibold">Provider Debug Tools</h3>
-					<p className="mt-1 text-sm text-muted-foreground">Inspect model resolution, prepared provider requests, and normalized streams without writing a client.</p>
-				</div>
-
-				<div className="h-full rounded-sm border bg-card p-4">
-					<h3 className="font-semibold">TypeScript SDK</h3>
+					<h3 className="font-semibold">TypeScript SDK/OpenAPI Spec</h3>
 					<p className="mt-1 text-sm text-muted-foreground">I want to make sure you can use Wingman in any language you would like.</p>
 				</div>
 
@@ -393,12 +392,14 @@ function Hero() {
 			<ClientsSection />
 			<ComingSoonSection />
 			<footer className="px-6 py-4 flex justify-between items-center">
-				<p className="text-sm text-muted-foreground font-mono">
+				<p className="text-sm text-muted-foreground font-mono mx-auto">
 					Wingman
 				</p>
+				{/*
 				<p className='text-sm text-muted-foreground font-mono'>
 					Also I made<a href='https://news.wingman.actor'><Button variant="link">a hackernews client</Button></a>
 				</p>
+				*/}
 			</footer>
 		</main >
 	);
