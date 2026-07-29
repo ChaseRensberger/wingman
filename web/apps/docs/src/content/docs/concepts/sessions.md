@@ -138,7 +138,3 @@ Tool result parts contain model-facing text and may also contain metadata for cl
 Persisted sessions also store normalized model-call records for assistant turns. A model call captures the provider/model route, finish state, token usage, context token count, context window, and computed context percentage reported by the provider path.
 
 Clients should use the latest model call, not transcript text estimation, when showing session usage or context-window fullness after reload.
-
-## Creating Related Sessions
-
-If a client wants one session to inform another, it creates a new session through the same HTTP API and passes the relevant context in the first message. Wingman does not implicitly copy parent context into new sessions.
