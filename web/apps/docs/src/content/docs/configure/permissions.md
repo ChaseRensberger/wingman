@@ -39,7 +39,7 @@ Rules match an action and a resource.
 | `bash` | Shell command string. |
 | `webfetch` | URL. |
 | `websearch` | Search query. |
-| plugin tool name | `*` unless the tool has a first-class permission mapping in a later release. |
+| MCP or plugin tool name | `*` unless the tool has a first-class permission mapping in a later release. |
 
 `edit`, `write`, and `apply_patch` all use the `edit` action because they mutate files.
 
@@ -224,6 +224,6 @@ Current v1 limits:
 
 - `ask` does not yet pause and wait for a client reply.
 - `allow always` saved approvals are not implemented yet.
-- External directory approvals are not separate because directory-scoped tools are contained to the session working directory.
+- MCP and external plugin tools run according to their own implementations and are not constrained by Wingman's session working directory.
 
 For remote or multi-user deployments, Wingman still needs the deferred inbound-auth and sandbox story.

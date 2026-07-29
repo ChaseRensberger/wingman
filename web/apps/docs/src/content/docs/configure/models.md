@@ -16,7 +16,7 @@ Examples:
 ```text
 anthropic/claude-sonnet-5
 openai/gpt-5.6-terra
-google/gemini-3.5-flash
+google/gemini-3.6-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
 opencode/claude-sonnet-5
@@ -169,6 +169,7 @@ Custom routes must use one of Wingman's supported protocols:
 ```text
 openai_responses
 openai_completions
+openai_compatible_chat
 anthropic_messages
 gemini_generate
 ```

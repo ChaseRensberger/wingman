@@ -35,6 +35,7 @@ The file is parsed as strict JSON:
 
 - Comments are not allowed.
 - Trailing commas are not allowed.
+- Unknown keys are ignored.
 
 ## Example
 
@@ -231,6 +232,9 @@ Supported `options` fields:
 |---|---:|---|---|
 | `baseURL` | string | catalog default | Base URL used for model requests for this provider. |
 | `auth` | boolean | `true` | When `false`, Wingman sends no stored or environment credential for this provider route. |
+| `authHeader` | string | protocol default | Header name used to send an API key. Defaults to `x-api-key` for `anthropic_messages`, `x-goog-api-key` for `gemini_generate`, and `Authorization` otherwise. |
+| `authScheme` | string | none | Prefix added before an API key when `authHeader` is set, such as `Bearer`. |
+| `query` | object | none | Static query parameters added to model requests. |
 
 Example:
 
@@ -255,7 +259,7 @@ Supported model fields under `provider.<id>.models.<model-id>`:
 |---|---:|---:|---|
 | `provider` | string | no | Provider ID. Defaults to the enclosing provider key. |
 | `id` | string | no | Model ID. Defaults to the enclosing model key. |
-| `api` | string | yes | Wire protocol. One of `openai_responses`, `openai_completions`, or `anthropic_messages`. |
+| `api` | string | yes | Wire protocol. One of `openai_responses`, `openai_completions`, `openai_compatible_chat`, `anthropic_messages`, or `gemini_generate`. |
 | `base_url` | string | no | Model-specific base URL. Defaults to `provider.<id>.options.baseURL` when present. |
 | `env` | string array | no | Environment variables checked for credentials when auth is enabled. |
 | `context_window` | number | no | Context window used for UI/API metadata and context usage percentage. |

@@ -14,7 +14,7 @@ Wingman ships these built-ins:
 
 | Name | Purpose | Requires `work_dir` |
 |---|---|---|
-| `bash` | Execute a shell command with an optional timeout. | Yes |
+| `bash` | Execute a `bash -c` command with an optional timeout. | Yes |
 | `read` | Read a file or directory with `filePath`, optional `offset`, and optional `limit`. | Yes |
 | `write` | Write or overwrite `filePath`, creating parent directories as needed. | Yes |
 | `edit` | Replace `oldString` with `newString` in `filePath`; optionally use `replaceAll`. | Yes |
@@ -33,6 +33,12 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 ```
 
 For repeated work in the same directory, prefer a [Workspace](/concepts/workspaces) and create sessions with `workspace_id`.
+
+`DirectoryScopedTool` is a session-start requirement, not a security sandbox. It ensures a non-empty working directory is present; it does not confine a tool's process, network access, or every filesystem operation to that directory. In particular, `bash` runs with that directory as its starting directory and can run arbitrary shell commands. Treat enabled tools and the Wingman process's OS permissions as the security boundary.
+
+`bash` defaults to a two-minute timeout. Its optional `timeout` is parsed as a Go duration (for example, `30s` or `5m`); invalid values fall back to the default, and Wingman does not impose a separate maximum. It streams combined standard output and standard error while the command runs.
+
+`webfetch` performs an HTTP(S) `GET` only. It defaults to a 30-second timeout, clamps a supplied timeout to 120 seconds, accepts only `200 OK`, and rejects responses larger than 5 MiB. Markdown is the default output format; HTML conversion is intentionally basic.
 
 ## Allow Tools On An Agent
 
@@ -53,21 +59,23 @@ The model only sees tools that survive resolution. Unknown names are dropped whe
 
 ## Web Search Configuration
 
-`websearch` uses Exa by default. Configure provider credentials with environment variables before starting `wingman serve`:
+`websearch` uses Exa by default. The provider is read from the environment of the Wingman server process when the tool runs, not from the browser or the model environment. Set `WINGMAN_WEBSEARCH_PROVIDER` to `exa` or `parallel`; any other value fails the tool call.
+
+For Exa, Wingman includes `EXA_API_KEY` when it is set:
 
 ```bash
 export WINGMAN_WEBSEARCH_PROVIDER=exa
 export EXA_API_KEY=your_exa_key
 ```
 
-Or use Parallel:
+For Parallel, Wingman sends `PARALLEL_API_KEY` as a bearer token when it is set:
 
 ```bash
 export WINGMAN_WEBSEARCH_PROVIDER=parallel
 export PARALLEL_API_KEY=your_parallel_key
 ```
 
-The tool accepts a required `query` plus optional `numResults`, `livecrawl`, `type`, and `contextMaxCharacters` fields. Use `websearch` when the model needs current or discoverable information; use `webfetch` when you already have a specific URL.
+The tool accepts a required `query` plus optional `numResults`, `livecrawl`, `type`, and `contextMaxCharacters` fields. Exa receives those optional search controls. Parallel currently receives the query only, so its service may ignore those controls and return results with different behavior. Both providers are external services: availability, authentication requirements, result quality, and live-crawl support are determined by the selected service. Use `websearch` when the model needs current or discoverable information; use `webfetch` when you already have a specific URL.
 
 ## Runtime Contract
 
@@ -102,7 +110,7 @@ producing output, Wingman retains that partial output separately from the error.
 
 File-oriented tools use OpenCode-style model-facing argument names: `filePath`, `oldString`, `newString`, `replaceAll`, `content`, and `patchText`. Search-scoped tools use `path` where it means the base path for a search (`glob`, `grep`).
 
-Tools that touch the working directory implement `DirectoryScopedTool`:
+Tools that need a working directory implement `DirectoryScopedTool`:
 
 ```go
 type DirectoryScopedTool interface {
@@ -110,6 +118,8 @@ type DirectoryScopedTool interface {
     DirectoryScoped()
 }
 ```
+
+This marker causes Wingman to reject a session without a working directory before it starts; it does not provide sandboxing or path-based access control.
 
 Tools that should not run in parallel with other tool calls implement `SequentialTool`:
 

@@ -27,6 +27,14 @@ through Codex OAuth. In the console, open **Providers > OpenAI** and choose
 daemon, choose **Connect headless**, open the displayed URL in any browser, and
 enter its code.
 
+Browser OAuth requires Wingman to bind `localhost:1455`; complete that flow in
+a browser on the daemon host because the callback targets that localhost
+address. Headless OAuth uses the device flow instead, so it is appropriate for
+remote daemons. Only one OpenAI OAuth attempt can be pending at a time, and an
+attempt expires after five minutes. Authorization attempts are held in memory,
+so a Wingman restart cancels an in-progress attempt; start a new one after the
+server returns.
+
 Codex OAuth routes supported `openai/*` model refs through the Codex backend;
 for example, use `openai/gpt-5.6-terra`. It is separate from `OPENAI_API_KEY`:
 an API key uses standard OpenAI Platform billing, while OAuth uses the limits of
@@ -54,7 +62,8 @@ Check auth status:
 curl -sS http://localhost:2323/provider/auth | jq
 ```
 
-The response reports whether each provider is configured. It does not return secrets.
+The response reports stored SQLite credentials only. It does not return secrets
+or report credentials that Wingman can resolve from environment variables.
 
 Remove a provider credential:
 
@@ -74,6 +83,11 @@ When using WingModels directly as a Go SDK, provider clients can read environmen
 - `DEEPSEEK_API_KEY`
 
 When using the Wingman server, prefer `/provider/auth`. It makes credentials daemon-owned instead of client-owned.
+
+`/provider/auth` is not a complete view of effective authentication: when no
+stored credential is available, a route with auth enabled can still use the
+environment variables declared by its model metadata. Use `GET /provider/{id}`
+to inspect the provider's effective auth source.
 
 ## Route A Provider Through A Gateway
 
@@ -156,6 +170,11 @@ exe-openai/gpt-5.6-terra
 | `false` | Send no stored or environment credential for this provider route. |
 
 Set `auth: false` only for unauthenticated gateways or local endpoints where Wingman should not send a provider credential.
+
+Routes can also override the credential transport: `authHeader` sets the
+header name, `authScheme` prefixes the credential value (for example,
+`Bearer`), and `query` adds static query parameters. These options apply to the
+provider route; they do not store credentials.
 
 ## exe.dev Gateway Example
 
@@ -262,7 +281,7 @@ If a provider call fails, check these in order:
 
 1. Is the server using the config file you edited?
 2. Does `curl -sS http://localhost:2323/provider/auth | jq` show the provider as configured, unless you intentionally set `auth: false`?
-3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.6-terra`, `anthropic/claude-sonnet-5`, `google/gemini-3.5-flash`, or `deepseek/deepseek-v4-pro`?
+3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.6-terra`, `anthropic/claude-sonnet-5`, `google/gemini-3.6-flash`, or `deepseek/deepseek-v4-pro`?
 4. If you set `baseURL`, does it include the provider's expected API prefix, such as `/v1`?
 5. If you set `auth: false`, does the gateway actually accept unauthenticated requests?
 6. If you use `model_route`, does the endpoint speak the selected protocol?

@@ -60,7 +60,10 @@ The stock `wingman serve` binary does not discover Go plugins from disk. See [Go
 
 ## External Plugins
 
-External plugins are discovered from global plugin directories, started as subprocesses, and called over newline-delimited JSON-RPC on stdio.
+External plugins are discovered from global plugin directories and, when a
+session has a working directory, from `.wingman/plugins/` under that directory.
+They are started as subprocesses and called over newline-delimited JSON-RPC on
+stdio.
 
 The default plugin directory is:
 
@@ -79,6 +82,12 @@ Disable external plugin loading with:
 ```bash
 wingman serve --no-plugins
 ```
+
+Wingman discovers project-local plugins when it first builds a session with that
+project as its working directory. The external-plugin manager is shared by the
+daemon, so a discovered project-local plugin remains available to later
+sessions, including sessions without a working directory, until a plugin reload
+or daemon restart. Avoid tool-name collisions between projects.
 
 An external plugin is declared by a `wingman-plugin.json` file. Files ending in `.plugin.json` are also loaded.
 

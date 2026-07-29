@@ -10,11 +10,13 @@ Workspace URL: `http://localhost:2323` (configurable via `--host` and `--port`).
 
 All endpoints accept and return JSON unless noted. Error responses use the shape `{"error": "..."}`.
 
+> **Trusted-local control surface:** Wingman has no inbound authentication or tenant isolation. A caller that can reach the server can use its configured providers, inspect local directories, manage extensions, and start agents that may invoke enabled local tools. Keep it bound to trusted local access; `X-Wingman-Client` is attribution, not an access boundary. See [Global Config](/configure/config) and [Run the Server](/use-wingman/run-server).
+
 ## Conventions
 
 - Request bodies are JSON.
 - Standard request timeout is 60 seconds.
-- `GET /sessions/{id}/events` bypasses the standard timeout and returns `text/event-stream`.
+- Session event endpoints and `POST /run` bypass the standard timeout; `/sessions/{id}/events` and `/run` return `text/event-stream`.
 - ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Health
@@ -110,6 +112,26 @@ returned by these endpoints.
 }
 ```
 
+## Operational endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/tools` | List native, plugin, and MCP tools with their advertised input schemas and availability. |
+| `GET` | `/plugins` | List loaded external plugins and non-fatal load errors. |
+| `POST` | `/plugins/reload` | Reload configured external plugins, then return plugin status. |
+| `GET` | `/mcp` | List configured MCP servers and their status. |
+| `POST` | `/mcp/{name}/connect` | Connect a configured MCP server. |
+| `POST` | `/mcp/{name}/disconnect` | Disconnect a configured MCP server. |
+| `GET` | `/clients` | List registered clients. |
+| `POST` | `/clients` | Register a client by name. |
+| `GET` | `/clients/{id}` | Get a registered client. |
+| `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
+| `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |
+
+Plugin directories and MCP server definitions are configured server-wide; see [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins), and [MCP Servers](/configure/mcp). Client records and the client header organize persisted resources only; they do not authorize requests.
+
+`/logs` is an operational diagnostic endpoint, not durable logging or a stream. Request log entries can include paths, raw query strings, remote addresses, user agents, and client headers. Do not put secrets in API URLs, and keep the endpoint on trusted local access.
+
 ## Session endpoints
 
 | Method | Path | Description |
@@ -117,17 +139,18 @@ returned by these endpoints.
 | `POST` | `/sessions` | Create session |
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
+| `GET` | `/sessions/{id}/model-calls` | List recorded upstream model calls for the session |
 | `PUT` | `/sessions/{id}` | Update session metadata (title, work_dir) |
 | `DELETE` | `/sessions/{id}` | Delete session |
 | `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
-| `GET` | `/sessions/{id}/events` | Replay session events after `after`, then stream new events |
-| `GET` | `/sessions/{id}/events/history` | Read a finite page of session events |
+| `GET` | `/sessions/{id}/events` | Replay one bounded page of durable events after `after`, then stream new events |
+| `GET` | `/sessions/{id}/events/history` | Read one finite page of durable session events |
 | `POST` | `/sessions/{id}/abort` | Cancel the active run; queued messages remain scheduled |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
 `PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
 
-`POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly.
+`POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
 
 The response is `{ "run_id": "run_...", "status": "queued" }`. Read `/sessions/{id}/events` for execution progress and the terminal result.
 
@@ -171,7 +194,9 @@ Or create the session from a Workspace:
 
 ### Streaming
 
-`GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. Each event is:
+`GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. Its initial durable replay is bounded by `limit` (default `100`, maximum `500`), then the connection remains open for events created after subscription. To reconstruct a backlog larger than one page, first page through `/events/history`, advancing `after` to the last durable cursor; do not rely on the open stream to fill an older backlog beyond its initial page.
+
+Each event is:
 
 ```text
 event: <type>
@@ -193,7 +218,7 @@ See [Streaming Events](/build-clients/streaming-events) for event shapes and rec
 { "session_id": "ses_...", "aborted": 2 }
 ```
 
-`aborted` is the number of in-flight runs cancelled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
+`aborted` is the number of in-flight runs cancelled. Queued runs are not removed and remain scheduled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
 
 ## Workspace endpoints
 
@@ -221,7 +246,7 @@ Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-
 
 ## Ephemeral run endpoint
 
-`POST /run` creates an in-memory session, streams the run, and does not persist the session or its messages.
+`POST /run` creates an in-memory session, streams the run, and does not persist the session or its messages. Unlike persistent session SSE, it forwards the raw run stream (including `stream_part`) and ends with `done` on success or `error` on a terminal failure; it cannot be replayed.
 
 In normal persistent mode, pass either `agent_id` or an inline `agent`:
 

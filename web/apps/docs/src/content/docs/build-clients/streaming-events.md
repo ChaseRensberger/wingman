@@ -5,7 +5,7 @@ description: "Consume Wingman's server-sent event stream."
 
 # Streaming Events
 
-Wingman uses server-sent events for session updates. Clients start work with the message endpoint and watch session state through the event stream.
+Wingman has two SSE contracts: persistent session events and the one-shot `POST /run` stream. Clients start persistent work with the message endpoint and watch session state through the session event stream.
 
 ## Start Work
 
@@ -46,13 +46,15 @@ data: <json>
 GET /sessions/{id}/events?after=42
 ```
 
-The server sends stored durable events after `42`, keeps the stream open, and then sends new events as they happen.
+The server first sends at most one bounded page of stored durable events after `42` (default `100`, maximum `500`), keeps the stream open, and then sends events created after subscription. It does not backfill an older backlog beyond that initial page over the live connection.
 
 Use the history endpoint when a client needs a finite page instead of an open stream:
 
 ```text
 GET /sessions/{id}/events/history?after=<seq>&limit=<n>
 ```
+
+The history response is `{ "data": [...], "has_more": <boolean> }`. `limit` has the same default and maximum. Advance `after` to the last returned durable cursor and request another page while `has_more` is true; `has_more` means the returned page reached the limit, so a final follow-up may be empty.
 
 ## Event Envelope
 
@@ -95,6 +97,7 @@ Durable events are stored and replayed. They reconstruct the transcript and fina
 
 | Event | Meaning |
 |---|---|
+| `session.run.queued` | A message run was durably queued. |
 | `session.run.started` | A session run started. |
 | `session.step.started` | A model/tool loop step started. |
 | `session.step.completed` | A model/tool loop step completed. |
@@ -143,10 +146,16 @@ both with the values from the later durable `session.tool.updated` event.
 
 ## Recovery
 
-A client only needs a session ID and last durable sequence:
+A client only needs a session ID and last durable sequence. If it may have missed more than one page, page through history before opening the live stream:
 
 ```text
 last_seq = load_checkpoint(session_id)
+
+while true:
+  page = GET /sessions/{id}/events/history?after=last_seq
+  apply page.data
+  last_seq = last durable cursor in page, if any
+  if not page.has_more: break
 
 connect /sessions/{id}/events?after=last_seq
 
@@ -161,7 +170,7 @@ on disconnect:
 
 ## Transport
 
-SSE responses set these headers:
+Persistent session SSE responses set these headers:
 
 ```text
 Content-Type: text/event-stream
@@ -170,6 +179,8 @@ X-Accel-Buffering: no
 X-Content-Type-Options: nosniff
 ```
 
+`POST /run` sets `Content-Type: text/event-stream`, `Cache-Control: no-cache`, and `Connection: keep-alive`.
+
 Idle streams send heartbeat comments:
 
 ```text
@@ -177,24 +188,20 @@ Idle streams send heartbeat comments:
 
 ```
 
-Errors are events with JSON payloads:
+Persistent run failures are durable `session.run.failed` events with JSON envelopes; they are not transport-terminal errors. The persistent connection stays open after `session.run.completed` or `session.run.failed` so it can carry later queued runs for the session.
 
-```text
-event: session.run.failed
-data: {"id":"evt_...","type":"session.run.failed","data":{"error":"model stream failed"}}
+## One-Shot `/run` Stream
 
-```
+`POST /run` returns a separate, non-persistent SSE stream. It forwards the raw session stream event names, including `stream_part`; its JSON `data:` value is the raw stream envelope with `type`, `version`, and event-specific `data`. These events are not rewritten into `session.*` events and cannot be replayed.
+
+On success, `/run` sends a terminal `done` event containing usage and step information, then closes. If setup or streaming fails, it sends a terminal `error` event and closes; its `data:` is currently error text rather than a JSON event envelope. A raw `error` event can also be forwarded from the underlying run before the terminal outcome.
 
 ## `stream_part`
 
-`stream_part` is not part of this contract.
-
-The old stream exposed provider stream parts through one public event type:
+`stream_part` is only part of the `/run` contract. It carries provider stream parts such as text and tool-input deltas:
 
 ```text
 event: stream_part
 ```
 
-Clients then inspected nested provider data such as `part.type: "text_delta"`.
-
-The SSE contract exposes session events directly. Provider-specific metadata belongs inside event payloads when a client needs it.
+Persistent session SSE never emits `stream_part`; it translates supported provider parts into the live `session.text.delta`, `session.reasoning.delta`, and `session.tool.input.delta` events described above. Use persistent SSE for recoverable session state and `/run` only when the raw one-shot stream is required.

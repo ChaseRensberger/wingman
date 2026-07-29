@@ -57,7 +57,7 @@ Examples:
 ```text
 anthropic/claude-sonnet-5
 openai/gpt-5.6-terra
-google/gemini-3.5-flash
+google/gemini-3.6-flash
 openrouter/moonshotai/kimi-k2.7-code
 deepseek/deepseek-v4-pro
 opencode/claude-sonnet-5
@@ -91,17 +91,84 @@ FinishPart
 
 ## Catalog
 
-The embedded catalog provides provider defaults, model metadata, and capability flags.
+The embedded catalog provides model identity, lab metadata, provider defaults, and executable route metadata. Catalog membership is not an execution gate: callers can still provide explicit route metadata for custom models.
 
 Catalog files live under:
 
 ```text
-models/catalog/providers
+models/catalog/
+  labs/<lab-id>/
+    lab.toml
+    logo.svg
+  models/<namespace>/<model-id>.toml
+  providers/<provider-id>/
+    provider.toml
+    models/<route-id>.toml
 ```
 
-Provider entries define defaults such as `base_url` and environment variable names. Model entries define fields such as protocol, context window, max output, and capability flags.
+### Labs
 
-The catalog is not the only way to call a model. Callers can provide explicit route metadata for custom models.
+A lab is the organization that develops a canonical model. Labs provide a display name, short description, optional website, and optional SVG logo.
+
+```toml
+# models/catalog/labs/anthropic/lab.toml
+name = "Anthropic"
+description = "Developer of Claude models for reliable, steerable agent work."
+website = "https://anthropic.com"
+```
+
+### Canonical models
+
+A canonical model describes the underlying model independently of the provider that serves it. It references its developing lab and carries display metadata.
+
+```toml
+# models/catalog/models/anthropic/claude-sonnet-5.toml
+lab = "anthropic"
+name = "Claude Sonnet 5"
+description = "Anthropic's balanced Claude model for coding and analysis."
+release_date = "2026-07"
+last_updated = "2026-07"
+```
+
+The canonical model ID is derived from its path: this file is `anthropic/claude-sonnet-5`.
+
+### Provider routes
+
+A provider route describes how Wingman reaches and uses one model through one provider. It contains the runtime metadata needed for request lowering: API protocol, endpoint defaults, authentication environment variables, limits, cost, and capability flags.
+
+```toml
+# models/catalog/providers/openrouter/models/claude-sonnet-5.toml
+id = "anthropic/claude-sonnet-5"
+provider = "openrouter"
+base_model = "anthropic/claude-sonnet-5"
+api = "openai_compatible_chat"
+context_window = 1000000
+max_output = 128000
+input_cost_per_mtok = 2
+output_cost_per_mtok = 10
+
+[capabilities]
+tools = true
+images = true
+reasoning = true
+structured_output = true
+```
+
+`base_model` links a route to its canonical model. This lets clients show every available route for a model without treating a reseller as the model's lab. It is a validated relationship, not inheritance: route fields remain explicit because they are the runtime source of truth.
+
+Provider defaults apply to every route unless the route overrides them:
+
+```toml
+# models/catalog/providers/openrouter/provider.toml
+name = "OpenRouter"
+doc = "https://openrouter.ai/models"
+base_url = "https://openrouter.ai/api/v1"
+env = ["OPENROUTER_API_KEY"]
+```
+
+### Catalog API
+
+`GET /catalog` returns all labs, canonical models, providers, and routes. `GET /catalog/labs/{id}/logo` returns an embedded lab logo when one exists.
 
 ## Provider Route Overlays
 
@@ -158,6 +225,7 @@ Custom routes must use one of Wingman's supported protocols:
 ```text
 openai_responses
 openai_completions
+openai_compatible_chat
 anthropic_messages
 gemini_generate
 ```

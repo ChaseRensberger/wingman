@@ -17,6 +17,12 @@ Each Workspace stores:
 
 Workspaces are user-created. If you omit `X-Wingman-Client`, `GET /workspaces` lists Workspaces for the built-in `Wingman` client, but it does not create a default Workspace.
 
+## Names and Paths
+
+Workspace names are trimmed and must be non-empty. They are unique per owning client, case-insensitively. When creating a Workspace with a path and no name, Wingman uses the path's final directory name; a dirless Workspace must provide a name.
+
+Paths are resolved and validated by the Wingman server: surrounding whitespace is removed, `~` expands to that server process's home directory, and relative paths are made absolute from that process's current working directory. The path must already exist and be a directory. It is not a browser-local path, and Wingman does not resolve symlinks to a canonical path. Run the server on a machine that can access the directory you intend to use.
+
 ## Create A Session In A Workspace
 
 Create or reuse a Workspace, then create a session with `workspace_id`:

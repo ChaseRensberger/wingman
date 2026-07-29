@@ -19,3 +19,5 @@ So whether you're:
 - Doing research
 
 and any other LLM adjacaent problem. Wingman is designed to make it as simple as possible.
+
+[Quick Start](/start-here/quickstart).
