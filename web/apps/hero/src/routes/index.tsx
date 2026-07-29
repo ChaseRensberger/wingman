@@ -293,17 +293,13 @@ function ClientsSection() {
 			<div className="rounded-sm border bg-card p-4 space-y-4">
 				<div className="flex items-start gap-2">
 					<span className="text-primary">[*]</span>
-					<h3 className="font-semibold">Web</h3>
+					<h3 className="font-semibold">Console - Ships with the Wingman binary</h3>
 				</div>
 				<div className="space-y-2">
-					<video
+					<img
 						className="w-full rounded-sm border bg-background"
-						src="/wingman-web-demo.mp4"
-						autoPlay
-						muted
-						loop
-						playsInline
-						controls
+						src="/wingman-console.png"
+						alt="Wingman console session showing a technical explanation and message composer"
 					/>
 				</div>
 			</div>
