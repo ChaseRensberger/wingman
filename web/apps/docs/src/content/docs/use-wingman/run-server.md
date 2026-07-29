@@ -5,7 +5,7 @@ description: "Start Wingman as a foreground process or system service."
 
 # Run the Server
 
-Wingman runs as a local HTTP server. By default it listens on `127.0.0.1:2323` and stores persistent data in SQLite at `~/.local/share/wingman/wingman.db`. It is a trusted-local control surface: it has no inbound authentication, and a reachable caller can use configured providers, inspect directories, manage extensions, and start agents with enabled tools.
+Wingman runs as a local HTTP server. By default it listens on `127.0.0.1:2323` and stores persistent data in SQLite at `~/.local/share/wingman/wingman.db`. Currently it has no inbound authentication, and a reachable caller can use configured providers, inspect directories, manage extensions, and start agents with enabled tools. This will likely change in the near future.
 
 ## Foreground Server
 
@@ -36,8 +36,6 @@ wingman up
 ```
 
 On Linux, `wingman up` prompts for `sudo` when it needs to write `/etc/systemd/system/wingman.service`. On macOS, it writes the per-user LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist` and does not need `sudo`.
-
-Managed services run with their own environment. `wingman up` sets `HOME`, but does not inherit variables from the shell that ran it, including `XDG_CONFIG_HOME`, provider API keys, `EXA_API_KEY`, and `PARALLEL_API_KEY`. Put required service configuration and credentials in the service environment, or use the daemon-owned provider auth store after the service starts.
 
 Inspect the service:
 
@@ -70,7 +68,7 @@ wingman update --check
 Install a specific release, including a prerelease:
 
 ```bash
-wingman update --version 0.2.0-beta.1
+wingman update --version 0.1.15
 ```
 
 ## Address and Port
@@ -80,8 +78,6 @@ Change the bind address with `--host` and `--port`:
 ```bash
 wingman serve --host 127.0.0.1 --port 2424
 ```
-
-Use `127.0.0.1` for local-only access. Bind to `0.0.0.0` only on trusted networks; Wingman does not provide inbound auth, client isolation, or multi-tenant isolation. `X-Wingman-Client` attributes persisted resources but is not authentication or an access-control boundary. For configuration, see [Global Config](/configure/config).
 
 Wingman does not enable cross-origin browser access by default. The bundled console UI is served from `/console` on the same origin as the API.
 
