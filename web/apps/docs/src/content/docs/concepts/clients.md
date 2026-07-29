@@ -24,5 +24,3 @@ curl -sS -X POST http://localhost:2323/sessions \
 Omitting the header is equivalent to using `X-Wingman-Client: cli_wingman`.
 
 Client identity also scopes Workspaces. `GET /workspaces` returns the Workspaces for the active client; it does not create any Workspaces automatically.
-
-Client identity is not authentication or authorization. Do not expose a Wingman server to untrusted networks based on `X-Wingman-Client`; it is local attribution metadata only. A reachable caller can select or spoof a client ID and access Wingman's trusted-local control surface. See [Run the Server](/use-wingman/run-server#address-and-port).
