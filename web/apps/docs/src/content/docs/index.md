@@ -20,4 +20,4 @@ So whether you're:
 
 and any other LLM adjacaent problem. Wingman is designed to make it as simple as possible.
 
-[Quick Start](/start-here/quickstart).
+[Quick Start](/start-here/quickstart)

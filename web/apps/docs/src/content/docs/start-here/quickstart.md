@@ -6,35 +6,25 @@ order: 2
 
 # Quick Start
 
-This guide starts the Wingman HTTP server, creates an agent, creates a session, and sends one message.
-
 ## Prerequisites
 
 - `curl`
 - `jq`
-- An Anthropic API key in `ANTHROPIC_API_KEY`, or another supported provider key such as `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, or `DEEPSEEK_API_KEY`
+- An Anthropic API key
 
-If you are working from the repository, you also need Go installed.
-
-## Start the server
-
-From a release install:
+## Install & Enable
 
 ```bash
-wingman serve
+curl -fsSL https://wingman.actor/install | bash
 ```
 
-This starts Wingman in the foreground. Use this path for your first run so logs stay visible in the terminal.
-
-From the repository:
-
-```bash
-go run ./cmd/wingman serve
+```
+wingman up
 ```
 
-The server listens on `127.0.0.1:2323` by default and stores data in SQLite at `~/.local/share/wingman/wingman.db`.
+If you don't want to register Wingman as a service you can also just run `wingman serve`.
 
-Check that it is running:
+## Check that it's running:
 
 ```bash
 curl -sS http://localhost:2323/health
@@ -45,14 +35,6 @@ Expected response:
 ```json
 { "status": "ok" }
 ```
-
-Install and start Wingman in the background when you want it running continuously:
-
-```bash
-wingman up
-```
-
-On Linux, `wingman up` prompts for `sudo` if needed, installs `wingman.service`, and enables it to start when your machine boots. On macOS, it installs a per-user LaunchAgent without `sudo`.
 
 ## Configure provider auth
 
