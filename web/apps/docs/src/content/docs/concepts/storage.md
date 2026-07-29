@@ -46,7 +46,7 @@ The SQLite schema stores:
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
 | `auth` | Local provider credentials, stored as JSON. |
-| `schema_migrations` | Applied migration versions. |
+| `schema_migrations` | Applied migration versions, names, and SQL checksums. |
 
 Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
 
@@ -78,7 +78,7 @@ The store treats part payloads as opaque JSON. Interpretation belongs to the mod
 
 ## Migrations
 
-Schema migrations live in `store/migrations` and are embedded into the Go binary. `NewSQLiteStore` runs pending migrations when the store opens.
+Schema migrations live in `store/migrations` and are embedded into the Go binary. `NewSQLiteStore` validates the applied migration history and runs pending migrations when the store opens.
 
 Migration files use this naming pattern:
 
@@ -87,7 +87,19 @@ Migration files use this naming pattern:
 0002_agent_model_ref.sql
 ```
 
-The runner applies migrations in order and refuses gaps, which prevents accidentally deleting a migration that existing databases may depend on.
+The runner applies migrations in order. Every migration and its journal record commit in the same SQLite transaction, so a failed migration is rolled back and remains pending for the next startup.
+
+The journal must be a contiguous prefix of the migrations embedded in the binary. Each record must have the expected name and SQL checksum. Wingman refuses to start when it finds a missing, renamed, unknown, or modified applied migration rather than guessing how to repair the database.
+
+Existing databases created before checksum tracking are upgraded once: Wingman validates their migration versions and names, then records the checksums from the running binary.
+
+### Writing Migrations
+
+Add a new SQL file with the next sequential version. Do not edit, rename, reorder, or delete a migration after it may have shipped. Use a later migration to correct it.
+
+Keep migrations short. Prefer additive tables, columns, and indexes. For structural SQLite changes such as changing a column type, use a transactional table rebuild: create a replacement table, copy data, drop the old table, rename the replacement, and recreate indexes.
+
+Avoid large data backfills during server startup. Add the schema first, then perform resumable or batched data work in application code.
 
 ## SQLite Settings
 

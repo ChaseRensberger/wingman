@@ -1,8 +1,10 @@
 package store
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -23,14 +25,16 @@ const migrationsTable = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version    INTEGER PRIMARY KEY,
     name       TEXT NOT NULL,
+    checksum   TEXT NOT NULL,
     applied_at TEXT NOT NULL
 );`
 
 // migration is one parsed entry from migrationsFS.
 type migration struct {
-	version int
-	name    string
-	sql     string
+	version  int
+	name     string
+	sql      string
+	checksum string
 }
 
 // loadMigrations reads every embedded .sql file and returns them sorted
@@ -61,7 +65,8 @@ func loadMigrations() ([]migration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read %q: %w", e.Name(), err)
 		}
-		out = append(out, migration{version: v, name: stem[idx+1:], sql: string(body)})
+		sql := string(body)
+		out = append(out, migration{version: v, name: stem[idx+1:], sql: sql, checksum: migrationChecksum(sql)})
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].version < out[j].version })
@@ -77,16 +82,23 @@ func loadMigrations() ([]migration, error) {
 	return out, nil
 }
 
-// runMigrations applies every embedded migration whose version is higher
-// than the highest version recorded in schema_migrations. Each migration
-// runs in its own transaction; a partial failure rolls back that one
-// migration but keeps prior ones. Subsequent runs pick up where we left
-// off.
+func migrationChecksum(sql string) string {
+	sum := sha256.Sum256([]byte(sql))
+	return hex.EncodeToString(sum[:])
+}
+
+// runMigrations validates the applied migration history, then applies every
+// remaining embedded migration. Each migration runs in its own transaction;
+// a partial failure rolls back that one migration but keeps prior ones.
+// Subsequent runs pick up where we left off.
 //
-// Idempotent: running this on an up-to-date DB is a no-op (one SELECT).
+// Idempotent: running this on an up-to-date DB makes no schema changes.
 func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(migrationsTable); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+	if err := ensureMigrationChecksums(db); err != nil {
+		return err
 	}
 
 	migrations, err := loadMigrations()
@@ -94,22 +106,106 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
-	// Find the highest applied version. NULL coalesces to 0 so first-run
-	// applies everything.
-	var current int
-	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
-		return fmt.Errorf("read schema_migrations: %w", err)
+	applied, err := validateAppliedMigrations(db, migrations)
+	if err != nil {
+		return err
 	}
 
-	for _, m := range migrations {
-		if m.version <= current {
-			continue
-		}
+	for _, m := range migrations[applied:] {
 		if err := applyMigration(db, m); err != nil {
 			return fmt.Errorf("apply migration %d (%s): %w", m.version, m.name, err)
 		}
 	}
 	return nil
+}
+
+func ensureMigrationChecksums(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(schema_migrations)`)
+	if err != nil {
+		return fmt.Errorf("inspect schema_migrations: %w", err)
+	}
+
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("read schema_migrations columns: %w", err)
+		}
+		if name == "checksum" {
+			if err := rows.Close(); err != nil {
+				return fmt.Errorf("close schema_migrations columns: %w", err)
+			}
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("read schema_migrations columns: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close schema_migrations columns: %w", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE schema_migrations ADD COLUMN checksum TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add schema_migrations checksum: %w", err)
+	}
+	return nil
+}
+
+func validateAppliedMigrations(db *sql.DB, migrations []migration) (int, error) {
+	rows, err := db.Query(`SELECT version, name, checksum FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return 0, fmt.Errorf("read schema_migrations: %w", err)
+	}
+
+	type appliedMigration struct {
+		version  int
+		name     string
+		checksum string
+	}
+	var history []appliedMigration
+	for rows.Next() {
+		var applied appliedMigration
+		if err := rows.Scan(&applied.version, &applied.name, &applied.checksum); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("read schema_migrations row: %w", err)
+		}
+		history = append(history, applied)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, fmt.Errorf("read schema_migrations: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("close schema_migrations: %w", err)
+	}
+
+	for applied, actual := range history {
+		if applied == len(migrations) {
+			return 0, fmt.Errorf("migration history has unknown version %d (%s)", actual.version, actual.name)
+		}
+
+		expected := migrations[applied]
+		if actual.version != expected.version {
+			return 0, fmt.Errorf("migration history gap: expected version %d, got %d (%s)", expected.version, actual.version, actual.name)
+		}
+		if actual.name != expected.name {
+			return 0, fmt.Errorf("migration history name mismatch for version %d: got %q, want %q", actual.version, actual.name, expected.name)
+		}
+		if actual.checksum == "" {
+			// Databases created before checksums existed are trusted once after
+			// their version and names have been validated against this binary.
+			if _, err := db.Exec(`UPDATE schema_migrations SET checksum = ? WHERE version = ?`, expected.checksum, actual.version); err != nil {
+				return 0, fmt.Errorf("backfill migration checksum for version %d: %w", actual.version, err)
+			}
+		} else if actual.checksum != expected.checksum {
+			return 0, fmt.Errorf("migration history checksum mismatch for version %d (%s)", actual.version, actual.name)
+		}
+	}
+	return len(history), nil
 }
 
 // applyMigration runs one migration's SQL inside a transaction and
@@ -125,8 +221,8 @@ func applyMigration(db *sql.DB, m migration) error {
 		return fmt.Errorf("exec sql: %w", err)
 	}
 	if _, err := tx.Exec(
-		`INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`,
-		m.version, m.name, Now(),
+		`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)`,
+		m.version, m.name, m.checksum, Now(),
 	); err != nil {
 		return fmt.Errorf("record migration: %w", err)
 	}
