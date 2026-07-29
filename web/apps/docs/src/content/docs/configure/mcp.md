@@ -32,7 +32,7 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 
 ## Chrome DevTools
 
-To use Chrome DevTools MCP, configure it as a local server:
+(as an example)
 
 ```json
 {
@@ -45,11 +45,9 @@ To use Chrome DevTools MCP, configure it as a local server:
 }
 ```
 
-This requires `npx` and a local Google Chrome installation. To connect to an existing Chrome instance started with remote debugging, add `"--browser-url=http://127.0.0.1:9222"` to `command`.
-
 ## Add A Remote Server
 
-Use `type: "remote"` for a remote MCP endpoint:
+Use `type: "remote"` for a remote MCP endpoint. Currently remote MCPs need an authorization header and you can't run like `wingman mcp auth {name}` to use OAuth for a remote MCP but this is coming soon.
 
 ```json
 {
@@ -65,8 +63,6 @@ Use `type: "remote"` for a remote MCP endpoint:
   }
 }
 ```
-
-Wingman tries the streamable HTTP transport first, then falls back to SSE when the server requires it. `timeout` is measured in milliseconds.
 
 ## Use MCP Tools In An Agent
 
@@ -117,5 +113,5 @@ Use the Console to connect or disconnect enabled configured servers without chan
 ## Current Limits
 
 - MCP OAuth login is not implemented. Supply any required credentials through configured request headers or a local server's environment.
-- MCP servers run with the same operating-system permissions as the Wingman process. Only configure servers you trust.
+- MCP servers run with the same permissions as the Wingman process. Only configure servers you trust.
 - MCP configuration is daemon-wide, not stored in SQLite or attached to individual agents.

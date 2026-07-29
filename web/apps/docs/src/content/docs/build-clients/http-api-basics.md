@@ -7,14 +7,6 @@ description: "Use Wingman from your own client over HTTP."
 
 Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI, editor extension, script, or internal service.
 
-The default local workspace URL is:
-
-```text
-http://localhost:2323
-```
-
-By default, browser clients must be served from the same origin as Wingman. Cross-origin browser access is disabled by default because the local API has no inbound auth. Non-browser HTTP clients can call the API directly.
-
 ## Basic Flow
 
 Most clients follow this sequence:

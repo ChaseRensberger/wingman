@@ -27,7 +27,7 @@ The provider part selects the provider catalog entry. The model part selects a m
 
 ## Agent Default Model
 
-Agents usually define a default `model_ref`:
+Agents can define a default `model_ref`:
 
 ```json
 {
@@ -150,18 +150,6 @@ Use `model_route` for one-off uncataloged routes that should remain part of the 
 
 If `model_ref` is already known through the embedded catalog or config-defined models, that metadata wins. Use `model_route` for one-off uncataloged models and explicit custom deployments.
 
-## Choosing Between Provider Config and `model_route`
-
-| Need | Use |
-|---|---|
-| Store a provider API key | [Provider auth](/configure/providers#store-provider-auth) |
-| Route all `openai/*` refs through a gateway | [Provider route overlay](/configure/providers#route-a-provider-through-a-gateway) |
-| Add a reusable custom provider/model visible to the web UI | [Custom provider config](/configure/providers#add-a-custom-provider) |
-| Disable auth for an unauthenticated gateway | `provider.<id>.options.auth: false` |
-| Use a cataloged model with a different runtime endpoint | Provider route overlay |
-| Use a model not in the catalog across agents | Config-defined provider model |
-| Use a one-off model route for one agent/request | `model_route` |
-
 ## Supported Protocols
 
 Custom routes must use one of Wingman's supported protocols:
@@ -173,8 +161,6 @@ openai_compatible_chat
 anthropic_messages
 gemini_generate
 ```
-
-Choose the protocol that matches the endpoint.
 
 ## Catalog
 

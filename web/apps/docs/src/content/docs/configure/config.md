@@ -14,7 +14,7 @@ Wingman is configured per local user. By default, global files live under:
 
 Use global config for daemon-wide settings that apply across clients and projects.
 
-> **Security:** Wingman is a trusted-local control surface, not an authenticated multi-tenant service. Anyone who can reach it can use configured providers, inspect local directories, manage plugins or MCP connections, and start agents with enabled tools. Keep the server on a trusted local interface; `X-Wingman-Client` provides attribution only, not isolation.
+> **Security:** (Currently) Wingman is a trusted-local control surface, not an authenticated multi-tenant service. Anyone who can reach it can use configured providers, inspect local directories, manage plugins or MCP connections, and start agents with enabled tools. Keep the server on a trusted local interface; `X-Wingman-Client` provides attribution only, not isolation.
 
 Set `XDG_CONFIG_HOME` to use a different config root. For example,
 `XDG_CONFIG_HOME=~/settings` makes the global config file
@@ -106,13 +106,3 @@ Wingman listens on `127.0.0.1:2323` and stores persistent data in SQLite at:
 ```text
 ~/.local/share/wingman/wingman.db
 ```
-
-Use `127.0.0.1` for local-only access. Bind to `0.0.0.0` only on trusted networks; Wingman does not provide inbound auth, client isolation, or multi-tenant isolation. See [Run the Server](/use-wingman/run-server#address-and-port) for the bind controls.
-
-Run without persistence with:
-
-```bash
-wingman serve --ephemeral
-```
-
-In ephemeral mode, persisted resources such as agents, sessions, clients, Workspaces, and provider auth are unavailable. Use `POST /run` with an inline agent instead.

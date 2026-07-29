@@ -14,8 +14,6 @@ Wingman has two layers:
 | Agent `tools` | Which tools the model can see and call. |
 | Permission rules | Whether a specific tool call is allowed, asks for approval, or is denied. |
 
-If no permission rules are configured, Wingman preserves the historical behavior and allows configured tools to run.
-
 ## Effects
 
 Each matching rule resolves to one effect:
@@ -215,15 +213,3 @@ Use action/resource maps for granular rules:
 ```
 
 Resource patterns use simple wildcards: `*` matches any sequence, including `/`, and `?` matches one character.
-
-## Current Limits
-
-Permissions are not a sandbox. They are a policy and UX layer before tool execution.
-
-Current v1 limits:
-
-- `ask` does not yet pause and wait for a client reply.
-- `allow always` saved approvals are not implemented yet.
-- MCP and external plugin tools run according to their own implementations and are not constrained by Wingman's session working directory.
-
-For remote or multi-user deployments, Wingman still needs the deferred inbound-auth and sandbox story.

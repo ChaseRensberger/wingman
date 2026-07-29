@@ -5,7 +5,7 @@ description: "Configure provider auth, provider routes, and model gateways."
 
 # Providers
 
-Providers are the model services Wingman can call, such as Anthropic, OpenAI, Gemini, OpenRouter, DeepSeek, OpenCode Zen, or OpenCode Go.
+Providers are the model services Wingman can call, such as Anthropic, OpenAI, OpenCode Zen, etc...
 
 Provider configuration has three separate pieces:
 
@@ -262,28 +262,3 @@ Use normal model refs with the overlay approach:
 openai/gpt-5.6-terra
 anthropic/claude-sonnet-5
 ```
-
-## What Provider Config Does Not Do
-
-Provider config does not:
-
-- Store provider API keys in `wingman.json`.
-- Create provider records in SQLite.
-- Add new model protocols.
-- Mutate persisted agents.
-- Make an unsupported endpoint compatible with Wingman.
-
-The endpoint still needs to speak one of Wingman's supported protocols. See [Models](/configure/models) for when to use `model_route` instead.
-
-## Troubleshooting
-
-If a provider call fails, check these in order:
-
-1. Is the server using the config file you edited?
-2. Does `curl -sS http://localhost:2323/provider/auth | jq` show the provider as configured, unless you intentionally set `auth: false`?
-3. Does the agent or request use a cataloged `model_ref` such as `openai/gpt-5.6-terra`, `anthropic/claude-sonnet-5`, `google/gemini-3.6-flash`, or `deepseek/deepseek-v4-pro`?
-4. If you set `baseURL`, does it include the provider's expected API prefix, such as `/v1`?
-5. If you set `auth: false`, does the gateway actually accept unauthenticated requests?
-6. If you use `model_route`, does the endpoint speak the selected protocol?
-
-For exact config fields, see [Config Schema](/reference/config-schema#provider).
