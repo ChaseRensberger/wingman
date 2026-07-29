@@ -21,3 +21,7 @@ So whether you're:
 and any other LLM adjacent problem. Wingman is designed to make it as simple as possible.
 
 [Quick Start](/start-here/quickstart)
+
+**Wingston:**
+
+![Wingston](../../assets/wingston.jpg)
