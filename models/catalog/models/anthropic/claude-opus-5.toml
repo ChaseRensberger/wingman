@@ -1,0 +1,5 @@
+lab = "anthropic"
+name = "Claude Opus 5"
+description = "Anthropic's flagship Claude model for demanding agent work."
+release_date = "2026-07"
+last_updated = "2026-07"

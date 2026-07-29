@@ -1,2 +1,4 @@
+name = "OpenAI"
+doc = "https://platform.openai.com/docs/models"
 base_url = "https://api.openai.com/v1"
 env = ["OPENAI_API_KEY"]

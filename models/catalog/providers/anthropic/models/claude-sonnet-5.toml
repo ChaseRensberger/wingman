@@ -1,4 +1,5 @@
 id = "claude-sonnet-5"
+base_model = "anthropic/claude-sonnet-5"
 provider = "anthropic"
 api = "anthropic_messages"
 context_window = 1000000

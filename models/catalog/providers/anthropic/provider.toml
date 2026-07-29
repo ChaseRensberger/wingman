@@ -1,2 +1,4 @@
 base_url = "https://api.anthropic.com/v1"
 env = ["ANTHROPIC_API_KEY"]
+name = "Anthropic"
+doc = "https://docs.anthropic.com/en/docs/about-claude/models"

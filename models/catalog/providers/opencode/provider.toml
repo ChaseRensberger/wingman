@@ -1,2 +1,4 @@
 base_url = "https://opencode.ai/zen/v1"
 env = ["OPENCODE_API_KEY"]
+name = "OpenCode Zen"
+doc = "https://opencode.ai/docs/zen"

@@ -1,2 +1,4 @@
 base_url = "https://api.deepseek.com/v1"
 env = ["DEEPSEEK_API_KEY"]
+name = "DeepSeek"
+doc = "https://api-docs.deepseek.com/quick_start/pricing"

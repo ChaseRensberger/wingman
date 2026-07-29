@@ -1,0 +1,5 @@
+lab = "anthropic"
+name = "Claude Sonnet 5"
+description = "Anthropic's balanced Claude model for coding and analysis."
+release_date = "2026-07"
+last_updated = "2026-07"

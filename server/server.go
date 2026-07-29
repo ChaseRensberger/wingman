@@ -178,6 +178,7 @@ func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "/" ||
+			path == "/catalog" ||
 			strings.HasPrefix(path, "/health") ||
 			strings.HasPrefix(path, "/provider") ||
 			strings.HasPrefix(path, "/agents") ||
@@ -211,6 +212,8 @@ func (s *Server) setupRoutes() {
 		r.Delete("/{name}/auth", s.handleLogoutMCP)
 	})
 	s.router.Get("/tools", s.handleListTools)
+	s.router.Get("/catalog", s.handleCatalog)
+	s.router.Get("/catalog/labs/{id}/logo", s.handleCatalogLabLogo)
 
 	s.router.Route("/provider", func(r chi.Router) {
 		r.Get("/", s.handleListProviders)

@@ -1,2 +1,4 @@
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 env = ["GEMINI_API_KEY"]
+name = "Google"
+doc = "https://ai.google.dev/gemini-api/docs/models"

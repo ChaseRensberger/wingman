@@ -1,4 +1,5 @@
 id = "kimi-k2.7-code"
+base_model = "moonshotai/kimi-k2.7-code"
 provider = "opencode"
 api = "openai_compatible_chat"
 context_window = 262144
