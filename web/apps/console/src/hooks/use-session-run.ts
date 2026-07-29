@@ -33,7 +33,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	const activeRunRef = useRef<{ sessionId: string; runId?: string; completed: boolean } | null>(null);
 	const requestRef = useRef<SessionRunRequest | null>(null);
 	const [isStreaming, setIsStreaming] = useState(false);
-	const [isStreamPaused, setIsStreamPaused] = useState(false);
 	const [streamingText, setStreamingText] = useState("");
 	const [streamingReasoning, setStreamingReasoning] = useState("");
 	const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
@@ -46,7 +45,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		activeRunRef.current = null;
 		requestRef.current = null;
 		setIsStreaming(false);
-		setIsStreamPaused(false);
 		setStreamingReasoning("");
 		setStreamingText("");
 	}
@@ -210,7 +208,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		requestRef.current = request;
 		setFailedRun(null);
 		setIsStreaming(true);
-		setIsStreamPaused(false);
 		setStreamingReasoning("");
 		setLatestRunUsage(undefined);
 		setStreamingText("");
@@ -226,7 +223,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		const controller = new AbortController();
 		eventControllerRef.current?.abort();
 		eventControllerRef.current = controller;
-		setIsStreamPaused(false);
 		void subscribeAndFinish(id, controller);
 	}
 
@@ -235,21 +231,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		if (request) setFailedRun({ ...request, error: formatSessionError(err) });
 		reset();
 		await load(id);
-	}
-
-	function pause() {
-		eventControllerRef.current?.abort();
-		eventControllerRef.current = null;
-		setIsStreamPaused(true);
-	}
-
-	function resume() {
-		const activeRun = activeRunRef.current;
-		if (!activeRun || activeRun.completed) return;
-		const controller = new AbortController();
-		eventControllerRef.current = controller;
-		setIsStreamPaused(false);
-		void subscribeAndFinish(activeRun.sessionId, controller);
 	}
 
 	async function abort(id: string) {
@@ -268,5 +249,5 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		submissionControllerRef.current = null;
 	}
 
-	return { isStreaming, isStreamPaused, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, begin, captureCursor, start, fail, pause, resume, abort, finishSubmission };
+	return { isStreaming, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, begin, captureCursor, start, fail, abort, finishSubmission };
 }

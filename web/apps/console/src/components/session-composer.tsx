@@ -1,4 +1,4 @@
-import { ArrowDownIcon, PaperPlaneIcon, PauseIcon, PlayIcon, StopIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, PaperPlaneIcon, StopIcon } from "@phosphor-icons/react";
 import { type RefObject } from "react";
 
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
@@ -19,14 +19,11 @@ type Props = {
 	models: Record<string, ProviderModel[]>;
 	hasModels: boolean;
 	isStreaming: boolean;
-	isStreamPaused: boolean;
 	isNearTranscriptBottom: boolean;
 	onMessageChange: (value: string) => void;
 	onAgentChange: (agentId: string) => void;
 	onModelChange: (modelRef: string) => void;
 	onSubmit: () => void;
-	onPause: () => void;
-	onResume: () => void;
 	onAbort: () => void;
 	onJumpToBottom: () => void;
 };
@@ -45,7 +42,7 @@ export function SessionComposer(props: Props) {
 						<Select value={modelValue} onValueChange={(value) => props.onModelChange(value ?? "")} disabled={!props.hasModels}><SelectTrigger className="h-8 w-44 border-0 bg-muted/60 text-xs shadow-none sm:w-72"><SelectValue placeholder="Select model">{modelLabel}</SelectValue></SelectTrigger><SelectContent>{props.providers.map((provider) => <SelectGroup key={provider.id}><SelectLabel>{provider.name}</SelectLabel>{(props.models[provider.id] ?? []).map((model) => <SelectItem key={`${provider.id}/${model.id}`} value={`${provider.id}/${model.id}`}>{model.id}</SelectItem>)}</SelectGroup>)}</SelectContent></Select>
 					</div>
 					<div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-						{props.isStreaming ? <><Button size="icon-sm" variant="secondary" type="button" onClick={props.isStreamPaused ? props.onResume : props.onPause} aria-label={props.isStreamPaused ? "Resume stream" : "Pause stream"} title={props.isStreamPaused ? "Resume stream" : "Pause stream"}>{props.isStreamPaused ? <PlayIcon className="size-4" /> : <PauseIcon className="size-4" />}</Button><Button size="sm" variant="destructive" type="button" onClick={props.onAbort}><StopIcon className="size-4" /><span className="hidden sm:inline">Abort</span></Button></> : <Button size="icon-sm" type="submit" aria-label="Send message" title="Send message" disabled={!props.messageText.trim() || !props.selectedAgent}><PaperPlaneIcon className="size-4" /></Button>}
+						{props.isStreaming ? <Button size="icon-sm" variant="destructive" type="button" onClick={props.onAbort} aria-label="Stop generation" title="Stop generation"><StopIcon className="size-4" /></Button> : <Button size="icon-sm" type="submit" aria-label="Send message" title="Send message" disabled={!props.messageText.trim() || !props.selectedAgent}><PaperPlaneIcon className="size-4" /></Button>}
 					</div>
 				</div>
 			</div>
