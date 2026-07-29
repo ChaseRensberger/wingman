@@ -6,6 +6,8 @@ order: 2
 
 # Quick Start
 
+This will walk you through basic Wingman usage from a CLI perspective. If you like a UI, check out the [console](/use-wingman/console).
+
 ## Prerequisites
 
 - `curl`
@@ -14,8 +16,14 @@ order: 2
 
 ## Install & Enable
 
+For now Wingman is not avaliable on any package managers so the best way to install it is to install it to
+
 ```bash
 curl -fsSL https://wingman.actor/install | bash
+```
+
+```
+export PATH="~/.wingman/bin:$PATH"
 ```
 
 ```
@@ -39,6 +47,10 @@ Expected response:
 ## Configure provider auth
 
 Store your Anthropic API key in Wingman's local auth store:
+
+```
+export ANTHROPIC_API_KEY={key}
+```
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
