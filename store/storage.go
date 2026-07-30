@@ -22,7 +22,7 @@ type Store interface {
 	ListSessionsByClient(clientID string) ([]*Session, error)
 	RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
 	MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
-	DeleteSession(id string) error
+	PurgeSession(ctx context.Context, id string, expectedVersion int64) error
 	CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
 	ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
 	CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error

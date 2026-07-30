@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -319,12 +320,20 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-
-	if err := s.store.DeleteSession(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	expectedVersion, err := strconv.ParseInt(r.URL.Query().Get("expected_version"), 10, 64)
+	if err != nil || expectedVersion <= 0 {
+		writeError(w, http.StatusBadRequest, "expected_version must be a positive integer")
 		return
 	}
-
+	if err := s.store.PurgeSession(r.Context(), id, expectedVersion); err != nil {
+		writeSessionCommandError(w, err)
+		return
+	}
+	s.events.closeSession(id)
+	if err := s.runs.stopAndWait(r.Context(), id); err != nil {
+		s.logger.Warn("wait for purged session worker", "session_id", id, "error", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 

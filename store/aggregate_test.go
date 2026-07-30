@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestSQLiteCreateSessionCommitsEventAndProjection(t *testing.T) {
@@ -267,6 +268,138 @@ func TestSQLiteSessionMetadataSerializesConcurrentWriters(t *testing.T) {
 	}
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("successes = %d, conflicts = %d; want 1 each", successes, conflicts)
+	}
+}
+
+func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	session := &Session{ID: "ses_purge", Title: "Purge me"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := data.UpsertMessage(ctx, StoredMessage{ID: "msg_purge", SessionID: session.ID, Role: "user", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertPart(ctx, StoredPart{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{"text":"purge"}`), CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1, Status: ModelCallStatusCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.CreateSessionRun(ctx, SessionRun{ID: "run_purge", SessionID: session.ID, Message: "purge", Agent: Agent{ID: "agt_test"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AppendSessionEvent(ctx, SessionEvent{ID: "evt_public_purge", SessionID: session.ID, Type: "session.run.queued"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := data.PurgeSession(ctx, session.ID, 2); !errors.Is(err, ErrAggregateVersionConflict) {
+		t.Fatalf("stale purge error = %v, want version conflict", err)
+	}
+	if err := data.PurgeSession(ctx, session.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	checks := []struct {
+		name  string
+		query string
+		arg   string
+	}{
+		{"sessions", `SELECT COUNT(*) FROM sessions WHERE id = ?`, session.ID},
+		{"aggregate events", `SELECT COUNT(*) FROM aggregate_events WHERE aggregate_type = 'session' AND aggregate_id = ?`, session.ID},
+		{"runs", `SELECT COUNT(*) FROM session_runs WHERE session_id = ?`, session.ID},
+		{"public events", `SELECT COUNT(*) FROM session_events WHERE session_id = ?`, session.ID},
+		{"messages", `SELECT COUNT(*) FROM messages WHERE session_id = ?`, session.ID},
+		{"parts", `SELECT COUNT(*) FROM parts WHERE id = ?`, "prt_purge"},
+		{"model calls", `SELECT COUNT(*) FROM model_calls WHERE session_id = ?`, session.ID},
+	}
+	for _, check := range checks {
+		var count int
+		if err := data.db.QueryRow(check.query, check.arg).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", check.name, err)
+		}
+		if count != 0 {
+			t.Fatalf("%s count = %d, want 0", check.name, count)
+		}
+	}
+}
+
+func TestSQLitePurgeSessionRollsBackAggregateDeletion(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	session := &Session{ID: "ses_purge_rollback"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`
+		CREATE TRIGGER fail_session_purge
+		BEFORE DELETE ON sessions
+		WHEN OLD.id = 'ses_purge_rollback'
+		BEGIN
+			SELECT RAISE(ABORT, 'forced purge failure');
+		END
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.PurgeSession(context.Background(), session.ID, 1); err == nil {
+		t.Fatal("PurgeSession succeeded, want forced projection failure")
+	}
+	if _, err := data.GetSession(session.ID); err != nil {
+		t.Fatalf("session was not restored: %v", err)
+	}
+	events, err := data.ListAggregateEvents(context.Background(), AggregateRef{Type: AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("aggregate events = %d, want 1 after rollback", len(events))
+	}
+}
+
+func TestSQLitePurgeAndRenameSerializeAcrossStoreHandles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	first, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	second, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	session := &Session{ID: "ses_purge_concurrent", Title: "Before"}
+	if err := first.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	renameErr := make(chan error, 1)
+	purgeErr := make(chan error, 1)
+	go func() {
+		<-start
+		_, err := first.RenameSession(context.Background(), session.ID, "After", 1)
+		renameErr <- err
+	}()
+	go func() {
+		<-start
+		purgeErr <- second.PurgeSession(context.Background(), session.ID, 1)
+	}()
+	close(start)
+	rErr, pErr := <-renameErr, <-purgeErr
+	switch {
+	case rErr == nil && errors.Is(pErr, ErrAggregateVersionConflict):
+		stored, err := first.GetSession(session.ID)
+		if err != nil || stored.AggregateVersion != 2 {
+			t.Fatalf("rename winner projection = %#v, error = %v", stored, err)
+		}
+	case pErr == nil && errors.Is(rErr, ErrSessionNotFound):
+		if _, err := first.GetSession(session.ID); err == nil {
+			t.Fatal("purge won but session still exists")
+		}
+	default:
+		t.Fatalf("rename error = %v, purge error = %v", rErr, pErr)
 	}
 }
 

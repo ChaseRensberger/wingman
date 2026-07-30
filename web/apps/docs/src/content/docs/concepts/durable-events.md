@@ -72,6 +72,17 @@ changes. Deletion, queued runs, messages, model calls, and tool calls are
 persisted in their respective state tables and are not represented in aggregate
 history.
 
+## Hard Purge
+
+Deletion is not an aggregate event. `DELETE /sessions/{id}` requires the
+session's current version and atomically removes both the projection and the
+entire aggregate stream. The same transaction removes all session-owned runs,
+public events, messages, parts, and model calls through foreign-key cascades.
+
+Wingman retains no deletion event or tombstone. After the transaction commits,
+the server closes live event streams, cancels active execution, and waits for
+the session worker to settle before returning success.
+
 ## Existing Databases
 
 Migration `0006_aggregate_events.sql` creates the event log, adds the session

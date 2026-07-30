@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/chaserensberger/wingman/store"
 )
@@ -106,5 +107,45 @@ func TestSessionMetadataNoOpAndConflict(t *testing.T) {
 	}
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
+	}
+}
+
+func TestPurgeSessionRemovesAllState(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	session := &store.Session{ID: "ses_purge"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := data.UpsertMessage(ctx, store.StoredMessage{ID: "msg_purge", SessionID: session.ID, Role: "user", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertPart(ctx, store.StoredPart{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, store.ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.CreateSessionRun(ctx, store.SessionRun{ID: "run_purge", SessionID: session.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AppendSessionEvent(ctx, store.SessionEvent{ID: "evt_purge", SessionID: session.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.PurgeSession(ctx, session.ID, 2); !errors.Is(err, store.ErrAggregateVersionConflict) {
+		t.Fatalf("stale purge error = %v, want version conflict", err)
+	}
+	if err := data.PurgeSession(ctx, session.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := data.sessions[session.ID]; ok {
+		t.Fatal("session projection remains after purge")
+	}
+	if _, ok := data.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: session.ID}]; ok {
+		t.Fatal("aggregate history remains after purge")
+	}
+	if len(data.messages) != 0 || len(data.parts) != 0 || len(data.modelCalls) != 0 || len(data.runs) != 0 || len(data.events) != 0 {
+		t.Fatalf("state remains after purge: messages=%d parts=%d calls=%d runs=%d events=%d", len(data.messages), len(data.parts), len(data.modelCalls), len(data.runs), len(data.events))
 	}
 }

@@ -52,7 +52,7 @@ import {
 	TableRow,
 } from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
-import { moveSession, renameSession, wfetch } from "@/lib/client";
+import { moveSession, purgeSession, renameSession, wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
 import type { DirectoryListing } from "@/lib/types";
@@ -294,7 +294,7 @@ function SessionsPage() {
 		if (!deleteSession) return;
 		setDeletingSessionId(deleteSession.id);
 		try {
-			await wfetch(`/sessions/${deleteSession.id}`, { method: "DELETE" });
+			await purgeSession(deleteSession);
 			setSessions((prev) => prev.filter((session) => session.id !== deleteSession.id));
 			setDeleteSession(null);
 		} catch (err) {

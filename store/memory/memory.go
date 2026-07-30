@@ -694,12 +694,17 @@ func (s *Store) applySessionMetadataEvent(_ context.Context, event store.Aggrega
 	return copySession(projected), nil
 }
 
-func (s *Store) DeleteSession(id string) error {
+func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.sessions[id]; !ok {
-		return fmt.Errorf("session not found: %s", id)
+	session, ok := s.sessions[id]
+	if !ok {
+		return store.ErrSessionNotFound
+	}
+	ref := store.AggregateRef{Type: store.AggregateSession, ID: id}
+	if session.AggregateVersion != expectedVersion {
+		return &store.AggregateVersionConflict{Aggregate: ref, Expected: expectedVersion, Actual: session.AggregateVersion}
 	}
 
 	msgIDs := make(map[string]struct{})
@@ -721,7 +726,17 @@ func (s *Store) DeleteSession(id string) error {
 			delete(s.modelCalls, callID)
 		}
 	}
-
+	for eventID, event := range s.events {
+		if event.SessionID == id {
+			delete(s.events, eventID)
+		}
+	}
+	for runID, run := range s.runs {
+		if run.SessionID == id {
+			delete(s.runs, runID)
+		}
+	}
+	delete(s.aggregates, ref)
 	delete(s.sessions, id)
 	return nil
 }

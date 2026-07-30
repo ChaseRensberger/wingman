@@ -100,6 +100,94 @@ func TestSessionMetadataCommandsUseExpectedVersion(t *testing.T) {
 	}
 }
 
+func TestDeleteSessionPurgesHistoryAndSettlesRuntime(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &store.Session{ID: "ses_delete", ClientID: client.ID}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+	live, unsubscribe := server.events.subscribe(session.ID)
+	defer unsubscribe()
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	settled := make(chan struct{})
+	server.runs.active[session.ID] = cancelWorker
+	server.runs.done[session.ID] = settled
+	go func() {
+		<-workerCtx.Done()
+		close(settled)
+	}()
+
+	request := httptest.NewRequest(http.MethodDelete, "/sessions/ses_delete?expected_version=1", nil)
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if _, err := data.GetSession(session.ID); err == nil {
+		t.Fatal("session remains after delete")
+	}
+	events, err := data.ListAggregateEvents(context.Background(), store.AggregateRef{Type: store.AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("aggregate events = %d, want 0", len(events))
+	}
+	select {
+	case _, ok := <-live:
+		if ok {
+			t.Fatal("SSE subscription remains open")
+		}
+	default:
+		t.Fatal("SSE subscription was not closed")
+	}
+	select {
+	case <-settled:
+	default:
+		t.Fatal("delete returned before runtime settled")
+	}
+}
+
+func TestDeleteSessionRequiresCurrentVersion(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &store.Session{ID: "ses_delete_version", ClientID: client.ID}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+
+	missing := httptest.NewRequest(http.MethodDelete, "/sessions/ses_delete_version", nil)
+	missingResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(missingResponse, missing)
+	if missingResponse.Code != http.StatusBadRequest {
+		t.Fatalf("missing version status = %d, want %d", missingResponse.Code, http.StatusBadRequest)
+	}
+
+	stale := httptest.NewRequest(http.MethodDelete, "/sessions/ses_delete_version?expected_version=2", nil)
+	staleResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(staleResponse, stale)
+	if staleResponse.Code != http.StatusConflict {
+		t.Fatalf("stale version status = %d, want %d: %s", staleResponse.Code, http.StatusConflict, staleResponse.Body.String())
+	}
+	if _, err := data.GetSession(session.ID); err != nil {
+		t.Fatalf("stale delete mutated session: %v", err)
+	}
+
+}
+
 func TestListSessionModelCalls(t *testing.T) {
 	t.Parallel()
 

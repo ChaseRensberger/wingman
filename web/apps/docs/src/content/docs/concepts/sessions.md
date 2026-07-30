@@ -72,6 +72,23 @@ first, Wingman returns `409 Conflict`; reload before deciding whether to retry.
 Sending the current title or location is a no-op and does not increment the
 version.
 
+## Delete
+
+Deletion is a permanent hard purge. Pass the version you read as a query
+parameter:
+
+```bash
+curl -sS -X DELETE \
+  "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
+```
+
+Wingman atomically removes the session, aggregate history, public event
+history, queued and completed runs, messages, parts, and model-call records. It
+retains no deletion event or tombstone. Active event streams close, active
+execution is canceled, and the worker settles before the endpoint returns
+success. A stale version returns `409 Conflict` without deleting the session or
+canceling its work.
+
 Send a message:
 
 ```bash

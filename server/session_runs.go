@@ -18,11 +18,17 @@ type sessionRunManager struct {
 	mu      sync.Mutex
 	active  map[string]context.CancelFunc
 	pending map[string]bool
+	done    map[string]chan struct{}
 	wg      sync.WaitGroup
 }
 
 func newSessionRunManager(server *Server) *sessionRunManager {
-	return &sessionRunManager{server: server, active: map[string]context.CancelFunc{}, pending: map[string]bool{}}
+	return &sessionRunManager{
+		server:  server,
+		active:  map[string]context.CancelFunc{},
+		pending: map[string]bool{},
+		done:    map[string]chan struct{}{},
+	}
 }
 
 func (m *sessionRunManager) wake(sessionID string) {
@@ -34,6 +40,7 @@ func (m *sessionRunManager) wake(sessionID string) {
 	}
 	ctx, cancel := context.WithCancel(m.server.ShutdownCtx())
 	m.active[sessionID] = cancel
+	m.done[sessionID] = make(chan struct{})
 	m.wg.Add(1)
 	m.mu.Unlock()
 	go m.drain(sessionID, ctx)
@@ -45,7 +52,8 @@ func (m *sessionRunManager) drain(sessionID string, ctx context.Context) {
 		run, err := m.server.store.ClaimNextSessionRun(context.Background(), sessionID)
 		if err != nil {
 			m.server.logger.Error("claim session run", "session_id", sessionID, "error", err)
-			break
+			m.finish(sessionID)
+			return
 		}
 		if run == nil {
 			m.mu.Lock()
@@ -54,18 +62,30 @@ func (m *sessionRunManager) drain(sessionID string, ctx context.Context) {
 				m.mu.Unlock()
 				continue
 			}
-			delete(m.active, sessionID)
+			m.finishLocked(sessionID)
 			m.mu.Unlock()
 			return
 		}
 		m.execute(ctx, run)
 		if ctx.Err() != nil {
-			break
+			m.finish(sessionID)
+			return
 		}
 	}
+}
+
+func (m *sessionRunManager) finish(sessionID string) {
 	m.mu.Lock()
-	delete(m.active, sessionID)
+	m.finishLocked(sessionID)
 	m.mu.Unlock()
+}
+
+func (m *sessionRunManager) finishLocked(sessionID string) {
+	done := m.done[sessionID]
+	delete(m.active, sessionID)
+	delete(m.pending, sessionID)
+	delete(m.done, sessionID)
+	close(done)
 }
 
 func (m *sessionRunManager) execute(ctx context.Context, queued *store.SessionRun) {
@@ -124,6 +144,24 @@ func (m *sessionRunManager) abort(sessionID string) int {
 	}
 	cancel()
 	return 1
+}
+
+func (m *sessionRunManager) stopAndWait(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	cancel := m.active[sessionID]
+	done := m.done[sessionID]
+	delete(m.pending, sessionID)
+	m.mu.Unlock()
+	if cancel == nil {
+		return nil
+	}
+	cancel()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *sessionRunManager) resumeQueued(ctx context.Context) {

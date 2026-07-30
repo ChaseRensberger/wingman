@@ -142,7 +142,7 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `GET` | `/sessions/{id}/model-calls` | List recorded upstream model calls for the session |
 | `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
 | `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
-| `DELETE` | `/sessions/{id}` | Delete session |
+| `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
 | `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
 | `GET` | `/sessions/{id}/events` | Replay one bounded page of durable events after `after`, then stream new events |
 | `GET` | `/sessions/{id}/events/history` | Read one finite page of durable session events |
@@ -208,6 +208,21 @@ Or move the session to a Workspace:
 
 Successful commands return the updated session and its new `version`. Sending
 the current title or location is a no-op and leaves the version unchanged.
+
+### Delete request
+
+Deletion requires the current session version in `expected_version`. It returns
+`409 Conflict` if the session changed after the caller read it.
+
+```bash
+curl -sS -X DELETE \
+  "http://localhost:2323/sessions/ses_...?expected_version=2"
+```
+
+A successful delete permanently removes the aggregate stream, public event
+history, queued and completed runs, messages, parts, and model-call records.
+Wingman retains no tombstone. Active SSE streams close and active execution is
+canceled and settled before the response returns.
 
 ### Message request
 

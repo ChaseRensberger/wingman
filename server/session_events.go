@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -37,6 +38,10 @@ func (b *sessionEventBroker) subscribe(sessionID string) (chan store.SessionEven
 	b.mu.Unlock()
 	return ch, func() {
 		b.mu.Lock()
+		if _, ok := b.subs[sessionID][ch]; !ok {
+			b.mu.Unlock()
+			return
+		}
 		delete(b.subs[sessionID], ch)
 		if len(b.subs[sessionID]) == 0 {
 			delete(b.subs, sessionID)
@@ -44,6 +49,15 @@ func (b *sessionEventBroker) subscribe(sessionID string) (chan store.SessionEven
 		b.mu.Unlock()
 		close(ch)
 	}
+}
+
+func (b *sessionEventBroker) closeSession(sessionID string) {
+	b.mu.Lock()
+	for ch := range b.subs[sessionID] {
+		close(ch)
+	}
+	delete(b.subs, sessionID)
+	b.mu.Unlock()
 }
 
 func (b *sessionEventBroker) publish(event store.SessionEvent) {
@@ -354,7 +368,7 @@ func (s *Server) persistRunEvent(ctx context.Context, sessionID, typ string, dat
 		s.logger.Error("build session event", "type", typ, "error", err)
 		return
 	}
-	if _, err := s.appendSessionEvent(ctx, event); err != nil {
+	if _, err := s.appendSessionEvent(ctx, event); err != nil && !errors.Is(err, store.ErrSessionNotFound) {
 		s.logger.Error("append session event", "type", typ, "session_id", sessionID, "error", err)
 	}
 }

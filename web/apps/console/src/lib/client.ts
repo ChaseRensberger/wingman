@@ -30,3 +30,7 @@ export async function moveSession(session: Pick<Session, "id" | "version">, work
     body: JSON.stringify({ working_directory: workingDirectory, expected_version: session.version }),
   }) as Promise<Session>;
 }
+
+export async function purgeSession(session: Pick<Session, "id" | "version">): Promise<void> {
+  await wfetch(`/sessions/${session.id}?expected_version=${session.version}`, { method: "DELETE" });
+}

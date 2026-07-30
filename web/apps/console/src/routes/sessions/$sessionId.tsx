@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { moveSession, renameSession, wfetch } from "@/lib/client";
+import { moveSession, purgeSession, renameSession, wfetch } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
 import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
@@ -363,7 +363,7 @@ function SessionDetailPage() {
 		if (!session || isDraft) return;
 		setDeletingSession(true);
 		try {
-			await wfetch(`/sessions/${session.id}`, { method: "DELETE" });
+			await purgeSession(session);
 			navigate({ to: "/sessions" });
 		} catch (err) {
 			showErrorToast(err);

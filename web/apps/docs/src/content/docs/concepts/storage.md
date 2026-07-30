@@ -56,10 +56,11 @@ Sessions do not store `agent_id` or `model_ref`. Agents and models are selected 
 Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
 Session creation, rename, and move are event-sourced. Their aggregate event and
-the `sessions` projection commit in one transaction. Deletion, runs, messages,
-model calls, and tool calls are stored directly in their respective tables and
-are not part of aggregate history. See [Durable Events and
-Projections](/concepts/durable-events).
+the `sessions` projection commit in one transaction. Runs, messages, model
+calls, and tool calls are stored directly in their respective tables and are
+not part of aggregate history. Hard purge deletes the session projection,
+aggregate stream, and all session-owned table rows in one transaction. See
+[Durable Events and Projections](/concepts/durable-events).
 
 ## Model Calls
 
@@ -143,7 +144,7 @@ type Store interface {
     ListSessionsByWorkspace(workspaceID string) ([]*Session, error)
     RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
     MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
-    DeleteSession(id string) error
+    PurgeSession(ctx context.Context, id string, expectedVersion int64) error
 
     CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
     ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)

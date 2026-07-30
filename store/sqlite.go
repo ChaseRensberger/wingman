@@ -952,21 +952,29 @@ func getSessionTx(ctx context.Context, tx aggregateEventTx, id string) (*Session
 	return &session, nil
 }
 
-// DeleteSession removes the session and (via ON DELETE CASCADE) all of
-// its messages and parts.
-func (s *SQLiteStore) DeleteSession(id string) error {
-	res, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+// PurgeSession permanently removes a session and all of its durable history.
+func (s *SQLiteStore) PurgeSession(ctx context.Context, id string, expectedVersion int64) error {
+	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return err
 	}
-	n, err := res.RowsAffected()
+	defer tx.Rollback()
+
+	session, err := getSessionTx(ctx, tx, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return fmt.Errorf("session not found: %s", id)
+	ref := AggregateRef{Type: AggregateSession, ID: id}
+	if session.AggregateVersion != expectedVersion {
+		return &AggregateVersionConflict{Aggregate: ref, Expected: expectedVersion, Actual: session.AggregateVersion}
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `DELETE FROM aggregate_events WHERE aggregate_type = ? AND aggregate_id = ?`, ref.Type, ref.ID); err != nil {
+		return fmt.Errorf("delete session aggregate events: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete session projection: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 // UpsertMessage inserts or updates a message row keyed by ID.
