@@ -97,7 +97,7 @@ The working directory must already exist. Directory-scoped tools such as `read`,
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -H "Content-Type: application/json" \
-  -d "{\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
+  -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
 The response confirms durable admission. Use the session event stream below for progress and completion:
@@ -105,9 +105,13 @@ The response confirms durable admission. Use the session event stream below for 
 ```json
 {
   "run_id": "run_...",
-  "status": "queued"
+  "status": "queued",
+  "session_version": 2
 }
 ```
+
+If the response is lost, repeating this request with the same `request_id` and
+input returns the same run instead of queuing duplicate work.
 
 ## Stream a message
 

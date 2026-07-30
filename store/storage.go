@@ -8,6 +8,19 @@ import (
 var ErrSessionNotFound = errors.New("session not found")
 var ErrClientNameExists = errors.New("client name already exists")
 var ErrWorkspaceNameExists = errors.New("workspace name already exists")
+var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict")
+
+// SessionRunAdmissionConflict reports conflicting reuse of a request identity.
+type SessionRunAdmissionConflict struct {
+	SessionID string
+	RequestID string
+}
+
+func (e *SessionRunAdmissionConflict) Error() string {
+	return "session " + e.SessionID + ": " + ErrSessionRunAdmissionConflict.Error() + ": request_id " + e.RequestID
+}
+
+func (e *SessionRunAdmissionConflict) Unwrap() error { return ErrSessionRunAdmissionConflict }
 
 type Store interface {
 	CreateAgent(agent *Agent) error
@@ -23,7 +36,7 @@ type Store interface {
 	RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
 	MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
 	PurgeSession(ctx context.Context, id string, expectedVersion int64) error
-	CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
+	AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error)
 	ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
 	CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)

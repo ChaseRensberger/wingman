@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -343,6 +344,7 @@ type messageOutputSchema struct {
 }
 
 type MessageSessionRequest struct {
+	RequestID    string               `json:"request_id,omitempty"`
 	AgentID      string               `json:"agent_id"`
 	ModelRef     string               `json:"model_ref,omitempty"`
 	ModelRoute   *models.ModelInfo    `json:"model_route,omitempty"`
@@ -351,8 +353,9 @@ type MessageSessionRequest struct {
 }
 
 type MessageSessionResponse struct {
-	RunID  string `json:"run_id"`
-	Status string `json:"status"`
+	RunID          string `json:"run_id"`
+	Status         string `json:"status"`
+	SessionVersion int64  `json:"session_version"`
 }
 
 // RunRequest is the body for POST /run. In ephemeral mode agent is
@@ -400,6 +403,16 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
+	if req.RequestID != "" {
+		if strings.TrimSpace(req.RequestID) == "" {
+			writeError(w, http.StatusBadRequest, "request_id cannot be blank")
+			return
+		}
+		if len(req.RequestID) > 200 {
+			writeError(w, http.StatusBadRequest, "request_id must be 200 bytes or fewer")
+			return
+		}
+	}
 	if req.AgentID == "" {
 		writeError(w, http.StatusBadRequest, "agent_id is required")
 		return
@@ -424,19 +437,32 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	queued, err := s.store.CreateSessionRun(r.Context(), store.SessionRun{
+	admission, err := s.store.AdmitSessionRun(r.Context(), store.SessionRun{
 		SessionID:        id,
+		RequestID:        req.RequestID,
 		Message:          req.Message,
 		Agent:            *effectiveAgent,
 		OutputSchemaJSON: outputSchemaJSON,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrSessionRunAdmissionConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrSessionNotFound) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.persistRunEvent(context.Background(), id, "session.run.queued", map[string]any{"run_id": queued.ID, "message": queued.Message})
-	s.runs.wake(id)
-	writeJSON(w, http.StatusAccepted, MessageSessionResponse{RunID: queued.ID, Status: queued.Status})
+	if admission.Created {
+		s.events.publish(admission.QueuedEvent)
+	}
+	if admission.Run.Status == store.SessionRunStatusQueued {
+		s.runs.wake(id)
+	}
+	writeJSON(w, http.StatusAccepted, MessageSessionResponse{RunID: admission.Run.ID, Status: admission.Run.Status, SessionVersion: admission.SessionVersion})
 }
 
 // AbortSessionResponse reports how many in-flight runs were cancelled.

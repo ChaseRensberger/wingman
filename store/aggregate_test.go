@@ -288,17 +288,17 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 	if err := data.UpsertModelCall(ctx, ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1, Status: ModelCallStatusCompleted}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := data.CreateSessionRun(ctx, SessionRun{ID: "run_purge", SessionID: session.ID, Message: "purge", Agent: Agent{ID: "agt_test"}}); err != nil {
+	if _, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_purge", SessionID: session.ID, Message: "purge", Agent: Agent{ID: "agt_test"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := data.AppendSessionEvent(ctx, SessionEvent{ID: "evt_public_purge", SessionID: session.ID, Type: "session.run.queued"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := data.PurgeSession(ctx, session.ID, 2); !errors.Is(err, ErrAggregateVersionConflict) {
+	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 1); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -425,6 +425,28 @@ func TestProjectSessionIsDeterministic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("first = %#v, second = %#v", first, second)
+	}
+}
+
+func TestProjectSessionAdmissionOnlyAdvancesVersion(t *testing.T) {
+	session := Session{ID: "ses_admission_projection", Title: "unchanged", UpdatedAt: "2026-07-30T12:00:00Z", CreatedAt: "2026-07-30T12:00:00Z"}
+	created, err := NewSessionCreatedEvent(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Version = 1
+	run := SessionRun{ID: "run_projection", SessionID: session.ID, AdmittedVersion: 2, Status: SessionRunStatusQueued, CreatedAt: time.Date(2026, 7, 30, 12, 1, 0, 0, time.UTC)}
+	admitted, err := NewSessionRunAdmittedEvent(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitted.Version = 2
+	projected, err := ProjectSession([]AggregateEvent{created, admitted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.AggregateVersion != 2 || projected.UpdatedAt != session.UpdatedAt || projected.Title != session.Title {
+		t.Fatalf("projected = %#v", projected)
 	}
 }
 

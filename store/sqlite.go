@@ -13,6 +13,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -1239,38 +1240,84 @@ func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]M
 	return out, nil
 }
 
-func (s *SQLiteStore) CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error) {
+func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error) {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	defer tx.Rollback()
+
+	session, err := getSessionTx(ctx, tx, run.SessionID)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	run.WorkDir, run.WorkspaceID, run.ClientID = session.WorkDir, session.WorkspaceID, session.ClientID
+	hash, err := SessionRunRequestHash(run)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	if run.RequestID != "" {
+		existing, err := scanSessionRun(tx.QueryRowContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE session_id = ? AND request_id = ?`, run.SessionID, run.RequestID))
+		if err == nil {
+			if existing.RequestHash != hash {
+				return SessionRunAdmission{}, &SessionRunAdmissionConflict{SessionID: run.SessionID, RequestID: run.RequestID}
+			}
+			return SessionRunAdmission{Run: existing, SessionVersion: session.AggregateVersion}, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return SessionRunAdmission{}, err
+		}
+	}
 	if run.ID == "" {
 		run.ID = NewID(PrefixRun)
 	}
 	agentJSON, err := json.Marshal(run.Agent)
 	if err != nil {
-		return SessionRun{}, fmt.Errorf("marshal run agent: %w", err)
+		return SessionRunAdmission{}, fmt.Errorf("marshal run agent: %w", err)
 	}
-	now := time.Now().UTC()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return SessionRun{}, err
-	}
-	defer tx.Rollback()
 	var next int
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_runs WHERE session_id = ?`, run.SessionID).Scan(&next); err != nil {
-		return SessionRun{}, err
+		return SessionRunAdmission{}, err
 	}
-	run.Sequence = next
-	run.Status = SessionRunStatusQueued
-	run.CreatedAt = now
-	run.UpdatedAt = now
+	now := time.Now().UTC()
+	run.Sequence, run.Status, run.RequestHash = next, SessionRunStatusQueued, hash
+	run.AdmittedVersion = session.AggregateVersion + 1
+	run.CreatedAt, run.UpdatedAt = now, now
+	aggregateEvent, err := NewSessionRunAdmittedEvent(run)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	if _, err = appendAggregateEventTx(ctx, tx, aggregateEvent, session.AggregateVersion); err != nil {
+		return SessionRunAdmission{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO session_runs (id, session_id, sequence, status, message, agent_json, output_schema_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, run.ID, run.SessionID, run.Sequence, run.Status, run.Message, string(agentJSON), nullableJSON(run.OutputSchemaJSON), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
-		return SessionRun{}, fmt.Errorf("insert session run: %w", err)
+		INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, output_schema_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?)
+	`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agentJSON), nullableJSON(run.OutputSchemaJSON), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		return SessionRunAdmission{}, fmt.Errorf("insert session run: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return SessionRun{}, err
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, run.AdmittedVersion, run.SessionID); err != nil {
+		return SessionRunAdmission{}, fmt.Errorf("update session admission version: %w", err)
 	}
-	return run, nil
+	queuedData, err := json.Marshal(struct {
+		RunID   string `json:"run_id"`
+		Message string `json:"message"`
+	}{run.ID, run.Message})
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	var maxSeq sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(seq) FROM session_events WHERE session_id = ?`, run.SessionID).Scan(&maxSeq); err != nil {
+		return SessionRunAdmission{}, err
+	}
+	queued := SessionEvent{ID: NewID(PrefixEvent), Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq.Int64 + 1, DataJSON: queuedData, Data: queuedData}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, queued.ID, queued.SessionID, queued.Seq, queued.Type, string(queued.DataJSON), now.Format(time.RFC3339Nano)); err != nil {
+		return SessionRunAdmission{}, fmt.Errorf("insert queued session event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SessionRunAdmission{}, err
+	}
+	return SessionRunAdmission{Run: run, SessionVersion: run.AdmittedVersion, Created: true, QueuedEvent: queued}, nil
 }
 
 func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error) {
@@ -1280,7 +1327,7 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 	}
 	defer tx.Rollback()
 	run, err := scanSessionRun(tx.QueryRowContext(ctx, `
-		SELECT id, session_id, sequence, status, message, agent_json, output_schema_json, error_message, created_at, started_at, completed_at, updated_at
+		SELECT `+sessionRunColumns+`
 		FROM session_runs WHERE session_id = ? AND status = ? ORDER BY sequence LIMIT 1
 	`, sessionID, SessionRunStatusQueued))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1345,9 +1392,9 @@ func nullableJSON(v []byte) any {
 func scanSessionRun(row rowScanner) (SessionRun, error) {
 	var run SessionRun
 	var agentJSON string
-	var schema, errorMessage, started, completed sql.NullString
+	var workDir, workspaceID, clientID, schema, errorMessage, started, completed sql.NullString
 	var created, updated string
-	if err := row.Scan(&run.ID, &run.SessionID, &run.Sequence, &run.Status, &run.Message, &agentJSON, &schema, &errorMessage, &created, &started, &completed, &updated); err != nil {
+	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Message, &agentJSON, &schema, &errorMessage, &created, &started, &completed, &updated); err != nil {
 		return SessionRun{}, err
 	}
 	if err := json.Unmarshal([]byte(agentJSON), &run.Agent); err != nil {
@@ -1357,6 +1404,7 @@ func scanSessionRun(row rowScanner) (SessionRun, error) {
 		run.OutputSchemaJSON = []byte(schema.String)
 	}
 	run.ErrorMessage = errorMessage.String
+	run.WorkDir, run.WorkspaceID, run.ClientID = workDir.String, workspaceID.String, clientID.String
 	run.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	run.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	if started.Valid {
@@ -1500,6 +1548,36 @@ const modelCallColumns = `
 	input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens,
 	context_tokens, context_window, COALESCE(context_percent, 0), cost,
 	structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at`
+
+const sessionRunColumns = `
+	id, session_id, request_id, request_hash, admitted_version,
+	work_dir, workspace_id, client_id, sequence, status, message, agent_json,
+	output_schema_json, error_message, created_at, started_at, completed_at, updated_at`
+
+// SessionRunRequestHash returns the canonical hash for an admission request.
+func SessionRunRequestHash(run SessionRun) (string, error) {
+	var schema any
+	if len(run.OutputSchemaJSON) != 0 {
+		if err := json.Unmarshal(run.OutputSchemaJSON, &schema); err != nil {
+			return "", fmt.Errorf("decode run output schema: %w", err)
+		}
+	}
+	agent := run.Agent
+	agent.CreatedAt, agent.UpdatedAt = "", ""
+	payload, err := json.Marshal(struct {
+		Message      string `json:"message"`
+		Agent        Agent  `json:"agent"`
+		OutputSchema any    `json:"output_schema"`
+		ClientID     string `json:"client_id"`
+		WorkDir      string `json:"work_dir"`
+		WorkspaceID  string `json:"workspace_id"`
+	}{run.Message, agent, schema, run.ClientID, run.WorkDir, run.WorkspaceID})
+	if err != nil {
+		return "", fmt.Errorf("marshal run request: %w", err)
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum), nil
+}
 
 func (s *SQLiteStore) sessionExists(ctx context.Context, sessionID string) error {
 	var exists int

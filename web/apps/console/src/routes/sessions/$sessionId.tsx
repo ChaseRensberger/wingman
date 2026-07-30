@@ -58,6 +58,13 @@ function SessionDetailPage() {
 	const skipNextSessionLoadRef = useRef(false);
 	const composerRef = useRef<HTMLTextAreaElement>(null);
 	const titleSessionIdRef = useRef(sessionId);
+	const pendingSubmissionRef = useRef<{
+		requestId: string;
+		sessionId: string;
+		agentId: string;
+		modelRef: string;
+		message: string;
+	} | null>(null);
 
 	useEffect(() => {
 		activeSessionIdRef.current = sessionId;
@@ -280,7 +287,6 @@ function SessionDetailPage() {
 		};
 
 		try {
-			let titleTarget: Pick<Session, "id" | "version"> | null = session;
 			if (isDraft) {
 				const created = (await wfetch("/sessions", {
 					method: "POST",
@@ -288,15 +294,27 @@ function SessionDetailPage() {
 				})) as Session;
 				activeSessionId = created.id;
 				activeSessionIdRef.current = created.id;
-				titleTarget = created;
 				if (titlePromise) titleSessionIdRef.current = created.id;
 				skipNextSessionLoadRef.current = true;
 				setSession({ ...created, history: [buildUserMessage(outboundText)] });
 				navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
 			}
-			if (titleTarget) persistGeneratedTitle(titleTarget);
-
 			await run.captureCursor(activeSessionId);
+			const pending = pendingSubmissionRef.current;
+			const requestId = pending
+				&& pending.sessionId === activeSessionId
+				&& pending.agentId === outboundAgentId
+				&& pending.modelRef === outboundModelRef
+				&& pending.message === outboundText
+				? pending.requestId
+				: crypto.randomUUID();
+			pendingSubmissionRef.current = {
+				requestId,
+				sessionId: activeSessionId,
+				agentId: outboundAgentId,
+				modelRef: outboundModelRef,
+				message: outboundText,
+			};
 
 			const headers = new Headers({
 				"Content-Type": "application/json",
@@ -305,6 +323,7 @@ function SessionDetailPage() {
 				method: "POST",
 				headers,
 				body: JSON.stringify({
+					request_id: requestId,
 					agent_id: outboundAgentId,
 					model_ref: outboundModelRef,
 					message: outboundText,
@@ -316,12 +335,19 @@ function SessionDetailPage() {
 				const text = await res.text();
 				throw new Error(`HTTP ${res.status}: ${text}`);
 			}
-			const admitted = await res.json() as { run_id?: string; status?: string };
-			if (!admitted.run_id || admitted.status !== "queued") {
+			const admitted = await res.json() as { run_id?: string; status?: string; session_version?: number };
+			if (!admitted.run_id || !admitted.status || !admitted.session_version) {
 				throw new Error("Message was not accepted for execution");
 			}
-			run.start(activeSessionId, admitted.run_id);
+			setSession((prev) => prev && prev.id === activeSessionId ? { ...prev, version: admitted.session_version! } : prev);
+			persistGeneratedTitle({ id: activeSessionId, version: admitted.session_version });
+			pendingSubmissionRef.current = null;
 			accepted = true;
+			if (admitted.status === "queued" || admitted.status === "running") {
+				run.start(activeSessionId, admitted.run_id);
+			} else {
+				await loadSession(activeSessionId);
+			}
 		} catch (err) {
 			if ((err as Error).name !== "AbortError") {
 				console.error("Send failed", err);

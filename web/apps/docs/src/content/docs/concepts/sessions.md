@@ -18,10 +18,10 @@ A session stores runtime state, while an agent provides reusable configuration:
 
 One session can hand off between agents or models without creating a new conversation record.
 
-Creating, renaming, or moving a persisted session atomically appends a durable
-aggregate event and updates the session read projection. See [Durable Events and
-Projections](/concepts/durable-events) for the persistence model and its current
-scope.
+Creating, renaming, moving, or admitting work to a persisted session atomically
+appends a durable aggregate event and updates its critical projections. See
+[Durable Events and Projections](/concepts/durable-events) for the persistence
+model and its current scope.
 
 Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 
@@ -89,12 +89,15 @@ execution is canceled, and the worker settles before the endpoint returns
 success. A stale version returns `409 Conflict` without deleting the session or
 canceling its work.
 
-Send a message:
+## Admit Work
+
+Send a message with an optional retry identity:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -H "Content-Type: application/json" \
   -d '{
+    "request_id": "submit-123",
     "agent_id": "agt_...",
     "message": "Summarize this project"
   }'
@@ -102,7 +105,21 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
 
 `POST /sessions/{id}/message` requires the session to exist. A typo in the ID returns `404`; it does not create a new session.
 
-The endpoint returns `202 Accepted` with a `run_id` as soon as the message is durably queued. A daemon-owned worker executes queued messages serially for each session, so clients observe progress and completion through the event stream instead of waiting for this request.
+The endpoint returns `202 Accepted` with `run_id`, the current run `status`, and
+`session_version` as soon as the message is durably queued. A daemon-owned
+worker executes queued messages serially for each session, so clients observe
+progress and completion through the event stream instead of waiting for this
+request.
+
+`request_id` is optional and scoped to one session. Retrying the same effective
+input with the same ID returns the existing run without publishing another
+queued event. Reusing the ID after changing the prompt, effective Agent or
+model, output schema, client, or session placement returns `409 Conflict`.
+Omitting it always admits a new run.
+
+Admission snapshots the effective Agent, output schema, working directory,
+Workspace, and client. Moving the session or editing the Agent afterward affects
+future admissions only; already queued work executes from its snapshot.
 
 ## Per-Message Agent and Model
 

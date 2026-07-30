@@ -42,9 +42,9 @@ The SQLite schema stores:
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
 | `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
 | `sessions` | Session metadata projection: title, working directory, client ID, optional Workspace ID, timestamps, aggregate version. |
-| `session_runs` | Durably admitted session work and its execution status. |
+| `session_runs` | Durably admitted session work, request identity, immutable execution snapshot, and status. |
 | `session_events` | Public session event history used for SSE replay. |
-| `aggregate_events` | Internal append-only session creation and metadata facts used to rebuild the session projection. |
+| `aggregate_events` | Internal append-only session creation, metadata, and run-admission facts used to rebuild critical projections. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
@@ -55,12 +55,14 @@ Sessions do not store `agent_id` or `model_ref`. Agents and models are selected 
 
 Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
-Session creation, rename, and move are event-sourced. Their aggregate event and
-the `sessions` projection commit in one transaction. Runs, messages, model
-calls, and tool calls are stored directly in their respective tables and are
-not part of aggregate history. Hard purge deletes the session projection,
-aggregate stream, and all session-owned table rows in one transaction. See
-[Durable Events and Projections](/concepts/durable-events).
+Session creation, rename, move, and run admission are event-sourced. Admission
+commits `session.run.admitted`, the run projection, the advanced session
+version, and the public queued event in one transaction. The run records the
+prompt, effective Agent and model, output schema, client, and placement used by
+execution. Messages, model calls, and tool calls remain direct state records.
+Hard purge deletes the session projection, aggregate stream, and all
+session-owned table rows in one transaction. See [Durable Events and
+Projections](/concepts/durable-events).
 
 ## Model Calls
 
@@ -146,7 +148,7 @@ type Store interface {
     MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
     PurgeSession(ctx context.Context, id string, expectedVersion int64) error
 
-    CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
+    AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error)
     ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
     CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
     ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)

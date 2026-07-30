@@ -127,16 +127,16 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if err := data.UpsertModelCall(ctx, store.ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := data.CreateSessionRun(ctx, store.SessionRun{ID: "run_purge", SessionID: session.ID}); err != nil {
+	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_purge", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := data.AppendSessionEvent(ctx, store.SessionEvent{ID: "evt_purge", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 2); !errors.Is(err, store.ErrAggregateVersionConflict) {
+	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, store.ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 1); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 2); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := data.sessions[session.ID]; ok {
@@ -147,5 +147,34 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	}
 	if len(data.messages) != 0 || len(data.parts) != 0 || len(data.modelCalls) != 0 || len(data.runs) != 0 || len(data.events) != 0 {
 		t.Fatalf("state remains after purge: messages=%d parts=%d calls=%d runs=%d events=%d", len(data.messages), len(data.parts), len(data.modelCalls), len(data.runs), len(data.events))
+	}
+}
+
+func TestAdmitSessionRunMatchesSQLiteContract(t *testing.T) {
+	data := NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_admit_memory", WorkDir: "/memory"}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := data.AdmitSessionRun(context.Background(), store.SessionRun{SessionID: "ses_admit_memory", RequestID: "request", Message: "hello", Agent: store.Agent{ID: "agt"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := data.AdmitSessionRun(context.Background(), store.SessionRun{SessionID: "ses_admit_memory", RequestID: "request", Message: "hello", Agent: store.Agent{ID: "agt"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Created || retry.Created || retry.Run.ID != first.Run.ID || first.SessionVersion != 2 || first.Run.WorkDir != "/memory" {
+		t.Fatalf("first=%#v retry=%#v", first, retry)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{SessionID: "ses_admit_memory", RequestID: "request", Message: "different", Agent: store.Agent{ID: "agt"}}); !errors.Is(err, store.ErrSessionRunAdmissionConflict) {
+		t.Fatalf("error = %v", err)
+	}
+	events, err := data.ListAggregateEvents(context.Background(), store.AggregateRef{Type: store.AggregateSession, ID: "ses_admit_memory"}, 0, 10)
+	if err != nil || len(events) != 2 || events[1].Type != store.EventSessionRunAdmitted {
+		t.Fatalf("events=%#v error=%v", events, err)
+	}
+	queued, err := data.ListSessionEvents(context.Background(), "ses_admit_memory", 0, 10)
+	if err != nil || len(queued) != 1 || queued[0].Type != "session.run.queued" {
+		t.Fatalf("queued=%#v error=%v", queued, err)
 	}
 }

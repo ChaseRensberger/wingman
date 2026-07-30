@@ -11,6 +11,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
 )
@@ -186,6 +187,104 @@ func TestDeleteSessionRequiresCurrentVersion(t *testing.T) {
 		t.Fatalf("stale delete mutated session: %v", err)
 	}
 
+}
+
+type admissionTestStore struct {
+	store.Store
+	cancel context.CancelFunc
+}
+
+func (s *admissionTestStore) AdmitSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRunAdmission, error) {
+	admission, err := s.Store.AdmitSessionRun(ctx, run)
+	if err == nil && s.cancel != nil {
+		s.cancel()
+	}
+	return admission, err
+}
+
+func (s *admissionTestStore) ClaimNextSessionRun(context.Context, string) (*store.SessionRun, error) {
+	return nil, nil
+}
+
+func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_admission_http", ClientID: client.ID, WorkDir: "/snapshot"}); err != nil {
+		t.Fatal(err)
+	}
+	agent := &store.Agent{
+		ID:       "agt_admission_http",
+		Name:     "Admission",
+		ModelRef: "test/model",
+		Options: map[string]any{agentOptionModelRoute: models.ModelInfo{
+			Provider: "test",
+			ID:       "model",
+			API:      models.APIOpenAICompatible,
+			BaseURL:  "http://127.0.0.1:1",
+		}},
+	}
+	if err := data.CreateAgent(agent); err != nil {
+		t.Fatal(err)
+	}
+	requestCtx, cancel := context.WithCancel(context.Background())
+	testStore := &admissionTestStore{Store: data, cancel: cancel}
+	server := New(Config{Store: testStore})
+	body := `{"request_id":"request-1","agent_id":"agt_admission_http","message":"hello"}`
+
+	request := httptest.NewRequest(http.MethodPost, "/sessions/ses_admission_http/message", strings.NewReader(body)).WithContext(requestCtx)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+	if requestCtx.Err() != context.Canceled {
+		t.Fatalf("request context error = %v, want canceled", requestCtx.Err())
+	}
+	var first MessageSessionResponse
+	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	if first.RunID == "" || first.Status != store.SessionRunStatusQueued || first.SessionVersion != 2 {
+		t.Fatalf("first admission = %#v", first)
+	}
+
+	testStore.cancel = nil
+	retry := httptest.NewRequest(http.MethodPost, "/sessions/ses_admission_http/message", strings.NewReader(body))
+	retry.Header.Set("Content-Type", "application/json")
+	retryResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(retryResponse, retry)
+	if retryResponse.Code != http.StatusAccepted {
+		t.Fatalf("retry status = %d, want %d: %s", retryResponse.Code, http.StatusAccepted, retryResponse.Body.String())
+	}
+	var second MessageSessionResponse
+	if err := json.NewDecoder(retryResponse.Body).Decode(&second); err != nil {
+		t.Fatal(err)
+	}
+	if second.RunID != first.RunID || second.SessionVersion != first.SessionVersion {
+		t.Fatalf("retry admission = %#v, first = %#v", second, first)
+	}
+	events, err := data.ListAggregateEvents(context.Background(), store.AggregateRef{Type: store.AggregateSession, ID: "ses_admission_http"}, 0, 10)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("aggregate events = %#v, error = %v", events, err)
+	}
+	public, err := data.ListSessionEvents(context.Background(), "ses_admission_http", 0, 10)
+	if err != nil || len(public) != 1 || public[0].Type != "session.run.queued" {
+		t.Fatalf("public events = %#v, error = %v", public, err)
+	}
+
+	conflict := httptest.NewRequest(http.MethodPost, "/sessions/ses_admission_http/message", strings.NewReader(`{"request_id":"request-1","agent_id":"agt_admission_http","message":"different"}`))
+	conflict.Header.Set("Content-Type", "application/json")
+	conflictResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(conflictResponse, conflict)
+	if conflictResponse.Code != http.StatusConflict {
+		t.Fatalf("conflict status = %d, want %d: %s", conflictResponse.Code, http.StatusConflict, conflictResponse.Body.String())
+	}
 }
 
 func TestListSessionModelCalls(t *testing.T) {

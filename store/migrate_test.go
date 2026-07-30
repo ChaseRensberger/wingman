@@ -197,6 +197,70 @@ func TestAggregateEventMigrationBackfillsSessions(t *testing.T) {
 	}
 }
 
+func TestSessionRunAdmissionMigrationBackfillsAggregateEvents(t *testing.T) {
+	db := testMigrationDB(t)
+	if _, err := db.Exec(migrationsTable); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range migrations[:6] {
+		if err := applyMigration(db, migration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created := "2026-07-30T12:00:00Z"
+	if _, err := db.Exec(`INSERT INTO sessions (id, title, work_dir, created_at, updated_at, aggregate_version) VALUES ('ses_legacy_run', '', '/legacy', ?, ?, 1)`, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO aggregate_events (id, aggregate_type, aggregate_id, version, event_type, schema_version, payload_json, created_at) VALUES ('evt_legacy_created', 'session', 'ses_legacy_run', 1, 'session.created', 1, '{"id":"ses_legacy_run"}', ?), ('evt_legacy_extra', 'session', 'ses_legacy_run', 2, 'session.renamed', 1, '{}', ?)`, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE sessions SET aggregate_version = 2 WHERE id = 'ses_legacy_run'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO session_runs (id, session_id, sequence, status, message, agent_json, created_at, updated_at) VALUES ('run_legacy', 'ses_legacy_run', 1, 'queued', 'hello', '{"id":"agt_legacy"}', ?, ?), ('run_legacy_2', 'ses_legacy_run', 2, 'completed', 'again', '{"id":"agt_legacy"}', ?, ?)`, created, created, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMigration(db, migrations[6]); err != nil {
+		t.Fatal(err)
+	}
+	var version, admittedVersion int64
+	var requestID, requestHash string
+	if err := db.QueryRow(`SELECT aggregate_version FROM sessions WHERE id = 'ses_legacy_run'`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT admitted_version, request_id, request_hash FROM session_runs WHERE id = 'run_legacy'`).Scan(&admittedVersion, &requestID, &requestHash); err != nil {
+		t.Fatal(err)
+	}
+	if version != 4 || admittedVersion != 3 || requestID != "" || requestHash != "" {
+		t.Fatalf("version=%d admitted=%d request=%q hash=%q", version, admittedVersion, requestID, requestHash)
+	}
+	var secondVersion int64
+	if err := db.QueryRow(`SELECT admitted_version FROM session_runs WHERE id = 'run_legacy_2'`).Scan(&secondVersion); err != nil {
+		t.Fatal(err)
+	}
+	if secondVersion != 4 {
+		t.Fatalf("second admitted version = %d, want 4", secondVersion)
+	}
+	var admissionEvents int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM aggregate_events WHERE aggregate_id = 'ses_legacy_run' AND event_type = 'session.run.admitted'`).Scan(&admissionEvents); err != nil {
+		t.Fatal(err)
+	}
+	if admissionEvents != 2 {
+		t.Fatalf("admission events = %d, want 2", admissionEvents)
+	}
+	var payload string
+	if err := db.QueryRow(`SELECT payload_json FROM aggregate_events WHERE run_id = 'run_legacy'`).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload, `"work_dir":"/legacy"`) || !strings.Contains(payload, `"message":"hello"`) {
+		t.Fatalf("payload = %s", payload)
+	}
+}
+
 func testMigrationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

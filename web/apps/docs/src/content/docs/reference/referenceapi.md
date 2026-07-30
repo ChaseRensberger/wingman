@@ -155,7 +155,9 @@ reload the session before deciding whether to retry.
 
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
 
-The response is `{ "run_id": "run_...", "status": "queued" }`. Read `/sessions/{id}/events` for execution progress and the terminal result.
+The response includes the canonical run ID, current run status, and aggregate
+version after admission. Read `/sessions/{id}/events` for execution progress and
+the terminal result.
 
 ### Create request
 
@@ -228,19 +230,32 @@ canceled and settled before the response returns.
 
 ```json
 {
+  "request_id": "submit-123",
   "agent_id": "agt_...",
   "message": "Write a Python script"
 }
 ```
+
+`request_id` is optional, opaque, scoped to this session, and limited to 200
+bytes. Repeating it with the same effective input returns the existing run.
+Reusing it with a different prompt, effective Agent or model, output schema,
+client, or current session placement returns `409 Conflict`. Omitting it always
+creates a new run. Wingman snapshots the effective Agent and placement at
+admission, so later Agent edits or session moves do not redirect queued work.
 
 ### Accepted response
 
 ```json
 {
   "run_id": "run_...",
-  "status": "queued"
+  "status": "queued",
+  "session_version": 4
 }
 ```
+
+Both a new admission and an identical retry return `202 Accepted`. On retry,
+`status` is the run's current status and `session_version` is the session's
+current aggregate version.
 
 ### Streaming
 

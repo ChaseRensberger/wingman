@@ -8,7 +8,9 @@ description: "Consume Wingman's server-sent event stream."
 Wingman has two SSE contracts: persistent session events and the one-shot `POST /run` stream. Clients start persistent work with the message endpoint and watch session state through the session event stream.
 
 Session SSE is a client delivery contract. It is separate from the internal
-aggregate event log described in [Durable Events and Projections](/concepts/durable-events), which records session creation and reconstructs the initial session projection.
+aggregate event log described in [Durable Events and Projections](/concepts/durable-events),
+which records session creation, metadata changes, and run admission to maintain
+critical projections.
 
 ## Start Work
 
@@ -18,10 +20,16 @@ Start a persistent session run:
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -H "Content-Type: application/json" \
   -d '{
+    "request_id": "submit-123",
     "agent_id": "agt_...",
     "message": "Summarize this project."
   }'
 ```
+
+Persist `request_id` before sending if the client may retry an uncertain
+response. An identical retry returns the existing run and does not create a
+second `session.run.queued` event. The accepted response includes `run_id`,
+`status`, and `session_version`.
 
 ## Subscribe
 

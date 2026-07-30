@@ -6,18 +6,20 @@ order: 103
 
 # Durable Events and Projections
 
-Wingman's durable store records session creation, renames, and moves in an
-append-only aggregate event log and maintains the session metadata projection
-in the same transaction.
+Wingman's durable store records session creation, renames, moves, and run
+admissions in an append-only aggregate event log and maintains their critical
+projections in the same transaction.
 
 ## Events and Projections
 
 A durable event records a fact that already happened. `session.created` records
-the initial state, `session.renamed` records a title change, and `session.moved`
-records a working-directory or Workspace change.
+the initial state, `session.renamed` records a title change, `session.moved`
+records a working-directory or Workspace change, and `session.run.admitted`
+records the immutable input and execution snapshot for queued work.
 
 A projection is a query-friendly table derived from those facts. The `sessions`
-table is the session metadata projection used by the HTTP API.
+table is the session metadata projection used by the HTTP API, and
+`session_runs` holds admitted work and its execution status.
 
 For each metadata transition, Wingman commits both in one SQLite transaction:
 
@@ -29,6 +31,10 @@ commit
 
 If either write fails, both are rolled back. A metadata transition cannot leave
 an event and projection at different versions.
+
+Admission atomically appends `session.run.admitted`, inserts the run projection,
+advances the session version, and inserts the public `session.run.queued` event.
+Execution begins only after that transaction commits.
 
 ## Aggregate Streams
 
@@ -44,8 +50,9 @@ event type:     session.created
 
 Versions are contiguous within one aggregate. Session creation expects version
 zero and commits version one. Rename and move require the caller's expected
-version and increment it when they change state. A duplicate creation or stale
-metadata command fails instead of overwriting state.
+version and increment it when they change state. Each new run admission also
+advances the version. A duplicate creation or stale metadata command fails
+instead of overwriting state.
 
 The event also has a global insertion sequence for storage diagnostics and a
 schema version for decoding its payload. Aggregate version and payload schema
@@ -53,8 +60,10 @@ version solve different problems.
 
 ## Replay
 
-The session projector rebuilds the current `sessions` row from its ordered
-creation, rename, and move events. Projectors reject:
+The session projector rebuilds the current `sessions` row and version from its
+ordered creation, rename, move, and run-admission events. The run projector
+decodes the immutable run snapshot from each `session.run.admitted` event.
+Projectors reject:
 
 - Missing or out-of-order event versions.
 - Duplicate creation events.
@@ -65,12 +74,18 @@ creation, rename, and move events. Projectors reject:
 This makes projection behavior deterministic and testable independently of the
 HTTP server.
 
-## Session Metadata History
+## Session History
 
-The aggregate event log records session creation, title changes, and location
-changes. Deletion, queued runs, messages, model calls, and tool calls are
-persisted in their respective state tables and are not represented in aggregate
-history.
+The aggregate event log records session creation, title changes, location
+changes, and run admissions. An admission captures its request identity, prompt,
+effective Agent and model, output schema, client, and placement snapshot.
+Messages, model calls, and tool calls are persisted in their respective state
+tables and are not yet represented in aggregate history.
+
+Migration `0007_session_run_admission.sql` backfills an admission event for each
+existing run. Historical runs had no request identity or placement snapshot, so
+the migration leaves request identity empty and uses the session's current
+placement and client as the best available snapshot.
 
 ## Hard Purge
 
@@ -99,7 +114,7 @@ They have different jobs:
 
 | Mechanism | Purpose |
 |---|---|
-| Aggregate event log | Rebuild session metadata from `session.created`, `session.renamed`, and `session.moved`. |
+| Aggregate event log | Rebuild session metadata and admitted runs from session aggregate facts. |
 | Session event history | Let clients replay public session activity. |
 | Live SSE events | Render low-latency deltas that may not be durable. |
 

@@ -15,9 +15,10 @@ const (
 )
 
 const (
-	EventSessionCreated = "session.created"
-	EventSessionRenamed = "session.renamed"
-	EventSessionMoved   = "session.moved"
+	EventSessionCreated     = "session.created"
+	EventSessionRenamed     = "session.renamed"
+	EventSessionMoved       = "session.moved"
+	EventSessionRunAdmitted = "session.run.admitted"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -76,6 +77,74 @@ type sessionMovedData struct {
 	WorkDir     string `json:"work_dir,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	UpdatedAt   string `json:"updated_at"`
+}
+
+type sessionRunAdmittedData struct {
+	Run json.RawMessage `json:"run"`
+}
+
+// NewSessionRunAdmittedEvent records an immutable admitted run projection.
+func NewSessionRunAdmittedEvent(run SessionRun) (AggregateEvent, error) {
+	runData, err := json.Marshal(run)
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal admitted run: %w", err)
+	}
+	var projection map[string]json.RawMessage
+	if err := json.Unmarshal(runData, &projection); err != nil {
+		return AggregateEvent{}, fmt.Errorf("decode admitted run: %w", err)
+	}
+	outputSchema, err := json.Marshal(string(run.OutputSchemaJSON))
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal admitted run output schema: %w", err)
+	}
+	projection["output_schema_json"] = outputSchema
+	runData, err = json.Marshal(projection)
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal admitted run projection: %w", err)
+	}
+	data, err := json.Marshal(sessionRunAdmittedData{Run: runData})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.run.admitted: %w", err)
+	}
+	return AggregateEvent{
+		ID:            NewID(PrefixEvent),
+		Aggregate:     AggregateRef{Type: AggregateSession, ID: run.SessionID},
+		Type:          EventSessionRunAdmitted,
+		SchemaVersion: 1,
+		Time:          run.CreatedAt,
+		Data:          data,
+		ClientID:      run.ClientID,
+		RunID:         run.ID,
+	}, nil
+}
+
+// ProjectSessionRunAdmission decodes the immutable run projection in an admission event.
+func ProjectSessionRunAdmission(event AggregateEvent) (SessionRun, error) {
+	if event.Type != EventSessionRunAdmitted || event.SchemaVersion != 1 {
+		return SessionRun{}, fmt.Errorf("project session run: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionRunAdmittedData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode session.run.admitted: %w", err)
+	}
+	var run SessionRun
+	if err := json.Unmarshal(data.Run, &run); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode run: %w", err)
+	}
+	var encoded struct {
+		OutputSchemaJSON string `json:"output_schema_json"`
+	}
+	if err := json.Unmarshal(data.Run, &encoded); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode output schema: %w", err)
+	}
+	if run.SessionID != event.Aggregate.ID {
+		return SessionRun{}, fmt.Errorf("project session run: payload session %q does not match aggregate", run.SessionID)
+	}
+	if run.AdmittedVersion != event.Version {
+		return SessionRun{}, fmt.Errorf("project session run %s: payload admitted version %d does not match event version %d", run.ID, run.AdmittedVersion, event.Version)
+	}
+	run.OutputSchemaJSON = []byte(encoded.OutputSchemaJSON)
+	return run, nil
 }
 
 // NewSessionCreatedEvent creates the initial fact for a session aggregate.
@@ -225,6 +294,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 		projected.WorkDir = data.WorkDir
 		projected.WorkspaceID = data.WorkspaceID
 		projected.UpdatedAt = data.UpdatedAt
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionRunAdmitted:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: run admission before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionRunAdmission(event); err != nil {
+			return nil, err
+		}
+		projected := *session
 		projected.AggregateVersion = event.Version
 		return &projected, nil
 	default:

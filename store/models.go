@@ -44,6 +44,12 @@ const (
 type SessionRun struct {
 	ID               string    `json:"id"`
 	SessionID        string    `json:"session_id"`
+	RequestID        string    `json:"request_id,omitempty"`
+	RequestHash      string    `json:"request_hash,omitempty"`
+	AdmittedVersion  int64     `json:"admitted_version"`
+	WorkDir          string    `json:"work_dir,omitempty"`
+	WorkspaceID      string    `json:"workspace_id,omitempty"`
+	ClientID         string    `json:"client_id,omitempty"`
 	Sequence         int       `json:"sequence"`
 	Status           string    `json:"status"`
 	Message          string    `json:"message"`
@@ -54,6 +60,14 @@ type SessionRun struct {
 	StartedAt        time.Time `json:"started_at,omitempty"`
 	CompletedAt      time.Time `json:"completed_at,omitempty"`
 	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// SessionRunAdmission is the result of admitting a run to a session queue.
+type SessionRunAdmission struct {
+	Run            SessionRun
+	SessionVersion int64
+	Created        bool
+	QueuedEvent    SessionEvent
 }
 
 type Workspace struct {

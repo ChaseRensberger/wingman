@@ -52,27 +52,74 @@ func NewStore() *Store {
 // Close is a no-op for the in-memory store.
 func (s *Store) Close() error { return nil }
 
-func (s *Store) CreateSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRun, error) {
+func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRunAdmission, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[run.SessionID]; !ok {
-		return store.SessionRun{}, store.ErrSessionNotFound
+	session, ok := s.sessions[run.SessionID]
+	if !ok {
+		return store.SessionRunAdmission{}, store.ErrSessionNotFound
+	}
+	run.WorkDir, run.WorkspaceID, run.ClientID = session.WorkDir, session.WorkspaceID, session.ClientID
+	hash, err := store.SessionRunRequestHash(run)
+	if err != nil {
+		return store.SessionRunAdmission{}, err
+	}
+	if run.RequestID != "" {
+		for _, existing := range s.runs {
+			if existing.SessionID == run.SessionID && existing.RequestID == run.RequestID {
+				if existing.RequestHash != hash {
+					return store.SessionRunAdmission{}, &store.SessionRunAdmissionConflict{SessionID: run.SessionID, RequestID: run.RequestID}
+				}
+				return store.SessionRunAdmission{Run: copySessionRun(existing), SessionVersion: session.AggregateVersion}, nil
+			}
+		}
 	}
 	if run.ID == "" {
 		run.ID = store.NewID(store.PrefixRun)
 	}
+	next := 1
 	for _, existing := range s.runs {
-		if existing.SessionID == run.SessionID && existing.Sequence >= run.Sequence {
-			run.Sequence = existing.Sequence + 1
+		if existing.SessionID == run.SessionID && existing.Sequence >= next {
+			next = existing.Sequence + 1
 		}
 	}
 	now := time.Now().UTC()
-	run.Status = store.SessionRunStatusQueued
+	run.Sequence = next
+	run.Status, run.RequestHash = store.SessionRunStatusQueued, hash
+	run.AdmittedVersion = session.AggregateVersion + 1
 	run.CreatedAt = now
 	run.UpdatedAt = now
+	event, err := store.NewSessionRunAdmittedEvent(run)
+	if err != nil {
+		return store.SessionRunAdmission{}, err
+	}
+	event.Version = run.AdmittedVersion
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	queuedData, err := json.Marshal(struct {
+		RunID   string `json:"run_id"`
+		Message string `json:"message"`
+	}{run.ID, run.Message})
+	if err != nil {
+		return store.SessionRunAdmission{}, err
+	}
+	var maxSeq int64
+	for _, existing := range s.events {
+		if existing.SessionID == run.SessionID && existing.Seq > maxSeq {
+			maxSeq = existing.Seq
+		}
+	}
+	queued := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq + 1, DataJSON: queuedData, Data: queuedData}
 	cp := copySessionRun(&run)
 	s.runs[run.ID] = &cp
-	return copySessionRun(&cp), nil
+	ref := store.AggregateRef{Type: store.AggregateSession, ID: run.SessionID}
+	s.aggregates[ref] = append(s.aggregates[ref], copyAggregateEvent(event))
+	updated := copySession(session)
+	updated.AggregateVersion = run.AdmittedVersion
+	s.sessions[run.SessionID] = updated
+	queuedCopy := copySessionEvent(&queued)
+	s.events[queued.ID] = &queuedCopy
+	return store.SessionRunAdmission{Run: copySessionRun(&cp), SessionVersion: run.AdmittedVersion, Created: true, QueuedEvent: queuedCopy}, nil
 }
 
 func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (*store.SessionRun, error) {
