@@ -1,0 +1,10 @@
+id = "nemotron-3-ultra-free"
+base_model = "nvidia/nemotron-3-ultra-free"
+provider = "opencode"
+api = "openai_compatible_chat"
+context_window = 1000000
+max_output = 128000
+
+[capabilities]
+tools = true
+reasoning = true

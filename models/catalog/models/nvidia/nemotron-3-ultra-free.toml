@@ -1,0 +1,5 @@
+lab = "nvidia"
+name = "Nemotron 3 Ultra Free"
+description = "NVIDIA's Nemotron 3 Ultra model, available through OpenCode Zen at no cost."
+release_date = "2026-06"
+last_updated = "2026-07"
