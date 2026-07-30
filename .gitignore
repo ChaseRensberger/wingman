@@ -6,6 +6,7 @@ __debug*
 node_modules/
 
 dist/
+bb/
 web/apps/desktop/assets.generated.ts
 report.md
 work.md
