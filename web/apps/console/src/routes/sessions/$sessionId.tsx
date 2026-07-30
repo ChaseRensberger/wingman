@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { wfetch } from "@/lib/client";
+import { moveSession, renameSession, wfetch } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
 import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
@@ -73,6 +73,7 @@ function SessionDetailPage() {
 			const now = new Date().toISOString();
 			setSession({
 				id: "new",
+				version: 0,
 				title: "New session",
 				workspace_id: draftWorkspaceId,
 				history: [],
@@ -155,6 +156,7 @@ function SessionDetailPage() {
 						const now = new Date().toISOString();
 						setSession({
 							id: "new",
+							version: 0,
 							title: "New session",
 							workspace_id: draftWorkspaceId,
 							history: [],
@@ -264,16 +266,13 @@ function SessionDetailPage() {
 			});
 		}
 
-		const persistGeneratedTitle = (id: string) => {
+		const persistGeneratedTitle = (target: Pick<Session, "id" | "version">) => {
 			if (!titlePromise) return;
 			void titlePromise.then(async (title) => {
-				if (!title || titleSessionIdRef.current !== id) return;
+				if (!title || titleSessionIdRef.current !== target.id) return;
 				try {
-					const updated = (await wfetch(`/sessions/${id}`, {
-						method: "PUT",
-						body: JSON.stringify({ title }),
-					})) as Session;
-					setSession((prev) => prev && prev.id === id ? { ...prev, title: updated.title } : prev);
+					const updated = await renameSession(target, title);
+					setSession((prev) => prev && prev.id === target.id ? { ...prev, title: updated.title, version: updated.version, updated_at: updated.updated_at } : prev);
 				} catch (err) {
 					console.warn("Failed to persist generated session title", err);
 				}
@@ -281,6 +280,7 @@ function SessionDetailPage() {
 		};
 
 		try {
+			let titleTarget: Pick<Session, "id" | "version"> | null = session;
 			if (isDraft) {
 				const created = (await wfetch("/sessions", {
 					method: "POST",
@@ -288,12 +288,13 @@ function SessionDetailPage() {
 				})) as Session;
 				activeSessionId = created.id;
 				activeSessionIdRef.current = created.id;
+				titleTarget = created;
 				if (titlePromise) titleSessionIdRef.current = created.id;
 				skipNextSessionLoadRef.current = true;
 				setSession({ ...created, history: [buildUserMessage(outboundText)] });
 				navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
 			}
-			persistGeneratedTitle(activeSessionId);
+			if (titleTarget) persistGeneratedTitle(titleTarget);
 
 			await run.captureCursor(activeSessionId);
 
@@ -345,13 +346,9 @@ function SessionDetailPage() {
 		setSavingSession(true);
 		try {
 			const workingDirectoryChanged = workDir.trim() !== (session.work_dir ?? "");
-			const updated = (await wfetch(`/sessions/${session.id}`, {
-				method: "PUT",
-				body: JSON.stringify({
-					title: title.trim(),
-					...(workingDirectoryChanged ? { working_directory: workDir.trim() } : {}),
-				}),
-			})) as Session;
+			let updated = session;
+			if (title.trim() !== (updated.title ?? "")) updated = await renameSession(updated, title.trim());
+			if (workingDirectoryChanged) updated = await moveSession(updated, workDir.trim());
 			setSession((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
 			if (workingDirectoryChanged) setWorkspace(null);
 			setEditingSession(false);

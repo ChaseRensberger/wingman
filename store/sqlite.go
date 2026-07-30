@@ -844,41 +844,112 @@ func (s *SQLiteStore) ListSessionsByWorkspace(workspaceID string) ([]*Session, e
 	return out, nil
 }
 
-// UpdateSession overwrites the session's mutable metadata.
-func (s *SQLiteStore) UpdateSession(session *Session) error {
-	session.UpdatedAt = Now()
-	if session.WorkspaceID != "" {
+// RenameSession appends session.renamed and updates its projection atomically.
+func (s *SQLiteStore) RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error) {
+	event, err := NewSessionRenamedEvent(id, title, Now())
+	if err != nil {
+		return nil, err
+	}
+	return s.applySessionMetadataEvent(ctx, event, expectedVersion, "")
+}
+
+// MoveSession appends session.moved and updates its projection atomically.
+func (s *SQLiteStore) MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error) {
+	event, err := NewSessionMovedEvent(id, workDir, workspaceID, Now())
+	if err != nil {
+		return nil, err
+	}
+	return s.applySessionMetadataEvent(ctx, event, expectedVersion, workspaceID)
+}
+
+func (s *SQLiteStore) applySessionMetadataEvent(ctx context.Context, event AggregateEvent, expectedVersion int64, workspaceID string) (*Session, error) {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	current, err := getSessionTx(ctx, tx, event.Aggregate.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current.AggregateVersion != expectedVersion {
+		return nil, &AggregateVersionConflict{Aggregate: event.Aggregate, Expected: expectedVersion, Actual: current.AggregateVersion}
+	}
+	event.ClientID = current.ClientID
+	if workspaceID != "" {
 		var exists int
-		if err := s.db.QueryRow(`SELECT 1 FROM workspaces WHERE id = ?`, session.WorkspaceID).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM workspaces WHERE id = ?`, workspaceID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
-				return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
+				return nil, fmt.Errorf("workspace not found: %s", workspaceID)
 			}
-			return fmt.Errorf("verify workspace: %w", err)
+			return nil, fmt.Errorf("verify workspace: %w", err)
 		}
 	}
-	var workDirPtr *string
-	if session.WorkDir != "" {
-		workDirPtr = &session.WorkDir
+	if event.Type == EventSessionRenamed {
+		var data sessionRenamedData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil, err
+		}
+		if current.Title == data.Title {
+			return current, nil
+		}
 	}
-	var workspaceIDPtr *string
-	if session.WorkspaceID != "" {
-		workspaceIDPtr = &session.WorkspaceID
+	if event.Type == EventSessionMoved {
+		var data sessionMovedData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil, err
+		}
+		if current.WorkDir == data.WorkDir && current.WorkspaceID == data.WorkspaceID {
+			return current, nil
+		}
 	}
 
-	res, err := s.db.Exec(`
-		UPDATE sessions SET title = ?, work_dir = ?, workspace_id = ?, updated_at = ? WHERE id = ?
-	`, session.Title, workDirPtr, workspaceIDPtr, session.UpdatedAt, session.ID)
+	event, err = appendAggregateEventTx(ctx, tx, event, expectedVersion)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	n, err := res.RowsAffected()
+	projected, err := projectSessionEvent(current, event)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if n == 0 {
-		return fmt.Errorf("session not found: %s", session.ID)
+	var workDirPtr, workspaceIDPtr *string
+	if projected.WorkDir != "" {
+		workDirPtr = &projected.WorkDir
 	}
-	return nil
+	if projected.WorkspaceID != "" {
+		workspaceIDPtr = &projected.WorkspaceID
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE sessions
+		SET title = ?, work_dir = ?, workspace_id = ?, updated_at = ?, aggregate_version = ?
+		WHERE id = ?
+	`, projected.Title, workDirPtr, workspaceIDPtr, projected.UpdatedAt, projected.AggregateVersion, projected.ID); err != nil {
+		return nil, fmt.Errorf("update session projection: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return projected, nil
+}
+
+func getSessionTx(ctx context.Context, tx aggregateEventTx, id string) (*Session, error) {
+	var session Session
+	var workDir, workspaceID, clientID sql.NullString
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version
+		FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.Title, &workDir, &workspaceID, &clientID, &session.CreatedAt, &session.UpdatedAt, &session.AggregateVersion)
+	if err == sql.ErrNoRows {
+		return nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	session.WorkDir = workDir.String
+	session.WorkspaceID = workspaceID.String
+	session.ClientID = clientID.String
+	return &session, nil
 }
 
 // DeleteSession removes the session and (via ON DELETE CASCADE) all of

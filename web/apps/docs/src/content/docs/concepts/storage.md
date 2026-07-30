@@ -44,7 +44,7 @@ The SQLite schema stores:
 | `sessions` | Session metadata projection: title, working directory, client ID, optional Workspace ID, timestamps, aggregate version. |
 | `session_runs` | Durably admitted session work and its execution status. |
 | `session_events` | Public session event history used for SSE replay. |
-| `aggregate_events` | Internal append-only session creation facts used to rebuild the initial session projection. |
+| `aggregate_events` | Internal append-only session creation and metadata facts used to rebuild the session projection. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
@@ -55,10 +55,10 @@ Sessions do not store `agent_id` or `model_ref`. Agents and models are selected 
 
 Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
-Session creation is event-sourced: `session.created` and the `sessions`
-projection commit in one transaction. Session updates, deletion, runs,
-messages, model calls, and tool calls are stored directly in their respective
-tables and are not part of aggregate history. See [Durable Events and
+Session creation, rename, and move are event-sourced. Their aggregate event and
+the `sessions` projection commit in one transaction. Deletion, runs, messages,
+model calls, and tool calls are stored directly in their respective tables and
+are not part of aggregate history. See [Durable Events and
 Projections](/concepts/durable-events).
 
 ## Model Calls
@@ -141,7 +141,8 @@ type Store interface {
     ListSessions() ([]*Session, error)
     ListSessionsByClient(clientID string) ([]*Session, error)
     ListSessionsByWorkspace(workspaceID string) ([]*Session, error)
-    UpdateSession(session *Session) error
+    RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
+    MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
     DeleteSession(id string) error
 
     CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)

@@ -140,7 +140,8 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
 | `GET` | `/sessions/{id}/model-calls` | List recorded upstream model calls for the session |
-| `PUT` | `/sessions/{id}` | Update session metadata (title, work_dir) |
+| `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
+| `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}` | Delete session |
 | `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
 | `GET` | `/sessions/{id}/events` | Replay one bounded page of durable events after `after`, then stream new events |
@@ -148,7 +149,9 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `POST` | `/sessions/{id}/abort` | Cancel the active run; queued messages remain scheduled |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
-`PUT /sessions/{id}` is metadata-only. Use the message endpoints to add content; rebuilding history is done by reposting messages, not by PUT.
+Session responses include `version`, beginning at `1`. Rename and move commands
+require that value as `expected_version`. A stale command returns `409 Conflict`;
+reload the session before deciding whether to retry.
 
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
 
@@ -173,6 +176,38 @@ Or create the session from a Workspace:
 ```
 
 `working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is set, Wingman records `workspace_id` on the session and copies the Workspace path into `work_dir` if the Workspace has one.
+
+### Rename request
+
+```json
+{
+  "title": "Investigate retries",
+  "expected_version": 1
+}
+```
+
+### Move request
+
+Send exactly one location field:
+
+```json
+{
+  "working_directory": "/home/me/other-project",
+  "expected_version": 2
+}
+```
+
+Or move the session to a Workspace:
+
+```json
+{
+  "workspace_id": "wsp_...",
+  "expected_version": 2
+}
+```
+
+Successful commands return the updated session and its new `version`. Sending
+the current title or location is a no-op and leaves the version unchanged.
 
 ### Message request
 

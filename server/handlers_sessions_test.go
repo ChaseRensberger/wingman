@@ -55,6 +55,51 @@ func TestCreateSessionCommitsAggregateEvent(t *testing.T) {
 	}
 }
 
+func TestSessionMetadataCommandsUseExpectedVersion(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &store.Session{ID: "ses_metadata", Title: "Before", ClientID: client.ID}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+
+	rename := httptest.NewRequest(http.MethodPost, "/sessions/ses_metadata/rename", strings.NewReader(`{"title":"After","expected_version":1}`))
+	rename.Header.Set("Content-Type", "application/json")
+	renameResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(renameResponse, rename)
+	if renameResponse.Code != http.StatusOK {
+		t.Fatalf("rename status = %d, want %d: %s", renameResponse.Code, http.StatusOK, renameResponse.Body.String())
+	}
+	var renamed store.Session
+	if err := json.NewDecoder(renameResponse.Body).Decode(&renamed); err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Title != "After" || renamed.AggregateVersion != 2 {
+		t.Fatalf("renamed session = %#v", renamed)
+	}
+
+	move := httptest.NewRequest(http.MethodPost, "/sessions/ses_metadata/move", strings.NewReader(`{"working_directory":".","expected_version":1}`))
+	move.Header.Set("Content-Type", "application/json")
+	moveResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(moveResponse, move)
+	if moveResponse.Code != http.StatusConflict {
+		t.Fatalf("move status = %d, want %d: %s", moveResponse.Code, http.StatusConflict, moveResponse.Body.String())
+	}
+
+	legacy := httptest.NewRequest(http.MethodPut, "/sessions/ses_metadata", strings.NewReader(`{"title":"Legacy"}`))
+	legacyResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(legacyResponse, legacy)
+	if legacyResponse.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("legacy update status = %d, want %d", legacyResponse.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestListSessionModelCalls(t *testing.T) {
 	t.Parallel()
 

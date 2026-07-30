@@ -16,6 +16,8 @@ const (
 
 const (
 	EventSessionCreated = "session.created"
+	EventSessionRenamed = "session.renamed"
+	EventSessionMoved   = "session.moved"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -65,6 +67,17 @@ type sessionCreatedData struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+type sessionRenamedData struct {
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type sessionMovedData struct {
+	WorkDir     string `json:"work_dir,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
 // NewSessionCreatedEvent creates the initial fact for a session aggregate.
 func NewSessionCreatedEvent(session Session) (AggregateEvent, error) {
 	data, err := json.Marshal(sessionCreatedData{
@@ -94,6 +107,46 @@ func NewSessionCreatedEvent(session Session) (AggregateEvent, error) {
 	}, nil
 }
 
+// NewSessionRenamedEvent records a session title change.
+func NewSessionRenamedEvent(sessionID, title, updatedAt string) (AggregateEvent, error) {
+	data, err := json.Marshal(sessionRenamedData{Title: title, UpdatedAt: updatedAt})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.renamed: %w", err)
+	}
+	eventTime, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("parse session updated_at: %w", err)
+	}
+	return AggregateEvent{
+		ID:            NewID(PrefixEvent),
+		Aggregate:     AggregateRef{Type: AggregateSession, ID: sessionID},
+		Type:          EventSessionRenamed,
+		SchemaVersion: 1,
+		Time:          eventTime,
+		Data:          data,
+	}, nil
+}
+
+// NewSessionMovedEvent records a session execution-location change.
+func NewSessionMovedEvent(sessionID, workDir, workspaceID, updatedAt string) (AggregateEvent, error) {
+	data, err := json.Marshal(sessionMovedData{WorkDir: workDir, WorkspaceID: workspaceID, UpdatedAt: updatedAt})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.moved: %w", err)
+	}
+	eventTime, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("parse session updated_at: %w", err)
+	}
+	return AggregateEvent{
+		ID:            NewID(PrefixEvent),
+		Aggregate:     AggregateRef{Type: AggregateSession, ID: sessionID},
+		Type:          EventSessionMoved,
+		SchemaVersion: 1,
+		Time:          eventTime,
+		Data:          data,
+	}, nil
+}
+
 // ProjectSession rebuilds a session projection from its ordered event stream.
 func ProjectSession(events []AggregateEvent) (*Session, error) {
 	var session *Session
@@ -102,36 +155,19 @@ func ProjectSession(events []AggregateEvent) (*Session, error) {
 		if event.Aggregate.Type != AggregateSession {
 			return nil, fmt.Errorf("project session: unexpected aggregate type %q", event.Aggregate.Type)
 		}
+		if session != nil && event.Aggregate.ID != session.ID {
+			return nil, fmt.Errorf("project session %s: event belongs to aggregate %s", session.ID, event.Aggregate.ID)
+		}
 		if event.Version != version+1 {
 			return nil, fmt.Errorf("project session %s: expected event version %d, got %d", event.Aggregate.ID, version+1, event.Version)
 		}
 		if event.SchemaVersion != 1 {
 			return nil, fmt.Errorf("project session %s: unsupported %s schema version %d", event.Aggregate.ID, event.Type, event.SchemaVersion)
 		}
-		switch event.Type {
-		case EventSessionCreated:
-			if session != nil {
-				return nil, fmt.Errorf("project session %s: duplicate creation event", event.Aggregate.ID)
-			}
-			var data sessionCreatedData
-			if err := json.Unmarshal(event.Data, &data); err != nil {
-				return nil, fmt.Errorf("project session %s: decode session.created: %w", event.Aggregate.ID, err)
-			}
-			if data.ID != event.Aggregate.ID {
-				return nil, fmt.Errorf("project session %s: payload id %q does not match aggregate", event.Aggregate.ID, data.ID)
-			}
-			session = &Session{
-				ID:               data.ID,
-				Title:            data.Title,
-				WorkDir:          data.WorkDir,
-				WorkspaceID:      data.WorkspaceID,
-				ClientID:         data.ClientID,
-				CreatedAt:        data.CreatedAt,
-				UpdatedAt:        data.UpdatedAt,
-				AggregateVersion: event.Version,
-			}
-		default:
-			return nil, fmt.Errorf("project session %s: unsupported event type %q", event.Aggregate.ID, event.Type)
+		var err error
+		session, err = projectSessionEvent(session, event)
+		if err != nil {
+			return nil, err
 		}
 		version = event.Version
 	}
@@ -139,4 +175,59 @@ func ProjectSession(events []AggregateEvent) (*Session, error) {
 		return nil, errors.New("project session: empty event stream")
 	}
 	return session, nil
+}
+
+func projectSessionEvent(session *Session, event AggregateEvent) (*Session, error) {
+	switch event.Type {
+	case EventSessionCreated:
+		if session != nil {
+			return nil, fmt.Errorf("project session %s: duplicate creation event", event.Aggregate.ID)
+		}
+		var data sessionCreatedData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil, fmt.Errorf("project session %s: decode session.created: %w", event.Aggregate.ID, err)
+		}
+		if data.ID != event.Aggregate.ID {
+			return nil, fmt.Errorf("project session %s: payload id %q does not match aggregate", event.Aggregate.ID, data.ID)
+		}
+		return &Session{
+			ID:               data.ID,
+			Title:            data.Title,
+			WorkDir:          data.WorkDir,
+			WorkspaceID:      data.WorkspaceID,
+			ClientID:         data.ClientID,
+			CreatedAt:        data.CreatedAt,
+			UpdatedAt:        data.UpdatedAt,
+			AggregateVersion: event.Version,
+		}, nil
+	case EventSessionRenamed:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: rename before creation", event.Aggregate.ID)
+		}
+		var data sessionRenamedData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil, fmt.Errorf("project session %s: decode session.renamed: %w", event.Aggregate.ID, err)
+		}
+		projected := *session
+		projected.Title = data.Title
+		projected.UpdatedAt = data.UpdatedAt
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionMoved:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: move before creation", event.Aggregate.ID)
+		}
+		var data sessionMovedData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return nil, fmt.Errorf("project session %s: decode session.moved: %w", event.Aggregate.ID, err)
+		}
+		projected := *session
+		projected.WorkDir = data.WorkDir
+		projected.WorkspaceID = data.WorkspaceID
+		projected.UpdatedAt = data.UpdatedAt
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	default:
+		return nil, fmt.Errorf("project session %s: unsupported event type %q", event.Aggregate.ID, event.Type)
+	}
 }

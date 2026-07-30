@@ -65,6 +65,7 @@ export interface ProviderOAuthAttempt {
 
 export interface Session {
   id: string;
+  version: number;
   title?: string;
   work_dir?: string;
   workspace_id?: string;

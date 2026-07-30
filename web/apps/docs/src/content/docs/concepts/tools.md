@@ -24,7 +24,7 @@ Wingman ships these built-ins:
 | `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
 | `websearch` | Search the web for current information through a configured search provider. | No |
 
-Directory-scoped tools require the session to have a working directory. Create or update the session with `working_directory`/`work_dir`, or create it from a Workspace with `workspace_id`, before allowing file or shell tools.
+Directory-scoped tools require the session to have a working directory. Create the session with `working_directory` or `workspace_id`, or move it with `POST /sessions/{id}/move`, before allowing file or shell tools.
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \

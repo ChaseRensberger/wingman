@@ -28,7 +28,7 @@ type Session struct {
 	ClientID         string `json:"client_id,omitempty"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
-	AggregateVersion int64  `json:"-"`
+	AggregateVersion int64  `json:"version"`
 }
 
 const (

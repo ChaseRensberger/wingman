@@ -52,7 +52,7 @@ import {
 	TableRow,
 } from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
-import { wfetch } from "@/lib/client";
+import { moveSession, renameSession, wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Workspace } from "@/lib/types";
 import type { DirectoryListing } from "@/lib/types";
@@ -154,13 +154,11 @@ function SessionsPage() {
 			if (!editingSession) return;
 			setSavingSession(true);
 			try {
-				const updated = (await wfetch(`/sessions/${editingSession.id}`, {
-					method: "PUT",
-					body: JSON.stringify({
-						title: value.title.trim(),
-						working_directory: value.workDir.trim(),
-					}),
-				})) as Session;
+				let updated = editingSession;
+				const title = value.title.trim();
+				const workDir = value.workDir.trim();
+				if (title !== (updated.title ?? "")) updated = await renameSession(updated, title);
+				if (workDir !== (updated.work_dir ?? "")) updated = await moveSession(updated, workDir);
 				setSessions((prev) => prev.map((session) => (session.id === updated.id ? updated : session)));
 				setEditingSession(null);
 			} catch (err) {

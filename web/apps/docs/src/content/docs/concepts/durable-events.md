@@ -6,28 +6,29 @@ order: 103
 
 # Durable Events and Projections
 
-Wingman's durable store records session creation in an append-only aggregate
-event log and maintains the session metadata projection in the same transaction.
+Wingman's durable store records session creation, renames, and moves in an
+append-only aggregate event log and maintains the session metadata projection
+in the same transaction.
 
 ## Events and Projections
 
-A durable event records a fact that already happened. For example,
-`session.created` records the initial state of one session.
+A durable event records a fact that already happened. `session.created` records
+the initial state, `session.renamed` records a title change, and `session.moved`
+records a working-directory or Workspace change.
 
 A projection is a query-friendly table derived from those facts. The `sessions`
 table is the session metadata projection used by the HTTP API.
 
-For session creation, Wingman commits both in one SQLite transaction:
+For each metadata transition, Wingman commits both in one SQLite transaction:
 
 ```text
-append session.created
+append session.created, session.renamed, or session.moved
 update sessions projection
 commit
 ```
 
-If either write fails, both are rolled back. A session creation cannot leave an
-event without a projected session or a projected session without its creation
-event.
+If either write fails, both are rolled back. A metadata transition cannot leave
+an event and projection at different versions.
 
 ## Aggregate Streams
 
@@ -42,8 +43,9 @@ event type:     session.created
 ```
 
 Versions are contiguous within one aggregate. Session creation expects version
-zero and commits version one. A duplicate creation sees the existing version
-and fails instead of overwriting state.
+zero and commits version one. Rename and move require the caller's expected
+version and increment it when they change state. A duplicate creation or stale
+metadata command fails instead of overwriting state.
 
 The event also has a global insertion sequence for storage diagnostics and a
 schema version for decoding its payload. Aggregate version and payload schema
@@ -51,8 +53,8 @@ version solve different problems.
 
 ## Replay
 
-The session projector can rebuild the initial `sessions` row from the ordered
-creation event. Projectors reject:
+The session projector rebuilds the current `sessions` row from its ordered
+creation, rename, and move events. Projectors reject:
 
 - Missing or out-of-order event versions.
 - Duplicate creation events.
@@ -63,11 +65,12 @@ creation event. Projectors reject:
 This makes projection behavior deterministic and testable independently of the
 HTTP server.
 
-## Session Creation History
+## Session Metadata History
 
-The aggregate event log records session creation. Session metadata updates,
-deletion, queued runs, messages, model calls, and tool calls are persisted in
-their respective state tables and are not represented in aggregate history.
+The aggregate event log records session creation, title changes, and location
+changes. Deletion, queued runs, messages, model calls, and tool calls are
+persisted in their respective state tables and are not represented in aggregate
+history.
 
 ## Existing Databases
 
@@ -85,7 +88,7 @@ They have different jobs:
 
 | Mechanism | Purpose |
 |---|---|
-| Aggregate event log | Rebuild the initial session projection from `session.created`. |
+| Aggregate event log | Rebuild session metadata from `session.created`, `session.renamed`, and `session.moved`. |
 | Session event history | Let clients replay public session activity. |
 | Live SSE events | Render low-latency deltas that may not be durable. |
 

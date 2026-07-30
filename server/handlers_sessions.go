@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -196,64 +197,102 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 	return models.NormalizeMessages(history), nil
 }
 
-type UpdateSessionRequest struct {
-	Title            *string `json:"title,omitempty"`
-	WorkingDirectory *string `json:"working_directory,omitempty"`
-	WorkspaceID      *string `json:"workspace_id,omitempty"`
+type RenameSessionRequest struct {
+	Title           string `json:"title"`
+	ExpectedVersion int64  `json:"expected_version"`
 }
 
-func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
 	id := chi.URLParam(r, "id")
-
-	sess, err := s.store.GetSession(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
 		return
 	}
 
-	var req UpdateSessionRequest
+	var req RenameSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
-	if req.Title != nil {
-		sess.Title = *req.Title
-	}
-	if req.WorkingDirectory != nil || req.WorkspaceID != nil {
-		workingDirectory := sess.WorkDir
-		workspaceID := sess.WorkspaceID
-		if req.WorkingDirectory != nil {
-			workingDirectory = *req.WorkingDirectory
-			if req.WorkspaceID == nil {
-				workspaceID = ""
-			}
-		}
-		if req.WorkspaceID != nil {
-			workspaceID = *req.WorkspaceID
-			if workspaceID != "" {
-				workingDirectory = ""
-			}
-		}
-		workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(workingDirectory, workspaceID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		sess.WorkDir = workDir
-		sess.WorkspaceID = resolvedWorkspaceID
-	}
-
-	if err := s.store.UpdateSession(sess); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if req.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
-
+	if req.ExpectedVersion <= 0 {
+		writeError(w, http.StatusBadRequest, "expected_version must be positive")
+		return
+	}
+	sess, err := s.store.RenameSession(r.Context(), id, req.Title, req.ExpectedVersion)
+	if writeSessionCommandError(w, err) {
+		return
+	}
 	writeJSON(w, http.StatusOK, sess)
+}
+
+type MoveSessionRequest struct {
+	WorkingDirectory *string `json:"working_directory,omitempty"`
+	WorkspaceID      *string `json:"workspace_id,omitempty"`
+	ExpectedVersion  int64   `json:"expected_version"`
+}
+
+func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+	var req MoveSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if (req.WorkingDirectory == nil) == (req.WorkspaceID == nil) {
+		writeError(w, http.StatusBadRequest, "exactly one of working_directory or workspace_id is required")
+		return
+	}
+	if req.ExpectedVersion <= 0 {
+		writeError(w, http.StatusBadRequest, "expected_version must be positive")
+		return
+	}
+	workingDirectory, workspaceID := "", ""
+	if req.WorkingDirectory != nil {
+		workingDirectory = *req.WorkingDirectory
+	}
+	if req.WorkspaceID != nil {
+		workspaceID = *req.WorkspaceID
+	}
+	workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(workingDirectory, workspaceID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sess, err := s.store.MoveSession(r.Context(), id, workDir, resolvedWorkspaceID, req.ExpectedVersion)
+	if writeSessionCommandError(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, sess)
+}
+
+func writeSessionCommandError(w http.ResponseWriter, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, store.ErrAggregateVersionConflict) {
+		writeError(w, http.StatusConflict, err.Error())
+		return true
+	}
+	if errors.Is(err, store.ErrSessionNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return true
+	}
+	writeError(w, http.StatusInternalServerError, err.Error())
+	return true
 }
 
 func (s *Server) resolveSessionLocation(workingDirectory, workspaceID string) (workDir string, resolvedWorkspaceID string, err error) {

@@ -164,6 +164,112 @@ func TestSQLiteCreateSessionSerializesAcrossStoreHandles(t *testing.T) {
 	}
 }
 
+func TestSQLiteSessionMetadataEventsCommitAndReplay(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	session := &Session{ID: "ses_metadata", Title: "Before", WorkDir: "/before"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := data.RenameSession(context.Background(), session.ID, "After", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := data.MoveSession(context.Background(), session.ID, "/after", "", renamed.AggregateVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(context.Background(), AggregateRef{Type: AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 || events[1].Type != EventSessionRenamed || events[2].Type != EventSessionMoved {
+		t.Fatalf("events = %#v", events)
+	}
+	projected, err := ProjectSession(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.GetSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(projected, stored) || !reflect.DeepEqual(projected, moved) {
+		t.Fatalf("replayed = %#v, stored = %#v, moved = %#v", projected, stored, moved)
+	}
+}
+
+func TestSQLiteSessionMetadataNoOpAndRollback(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	session := &Session{ID: "ses_noop", Title: "Same"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := data.RenameSession(context.Background(), session.ID, "Same", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.AggregateVersion != 1 {
+		t.Fatalf("no-op version = %d, want 1", unchanged.AggregateVersion)
+	}
+	if _, err := data.MoveSession(context.Background(), session.ID, "/missing", "wsp_missing", 1); err == nil {
+		t.Fatal("MoveSession succeeded with missing workspace")
+	}
+	events, err := data.ListAggregateEvents(context.Background(), AggregateRef{Type: AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events))
+	}
+}
+
+func TestSQLiteSessionMetadataSerializesConcurrentWriters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	first, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	second, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	session := &Session{ID: "ses_metadata_concurrent", Title: "Before"}
+	if err := first.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i, data := range []*SQLiteStore{first, second} {
+		wg.Add(1)
+		go func(data *SQLiteStore, title string) {
+			defer wg.Done()
+			<-start
+			_, err := data.RenameSession(context.Background(), session.ID, title, 1)
+			errs <- err
+		}(data, []string{"First", "Second"}[i])
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	var successes, conflicts int
+	for err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrAggregateVersionConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("successes = %d, conflicts = %d; want 1 each", successes, conflicts)
+	}
+}
+
 func TestProjectSessionIsDeterministic(t *testing.T) {
 	session := Session{
 		ID:        "ses_replay",
@@ -199,6 +305,26 @@ func TestProjectSessionRejectsInvalidStream(t *testing.T) {
 	}})
 	if err == nil {
 		t.Fatal("ProjectSession succeeded with a gapped stream")
+	}
+}
+
+func TestProjectSessionRejectsMixedAggregates(t *testing.T) {
+	created, err := NewSessionCreatedEvent(Session{
+		ID:        "ses_first",
+		CreatedAt: "2026-07-30T12:00:00Z",
+		UpdatedAt: "2026-07-30T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Version = 1
+	renamed, err := NewSessionRenamedEvent("ses_second", "Wrong stream", "2026-07-30T12:01:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed.Version = 2
+	if _, err := ProjectSession([]AggregateEvent{created, renamed}); err == nil {
+		t.Fatal("ProjectSession succeeded with mixed aggregate IDs")
 	}
 }
 

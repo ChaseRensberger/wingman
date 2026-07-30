@@ -20,8 +20,8 @@ type Store interface {
 	GetSession(id string) (*Session, error)
 	ListSessions() ([]*Session, error)
 	ListSessionsByClient(clientID string) ([]*Session, error)
-	// UpdateSession persists mutable session metadata.
-	UpdateSession(session *Session) error
+	RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
+	MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
 	DeleteSession(id string) error
 	CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
 	ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)

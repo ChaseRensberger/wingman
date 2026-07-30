@@ -18,8 +18,8 @@ A session stores runtime state, while an agent provides reusable configuration:
 
 One session can hand off between agents or models without creating a new conversation record.
 
-Creating a persisted session atomically appends its initial durable aggregate
-event and updates the session read projection. See [Durable Events and
+Creating, renaming, or moving a persisted session atomically appends a durable
+aggregate event and updates the session read projection. See [Durable Events and
 Projections](/concepts/durable-events) for the persistence model and its current
 scope.
 
@@ -48,6 +48,29 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 ```
 
 `working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is used, Wingman keeps `workspace_id` for grouping and copies the Workspace path into the session's `work_dir` when it has one.
+
+## Rename And Move
+
+Persisted session responses include a `version`. Use it to rename a session:
+
+```bash
+curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/rename" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Investigate retries","expected_version":1}'
+```
+
+Move a session by sending exactly one of `working_directory` or `workspace_id`:
+
+```bash
+curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/move" \
+  -H "Content-Type: application/json" \
+  -d '{"working_directory":"/home/me/other-project","expected_version":2}'
+```
+
+Each changed result increments `version`. If another client changed the session
+first, Wingman returns `409 Conflict`; reload before deciding whether to retry.
+Sending the current title or location is a no-op and does not increment the
+version.
 
 Send a message:
 
@@ -123,7 +146,7 @@ A session can have a working directory. Directory-scoped tools such as `read`, `
 
 Sessions without a working directory are valid if the selected agent only uses tools that do not need one, such as `webfetch` or `websearch`.
 
-A session created with `workspace_id` stores a snapshot of that Workspace's path as `work_dir`. Changing the Workspace later affects future sessions, not existing session history or existing `work_dir` values.
+A session created or moved with `workspace_id` stores a snapshot of that Workspace's path as `work_dir`. Changing the Workspace later affects future sessions and moves, not an existing session's `work_dir` value.
 
 ## Message Parts
 

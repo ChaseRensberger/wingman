@@ -639,26 +639,59 @@ func (s *Store) ListSessionsByWorkspace(workspaceID string) ([]*store.Session, e
 	return out, nil
 }
 
-func (s *Store) UpdateSession(session *store.Session) error {
+func (s *Store) RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*store.Session, error) {
+	event, err := store.NewSessionRenamedEvent(id, title, store.Now())
+	if err != nil {
+		return nil, err
+	}
+	return s.applySessionMetadataEvent(ctx, event, expectedVersion, "")
+}
+
+func (s *Store) MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*store.Session, error) {
+	event, err := store.NewSessionMovedEvent(id, workDir, workspaceID, store.Now())
+	if err != nil {
+		return nil, err
+	}
+	return s.applySessionMetadataEvent(ctx, event, expectedVersion, workspaceID)
+}
+
+func (s *Store) applySessionMetadataEvent(_ context.Context, event store.AggregateEvent, expectedVersion int64, workspaceID string) (*store.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	existing, ok := s.sessions[session.ID]
+	existing, ok := s.sessions[event.Aggregate.ID]
 	if !ok {
-		return fmt.Errorf("session not found: %s", session.ID)
+		return nil, store.ErrSessionNotFound
 	}
-
-	session.UpdatedAt = store.Now()
-	session.ClientID = existing.ClientID
-	session.CreatedAt = existing.CreatedAt
-	session.AggregateVersion = existing.AggregateVersion
-	if session.WorkspaceID != "" {
-		if _, ok := s.workspaces[session.WorkspaceID]; !ok {
-			return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
+	if existing.AggregateVersion != expectedVersion {
+		return nil, &store.AggregateVersionConflict{Aggregate: event.Aggregate, Expected: expectedVersion, Actual: existing.AggregateVersion}
+	}
+	event.ClientID = existing.ClientID
+	if workspaceID != "" {
+		if _, ok := s.workspaces[workspaceID]; !ok {
+			return nil, fmt.Errorf("workspace not found: %s", workspaceID)
 		}
 	}
-	s.sessions[session.ID] = copySession(session)
-	return nil
+	ref := event.Aggregate
+	events := s.aggregates[ref]
+	candidate := append(make([]store.AggregateEvent, 0, len(events)+1), events...)
+	event.Version = expectedVersion + 1
+	candidate = append(candidate, event)
+	projected, err := store.ProjectSession(candidate)
+	if err != nil {
+		return nil, err
+	}
+	if event.Type == store.EventSessionRenamed && projected.Title == existing.Title {
+		return copySession(existing), nil
+	}
+	if event.Type == store.EventSessionMoved && projected.WorkDir == existing.WorkDir && projected.WorkspaceID == existing.WorkspaceID {
+		return copySession(existing), nil
+	}
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	s.aggregates[ref] = append(events, copyAggregateEvent(event))
+	s.sessions[ref.ID] = copySession(projected)
+	return copySession(projected), nil
 }
 
 func (s *Store) DeleteSession(id string) error {
