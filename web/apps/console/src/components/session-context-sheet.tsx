@@ -113,13 +113,14 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
 									{calls.map((call) => (
 								<div key={call.id} className="border-b px-3 py-3 last:border-b-0">
 											<div className="flex items-start justify-between gap-3">
-												<div className="min-w-0"><div className="truncate text-sm font-medium">{call.model_ref || call.model_id || "Unknown model"}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">Step {call.step} · {call.status}{call.finish_reason ? ` · ${call.finish_reason}` : ""}</div></div>
+												<div className="min-w-0"><div className="truncate text-sm font-medium">{call.model_ref || call.model_id || "Unknown model"}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">{call.run_id ? `${call.run_id} · ` : ""}Step {call.step} · attempt {call.attempt} · {call.status}{call.finish_reason ? ` · ${call.finish_reason}` : ""}</div></div>
 											<span className="shrink-0 text-xs text-muted-foreground">{call.cost === undefined ? "Not reported" : formatCost(call.cost)}</span>
 											</div>
                       {call.total_tokens > 0 || call.input_tokens > 0 || call.output_tokens > 0 ? (
                         <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground"><span>In {formatTokenCount(call.input_tokens)}</span><span>Out {formatTokenCount(call.output_tokens)}</span><span>{Math.round(call.context_percent ?? 0)}% context</span></div>
                       ) : <div className="mt-2 text-xs text-muted-foreground">Usage not reported by provider.</div>}
 											{call.error_message && <div className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">{call.error_message}</div>}
+											{call.provider_request_id && <div className="mt-2 truncate font-mono text-xs text-muted-foreground">Provider request {call.provider_request_id}</div>}
 											<RequestManifest trace={call.trace} />
 										</div>
 									))}

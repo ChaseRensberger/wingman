@@ -8,8 +8,9 @@
 // assistant message has been streamed and any tool calls have been
 // executed". This package does NOT own:
 //
-//   - Persistence. The caller (typically agent/session) hooks into
-//     the event sink to write to storage as turns complete.
+//   - Persistence policy. Callers may persist physical model-call attempts
+//     through Config.ModelCallLifecycle and/or consume completed turns from
+//     the event sink.
 //   - HTTP/SSE transport. Caller drains the sink to whatever wire format
 //     it needs.
 //
@@ -126,6 +127,42 @@ type Config struct {
 	// guarantees Sink is called from a single goroutine (the loop's own)
 	// so Sink implementations need not be concurrent-safe.
 	Sink Sink
+
+	// ModelCallLifecycle observes each physical provider request. Start runs
+	// immediately before dispatch; Finish runs after the provider stream ends
+	// and before any tool execution. nil disables model-call lifecycle hooks.
+	ModelCallLifecycle ModelCallLifecycle
+}
+
+// ModelCallLifecycle persists or observes the lifecycle of a physical model
+// request. A future provider retry loop invokes these methods once per attempt.
+type ModelCallLifecycle interface {
+	Start(ctx context.Context, info ModelCallStartInfo) (callID string, err error)
+	Finish(ctx context.Context, info ModelCallFinishInfo) error
+}
+
+// ModelCallStartInfo identifies a physical model request before it is dispatched.
+type ModelCallStartInfo struct {
+	Step      int
+	Attempt   int
+	StartedAt time.Time
+	Trace     models.CallTrace
+}
+
+// ModelCallFinishInfo records the terminal state of a physical model request.
+// Assistant is nil when the provider did not produce a message. Failure is the
+// physical provider error, if any.
+type ModelCallFinishInfo struct {
+	Step              int
+	Attempt           int
+	CallID            string
+	StartedAt         time.Time
+	CompletedAt       time.Time
+	Trace             models.CallTrace
+	Assistant         *models.Message
+	Usage             models.Usage
+	ProviderRequestID string
+	Failure           error
 }
 
 // ToolExecutionMode selects per-call vs per-batch tool dispatch.
@@ -406,8 +443,16 @@ type ToolResult struct {
 // Turn is one iteration of the loop: an assistant message and the tool
 // results produced by executing its tool calls.
 type Turn struct {
-	Step      int
-	Assistant models.Message
+	Step int
+	// ModelCallID is the stable opaque ID returned by ModelCallLifecycle.Start.
+	// It is empty when no lifecycle is configured.
+	ModelCallID string
+	// Attempt is the physical provider attempt within this step. It is currently
+	// always 1 because the loop has no provider retry policy.
+	Attempt int
+	// ProviderRequestID is the provider request ID observed in response metadata.
+	ProviderRequestID string
+	Assistant         models.Message
 	// Results is in source order (the order the assistant emitted the
 	// tool calls in), regardless of execution mode. Empty if the
 	// assistant produced no tool calls.
@@ -509,6 +554,9 @@ type IterationEndEvent struct {
 // running history. This includes the assistant message at the end of
 // each turn and any tool result messages produced by tool execution.
 type MessageEvent struct {
+	// Step identifies a provider-produced assistant message. Synthesized
+	// messages and non-turn events leave it zero.
+	Step    int            `json:"step,omitempty"`
 	Message models.Message `json:"message"`
 }
 

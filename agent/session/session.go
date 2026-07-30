@@ -55,6 +55,7 @@ type Session struct {
 	permissions permission.Ruleset
 	logger      *slog.Logger
 	agentID     string
+	runID       string
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -177,6 +178,11 @@ func WithLogger(logger *slog.Logger) Option {
 // WithAgentID sets the effective agent identifier persisted with model calls.
 func WithAgentID(id string) Option {
 	return func(s *Session) { s.agentID = id }
+}
+
+// WithRunID associates persisted model attempts with a durable session run.
+func WithRunID(id string) Option {
+	return func(s *Session) { s.runID = id }
 }
 
 // WithTransformHistory installs a raw hook that runs before each loop step
@@ -422,6 +428,8 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	plugins := append([]plugin.Plugin(nil), s.plugins...)
 	messageSink := s.messageSink
 	outputSchema := s.outputSchema
+	agentID := s.agentID
+	runID := s.runID
 
 	// If any allowed tool is directory-scoped, the session must have a
 	// working directory. Fail early before mutating history.
@@ -519,8 +527,8 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 				if err != nil && persistErr == nil {
 					persistErr = err
 				}
-				if err == nil && me.Message.Role == models.RoleAssistant {
-					assistantMessageIDs[len(assistantMessageIDs)+1] = msgID
+				if err == nil && me.Message.Role == models.RoleAssistant && me.Step > 0 {
+					assistantMessageIDs[me.Step] = msgID
 				}
 				nextMsgIdx++
 			}
@@ -557,6 +565,16 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			AfterToolCall:     built.Hooks.AfterToolCall,
 			AfterRun:          afterRun,
 		},
+	}
+	if s.store != nil {
+		cfg.ModelCallLifecycle = &modelCallRecorder{
+			store:     s.store,
+			sessionID: s.id,
+			runID:     runID,
+			agentID:   agentID,
+			model:     model,
+			modelInfo: modelInfo,
+		}
 	}
 
 	start := time.Now()
@@ -612,7 +630,11 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 				if turn.Step == res.Steps {
 					stopReason = string(res.StopReason)
 				}
-				if err := s.persistModelCall(ctx, assistantMessageIDs[turn.Step], turn, model, modelInfo, stopReason); err != nil && persistErr == nil {
+				var structuredOutput map[string]any
+				if turn.Step == res.Steps {
+					structuredOutput = res.StructuredOutput
+				}
+				if err := s.persistModelCall(context.WithoutCancel(ctx), assistantMessageIDs[turn.Step], turn, model, modelInfo, runID, agentID, stopReason, structuredOutput); err != nil && persistErr == nil {
 					persistErr = err
 				}
 			}

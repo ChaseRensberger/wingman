@@ -200,6 +200,14 @@ Tool result parts contain model-facing text and may also contain metadata for cl
 
 ## Usage and Context
 
-Persisted sessions also store normalized model-call records for assistant turns. A model call captures the provider/model route, finish state, token usage, context token count, context window, and computed context percentage reported by the provider path.
+Persisted sessions store one normalized model-call record per physical upstream
+attempt. Each record has a stable call ID and carries its `run_id`, loop step,
+attempt number, provider/model route, lifecycle state, timing, token usage,
+context fullness, and provider request ID when available. Wingman persists the
+started record before dispatch and settles it when the provider stream ends.
+
+A model call completes before requested tools execute. A later tool failure can
+fail the run without changing the successful upstream attempt to failed. Steps
+restart at one for each run; run-scoped identity keeps every turn's history.
 
 Clients should use the latest model call, not transcript text estimation, when showing session usage or context-window fullness after reload.

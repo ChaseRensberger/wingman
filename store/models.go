@@ -153,6 +153,7 @@ const (
 type ModelCall struct {
 	ID                   string          `json:"id"`
 	SessionID            string          `json:"session_id"`
+	RunID                string          `json:"run_id,omitempty"`
 	AssistantMessageID   string          `json:"assistant_message_id,omitempty"`
 	Step                 int             `json:"step"`
 	Attempt              int             `json:"attempt"`
@@ -160,6 +161,7 @@ type ModelCall struct {
 	AgentID              string          `json:"agent_id,omitempty"`
 	ModelRef             string          `json:"model_ref,omitempty"`
 	Provider             string          `json:"provider,omitempty"`
+	ProviderRequestID    string          `json:"provider_request_id,omitempty"`
 	API                  string          `json:"api,omitempty"`
 	ModelID              string          `json:"model_id,omitempty"`
 	FinishReason         string          `json:"finish_reason,omitempty"`

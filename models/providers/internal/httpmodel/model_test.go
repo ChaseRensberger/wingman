@@ -1,10 +1,131 @@
 package httpmodel
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/chaserensberger/wingman/models"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestStreamEmitsProviderRequestID(t *testing.T) {
+	tests := []struct {
+		name      string
+		headers   http.Header
+		requestID string
+	}{
+		{
+			name: "priority",
+			headers: http.Header{
+				"X-Request-Id":      {"preferred"},
+				"Request-Id":        {"fallback"},
+				"Openai-Request-Id": {"openai"},
+				"X-Goog-Request-Id": {"google"},
+			},
+			requestID: "preferred",
+		},
+		{
+			name:      "request-id fallback",
+			headers:   http.Header{"Request-Id": {"anthropic"}},
+			requestID: "anthropic",
+		},
+		{
+			name:      "openai-request-id fallback",
+			headers:   http.Header{"Openai-Request-Id": {"openai"}},
+			requestID: "openai",
+		},
+		{
+			name:      "x-goog-request-id fallback",
+			headers:   http.Header{"X-Goog-Request-Id": {"google"}},
+			requestID: "google",
+		},
+		{
+			name:    "absent",
+			headers: http.Header{"Cf-Ray": {"not-a-request-id"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := &Model{
+				Info_:    models.ModelInfo{Provider: "test", ID: "test"},
+				Protocol: OpenAIChat,
+				BaseURL:  "https://example.com",
+				Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     tt.headers,
+						Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+					}, nil
+				})},
+			}
+
+			stream, err := model.Stream(context.Background(), models.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var parts []models.StreamPart
+			for part := range stream.Iter() {
+				parts = append(parts, part)
+			}
+			if tt.requestID == "" {
+				for _, part := range parts {
+					if _, ok := part.(models.ResponseMetadataPart); ok {
+						t.Fatalf("parts = %#v, want no response metadata", parts)
+					}
+				}
+				return
+			}
+			if len(parts) == 0 {
+				t.Fatal("parts = empty, want response metadata")
+			}
+			if _, ok := parts[0].(models.StreamStartPart); !ok {
+				t.Fatalf("first part = %T, want StreamStartPart", parts[0])
+			}
+			if len(parts) < 2 {
+				t.Fatalf("parts = %#v, want response metadata after stream start", parts)
+			}
+			metadata, ok := parts[1].(models.ResponseMetadataPart)
+			if !ok {
+				t.Fatalf("second part = %T, want ResponseMetadataPart", parts[1])
+			}
+			if len(metadata.Meta) != 1 || metadata.Meta["request_id"] != tt.requestID {
+				t.Fatalf("metadata = %#v, want request_id %q", metadata.Meta, tt.requestID)
+			}
+		})
+	}
+}
+
+func TestStreamErrorCarriesProviderRequestID(t *testing.T) {
+	model := &Model{
+		Info_:    models.ModelInfo{Provider: "test", ID: "test"},
+		Protocol: OpenAIChat,
+		BaseURL:  "https://example.com",
+		Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"X-Request-Id": {"request-failed"}},
+				Body:       io.NopCloser(strings.NewReader("rate limited")),
+			}, nil
+		})},
+	}
+	_, err := model.Stream(context.Background(), models.Request{})
+	if err == nil {
+		t.Fatal("Stream succeeded")
+	}
+	withRequestID, ok := err.(interface{ ProviderRequestID() string })
+	if !ok || withRequestID.ProviderRequestID() != "request-failed" {
+		t.Fatalf("error = %#v, want provider request ID", err)
+	}
+}
 
 func TestParseOpenAIChatUsesChoiceUsage(t *testing.T) {
 	state := parseState{}

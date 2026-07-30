@@ -116,6 +116,7 @@ export interface Usage {
 export interface ModelCall {
   id: string;
   session_id: string;
+  run_id?: string;
   assistant_message_id?: string;
   step: number;
   attempt: number;
@@ -123,6 +124,7 @@ export interface ModelCall {
   agent_id?: string;
   model_ref?: string;
   provider?: string;
+  provider_request_id?: string;
   api?: string;
   model_id?: string;
   finish_reason?: string;

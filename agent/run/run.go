@@ -182,7 +182,6 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		turn, err := r.runTurn(ctx, step)
 		if err != nil {
 			if !turn.StartedAt.IsZero() {
-				turn.Failure = err
 				r.turns = append(r.turns, turn)
 			}
 			r.emitError(err)
@@ -332,7 +331,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
-	turn := Turn{Step: step}
+	turn := Turn{Step: step, Attempt: 1}
 	turn.Trace = models.NewCallTrace(req, models.LoweredOptions{})
 	if lop, ok := r.cfg.Client.(interface {
 		LoweredOptions(context.Context, models.Request) models.LoweredOptions
@@ -340,11 +339,28 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		turn.Trace.Lowered = lop.LoweredOptions(ctx, req)
 	}
 	turn.StartedAt = time.Now()
+	if r.cfg.ModelCallLifecycle != nil {
+		callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
+			Step:      turn.Step,
+			Attempt:   turn.Attempt,
+			StartedAt: turn.StartedAt,
+			Trace:     turn.Trace,
+		})
+		if err != nil {
+			return Turn{}, fmt.Errorf("model call start: %w", err)
+		}
+		turn.ModelCallID = callID
+	}
 
 	stream, err := r.cfg.Client.Stream(ctx, req)
 	if err != nil {
 		turn.CompletedAt = time.Now()
-		return turn, fmt.Errorf("model stream: %w", err)
+		if withRequestID, ok := err.(interface{ ProviderRequestID() string }); ok {
+			turn.ProviderRequestID = withRequestID.ProviderRequestID()
+		}
+		failure := fmt.Errorf("model stream: %w", err)
+		turn.Failure = failure
+		return turn, r.finishModelCall(ctx, turn, nil, models.Usage{}, failure, failure)
 	}
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's
@@ -352,22 +368,41 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// stream.Final(); we also snapshot per-turn usage from FinishPart
 	// here since stream.Final() only returns the message.
 	var turnUsage models.Usage
+	var providerRequestID string
 	for part := range stream.Iter() {
 		if fp, ok := part.(models.FinishPart); ok {
 			turnUsage = fp.Usage
+		}
+		if metadata, ok := part.(models.ResponseMetadataPart); ok {
+			if requestID, ok := metadata.Meta["request_id"].(string); ok {
+				providerRequestID = requestID
+			}
 		}
 		r.emit(StreamPartEvent{Step: step, Part: part})
 	}
 	assistantMsg, err := stream.Final()
 	turn.CompletedAt = time.Now()
 	if err != nil {
-		return turn, fmt.Errorf("stream.Final: %w", err)
+		failure := fmt.Errorf("stream.Final: %w", err)
+		turn.Failure = failure
+		turn.Usage = turnUsage
+		turn.ProviderRequestID = providerRequestID
+		return turn, r.finishModelCall(ctx, turn, nil, turnUsage, failure, failure)
 	}
 	if assistantMsg == nil {
-		return turn, errors.New("model returned nil assistant message without error")
+		err := errors.New("model returned nil assistant message without error")
+		turn.Failure = err
+		turn.Usage = turnUsage
+		turn.ProviderRequestID = providerRequestID
+		return turn, r.finishModelCall(ctx, turn, nil, turnUsage, err, err)
 	}
 	if !turnUsage.Empty() {
 		assistantMsg.Usage = &turnUsage
+	}
+	turn.Usage = turnUsage
+	turn.ProviderRequestID = providerRequestID
+	if err := r.finishModelCall(ctx, turn, assistantMsg, turnUsage, nil, nil); err != nil {
+		return turn, err
 	}
 
 	// Cumulative usage across the run. Providers report cumulative
@@ -380,10 +415,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
 	calls := extractToolCalls(*assistantMsg)
-	turn.Usage = turnUsage
 	if len(calls) == 0 {
 		r.messages = append(r.messages, *assistantMsg)
-		r.emit(MessageEvent{Message: *assistantMsg})
+		r.emit(MessageEvent{Step: step, Message: *assistantMsg})
 		turn.Assistant = *assistantMsg
 		return turn, nil
 	}
@@ -466,12 +500,33 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	return turn, nil
 }
 
+// finishModelCall records terminal physical-call state exactly once. The
+// caller's cancellation must not prevent durable settlement of that state.
+func (r *runner) finishModelCall(ctx context.Context, turn Turn, assistant *models.Message, usage models.Usage, failure, runErr error) error {
+	if r.cfg.ModelCallLifecycle == nil {
+		return runErr
+	}
+	hookErr := r.cfg.ModelCallLifecycle.Finish(context.WithoutCancel(ctx), ModelCallFinishInfo{
+		Step:              turn.Step,
+		Attempt:           turn.Attempt,
+		CallID:            turn.ModelCallID,
+		StartedAt:         turn.StartedAt,
+		CompletedAt:       turn.CompletedAt,
+		Trace:             turn.Trace,
+		Assistant:         assistant,
+		Usage:             usage,
+		ProviderRequestID: turn.ProviderRequestID,
+		Failure:           failure,
+	})
+	return errors.Join(runErr, hookErr)
+}
+
 func (r *runner) finalizeToolTurn(turn *Turn, assistantMsg *models.Message, results []ToolResult) {
 	turn.Results = completedToolResults(results)
 	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, turn.Results)
 	turn.Assistant = *assistantMsg
 	r.messages[len(r.messages)-1] = *assistantMsg
-	r.emit(MessageEvent{Message: *assistantMsg})
+	r.emit(MessageEvent{Step: turn.Step, Message: *assistantMsg})
 }
 
 func completedToolResults(results []ToolResult) []ToolResult {

@@ -24,7 +24,7 @@ func TestPersistModelCallStoresUsageUnavailableAndEstimatedCost(t *testing.T) {
 	model := models.ModelRef{Provider: "test", ID: "model"}
 	info := models.ModelInfo{InputCostPerMTok: 3, OutputCostPerMTok: 15}
 
-	if err := sess.persistModelCall(context.Background(), "msg_zero", run.Turn{Step: 1}, model, info, ""); err != nil {
+	if err := sess.persistModelCall(context.Background(), "msg_zero", run.Turn{Step: 1}, model, info, "", "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.persistModelCall(context.Background(), "msg_used", run.Turn{
@@ -32,7 +32,7 @@ func TestPersistModelCallStoresUsageUnavailableAndEstimatedCost(t *testing.T) {
 		Assistant: models.Message{
 			Usage: &models.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
 		},
-	}, model, info, ""); err != nil {
+	}, model, info, "", "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,7 +115,7 @@ func TestPersistModelCallStoresAgentIDTimingAndTrace(t *testing.T) {
 		},
 	}
 
-	if err := sess.persistModelCall(context.Background(), "msg_1", turn, model, info, ""); err != nil {
+	if err := sess.persistModelCall(context.Background(), "msg_1", turn, model, info, "", "agent_123", "", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,6 +145,56 @@ func TestPersistModelCallStoresAgentIDTimingAndTrace(t *testing.T) {
 	}
 	if trace.Version != "1" {
 		t.Fatalf("trace version = %q, want 1", trace.Version)
+	}
+}
+
+func TestRunPersistsStartedModelCallBeforeDispatch(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_started"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_started", SessionID: stored.ID, Message: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	client := &blockingRequestClient{entered: make(chan struct{}), release: make(chan struct{})}
+	sess := New(
+		WithID(stored.ID),
+		WithRunID("run_started"),
+		WithStore(data),
+		WithClient(client),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+	)
+	done := make(chan error, 1)
+	go func() {
+		_, err := sess.Run(context.Background(), "hello")
+		done <- err
+	}()
+	select {
+	case <-client.entered:
+	case err := <-done:
+		t.Fatalf("Run returned before provider dispatch: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("provider dispatch did not start")
+	}
+	calls, err := data.ListModelCalls(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].Status != store.ModelCallStatusStarted || calls[0].RunID != "run_started" || calls[0].ID == "" {
+		t.Fatalf("calls before dispatch release = %#v", calls)
+	}
+	callID := calls[0].ID
+	close(client.release)
+	if err := <-done; err == nil {
+		t.Fatal("Run succeeded, want stream error")
+	}
+	calls, err = data.ListModelCalls(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].ID != callID || calls[0].Status != store.ModelCallStatusFailed || calls[0].CompletedAt.IsZero() {
+		t.Fatalf("settled calls = %#v", calls)
 	}
 }
 
@@ -181,11 +231,106 @@ func TestRunPersistsFailedModelCall(t *testing.T) {
 	}
 }
 
+func TestRunPersistsModelCallRunAndProviderIdentity(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_identity"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_identity", SessionID: stored.ID, Message: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	sess := New(
+		WithID(stored.ID),
+		WithRunID("run_identity"),
+		WithStore(data),
+		WithClient(&metadataRequestClient{}),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 1000}),
+		WithTransformHistory(func(_ context.Context, info run.TransformHistoryInfo) ([]models.Message, error) {
+			info.Sink.OnEvent(run.MessageEvent{Message: models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "synthetic"}}}})
+			return nil, nil
+		}),
+	)
+	if _, err := sess.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := data.ListModelCalls(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %#v", calls)
+	}
+	call := calls[0]
+	if call.RunID != "run_identity" || call.ProviderRequestID != "provider-request-1" || call.Status != store.ModelCallStatusCompleted || call.AssistantMessageID == "" {
+		t.Fatalf("call = %#v", call)
+	}
+	if call.InputTokens != 4 || call.OutputTokens != 2 || call.ContextTokens != 6 {
+		t.Fatalf("usage = %#v", call)
+	}
+	messages, err := data.ListMessages(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var providerMessageID string
+	for _, storedMessage := range messages {
+		message, err := StoredMessageToModel(storedMessage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message.Role == models.RoleAssistant && textOf(message) == "done" {
+			providerMessageID = storedMessage.ID
+		}
+	}
+	if providerMessageID == "" || call.AssistantMessageID != providerMessageID {
+		t.Fatalf("assistant message ID = %q, provider message ID = %q", call.AssistantMessageID, providerMessageID)
+	}
+}
+
 type requestCaptureClient struct {
 	request models.Request
 }
 
 type failingRequestClient struct{}
+
+type metadataRequestClient struct{}
+
+func (c *metadataRequestClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *metadataRequestClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *metadataRequestClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	message := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "done"}}, FinishReason: models.FinishReasonStop}
+	usage := models.Usage{InputTokens: 4, OutputTokens: 2, TotalTokens: 6}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](2)
+	stream.Push(models.ResponseMetadataPart{Meta: map[string]any{"request_id": "provider-request-1"}})
+	stream.Push(models.FinishPart{Reason: models.FinishReasonStop, Usage: usage, Message: message})
+	stream.Close(message, nil)
+	return stream, nil
+}
+
+type blockingRequestClient struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (c *blockingRequestClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *blockingRequestClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *blockingRequestClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	close(c.entered)
+	<-c.release
+	return nil, errors.New("stream failed")
+}
 
 func (c *failingRequestClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
 	return nil, errors.New("unexpected Prepare")

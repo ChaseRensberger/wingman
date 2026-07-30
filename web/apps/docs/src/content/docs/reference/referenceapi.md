@@ -139,7 +139,7 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `POST` | `/sessions` | Create session |
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
-| `GET` | `/sessions/{id}/model-calls` | List recorded upstream model calls for the session |
+| `GET` | `/sessions/{id}/model-calls` | List physical upstream model attempts in start-time order |
 | `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
 | `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
@@ -256,6 +256,37 @@ admission, so later Agent edits or session moves do not redirect queued work.
 Both a new admission and an identical retry return `202 Accepted`. On retry,
 `status` is the run's current status and `session_version` is the session's
 current aggregate version.
+
+### Model-call response
+
+`GET /sessions/{id}/model-calls` returns one record per physical upstream
+attempt. Durable attempts include `run_id`; all calls include stable `id`,
+`step`, `attempt`, `status`, route, timing, usage, and error fields. A
+`provider_request_id` is included when the provider returns a supported request
+ID header. `assistant_message_id` appears when the attempt produced a persisted
+assistant message.
+
+```json
+[
+  {
+    "id": "mcl_...",
+    "session_id": "ses_...",
+    "run_id": "run_...",
+    "assistant_message_id": "msg_...",
+    "step": 1,
+    "attempt": 1,
+    "status": "completed",
+    "model_ref": "anthropic/claude-sonnet-5",
+    "provider_request_id": "req_...",
+    "input_tokens": 120,
+    "output_tokens": 48,
+    "total_tokens": 168,
+    "context_tokens": 168,
+    "started_at": "2026-07-30T12:00:00Z",
+    "completed_at": "2026-07-30T12:00:02Z"
+  }
+]
+```
 
 ### Streaming
 

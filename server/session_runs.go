@@ -105,7 +105,7 @@ func (m *sessionRunManager) execute(ctx context.Context, queued *store.SessionRu
 	}
 	if err == nil {
 		var runSession *session.Session
-		runSession, err = m.server.buildSession(&queued.Agent, sess)
+		runSession, err = m.server.buildSessionForRun(&queued.Agent, sess, queued.ID)
 		if err == nil && schema != nil {
 			runSession.SetOutputSchema(&models.OutputSchema{Name: schema.Name, Schema: schema.Schema})
 		}

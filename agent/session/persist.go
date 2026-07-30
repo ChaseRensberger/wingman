@@ -111,57 +111,124 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 	return sm.ID, nil
 }
 
-func (s *Session) persistModelCall(ctx context.Context, msgID string, turn run.Turn, model models.ModelRef, info models.ModelInfo, stopReason string) error {
+type modelCallRecorder struct {
+	store     store.Store
+	sessionID string
+	runID     string
+	agentID   string
+	model     models.ModelRef
+	modelInfo models.ModelInfo
+}
+
+func (r *modelCallRecorder) Start(ctx context.Context, info run.ModelCallStartInfo) (string, error) {
+	call := modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, run.Turn{
+		ModelCallID: store.NewID(store.PrefixModelCall),
+		Step:        info.Step,
+		Attempt:     info.Attempt,
+		StartedAt:   info.StartedAt,
+		Trace:       info.Trace,
+	})
+	call.Status = store.ModelCallStatusStarted
+	if err := r.store.UpsertModelCall(ctx, call); err != nil {
+		return "", err
+	}
+	return call.ID, nil
+}
+
+func (r *modelCallRecorder) Finish(ctx context.Context, info run.ModelCallFinishInfo) error {
+	turn := run.Turn{
+		ModelCallID:       info.CallID,
+		Step:              info.Step,
+		Attempt:           info.Attempt,
+		ProviderRequestID: info.ProviderRequestID,
+		Usage:             info.Usage,
+		StartedAt:         info.StartedAt,
+		CompletedAt:       info.CompletedAt,
+		Trace:             info.Trace,
+		Failure:           info.Failure,
+	}
+	if info.Assistant != nil {
+		turn.Assistant = *info.Assistant
+	}
+	return r.store.UpsertModelCall(ctx, modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, turn))
+}
+
+func (s *Session) persistModelCall(ctx context.Context, msgID string, turn run.Turn, model models.ModelRef, info models.ModelInfo, runID, agentID, stopReason string, structuredOutput map[string]any) error {
 	if s.store == nil {
 		return nil
 	}
+	if turn.ModelCallID == "" {
+		turn.ModelCallID = store.NewID(store.PrefixModelCall)
+	}
+	call := modelCallRecord(s.id, runID, agentID, model, info, turn)
+	call.AssistantMessageID = msgID
+	call.StopReason = stopReason
+	if structuredOutput != nil {
+		encoded, err := json.Marshal(structuredOutput)
+		if err != nil {
+			return fmt.Errorf("marshal model call structured output: %w", err)
+		}
+		call.StructuredOutputJSON = encoded
+	}
+	return s.store.UpsertModelCall(ctx, call)
+}
+
+func modelCallRecord(sessionID, runID, agentID string, model models.ModelRef, info models.ModelInfo, turn run.Turn) store.ModelCall {
 	now := time.Now().UTC()
-	msg := turn.Assistant
-	usage := models.Usage{}
-	if msg.Usage != nil {
-		usage = *msg.Usage
+	usage := turn.Usage
+	if usage.Empty() && turn.Assistant.Usage != nil {
+		usage = *turn.Assistant.Usage
 	}
 	call := store.ModelCall{
-		ID:                 store.NewID(store.PrefixModelCall),
-		SessionID:          s.id,
-		AssistantMessageID: msgID,
-		Step:               turn.Step,
-		Attempt:            1,
-		Status:             store.ModelCallStatusCompleted,
-		AgentID:            s.agentID,
-		ModelRef:           model.Ref(),
-		Provider:           model.Provider,
-		API:                string(model.API),
-		ModelID:            model.ID,
-		FinishReason:       string(msg.FinishReason),
-		StopReason:         stopReason,
-		InputTokens:        usage.InputTokens,
-		OutputTokens:       usage.OutputTokens,
-		ReasoningTokens:    usage.ReasoningTokens,
-		CachedInputTokens:  usage.CachedInputTokens,
-		CacheWriteTokens:   usage.CacheWriteTokens,
-		TotalTokens:        usage.TotalOrComputed(),
-		ContextTokens:      usage.ContextTokens(),
-		ContextWindow:      info.ContextWindow,
-		ContextPercent:     usage.ContextPercent(info.ContextWindow),
-		Cost:               estimatedCost(usage, info),
-		StartedAt:          turn.StartedAt.UTC(),
-		CompletedAt:        turn.CompletedAt.UTC(),
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                turn.ModelCallID,
+		SessionID:         sessionID,
+		RunID:             runID,
+		Step:              turn.Step,
+		Attempt:           turn.Attempt,
+		Status:            store.ModelCallStatusCompleted,
+		AgentID:           agentID,
+		ModelRef:          model.Ref(),
+		Provider:          model.Provider,
+		ProviderRequestID: turn.ProviderRequestID,
+		API:               string(model.API),
+		ModelID:           model.ID,
+		FinishReason:      string(turn.Assistant.FinishReason),
+		InputTokens:       usage.InputTokens,
+		OutputTokens:      usage.OutputTokens,
+		ReasoningTokens:   usage.ReasoningTokens,
+		CachedInputTokens: usage.CachedInputTokens,
+		CacheWriteTokens:  usage.CacheWriteTokens,
+		TotalTokens:       usage.TotalOrComputed(),
+		ContextTokens:     usage.ContextTokens(),
+		ContextWindow:     info.ContextWindow,
+		ContextPercent:    usage.ContextPercent(info.ContextWindow),
+		Cost:              estimatedCost(usage, info),
+		StartedAt:         turn.StartedAt.UTC(),
+		CompletedAt:       turn.CompletedAt.UTC(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if call.Attempt == 0 {
+		call.Attempt = 1
 	}
 	if turn.Failure != nil {
 		call.ErrorMessage = turn.Failure.Error()
 		if errors.Is(turn.Failure, context.Canceled) || errors.Is(turn.Failure, context.DeadlineExceeded) {
 			call.Status = store.ModelCallStatusAborted
+			if errors.Is(turn.Failure, context.DeadlineExceeded) {
+				call.ErrorType = "deadline_exceeded"
+			} else {
+				call.ErrorType = "canceled"
+			}
 		} else {
 			call.Status = store.ModelCallStatusFailed
+			call.ErrorType = "model_error"
 		}
 	}
-	if msg.Origin != nil {
-		call.Provider = msg.Origin.Provider
-		call.API = string(msg.Origin.API)
-		call.ModelID = msg.Origin.ModelID
+	if turn.Assistant.Origin != nil {
+		call.Provider = turn.Assistant.Origin.Provider
+		call.API = string(turn.Assistant.Origin.API)
+		call.ModelID = turn.Assistant.Origin.ModelID
 	}
 	if turn.Trace.Version != "" {
 		b, err := json.Marshal(turn.Trace)
@@ -170,7 +237,7 @@ func (s *Session) persistModelCall(ctx context.Context, msgID string, turn run.T
 			call.Trace = b
 		}
 	}
-	return s.store.UpsertModelCall(ctx, call)
+	return call
 }
 
 func estimatedCost(usage models.Usage, info models.ModelInfo) *float64 {

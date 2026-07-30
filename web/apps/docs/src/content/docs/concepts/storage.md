@@ -46,7 +46,7 @@ The SQLite schema stores:
 | `session_events` | Public session event history used for SSE replay. |
 | `aggregate_events` | Internal append-only session creation, metadata, and run-admission facts used to rebuild critical projections. |
 | `messages` | Ordered message rows for each session. |
-| `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
+| `model_calls` | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
 | `auth` | Local provider credentials, stored as JSON. |
 | `schema_migrations` | Applied migration versions, names, and SQL checksums. |
@@ -68,12 +68,26 @@ Projections](/concepts/durable-events).
 
 `model_calls` stores normalized accounting for each upstream model request:
 
+- Stable call ID, durable run ID, loop step, and physical attempt number.
 - Provider, API, model ID, and requested model ref.
+- Provider request ID when the upstream response supplies one.
 - Status, finish reason, stop reason, and error fields.
 - Input, output, reasoning, cached-input, cache-write, total, and context token counts.
 - Context window and computed context percentage.
 
-The latest model call for a session lets clients show token count and context-window fullness after a page reload without estimating from transcript text.
+Wingman writes `started` immediately before dispatch and updates that same call
+ID when the provider stream completes, fails, or is canceled. A successful model
+call is settled before requested tools execute, so a later tool failure does not
+misclassify the upstream attempt. Calls are associated with their assistant
+message after that message is persisted.
+
+Each durable attempt is unique within its `run_id`, step, and attempt number.
+Steps restart at one for each run without overwriting earlier history. Wingman
+does not currently retry provider requests, so `attempt` is presently `1`.
+
+The latest model call with usage for a session lets clients show token count and
+context-window fullness after a page reload without estimating from transcript
+text. Lists are returned in physical start-time order across runs.
 
 ## Message Parts
 

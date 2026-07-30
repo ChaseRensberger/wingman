@@ -68,12 +68,22 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return nil, fmt.Errorf("%s stream: HTTP %d: %s", m.Info_.Provider, resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, &streamResponseError{
+			provider:  m.Info_.Provider,
+			status:    resp.StatusCode,
+			body:      strings.TrimSpace(string(b)),
+			requestID: responseRequestID(resp.Header),
+		}
 	}
 
 	stream := models.NewEventStream[models.StreamPart, *models.Message](64)
+	requestID := responseRequestID(resp.Header)
 	go func() {
 		defer resp.Body.Close()
+		stream.Push(models.StreamStartPart{})
+		if requestID != "" {
+			stream.Push(models.ResponseMetadataPart{Meta: map[string]any{"request_id": requestID}})
+		}
 		msg, usage, reason, err := m.readSSE(resp.Body, stream)
 		if msg != nil && !usage.Empty() {
 			msg.Usage = &usage
@@ -87,6 +97,30 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 		stream.Close(msg, nil)
 	}()
 	return stream, nil
+}
+
+type streamResponseError struct {
+	provider  string
+	status    int
+	body      string
+	requestID string
+}
+
+func (e *streamResponseError) Error() string {
+	return fmt.Sprintf("%s stream: HTTP %d: %s", e.provider, e.status, e.body)
+}
+
+func (e *streamResponseError) ProviderRequestID() string { return e.requestID }
+
+// responseRequestID checks x-request-id, request-id, openai-request-id, then
+// x-goog-request-id, in priority order.
+func responseRequestID(headers http.Header) string {
+	for _, name := range []string{"x-request-id", "request-id", "openai-request-id", "x-goog-request-id"} {
+		if requestID := strings.TrimSpace(headers.Get(name)); requestID != "" {
+			return requestID
+		}
+	}
+	return ""
 }
 
 // Prepare lowers a provider-neutral request into the provider JSON body without
@@ -386,7 +420,6 @@ func (m *Model) geminiBody(req models.Request) map[string]any {
 }
 
 func (m *Model) readSSE(r io.Reader, stream *models.EventStream[models.StreamPart, *models.Message]) (*models.Message, models.Usage, models.FinishReason, error) {
-	stream.Push(models.StreamStartPart{})
 	state := parseState{provider: m.Info_.Provider, api: m.Info_.API, model: m.Info_.ID, finish: models.FinishReasonStop}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

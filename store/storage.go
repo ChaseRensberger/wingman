@@ -9,6 +9,7 @@ var ErrSessionNotFound = errors.New("session not found")
 var ErrClientNameExists = errors.New("client name already exists")
 var ErrWorkspaceNameExists = errors.New("workspace name already exists")
 var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict")
+var ErrModelCallAttemptConflict = errors.New("model call attempt conflict")
 
 // SessionRunAdmissionConflict reports conflicting reuse of a request identity.
 type SessionRunAdmissionConflict struct {
@@ -52,11 +53,11 @@ type Store interface {
 	// ASC. Returns ErrSessionNotFound if the session does not exist.
 	// Returns an empty slice (not nil) when the session has no messages.
 	ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
-	// UpsertModelCall inserts or updates one upstream model-call record.
+	// UpsertModelCall inserts or updates one upstream model-call record keyed by ID.
 	UpsertModelCall(ctx context.Context, call ModelCall) error
 	// LatestModelCall returns the latest call with context usage for a session.
 	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
-	// ListModelCalls returns all model calls for the session ordered by step.
+	// ListModelCalls returns all model calls for the session in chronological order.
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
 	// AppendSessionEvent stores one durable session event and assigns its
 	// session-scoped sequence.

@@ -1137,22 +1137,49 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 	createdAt := call.CreatedAt.UTC().Format(time.RFC3339Nano)
 	updatedAt := call.UpdatedAt.UTC().Format(time.RFC3339Nano)
 
-	_, err := s.db.ExecContext(ctx, `
+	var existingID string
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM model_calls WHERE id = ?`, call.ID).Scan(&existingID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("check model call ID: %w", err)
+	}
+	if err == sql.ErrNoRows && call.RunID != "" {
+		var runExists int
+		if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM session_runs WHERE id = ? AND session_id = ?`, call.RunID, call.SessionID).Scan(&runExists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("session run %s does not belong to session %s", call.RunID, call.SessionID)
+			}
+			return fmt.Errorf("check model call session run: %w", err)
+		}
+		var existingID string
+		err := s.db.QueryRowContext(ctx, `
+			SELECT id FROM model_calls
+			WHERE run_id = ? AND step = ? AND attempt = ?
+		`, call.RunID, call.Step, call.Attempt).Scan(&existingID)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("check model call attempt: %w", err)
+		}
+		if err == nil && existingID != call.ID {
+			return ErrModelCallAttemptConflict
+		}
+	}
+
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO model_calls (
-			id, session_id, assistant_message_id, step, attempt, status,
-			agent_id, model_ref, provider, api, model_id,
+			id, session_id, run_id, assistant_message_id, step, attempt, status,
+			agent_id, model_ref, provider, provider_request_id, api, model_id,
 			finish_reason, stop_reason, error_type, error_message,
 			input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens,
 			context_tokens, context_window, context_percent, cost,
 			structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at
 		)
-		VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(session_id, step, attempt) DO UPDATE SET
+		VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
 			assistant_message_id = excluded.assistant_message_id,
 			status = excluded.status,
 			agent_id = excluded.agent_id,
 			model_ref = excluded.model_ref,
 			provider = excluded.provider,
+			provider_request_id = excluded.provider_request_id,
 			api = excluded.api,
 			model_id = excluded.model_id,
 			finish_reason = excluded.finish_reason,
@@ -1173,13 +1200,20 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 			metadata_json = excluded.metadata_json,
 			completed_at = excluded.completed_at,
 			updated_at = excluded.updated_at
-	`, call.ID, call.SessionID, call.AssistantMessageID, call.Step, call.Attempt, call.Status,
-		call.AgentID, call.ModelRef, call.Provider, call.API, call.ModelID,
+	`, call.ID, call.SessionID, call.RunID, call.AssistantMessageID, call.Step, call.Attempt, call.Status,
+		call.AgentID, call.ModelRef, call.Provider, call.ProviderRequestID, call.API, call.ModelID,
 		call.FinishReason, call.StopReason, call.ErrorType, call.ErrorMessage,
 		call.InputTokens, call.OutputTokens, call.ReasoningTokens, call.CachedInputTokens, call.CacheWriteTokens, call.TotalTokens,
 		call.ContextTokens, call.ContextWindow, call.ContextPercent, call.Cost,
 		nullableBytes(call.StructuredOutputJSON), nullableBytes(call.MetadataJSON), startedAt, completedAt, createdAt, updatedAt)
 	if err != nil {
+		if call.RunID != "" {
+			var conflictingID string
+			conflictErr := s.db.QueryRowContext(ctx, `SELECT id FROM model_calls WHERE run_id = ? AND step = ? AND attempt = ?`, call.RunID, call.Step, call.Attempt).Scan(&conflictingID)
+			if conflictErr == nil && conflictingID != call.ID {
+				return ErrModelCallAttemptConflict
+			}
+		}
 		return fmt.Errorf("upsert model call: %w", err)
 	}
 	return nil
@@ -1194,7 +1228,7 @@ func (s *SQLiteStore) LatestModelCall(ctx context.Context, sessionID string) (*M
 		SELECT `+modelCallColumns+`
 		FROM model_calls
 		WHERE session_id = ? AND context_tokens > 0
-		ORDER BY step DESC, attempt DESC
+		ORDER BY started_at DESC, id DESC
 		LIMIT 1
 	`, sessionID)
 	call, err := scanModelCall(row)
@@ -1207,7 +1241,7 @@ func (s *SQLiteStore) LatestModelCall(ctx context.Context, sessionID string) (*M
 	return &call, nil
 }
 
-// ListModelCalls returns all model calls for the session ordered by step.
+// ListModelCalls returns all model calls for the session in chronological order.
 func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error) {
 	if err := s.sessionExists(ctx, sessionID); err != nil {
 		return nil, err
@@ -1216,7 +1250,7 @@ func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]M
 		SELECT `+modelCallColumns+`
 		FROM model_calls
 		WHERE session_id = ?
-		ORDER BY step ASC, attempt ASC
+		ORDER BY started_at ASC, id ASC
 	`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("query model calls: %w", err)
@@ -1542,8 +1576,8 @@ func (s *SQLiteStore) SetAuth(auth *Auth) error {
 // ---- helpers -------------------------------------------------------------
 
 const modelCallColumns = `
-	id, session_id, assistant_message_id, step, attempt, status,
-	COALESCE(agent_id, ''), COALESCE(model_ref, ''), COALESCE(provider, ''), COALESCE(api, ''), COALESCE(model_id, ''),
+	id, session_id, COALESCE(run_id, ''), assistant_message_id, step, attempt, status,
+	COALESCE(agent_id, ''), COALESCE(model_ref, ''), COALESCE(provider, ''), COALESCE(provider_request_id, ''), COALESCE(api, ''), COALESCE(model_id, ''),
 	COALESCE(finish_reason, ''), COALESCE(stop_reason, ''), COALESCE(error_type, ''), COALESCE(error_message, ''),
 	input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens,
 	context_tokens, context_window, COALESCE(context_percent, 0), cost,
@@ -1601,8 +1635,8 @@ func scanModelCall(r rowScanner) (ModelCall, error) {
 	var assistantMessageID, completedAt, structuredOutputJSON, metadataJSON sql.NullString
 	var startedAt, createdAt, updatedAt string
 	if err := r.Scan(
-		&call.ID, &call.SessionID, &assistantMessageID, &call.Step, &call.Attempt, &call.Status,
-		&call.AgentID, &call.ModelRef, &call.Provider, &call.API, &call.ModelID,
+		&call.ID, &call.SessionID, &call.RunID, &assistantMessageID, &call.Step, &call.Attempt, &call.Status,
+		&call.AgentID, &call.ModelRef, &call.Provider, &call.ProviderRequestID, &call.API, &call.ModelID,
 		&call.FinishReason, &call.StopReason, &call.ErrorType, &call.ErrorMessage,
 		&call.InputTokens, &call.OutputTokens, &call.ReasoningTokens, &call.CachedInputTokens, &call.CacheWriteTokens, &call.TotalTokens,
 		&call.ContextTokens, &call.ContextWindow, &call.ContextPercent, &call.Cost,

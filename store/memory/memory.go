@@ -871,11 +871,20 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.sessions[call.SessionID]; !ok {
-		return store.ErrSessionNotFound
-	}
 	if call.ID == "" {
 		call.ID = store.NewID(store.PrefixModelCall)
+	}
+	existing, exists := s.modelCalls[call.ID]
+	if !exists {
+		if _, ok := s.sessions[call.SessionID]; !ok {
+			return store.ErrSessionNotFound
+		}
+		if call.RunID != "" {
+			run, ok := s.runs[call.RunID]
+			if !ok || run.SessionID != call.SessionID {
+				return fmt.Errorf("session run %s does not belong to session %s", call.RunID, call.SessionID)
+			}
+		}
 	}
 	if call.Attempt == 0 {
 		call.Attempt = 1
@@ -890,10 +899,18 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 	if call.UpdatedAt.IsZero() {
 		call.UpdatedAt = now
 	}
-	for id, existing := range s.modelCalls {
-		if existing.SessionID == call.SessionID && existing.Step == call.Step && existing.Attempt == call.Attempt {
-			delete(s.modelCalls, id)
-			break
+	if exists {
+		call.SessionID = existing.SessionID
+		call.RunID = existing.RunID
+		call.Step = existing.Step
+		call.Attempt = existing.Attempt
+		call.StartedAt = existing.StartedAt
+		call.CreatedAt = existing.CreatedAt
+	} else if call.RunID != "" {
+		for _, existing := range s.modelCalls {
+			if existing.RunID == call.RunID && existing.Step == call.Step && existing.Attempt == call.Attempt {
+				return store.ErrModelCallAttemptConflict
+			}
 		}
 	}
 	cp := copyModelCall(&call)
@@ -913,7 +930,7 @@ func (s *Store) LatestModelCall(ctx context.Context, sessionID string) (*store.M
 		if call.SessionID != sessionID || call.ContextTokens == 0 {
 			continue
 		}
-		if latest == nil || call.Step > latest.Step || (call.Step == latest.Step && call.Attempt > latest.Attempt) {
+		if latest == nil || call.StartedAt.After(latest.StartedAt) || (call.StartedAt.Equal(latest.StartedAt) && call.ID > latest.ID) {
 			latest = call
 		}
 	}
@@ -938,10 +955,10 @@ func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.M
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Step == out[j].Step {
-			return out[i].Attempt < out[j].Attempt
+		if out[i].StartedAt.Equal(out[j].StartedAt) {
+			return out[i].ID < out[j].ID
 		}
-		return out[i].Step < out[j].Step
+		return out[i].StartedAt.Before(out[j].StartedAt)
 	})
 	if out == nil {
 		out = []store.ModelCall{}

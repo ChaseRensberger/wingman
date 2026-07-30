@@ -261,6 +261,77 @@ func TestSessionRunAdmissionMigrationBackfillsAggregateEvents(t *testing.T) {
 	}
 }
 
+func TestModelCallAttemptsMigrationPreservesLegacyCalls(t *testing.T) {
+	db := testMigrationDB(t)
+	if _, err := db.Exec(migrationsTable); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range migrations[:7] {
+		if err := applyMigration(db, migration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created := "2026-07-30T12:00:00Z"
+	if _, err := db.Exec(`INSERT INTO sessions (id, title, created_at, updated_at, aggregate_version) VALUES ('ses_legacy_calls', '', ?, ?, 1)`, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO model_calls (id, session_id, step, attempt, status, started_at, created_at, updated_at)
+		VALUES ('mcl_legacy_one', 'ses_legacy_calls', 1, 1, 'completed', ?, ?, ?), ('mcl_legacy_two', 'ses_legacy_calls', 2, 1, 'completed', ?, ?, ?)
+	`, created, created, created, created, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMigration(db, migrations[7]); err != nil {
+		t.Fatal(err)
+	}
+	var calls, runs int
+	if err := db.QueryRow(`SELECT COUNT(*), COUNT(run_id) FROM model_calls WHERE session_id = 'ses_legacy_calls'`).Scan(&calls, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || runs != 0 {
+		t.Fatalf("legacy calls=%d run IDs=%d, want 2 and 0", calls, runs)
+	}
+	if _, err := db.Exec(`INSERT INTO session_runs (id, session_id, sequence, status, message, agent_json, created_at, updated_at) VALUES ('run_new', 'ses_legacy_calls', 1, 'queued', '', '{}', ?, ?)`, created, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO model_calls (id, session_id, run_id, step, attempt, status, provider_request_id, started_at, created_at, updated_at) VALUES ('mcl_new', 'ses_legacy_calls', 'run_new', 1, 1, 'started', 'request_new', ?, ?, ?)`, created, created, created); err != nil {
+		t.Fatal(err)
+	}
+	var providerRequestID string
+	if err := db.QueryRow(`SELECT provider_request_id FROM model_calls WHERE id = 'mcl_new'`).Scan(&providerRequestID); err != nil || providerRequestID != "request_new" {
+		t.Fatalf("provider request ID=%q error=%v", providerRequestID, err)
+	}
+	if _, err := db.Exec(`INSERT INTO model_calls (id, session_id, run_id, step, attempt, status, started_at, created_at, updated_at) VALUES ('mcl_duplicate', 'ses_legacy_calls', 'run_new', 1, 1, 'started', ?, ?, ?)`, created, created, created); err == nil {
+		t.Fatal("duplicate run attempt insert succeeded")
+	}
+	for _, index := range []string{"idx_model_calls_session_started_at", "idx_model_calls_assistant_message", "idx_model_calls_session_status"} {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, index).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("index %s count=%d error=%v", index, count, err)
+		}
+	}
+	rows, err := db.Query(`SELECT name FROM pragma_index_info('idx_model_calls_session_started_at') ORDER BY seqno`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var columns []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.Fatal(err)
+		}
+		columns = append(columns, column)
+	}
+	if err := rows.Err(); err != nil || strings.Join(columns, ",") != "session_id,started_at,id" {
+		t.Fatalf("chronology index columns=%v error=%v", columns, err)
+	}
+}
+
 func testMigrationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
