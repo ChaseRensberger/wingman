@@ -70,3 +70,9 @@ type Store interface {
 
 	Close() error
 }
+
+// AggregateEventReader exposes immutable domain history to replay and
+// diagnostic consumers without widening the runtime Store contract.
+type AggregateEventReader interface {
+	ListAggregateEvents(ctx context.Context, aggregate AggregateRef, afterVersion int64, limit int) ([]AggregateEvent, error)
+}

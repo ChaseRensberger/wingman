@@ -41,7 +41,10 @@ The SQLite schema stores:
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
 | `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
-| `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, timestamps. |
+| `sessions` | Session metadata projection: title, working directory, client ID, optional Workspace ID, timestamps, aggregate version. |
+| `session_runs` | Durably admitted session work and its execution status. |
+| `session_events` | Public session event history used for SSE replay. |
+| `aggregate_events` | Internal append-only session creation facts used to rebuild the initial session projection. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per upstream model-call attempt, including provider/model provenance, finish state, usage, and context-window fullness. |
 | `parts` | Ordered typed content parts for each message. |
@@ -51,6 +54,12 @@ The SQLite schema stores:
 Sessions do not store `agent_id` or `model_ref`. Agents and models are selected per message. Assistant messages are linked to `model_calls`, which are the durable record of the provider/model route and usage for that turn.
 
 Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
+
+Session creation is event-sourced: `session.created` and the `sessions`
+projection commit in one transaction. Session updates, deletion, runs,
+messages, model calls, and tool calls are stored directly in their respective
+tables and are not part of aggregate history. See [Durable Events and
+Projections](/concepts/durable-events).
 
 ## Model Calls
 
@@ -135,6 +144,12 @@ type Store interface {
     UpdateSession(session *Session) error
     DeleteSession(id string) error
 
+    CreateSessionRun(ctx context.Context, run SessionRun) (SessionRun, error)
+    ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
+    CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
+    ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
+    AbortRunningSessionRuns(ctx context.Context) error
+
     UpsertMessage(ctx context.Context, msg StoredMessage) error
     UpsertPart(ctx context.Context, part StoredPart) error
     ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
@@ -142,6 +157,9 @@ type Store interface {
     UpsertModelCall(ctx context.Context, call ModelCall) error
     LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
     ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
+
+    AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error)
+    ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]SessionEvent, error)
 
     CreateClient(name string) (*Client, error)
     EnsureDefaultClient() (*Client, error)
@@ -163,3 +181,8 @@ type Store interface {
 ```
 
 `store/memory` provides an in-memory implementation used by tests and embedding scenarios.
+
+SQLite and the memory store additionally implement the optional
+`store.AggregateEventReader` interface for internal replay and diagnostics. It
+is separate from `Store` so adapters that do not expose aggregate history are
+not forced to implement a runtime capability Wingman does not yet require.

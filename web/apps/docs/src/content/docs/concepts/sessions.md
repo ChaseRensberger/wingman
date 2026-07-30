@@ -18,6 +18,11 @@ A session stores runtime state, while an agent provides reusable configuration:
 
 One session can hand off between agents or models without creating a new conversation record.
 
+Creating a persisted session atomically appends its initial durable aggregate
+event and updates the session read projection. See [Durable Events and
+Projections](/concepts/durable-events) for the persistence model and its current
+scope.
+
 Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 
 ## Create Then Send
@@ -83,6 +88,9 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
 ```
 
 The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, and `data`. Durable events also include `cursor`.
+
+The public SSE history is separate from the internal aggregate event log used
+to rebuild database projections.
 
 Each accepted message emits `session.run.queued`, then `session.run.started` when execution begins. Terminal events are `session.run.completed` and `session.run.failed`; all carry the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run and leaves later queued messages intact.
 

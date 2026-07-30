@@ -21,13 +21,14 @@ type Agent struct {
 }
 
 type Session struct {
-	ID          string `json:"id"`
-	Title       string `json:"title,omitempty"`
-	WorkDir     string `json:"work_dir,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	ClientID    string `json:"client_id,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID               string `json:"id"`
+	Title            string `json:"title,omitempty"`
+	WorkDir          string `json:"work_dir,omitempty"`
+	WorkspaceID      string `json:"workspace_id,omitempty"`
+	ClientID         string `json:"client_id,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	AggregateVersion int64  `json:"-"`
 }
 
 const (

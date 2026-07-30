@@ -129,6 +129,74 @@ func TestApplyMigrationRollsBackOnFailure(t *testing.T) {
 	}
 }
 
+func TestAggregateEventMigrationBackfillsSessions(t *testing.T) {
+	db := testMigrationDB(t)
+	if _, err := db.Exec(migrationsTable); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) < 6 {
+		t.Fatalf("migrations = %d, want at least 6", len(migrations))
+	}
+	for _, migration := range migrations[:5] {
+		if err := applyMigration(db, migration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	createdAt := "2026-07-30T12:00:00Z"
+	if _, err := db.Exec(`
+		INSERT INTO sessions (id, title, work_dir, created_at, updated_at)
+		VALUES ('ses_legacy', 'Legacy', '/tmp/legacy', ?, ?)
+	`, createdAt, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO sessions (id, title, created_at, updated_at)
+		VALUES ('old_legacy', 'Noncanonical legacy ID', ?, ?)
+	`, createdAt, createdAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyMigration(db, migrations[5]); err != nil {
+		t.Fatal(err)
+	}
+
+	var projectionVersion int64
+	if err := db.QueryRow(`SELECT aggregate_version FROM sessions WHERE id = 'ses_legacy'`).Scan(&projectionVersion); err != nil {
+		t.Fatal(err)
+	}
+	if projectionVersion != 1 {
+		t.Fatalf("projection version = %d, want 1", projectionVersion)
+	}
+	var eventType string
+	var eventVersion int64
+	var payload string
+	if err := db.QueryRow(`
+		SELECT event_type, version, payload_json
+		FROM aggregate_events
+		WHERE aggregate_type = 'session' AND aggregate_id = 'ses_legacy'
+	`).Scan(&eventType, &eventVersion, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if eventType != EventSessionCreated || eventVersion != 1 {
+		t.Fatalf("event = %s version %d", eventType, eventVersion)
+	}
+	for _, want := range []string{`"id":"ses_legacy"`, `"title":"Legacy"`, `"work_dir":"/tmp/legacy"`} {
+		if !strings.Contains(payload, want) {
+			t.Fatalf("payload %s does not contain %s", payload, want)
+		}
+	}
+	var eventCount, distinctIDCount int
+	if err := db.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT id) FROM aggregate_events`).Scan(&eventCount, &distinctIDCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 2 || distinctIDCount != 2 {
+		t.Fatalf("events = %d, distinct IDs = %d; want 2 each", eventCount, distinctIDCount)
+	}
+}
+
 func testMigrationDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

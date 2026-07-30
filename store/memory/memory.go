@@ -27,6 +27,8 @@ type Store struct {
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
 	events     map[string]*store.SessionEvent
+	aggregates map[store.AggregateRef][]store.AggregateEvent
+	globalSeq  int64
 	runs       map[string]*store.SessionRun
 	auth       *store.Auth
 }
@@ -42,6 +44,7 @@ func NewStore() *Store {
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
 		events:     make(map[string]*store.SessionEvent),
+		aggregates: make(map[store.AggregateRef][]store.AggregateEvent),
 		runs:       make(map[string]*store.SessionRun),
 	}
 }
@@ -241,6 +244,11 @@ func copySessionEvent(e *store.SessionEvent) store.SessionEvent {
 		cp.Data = cp.DataJSON
 	}
 	return cp
+}
+
+func copyAggregateEvent(e store.AggregateEvent) store.AggregateEvent {
+	e.Data = append(json.RawMessage(nil), e.Data...)
+	return e
 }
 
 func copyAuth(a *store.Auth) *store.Auth {
@@ -532,9 +540,46 @@ func (s *Store) CreateSession(session *store.Session) error {
 			return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 		}
 	}
-
-	s.sessions[session.ID] = copySession(session)
+	ref := store.AggregateRef{Type: store.AggregateSession, ID: session.ID}
+	if events := s.aggregates[ref]; len(events) != 0 {
+		return &store.AggregateVersionConflict{Aggregate: ref, Expected: 0, Actual: int64(len(events))}
+	}
+	event, err := store.NewSessionCreatedEvent(*session)
+	if err != nil {
+		return err
+	}
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	event.Version = 1
+	projected, err := store.ProjectSession([]store.AggregateEvent{event})
+	if err != nil {
+		return err
+	}
+	s.aggregates[ref] = []store.AggregateEvent{copyAggregateEvent(event)}
+	s.sessions[session.ID] = copySession(projected)
+	*session = *copySession(projected)
 	return nil
+}
+
+// ListAggregateEvents returns an aggregate's immutable events in version order.
+func (s *Store) ListAggregateEvents(_ context.Context, aggregate store.AggregateRef, afterVersion int64, limit int) ([]store.AggregateEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	events := s.aggregates[aggregate]
+	out := make([]store.AggregateEvent, 0, min(limit, len(events)))
+	for _, event := range events {
+		if event.Version <= afterVersion {
+			continue
+		}
+		out = append(out, copyAggregateEvent(event))
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) GetSession(id string) (*store.Session, error) {
@@ -606,6 +651,7 @@ func (s *Store) UpdateSession(session *store.Session) error {
 	session.UpdatedAt = store.Now()
 	session.ClientID = existing.ClientID
 	session.CreatedAt = existing.CreatedAt
+	session.AggregateVersion = existing.AggregateVersion
 	if session.WorkspaceID != "" {
 		if _, ok := s.workspaces[session.WorkspaceID]; !ok {
 			return fmt.Errorf("workspace not found: %s", session.WorkspaceID)

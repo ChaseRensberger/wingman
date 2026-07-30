@@ -7,6 +7,9 @@ description: "Consume Wingman's server-sent event stream."
 
 Wingman has two SSE contracts: persistent session events and the one-shot `POST /run` stream. Clients start persistent work with the message endpoint and watch session state through the session event stream.
 
+Session SSE is a client delivery contract. It is separate from the internal
+aggregate event log described in [Durable Events and Projections](/concepts/durable-events), which records session creation and reconstructs the initial session projection.
+
 ## Start Work
 
 Start a persistent session run:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,46 @@ import (
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
 )
+
+func TestCreateSessionCommitsAggregateEvent(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+	request := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(`{"title":"Event sourced"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	var session store.Session
+	if err := json.NewDecoder(response.Body).Decode(&session); err != nil {
+		t.Fatal(err)
+	}
+	if session.Title != "Event sourced" || session.ClientID != client.ID {
+		t.Fatalf("session = %#v", session)
+	}
+	events, err := data.ListAggregateEvents(context.Background(), store.AggregateRef{Type: store.AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != store.EventSessionCreated || events[0].Version != 1 {
+		t.Fatalf("events = %#v", events)
+	}
+	projected, err := store.ProjectSession(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.ID != session.ID || projected.Title != session.Title || projected.ClientID != session.ClientID {
+		t.Fatalf("projected = %#v, response = %#v", projected, session)
+	}
+}
 
 func TestListSessionModelCalls(t *testing.T) {
 	t.Parallel()

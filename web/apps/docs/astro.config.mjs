@@ -81,6 +81,10 @@ export default defineConfig({
           items: [
             { label: "Clients", slug: "concepts/clients" },
             { label: "Sessions", slug: "concepts/sessions" },
+            {
+              label: "Durable Events and Projections",
+              slug: "concepts/durable-events",
+            },
             { label: "Workspaces", slug: "concepts/workspaces" },
             { label: "Agents", slug: "concepts/agents" },
             { label: "Tools", slug: "concepts/tools" },

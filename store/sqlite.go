@@ -31,6 +31,53 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+type immediateTx struct {
+	conn *sql.Conn
+	done bool
+}
+
+func (s *SQLiteStore) beginImmediate(ctx context.Context) (*immediateTx, error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return &immediateTx{conn: conn}, nil
+}
+
+func (tx *immediateTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return tx.conn.QueryRowContext(ctx, query, args...)
+}
+
+func (tx *immediateTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return tx.conn.ExecContext(ctx, query, args...)
+}
+
+func (tx *immediateTx) Commit(ctx context.Context) error {
+	if tx.done {
+		return errors.New("transaction already closed")
+	}
+	_, err := tx.conn.ExecContext(ctx, `COMMIT`)
+	if err != nil {
+		_, _ = tx.conn.ExecContext(context.Background(), `ROLLBACK`)
+	}
+	tx.done = true
+	closeErr := tx.conn.Close()
+	return errors.Join(err, closeErr)
+}
+
+func (tx *immediateTx) Rollback() {
+	if tx.done {
+		return
+	}
+	_, _ = tx.conn.ExecContext(context.Background(), `ROLLBACK`)
+	tx.done = true
+	_ = tx.conn.Close()
+}
+
 // NewSQLiteStore opens (and creates if missing) a SQLite DB at dbPath,
 // applies pragmas for durability+concurrency, and runs all pending
 // migrations.
@@ -96,6 +143,106 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 
 // Close releases the underlying database handle.
 func (s *SQLiteStore) Close() error { return s.db.Close() }
+
+type aggregateEventTx interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func appendAggregateEventTx(ctx context.Context, tx aggregateEventTx, event AggregateEvent, expectedVersion int64) (AggregateEvent, error) {
+	var actualVersion int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(version), 0)
+		FROM aggregate_events
+		WHERE aggregate_type = ? AND aggregate_id = ?
+	`, event.Aggregate.Type, event.Aggregate.ID).Scan(&actualVersion); err != nil {
+		return AggregateEvent{}, fmt.Errorf("read aggregate version: %w", err)
+	}
+	if actualVersion != expectedVersion {
+		return AggregateEvent{}, &AggregateVersionConflict{
+			Aggregate: event.Aggregate,
+			Expected:  expectedVersion,
+			Actual:    actualVersion,
+		}
+	}
+	if event.ID == "" {
+		event.ID = NewID(PrefixEvent)
+	}
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = 1
+	}
+	if event.Time.IsZero() {
+		event.Time = time.Now().UTC()
+	}
+	if len(event.Data) == 0 {
+		event.Data = json.RawMessage(`{}`)
+	}
+	event.Version = expectedVersion + 1
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO aggregate_events (
+			id, aggregate_type, aggregate_id, version, event_type,
+			schema_version, payload_json, created_at, causation_id,
+			correlation_id, client_id, run_id
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))
+	`, event.ID, event.Aggregate.Type, event.Aggregate.ID, event.Version, event.Type,
+		event.SchemaVersion, []byte(event.Data), event.Time.UTC().Format(time.RFC3339Nano),
+		event.CausationID, event.CorrelationID, event.ClientID, event.RunID)
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("append aggregate event: %w", err)
+	}
+	event.GlobalSequence, err = result.LastInsertId()
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("read aggregate global sequence: %w", err)
+	}
+	return event, nil
+}
+
+// ListAggregateEvents returns an aggregate's immutable events in version order.
+func (s *SQLiteStore) ListAggregateEvents(ctx context.Context, aggregate AggregateRef, afterVersion int64, limit int) ([]AggregateEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT global_sequence, id, aggregate_type, aggregate_id, version,
+			event_type, schema_version, payload_json, created_at,
+			COALESCE(causation_id, ''), COALESCE(correlation_id, ''),
+			COALESCE(client_id, ''), COALESCE(run_id, '')
+		FROM aggregate_events
+		WHERE aggregate_type = ? AND aggregate_id = ? AND version > ?
+		ORDER BY version ASC
+		LIMIT ?
+	`, aggregate.Type, aggregate.ID, afterVersion, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list aggregate events: %w", err)
+	}
+	defer rows.Close()
+	events := make([]AggregateEvent, 0)
+	for rows.Next() {
+		var event AggregateEvent
+		var aggregateType string
+		var payload []byte
+		var createdAt string
+		if err := rows.Scan(
+			&event.GlobalSequence, &event.ID, &aggregateType, &event.Aggregate.ID,
+			&event.Version, &event.Type, &event.SchemaVersion, &payload, &createdAt,
+			&event.CausationID, &event.CorrelationID, &event.ClientID, &event.RunID,
+		); err != nil {
+			return nil, fmt.Errorf("scan aggregate event: %w", err)
+		}
+		event.Aggregate.Type = AggregateType(aggregateType)
+		event.Data = append(json.RawMessage(nil), payload...)
+		event.Time, err = time.Parse(time.RFC3339Nano, createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse aggregate event time: %w", err)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list aggregate events: %w", err)
+	}
+	return events, nil
+}
 
 // DefaultDBPath returns the platform-appropriate default DB location.
 func DefaultDBPath() (string, error) {
@@ -510,8 +657,8 @@ func (s *SQLiteStore) DeleteWorkspace(id string) error {
 
 // ---- sessions ------------------------------------------------------------
 
-// CreateSession inserts a session row. Runs in a single transaction so
-// partial creation never happens.
+// CreateSession appends session.created and updates the session projection in
+// one transaction.
 func (s *SQLiteStore) CreateSession(session *Session) error {
 	if session.ID == "" {
 		session.ID = NewID(PrefixSession)
@@ -520,7 +667,8 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	session.CreatedAt = now
 	session.UpdatedAt = now
 
-	tx, err := s.db.Begin()
+	ctx := context.Background()
+	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return err
 	}
@@ -528,7 +676,7 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 
 	if session.ClientID != "" {
 		var exists int
-		if err := tx.QueryRow(`SELECT 1 FROM clients WHERE id = ?`, session.ClientID).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM clients WHERE id = ?`, session.ClientID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("client not found: %s", session.ClientID)
 			}
@@ -537,34 +685,50 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 	}
 	if session.WorkspaceID != "" {
 		var exists int
-		if err := tx.QueryRow(`SELECT 1 FROM workspaces WHERE id = ?`, session.WorkspaceID).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM workspaces WHERE id = ?`, session.WorkspaceID).Scan(&exists); err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("workspace not found: %s", session.WorkspaceID)
 			}
 			return fmt.Errorf("verify workspace: %w", err)
 		}
 	}
+	event, err := NewSessionCreatedEvent(*session)
+	if err != nil {
+		return err
+	}
+	event, err = appendAggregateEventTx(ctx, tx, event, 0)
+	if err != nil {
+		return err
+	}
+	projected, err := ProjectSession([]AggregateEvent{event})
+	if err != nil {
+		return err
+	}
 
 	var workDirPtr *string
-	if session.WorkDir != "" {
-		workDirPtr = &session.WorkDir
+	if projected.WorkDir != "" {
+		workDirPtr = &projected.WorkDir
 	}
 	var workspaceIDPtr *string
-	if session.WorkspaceID != "" {
-		workspaceIDPtr = &session.WorkspaceID
+	if projected.WorkspaceID != "" {
+		workspaceIDPtr = &projected.WorkspaceID
 	}
 	var clientIDPtr *string
-	if session.ClientID != "" {
-		clientIDPtr = &session.ClientID
+	if projected.ClientID != "" {
+		clientIDPtr = &projected.ClientID
 	}
-	if _, err := tx.Exec(`
-		INSERT INTO sessions (id, title, work_dir, workspace_id, client_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, session.ID, session.Title, workDirPtr, workspaceIDPtr, clientIDPtr, session.CreatedAt, session.UpdatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO sessions (id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, projected.ID, projected.Title, workDirPtr, workspaceIDPtr, clientIDPtr, projected.CreatedAt, projected.UpdatedAt, projected.AggregateVersion); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	*session = *projected
+	return nil
 }
 
 // GetSession returns the session metadata.
@@ -574,8 +738,8 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 	var workspaceID sql.NullString
 	var clientID sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.Title, &workDir, &workspaceID, &clientID, &session.CreatedAt, &session.UpdatedAt)
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version FROM sessions WHERE id = ?
+	`, id).Scan(&session.ID, &session.Title, &workDir, &workspaceID, &clientID, &session.CreatedAt, &session.UpdatedAt, &session.AggregateVersion)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found: %s", id)
 	}
@@ -592,7 +756,7 @@ func (s *SQLiteStore) GetSession(id string) (*Session, error) {
 // loaded automatically; use ListMessages for message retrieval.
 func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions ORDER BY created_at DESC
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version FROM sessions ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -605,7 +769,7 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 		var workDir sql.NullString
 		var workspaceID sql.NullString
 		var clientID sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &clientID, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &clientID, &sess.CreatedAt, &sess.UpdatedAt, &sess.AggregateVersion); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
@@ -623,7 +787,7 @@ func (s *SQLiteStore) ListSessions() ([]*Session, error) {
 // Wingman API client, newest first. Sessions with no client are excluded.
 func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE client_id = ? ORDER BY created_at DESC
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version FROM sessions WHERE client_id = ? ORDER BY created_at DESC
 	`, clientID)
 	if err != nil {
 		return nil, err
@@ -636,7 +800,7 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 		var workDir sql.NullString
 		var workspaceID sql.NullString
 		var cid sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &workspaceID, &cid, &sess.CreatedAt, &sess.UpdatedAt, &sess.AggregateVersion); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
@@ -653,7 +817,7 @@ func (s *SQLiteStore) ListSessionsByClient(clientID string) ([]*Session, error) 
 // ListSessionsByWorkspace returns every session linked to a workspace, newest first.
 func (s *SQLiteStore) ListSessionsByWorkspace(workspaceID string) ([]*Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at FROM sessions WHERE workspace_id = ? ORDER BY created_at DESC
+		SELECT id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version FROM sessions WHERE workspace_id = ? ORDER BY created_at DESC
 	`, workspaceID)
 	if err != nil {
 		return nil, err
@@ -666,7 +830,7 @@ func (s *SQLiteStore) ListSessionsByWorkspace(workspaceID string) ([]*Session, e
 		var workDir sql.NullString
 		var sid sql.NullString
 		var cid sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &sid, &cid, &sess.CreatedAt, &sess.UpdatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.Title, &workDir, &sid, &cid, &sess.CreatedAt, &sess.UpdatedAt, &sess.AggregateVersion); err != nil {
 			return nil, err
 		}
 		sess.WorkDir = workDir.String
