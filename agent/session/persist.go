@@ -132,6 +132,113 @@ type modelCallRecorder struct {
 	modelInfo models.ModelInfo
 }
 
+// toolUseRecorder durably records the lifecycle of one model-proposed tool
+// use. Its fields are immutable, so one recorder can safely serve parallel
+// tool calls within a run.
+type toolUseRecorder struct {
+	store     store.Store
+	sessionID string
+	runID     string
+}
+
+func (r *toolUseRecorder) Propose(ctx context.Context, info run.ToolUseProposeInfo) (string, error) {
+	input, err := json.Marshal(info.Args)
+	if err != nil {
+		return "", fmt.Errorf("marshal tool use input: %w", err)
+	}
+	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
+	use.ID = store.NewID(store.PrefixToolUse)
+	use.Status = store.ToolUseStatusProposed
+	use.InputJSON = input
+	use.ProposedAt = info.ProposedAt
+	if err := r.store.SaveToolUse(ctx, use); err != nil {
+		return "", err
+	}
+	return use.ID, nil
+}
+
+func (r *toolUseRecorder) Authorize(ctx context.Context, info run.ToolUseAuthorizeInfo) error {
+	input, err := json.Marshal(info.Args)
+	if err != nil {
+		return fmt.Errorf("marshal tool use input: %w", err)
+	}
+	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
+	use.ID = info.ToolUseID
+	use.Status = store.ToolUseStatusAuthorized
+	use.InputJSON = input
+	use.AuthorizedAt = info.AuthorizedAt
+	return r.store.SaveToolUse(ctx, use)
+}
+
+func (r *toolUseRecorder) Start(ctx context.Context, info run.ToolUseStartInfo) error {
+	input, err := json.Marshal(info.Args)
+	if err != nil {
+		return fmt.Errorf("marshal tool use input: %w", err)
+	}
+	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
+	use.ID = info.ToolUseID
+	use.Status = store.ToolUseStatusStarted
+	use.InputJSON = input
+	use.StartedAt = info.StartedAt
+	return r.store.SaveToolUse(ctx, use)
+}
+
+func (r *toolUseRecorder) Finish(ctx context.Context, info run.ToolUseFinishInfo) error {
+	input, err := json.Marshal(info.Args)
+	if err != nil {
+		return fmt.Errorf("marshal tool use input: %w", err)
+	}
+	metadata, err := json.Marshal(info.ToolResult.Metadata)
+	if err != nil {
+		return fmt.Errorf("marshal tool use metadata: %w", err)
+	}
+	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
+	use.ID = info.ToolUseID
+	use.Status = storeToolUseStatus(info.Status)
+	use.InputJSON = input
+	use.Output = info.ToolResult.Output
+	use.MetadataJSON = metadata
+	use.ErrorType = info.ErrorType
+	use.ErrorMessage = info.ErrorMessage
+	if use.ErrorMessage == "" && info.Failure != nil {
+		use.ErrorMessage = info.Failure.Error()
+	}
+	use.ProposedAt = info.ProposedAt
+	use.AuthorizedAt = info.AuthorizedAt
+	use.StartedAt = info.StartedAt
+	use.CompletedAt = info.CompletedAt
+	return r.store.SaveToolUse(ctx, use)
+}
+
+func toolUseRecord(sessionID, runID string, step, ordinal int, callID, name, messageID, partID, modelCallID string) store.ToolUse {
+	return store.ToolUse{
+		SessionID:          sessionID,
+		RunID:              runID,
+		ModelCallID:        modelCallID,
+		AssistantMessageID: messageID,
+		PartID:             partID,
+		Step:               step,
+		Ordinal:            ordinal,
+		CallID:             callID,
+		Name:               name,
+	}
+}
+
+func storeToolUseStatus(status run.ToolUseStatus) string {
+	switch status {
+	case run.ToolUseStatusCompleted:
+		return store.ToolUseStatusCompleted
+	case run.ToolUseStatusFailed:
+		return store.ToolUseStatusFailed
+	case run.ToolUseStatusInterrupted:
+		return store.ToolUseStatusInterrupted
+	case run.ToolUseStatusDeclined:
+		return store.ToolUseStatusDeclined
+	default:
+		return string(status)
+	}
+}
+
 func (r *modelCallRecorder) Start(ctx context.Context, info run.ModelCallStartInfo) (string, error) {
 	call := modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, run.Turn{
 		ModelCallID: store.NewID(store.PrefixModelCall),

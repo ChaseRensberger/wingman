@@ -130,6 +130,9 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_purge", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
+	if err := data.SaveToolUse(ctx, store.ToolUse{ID: "tlu_purge", SessionID: session.ID, RunID: "run_purge", Step: 1, Ordinal: 0, Name: "read", Status: store.ToolUseStatusProposed}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := data.AppendSessionEvent(ctx, store.SessionEvent{ID: "evt_purge", SessionID: session.ID}); err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +148,8 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if _, ok := data.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: session.ID}]; ok {
 		t.Fatal("aggregate history remains after purge")
 	}
-	if len(data.messages) != 0 || len(data.parts) != 0 || len(data.modelCalls) != 0 || len(data.runs) != 0 || len(data.events) != 0 {
-		t.Fatalf("state remains after purge: messages=%d parts=%d calls=%d runs=%d events=%d", len(data.messages), len(data.parts), len(data.modelCalls), len(data.runs), len(data.events))
+	if len(data.messages) != 0 || len(data.parts) != 0 || len(data.modelCalls) != 0 || len(data.toolUses) != 0 || len(data.runs) != 0 || len(data.events) != 0 {
+		t.Fatalf("state remains after purge: messages=%d parts=%d calls=%d tool_uses=%d runs=%d events=%d", len(data.messages), len(data.parts), len(data.modelCalls), len(data.toolUses), len(data.runs), len(data.events))
 	}
 }
 

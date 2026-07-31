@@ -483,6 +483,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		return turn, err
 	}
 	r.messages = append(r.messages, assistantMsg)
+	// The checkpoint may have assigned canonical part IDs; resolve from that
+	// snapshot so durable tool-use records reference persisted identities.
+	calls = extractToolCalls(assistantMsg)
 
 	// Resolve each call against the registry. Unknown-tool calls get a
 	// nil Tool; BeforeToolCall still fires so hooks can synthesize.
@@ -493,7 +496,39 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		if args == nil {
 			args = map[string]any{}
 		}
-		resolved[i] = ToolCall{ID: c.CallID, Name: c.Name, Args: args, Tool: t}
+		resolved[i] = ToolCall{ID: c.CallID, ToolUseID: c.ToolUseID, Name: c.Name, Args: args, Tool: t, MessageID: assistantMsg.ID, PartID: c.ID, ModelCallID: turn.ModelCallID, Step: step, Ordinal: i + 1}
+	}
+	if r.cfg.ToolUseLifecycle != nil {
+		proposed := make([]ToolCall, 0, len(resolved))
+		proposedIDs := make(map[string]struct{}, len(resolved))
+		for i := range resolved {
+			call := &resolved[i]
+			call.ProposedAt = time.Now()
+			id, proposalErr := r.cfg.ToolUseLifecycle.Propose(ctx, ToolUseProposeInfo{Step: call.Step, Ordinal: call.Ordinal, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt})
+			if proposalErr != nil || id == "" {
+				if proposalErr == nil {
+					proposalErr = errors.New("tool use proposal returned empty ID")
+				}
+				runErr := fmt.Errorf("tool use proposal: %w", proposalErr)
+				return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, r.interruptToolUses(ctx, proposed, runErr, "proposal"), models.MessageStateFailed, runErr)
+			}
+			if _, exists := proposedIDs[id]; exists {
+				proposalErr = fmt.Errorf("tool use proposal returned duplicate ID %q", id)
+				runErr := fmt.Errorf("tool use proposal: %w", proposalErr)
+				return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, r.interruptToolUses(ctx, proposed, runErr, "proposal"), models.MessageStateFailed, runErr)
+			}
+			proposedIDs[id] = struct{}{}
+			call.ToolUseID = id
+			proposed = append(proposed, *call)
+			assistantMsg.Content = applyToolUseIDs(assistantMsg.Content, resolved)
+			r.emit(ToolUseProposedEvent{Call: *call})
+		}
+		assistantMsg.Content = applyToolUseIDs(assistantMsg.Content, resolved)
+		assistantMsg.Revision++
+		if checkpointErr := r.checkpoint(ctx, step, &assistantMsg); checkpointErr != nil {
+			return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, r.interruptToolUses(ctx, proposed, checkpointErr, "checkpoint"), models.MessageStateFailed, checkpointErr)
+		}
+		r.messages[len(r.messages)-1] = assistantMsg
 	}
 
 	// Decide execution mode for this batch.
@@ -511,10 +546,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	case ToolExecutionSequential:
 		for i := range resolved {
 			res, err := r.executeOne(ctx, resolved[i])
+			results[i] = res
 			if err != nil {
 				return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateFailed, err)
 			}
-			results[i] = res
 		}
 	case ToolExecutionParallel:
 		var wg sync.WaitGroup
@@ -524,12 +559,12 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			go func(i int) {
 				defer wg.Done()
 				res, err := r.executeOne(ctx, resolved[i])
+				// Safe: each goroutine writes a unique index, no overlap.
+				results[i] = res
 				if err != nil {
 					errCh <- err
 					return
 				}
-				// Safe: each goroutine writes a unique index, no overlap.
-				results[i] = res
 			}(i)
 		}
 		wg.Wait()
@@ -693,7 +728,7 @@ func mergeFinalAssistant(current *models.Message, final models.Message) {
 		case models.ToolPart:
 			tools[p.CallID] = p
 		case models.ToolCallPart:
-			tools[p.CallID] = models.ToolPart{ID: p.ID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
+			tools[p.CallID] = models.ToolPart{ID: p.ID, ToolUseID: p.ToolUseID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
 		}
 	}
 	textN, reasoningN = 0, 0
@@ -713,6 +748,9 @@ func mergeFinalAssistant(current *models.Message, final models.Message) {
 				streamed.Name = p.Name
 				streamed.State = models.ToolStatePending
 				streamed.Input = p.Input
+				if streamed.ToolUseID == "" {
+					streamed.ToolUseID = p.ToolUseID
+				}
 				streamed.ProviderExecuted = p.ProviderExecuted
 				streamed.ProviderMetadata = p.ProviderMetadata
 				part = streamed
@@ -721,6 +759,9 @@ func mergeFinalAssistant(current *models.Message, final models.Message) {
 		case models.ToolPart:
 			if streamed, ok := tools[p.CallID]; ok {
 				p.ID = streamed.ID
+				if p.ToolUseID == "" {
+					p.ToolUseID = streamed.ToolUseID
+				}
 				if p.InputRaw == "" {
 					p.InputRaw = streamed.InputRaw
 				}
@@ -778,7 +819,7 @@ func (r *runner) finalizeToolTurn(ctx context.Context, turn *Turn, assistantMsg 
 func completedToolResults(results []ToolResult) []ToolResult {
 	out := make([]ToolResult, 0, len(results))
 	for _, result := range results {
-		if result.CallID != "" {
+		if result.CallID != "" || result.ToolUseID != "" {
 			out = append(out, result)
 		}
 	}
@@ -786,23 +827,34 @@ func completedToolResults(results []ToolResult) []ToolResult {
 }
 
 func toolPartsFromResults(content models.Content, results []ToolResult) models.Content {
+	byToolUseID := make(map[string]ToolResult, len(results))
 	byCallID := make(map[string]ToolResult, len(results))
 	for _, result := range results {
-		byCallID[result.CallID] = result
+		if result.ToolUseID != "" {
+			byToolUseID[result.ToolUseID] = result
+		} else {
+			byCallID[result.CallID] = result
+		}
 	}
 	out := make(models.Content, 0, len(content))
 	for _, part := range content {
 		var toolPart models.ToolPart
 		switch p := part.(type) {
 		case models.ToolCallPart:
-			toolPart = models.ToolPart{ID: p.ID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
+			toolPart = models.ToolPart{ID: p.ID, ToolUseID: p.ToolUseID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
 		case models.ToolPart:
 			toolPart = p
 		default:
 			out = append(out, part)
 			continue
 		}
-		result, ok := byCallID[toolPart.CallID]
+		var result ToolResult
+		var ok bool
+		if toolPart.ToolUseID != "" {
+			result, ok = byToolUseID[toolPart.ToolUseID]
+		} else {
+			result, ok = byCallID[toolPart.CallID]
+		}
 		if !ok {
 			toolPart.State = models.ToolStatePending
 			out = append(out, toolPart)
@@ -816,6 +868,9 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 		startedAt := completedAt - result.Duration.Milliseconds()
 		toolPart.State = state
 		toolPart.Input = result.Args
+		if result.ToolUseID != "" {
+			toolPart.ToolUseID = result.ToolUseID
+		}
 		toolPart.Output = result.Output
 		toolPart.Metadata = result.Metadata
 		toolPart.Error = result.Error
@@ -829,11 +884,9 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 // executeOne runs the BeforeToolCall hook, dispatches the tool, runs the
 // AfterToolCall hook, and emits start/end events. Returns the assembled
 // ToolResult; the only error path is hook errors other than ErrSkipTool
-// and provider/runtime panics-as-errors. Tool execution errors become
+// and lifecycle transition errors. Tool execution errors become
 // part of the result (IsError=true), not return errors.
 func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, error) {
-	r.emit(ToolExecutionStartEvent{Call: call})
-
 	// BeforeToolCall: may rewrite args or skip.
 	if r.cfg.Hooks.BeforeToolCall != nil {
 		newArgs, err := r.cfg.Hooks.BeforeToolCall(ctx, call)
@@ -845,17 +898,17 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 					args = call.Args
 				}
 				res := ToolResult{
-					CallID:  call.ID,
+					CallID: call.ID, ToolUseID: call.ToolUseID,
 					Name:    call.Name,
 					Args:    args,
 					Error:   err.Error(),
 					IsError: true,
 				}
-				res = r.runAfterToolCall(ctx, call, res) // hook still fires
-				r.emit(ToolExecutionEndEvent{Result: res})
-				return res, nil
+				return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "tool_skipped", err)
 			}
-			return ToolResult{}, fmt.Errorf("hook BeforeToolCall: %w", err)
+			res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: err.Error(), IsError: true}
+			settled, settleErr := r.settleToolUse(ctx, call, res, ToolUseStatusFailed, "before_tool_call", err)
+			return settled, errors.Join(fmt.Errorf("hook BeforeToolCall: %w", err), settleErr)
 		}
 		if newArgs != nil {
 			call.Args = newArgs
@@ -866,36 +919,55 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	// AfterToolCall so hooks see every call uniformly.
 	if call.Tool == nil {
 		res := ToolResult{
-			CallID:  call.ID,
+			CallID: call.ID, ToolUseID: call.ToolUseID,
 			Name:    call.Name,
 			Args:    call.Args,
 			Error:   fmt.Sprintf("tool %q is not registered", call.Name),
 			IsError: true,
 		}
-		res = r.runAfterToolCall(ctx, call, res)
-		r.emit(ToolExecutionEndEvent{Result: res})
-		return res, nil
+		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "unknown_tool", nil)
 	}
 
 	// Real execution. Tool errors become result text with IsError=true;
 	// only hook errors fail the run.
 	if err := validateToolInput(call.Tool, call.Args); err != nil {
 		res := ToolResult{
-			CallID:  call.ID,
+			CallID: call.ID, ToolUseID: call.ToolUseID,
 			Name:    call.Name,
 			Args:    call.Args,
 			Error:   err.Error(),
 			IsError: true,
 		}
-		res = r.runAfterToolCall(ctx, call, res)
-		r.emit(ToolExecutionEndEvent{Result: res})
-		return res, nil
+		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "input_validation", nil)
 	}
 	if res, ok := r.checkPermission(call); !ok {
-		res = r.runAfterToolCall(ctx, call, res)
-		r.emit(ToolExecutionEndEvent{Result: res})
-		return res, nil
+		res.ToolUseID = call.ToolUseID
+		errorType := "permission_denied"
+		if permissionInfo, ok := res.Metadata["permission"].(map[string]any); ok {
+			if effect, _ := permissionInfo["effect"].(string); effect == string(permission.EffectAsk) {
+				errorType = "permission_ask"
+			}
+		}
+		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, errorType, nil)
 	}
+	if r.cfg.ToolUseLifecycle != nil {
+		authorizeInfo := toolUseAuthorizeInfo(call, time.Now())
+		if err := r.cfg.ToolUseLifecycle.Authorize(ctx, authorizeInfo); err != nil {
+			res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: err.Error(), IsError: true}
+			settled, settleErr := r.settleToolUse(ctx, call, res, ToolUseStatusFailed, "authorize", err)
+			return settled, errors.Join(fmt.Errorf("tool use authorize: %w", err), settleErr)
+		}
+		call.AuthorizedAt = authorizeInfo.AuthorizedAt
+		r.emit(ToolUseAuthorizedEvent{Call: call})
+		startInfo := toolUseStartInfo(call, time.Now())
+		if err := r.cfg.ToolUseLifecycle.Start(ctx, startInfo); err != nil {
+			res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: err.Error(), IsError: true}
+			settled, settleErr := r.settleToolUse(ctx, call, res, ToolUseStatusFailed, "start", err)
+			return settled, errors.Join(fmt.Errorf("tool use start: %w", err), settleErr)
+		}
+		call.StartedAt = startInfo.StartedAt
+	}
+	r.emit(ToolExecutionStartEvent{Call: call})
 	start := time.Now()
 	inv := tool.Invocation{
 		Input:   call.Args,
@@ -903,6 +975,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		Progress: tool.NewProgress(func(delta string, metadata map[string]any) {
 			r.emit(ToolExecutionProgressEvent{
 				CallID:      call.ID,
+				ToolUseID:   call.ToolUseID,
 				Name:        call.Name,
 				OutputDelta: delta,
 				Metadata:    metadata,
@@ -913,7 +986,7 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	duration := time.Since(start)
 
 	res := ToolResult{
-		CallID:   call.ID,
+		CallID: call.ID, ToolUseID: call.ToolUseID,
 		Name:     call.Name,
 		Args:     call.Args,
 		Output:   toolResult.Text,
@@ -925,9 +998,81 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		res.Error = execErr.Error()
 	}
 
-	res = r.runAfterToolCall(ctx, call, res)
-	r.emit(ToolExecutionEndEvent{Result: res})
-	return res, nil
+	status, errorType := ToolUseStatusCompleted, ""
+	if execErr != nil {
+		status, errorType = ToolUseStatusFailed, "execution"
+		if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
+			status, errorType = ToolUseStatusInterrupted, "interrupted"
+		}
+	}
+	return r.settleToolUse(ctx, call, res, status, errorType, execErr)
+}
+
+func toolUseAuthorizeInfo(call ToolCall, authorizedAt time.Time) ToolUseAuthorizeInfo {
+	return ToolUseAuthorizeInfo{Step: call.Step, Ordinal: call.Ordinal, ToolUseID: call.ToolUseID, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, AuthorizedAt: authorizedAt}
+}
+
+func toolUseStartInfo(call ToolCall, startedAt time.Time) ToolUseStartInfo {
+	return ToolUseStartInfo{Step: call.Step, Ordinal: call.Ordinal, ToolUseID: call.ToolUseID, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, StartedAt: startedAt}
+}
+
+// settleToolUse runs the post-call hook before durable terminal accounting.
+func (r *runner) settleToolUse(ctx context.Context, call ToolCall, res ToolResult, status ToolUseStatus, errorType string, failure error) (ToolResult, error) {
+	updated, afterErr := r.runAfterToolCallResult(ctx, call, res)
+	if afterErr != nil {
+		status, errorType, failure = ToolUseStatusFailed, "after_tool_call", afterErr
+	}
+	updated.Status = status
+	if r.cfg.ToolUseLifecycle != nil {
+		info := ToolUseFinishInfo{Step: call.Step, Ordinal: call.Ordinal, ToolUseID: call.ToolUseID, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt, AuthorizedAt: call.AuthorizedAt, StartedAt: call.StartedAt, CompletedAt: time.Now(), Status: status, ToolResult: updated, ErrorType: errorType, ErrorMessage: updated.Error, Failure: failure}
+		if info.ErrorMessage == "" && failure != nil {
+			info.ErrorMessage = failure.Error()
+		}
+		if err := r.cfg.ToolUseLifecycle.Finish(context.WithoutCancel(ctx), info); err != nil {
+			if updated.Error != "" {
+				updated.Error += "\n"
+			}
+			updated.Error += fmt.Sprintf("tool use finish: %v", err)
+			updated.IsError = true
+			return updated, errors.Join(afterErr, fmt.Errorf("tool use finish: %w", err))
+		}
+	}
+	r.emit(ToolExecutionEndEvent{Result: updated})
+	return updated, afterErr
+}
+
+func (r *runner) interruptToolUses(ctx context.Context, calls []ToolCall, cause error, errorType string) []ToolResult {
+	if r.cfg.ToolUseLifecycle == nil {
+		return nil
+	}
+	results := make([]ToolResult, 0, len(calls))
+	for _, call := range calls {
+		res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Status: ToolUseStatusInterrupted, Name: call.Name, Args: call.Args, Error: cause.Error(), IsError: true}
+		results = append(results, res)
+		if err := r.cfg.ToolUseLifecycle.Finish(context.WithoutCancel(ctx), ToolUseFinishInfo{Step: call.Step, Ordinal: call.Ordinal, ToolUseID: call.ToolUseID, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt, AuthorizedAt: call.AuthorizedAt, StartedAt: call.StartedAt, CompletedAt: time.Now(), Status: ToolUseStatusInterrupted, ToolResult: res, ErrorType: errorType, ErrorMessage: cause.Error(), Failure: cause}); err == nil {
+			r.emit(ToolExecutionEndEvent{Result: res})
+		}
+	}
+	return results
+}
+
+func applyToolUseIDs(content models.Content, calls []ToolCall) models.Content {
+	ids := make(map[string]string, len(calls))
+	for _, call := range calls {
+		ids[call.PartID] = call.ToolUseID
+	}
+	out := append(models.Content(nil), content...)
+	for i, part := range out {
+		switch p := part.(type) {
+		case models.ToolPart:
+			p.ToolUseID = ids[p.ID]
+			out[i] = p
+		case models.ToolCallPart:
+			p.ToolUseID = ids[p.ID]
+			out[i] = p
+		}
+	}
+	return out
 }
 
 func (r *runner) checkPermission(call ToolCall) (ToolResult, bool) {
@@ -1089,8 +1234,13 @@ func validateToolInput(t tool.Tool, args map[string]any) error {
 // clean and avoids an extra error return path. The hook's effect on the
 // result is applied iff it returns no error.
 func (r *runner) runAfterToolCall(ctx context.Context, call ToolCall, res ToolResult) ToolResult {
+	updated, _ := r.runAfterToolCallResult(ctx, call, res)
+	return updated
+}
+
+func (r *runner) runAfterToolCallResult(ctx context.Context, call ToolCall, res ToolResult) (ToolResult, error) {
 	if r.cfg.Hooks.AfterToolCall == nil {
-		return res
+		return res, nil
 	}
 	updated, err := r.cfg.Hooks.AfterToolCall(ctx, call, res)
 	if err != nil {
@@ -1106,13 +1256,14 @@ func (r *runner) runAfterToolCall(ctx context.Context, call ToolCall, res ToolRe
 		}
 		res.Error += fmt.Sprintf("after_tool_call hook error: %v", err)
 		res.IsError = true
-		return res
+		return res, err
 	}
 	updated.CallID = res.CallID
+	updated.ToolUseID = res.ToolUseID
 	updated.Name = res.Name
 	updated.Args = res.Args
 	updated.Duration = res.Duration
-	return updated
+	return updated, nil
 }
 
 // emit forwards an event to the sink via the drain goroutine. Safe to
@@ -1227,7 +1378,7 @@ func extractToolCalls(msg models.Message) []models.ToolCallPart {
 		case models.ToolCallPart:
 			calls = append(calls, c)
 		case models.ToolPart:
-			calls = append(calls, models.ToolCallPart{ID: c.ID, CallID: c.CallID, Name: c.Name, Input: c.Input, ProviderExecuted: c.ProviderExecuted, ProviderMetadata: c.ProviderMetadata})
+			calls = append(calls, models.ToolCallPart{ID: c.ID, ToolUseID: c.ToolUseID, CallID: c.CallID, Name: c.Name, Input: c.Input, ProviderExecuted: c.ProviderExecuted, ProviderMetadata: c.ProviderMetadata})
 		}
 	}
 	return calls
@@ -1260,7 +1411,7 @@ func buildToolResultMessage(results []ToolResult) models.Message {
 	for _, r := range results {
 		text := toolResultText(r)
 		content = append(content, models.ToolResultPart{
-			CallID:   r.CallID,
+			CallID: r.CallID, ToolUseID: r.ToolUseID,
 			Name:     r.Name,
 			Output:   []models.Part{models.TextPart{Text: text}},
 			IsError:  r.IsError,

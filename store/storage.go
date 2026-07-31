@@ -10,6 +10,8 @@ var ErrClientNameExists = errors.New("client name already exists")
 var ErrWorkspaceNameExists = errors.New("workspace name already exists")
 var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict")
 var ErrModelCallAttemptConflict = errors.New("model call attempt conflict")
+var ErrToolUseIdentityConflict = errors.New("tool use identity conflict")
+var ErrToolUseInvalidTransition = errors.New("tool use invalid transition")
 var ErrMessageRevisionStale = errors.New("message revision stale")
 var ErrMessageRevisionConflict = errors.New("message revision conflict")
 
@@ -58,6 +60,9 @@ type Store interface {
 	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
 	// ListModelCalls returns all model calls for the session in chronological order.
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
+	SaveToolUse(ctx context.Context, use ToolUse) error
+	ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error)
+	InterruptActiveToolUses(ctx context.Context) error
 	// AppendSessionEvent stores one durable session event and assigns its
 	// session-scoped sequence.
 	AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error)

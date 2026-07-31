@@ -47,6 +47,7 @@ The SQLite schema stores:
 | `aggregate_events` | Internal append-only session creation, metadata, and run-admission facts used to rebuild critical projections. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness. |
+| `tool_uses` | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, result, error, and timing. |
 | `parts` | Ordered typed content parts for each message. |
 | `auth` | Local provider credentials, stored as JSON. |
 | `schema_migrations` | Applied migration versions, names, and SQL checksums. |
@@ -88,6 +89,27 @@ does not currently retry provider requests, so `attempt` is presently `1`.
 The latest model call with usage for a session lets clients show token count and
 context-window fullness after a page reload without estimating from transcript
 text. Lists are returned in physical start-time order across runs.
+
+## Tool Uses
+
+`tool_uses` is the authoritative execution record for model-proposed tools. A
+row is linked to its run, physical model call, assistant message, stable part,
+step, source ordinal, and provider call ID. Its Wingman-owned `tlu_` ID remains
+stable through this lifecycle:
+
+```text
+proposed -> authorized -> started -> completed | failed | interrupted
+         \-> declined
+```
+
+Wingman stores rewritten input at authorization and commits `started` before
+calling the tool implementation. Unknown tools, invalid input, skipped hooks,
+permission denial, and approval-needed calls become `declined` without running.
+Startup changes unfinished rows to `interrupted` before queued work resumes.
+
+The started record is a durability fence, not an exactly-once guarantee. A hard
+crash can leave it ambiguous whether an external side effect completed, so
+Wingman does not automatically replay interrupted tool uses.
 
 ## Message Parts
 

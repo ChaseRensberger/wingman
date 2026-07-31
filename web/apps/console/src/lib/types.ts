@@ -199,6 +199,7 @@ export interface ImagePart {
 export interface ToolCallPart {
   id?: string;
   type: "tool_call";
+  tool_use_id?: string;
   call_id: string;
   name: string;
   input: Record<string, unknown>;
@@ -209,6 +210,7 @@ export interface ToolCallPart {
 export interface ToolPart {
   id?: string;
   type: "tool";
+  tool_use_id?: string;
   call_id: string;
   name: string;
   state: "pending" | "running" | "completed" | "error";
@@ -222,6 +224,8 @@ export interface ToolPart {
 }
 
 export interface ToolActivity {
+  tool_use_id?: string;
+  run_id?: string;
   call_id: string;
   tool: string;
   status: "pending" | "running" | "completed" | "error";
@@ -238,6 +242,7 @@ export interface ToolActivity {
 export interface ToolResultPart {
 	id?: string;
 	type: "tool_result";
+  tool_use_id?: string;
 	call_id: string;
 	name?: string;
   output: Part[];

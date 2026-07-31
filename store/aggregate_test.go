@@ -291,6 +291,9 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 	if _, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_purge", SessionID: session.ID, Message: "purge", Agent: Agent{ID: "agt_test"}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := data.SaveToolUse(ctx, ToolUse{ID: "tlu_purge", SessionID: session.ID, RunID: "run_purge", Step: 1, Ordinal: 0, Name: "read", Status: ToolUseStatusProposed}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := data.AppendSessionEvent(ctx, SessionEvent{ID: "evt_public_purge", SessionID: session.ID, Type: "session.run.queued"}); err != nil {
 		t.Fatal(err)
 	}
@@ -314,6 +317,7 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 		{"messages", `SELECT COUNT(*) FROM messages WHERE session_id = ?`, session.ID},
 		{"parts", `SELECT COUNT(*) FROM parts WHERE id = ?`, "prt_purge"},
 		{"model calls", `SELECT COUNT(*) FROM model_calls WHERE session_id = ?`, session.ID},
+		{"tool uses", `SELECT COUNT(*) FROM tool_uses WHERE session_id = ?`, session.ID},
 	}
 	for _, check := range checks {
 		var count int

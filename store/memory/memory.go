@@ -27,6 +27,7 @@ type Store struct {
 	messages   map[string]*store.StoredMessage
 	parts      map[string]*store.StoredPart
 	modelCalls map[string]*store.ModelCall
+	toolUses   map[string]*store.ToolUse
 	events     map[string]*store.SessionEvent
 	aggregates map[store.AggregateRef][]store.AggregateEvent
 	globalSeq  int64
@@ -44,6 +45,7 @@ func NewStore() *Store {
 		messages:   make(map[string]*store.StoredMessage),
 		parts:      make(map[string]*store.StoredPart),
 		modelCalls: make(map[string]*store.ModelCall),
+		toolUses:   make(map[string]*store.ToolUse),
 		events:     make(map[string]*store.SessionEvent),
 		aggregates: make(map[store.AggregateRef][]store.AggregateEvent),
 		runs:       make(map[string]*store.SessionRun),
@@ -281,6 +283,13 @@ func copyModelCall(c *store.ModelCall) store.ModelCall {
 		cp.Trace = make([]byte, len(c.Trace))
 		copy(cp.Trace, c.Trace)
 	}
+	return cp
+}
+
+func copyToolUse(use *store.ToolUse) store.ToolUse {
+	cp := *use
+	cp.InputJSON = append([]byte(nil), use.InputJSON...)
+	cp.MetadataJSON = append([]byte(nil), use.MetadataJSON...)
 	return cp
 }
 
@@ -774,6 +783,11 @@ func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64
 			delete(s.modelCalls, callID)
 		}
 	}
+	for useID, use := range s.toolUses {
+		if use.SessionID == id {
+			delete(s.toolUses, useID)
+		}
+	}
 	for eventID, event := range s.events {
 		if event.SessionID == id {
 			delete(s.events, eventID)
@@ -1081,6 +1095,159 @@ func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.M
 		out = []store.ModelCall{}
 	}
 	return out, nil
+}
+
+func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if use.ID == "" {
+		use.ID = store.NewID(store.PrefixToolUse)
+	}
+	existing, exists := s.toolUses[use.ID]
+	if !exists {
+		if _, ok := s.sessions[use.SessionID]; !ok {
+			return store.ErrSessionNotFound
+		}
+		if use.Status != store.ToolUseStatusProposed {
+			return store.ErrToolUseInvalidTransition
+		}
+		if use.RunID != "" {
+			run, ok := s.runs[use.RunID]
+			if !ok || run.SessionID != use.SessionID {
+				return fmt.Errorf("session run %s does not belong to session %s", use.RunID, use.SessionID)
+			}
+			for _, other := range s.toolUses {
+				if other.RunID == use.RunID && other.Step == use.Step && other.Ordinal == use.Ordinal {
+					return store.ErrToolUseIdentityConflict
+				}
+			}
+		}
+		now := time.Now().UTC()
+		if use.ProposedAt.IsZero() {
+			use.ProposedAt = now
+		}
+		if use.CreatedAt.IsZero() {
+			use.CreatedAt = now
+		}
+		if use.UpdatedAt.IsZero() {
+			use.UpdatedAt = now
+		}
+		cp := copyToolUse(&use)
+		s.toolUses[use.ID] = &cp
+		return nil
+	}
+	if !sameToolUseIdentityMemory(*existing, use) {
+		return store.ErrToolUseIdentityConflict
+	}
+	use.CreatedAt = existing.CreatedAt
+	use.ProposedAt = existing.ProposedAt
+	if use.AuthorizedAt.IsZero() {
+		use.AuthorizedAt = existing.AuthorizedAt
+	}
+	if use.StartedAt.IsZero() {
+		use.StartedAt = existing.StartedAt
+	}
+	if use.CompletedAt.IsZero() {
+		use.CompletedAt = existing.CompletedAt
+	}
+	if use.UpdatedAt.IsZero() {
+		use.UpdatedAt = existing.UpdatedAt
+	}
+	if use.Status == existing.Status {
+		if !sameToolUseMemory(*existing, use) {
+			return store.ErrToolUseInvalidTransition
+		}
+		return nil
+	}
+	if !legalToolUseTransitionMemory(existing.Status, use.Status) {
+		return store.ErrToolUseInvalidTransition
+	}
+	if use.Status != store.ToolUseStatusAuthorized && !bytes.Equal(existing.InputJSON, use.InputJSON) {
+		return store.ErrToolUseInvalidTransition
+	}
+	now := time.Now().UTC()
+	if use.UpdatedAt.Equal(existing.UpdatedAt) {
+		use.UpdatedAt = now
+	}
+	if use.Status == store.ToolUseStatusAuthorized && use.AuthorizedAt.IsZero() {
+		use.AuthorizedAt = now
+	}
+	if use.Status == store.ToolUseStatusStarted && use.StartedAt.IsZero() {
+		use.StartedAt = now
+	}
+	if terminalToolUseStatus(use.Status) && use.CompletedAt.IsZero() {
+		use.CompletedAt = now
+	}
+	cp := copyToolUse(&use)
+	s.toolUses[use.ID] = &cp
+	return nil
+}
+
+func (s *Store) ListToolUses(ctx context.Context, sessionID string) ([]store.ToolUse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	out := []store.ToolUse{}
+	for _, use := range s.toolUses {
+		if use.SessionID == sessionID {
+			out = append(out, copyToolUse(use))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].ProposedAt.Equal(out[j].ProposedAt) {
+			return out[i].ProposedAt.Before(out[j].ProposedAt)
+		}
+		if out[i].Step != out[j].Step {
+			return out[i].Step < out[j].Step
+		}
+		if out[i].Ordinal != out[j].Ordinal {
+			return out[i].Ordinal < out[j].Ordinal
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func (s *Store) InterruptActiveToolUses(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for _, use := range s.toolUses {
+		if use.Status == store.ToolUseStatusProposed || use.Status == store.ToolUseStatusAuthorized || use.Status == store.ToolUseStatusStarted {
+			use.Status = store.ToolUseStatusInterrupted
+			use.ErrorType = "process_interrupted"
+			use.ErrorMessage = "tool use interrupted because the process stopped"
+			use.CompletedAt = now
+			use.UpdatedAt = now
+		}
+	}
+	return nil
+}
+
+func sameToolUseIdentityMemory(a, b store.ToolUse) bool {
+	return a.SessionID == b.SessionID && a.RunID == b.RunID && a.ModelCallID == b.ModelCallID && a.AssistantMessageID == b.AssistantMessageID && a.PartID == b.PartID && a.Step == b.Step && a.Ordinal == b.Ordinal && a.CallID == b.CallID && a.Name == b.Name
+}
+
+func sameToolUseMemory(a, b store.ToolUse) bool {
+	return sameToolUseIdentityMemory(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+}
+
+func legalToolUseTransitionMemory(from, to string) bool {
+	switch from {
+	case store.ToolUseStatusProposed:
+		return to == store.ToolUseStatusAuthorized || to == store.ToolUseStatusDeclined || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted
+	case store.ToolUseStatusAuthorized:
+		return to == store.ToolUseStatusStarted || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted
+	case store.ToolUseStatusStarted:
+		return to == store.ToolUseStatusCompleted || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted
+	}
+	return false
+}
+
+func terminalToolUseStatus(status string) bool {
+	return status == store.ToolUseStatusCompleted || status == store.ToolUseStatusFailed || status == store.ToolUseStatusInterrupted || status == store.ToolUseStatusDeclined
 }
 
 func (s *Store) AppendSessionEvent(ctx context.Context, event store.SessionEvent) (store.SessionEvent, error) {

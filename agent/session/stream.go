@@ -41,7 +41,10 @@ type SessionStream struct {
 //   - "iteration_start":     Data is run.IterationStartEvent
 //   - "iteration_end":       Data is run.IterationEndEvent
 //   - "message":             Data is run.MessageEvent
+//   - "tool_proposed":       Data is run.ToolUseProposedEvent
+//   - "tool_authorized":     Data is run.ToolUseAuthorizedEvent
 //   - "tool_start":          Data is run.ToolExecutionStartEvent
+//   - "tool_progress":       Data is run.ToolExecutionProgressEvent
 //   - "tool_end":            Data is run.ToolExecutionEndEvent
 //   - "stream_part":         Data is run.StreamPartEvent (carries models.StreamPart)
 //   - "compaction":          Data is run.ContextTransformedEvent (head Part type "compaction_marker")
@@ -133,6 +136,10 @@ func classify(e run.Event) (string, any) {
 		return "iteration_end", v
 	case run.MessageEvent:
 		return "message", v
+	case run.ToolUseProposedEvent:
+		return "tool_proposed", v
+	case run.ToolUseAuthorizedEvent:
+		return "tool_authorized", v
 	case run.ToolExecutionStartEvent:
 		return "tool_start", v
 	case run.ToolExecutionProgressEvent:

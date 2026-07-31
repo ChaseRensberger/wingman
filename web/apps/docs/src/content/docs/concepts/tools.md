@@ -108,6 +108,30 @@ stored on the assistant-owned tool part, so reconnecting clients recover the
 completed state without replaying every output chunk. If execution fails after
 producing output, Wingman retains that partial output separately from the error.
 
+## Durable Execution Lifecycle
+
+Persisted sessions assign each invocation a Wingman `tool_use_id` with a `tlu_`
+prefix. It is separate from the provider's `call_id`, which providers may reuse.
+The durable lifecycle is:
+
+```text
+proposed -> authorized -> started -> completed | failed | interrupted
+         \-> declined
+```
+
+Wingman checkpoints the proposed IDs on the assistant message before tool
+workers start. Hooks may then rewrite input; validation and permissions run;
+allowed input is stored as `authorized`; and `started` must commit before
+`Execute` is called. Unknown tools, invalid input, skipped calls, denied calls,
+and calls that require unavailable approval settle as `declined` without
+execution.
+
+On restart, unfinished tool uses become `interrupted` and are not replayed
+automatically. This prevents blind repetition, but it is not an exactly-once
+guarantee: a process can crash after an external side effect and before terminal
+settlement. Inspect `GET /sessions/{id}/tool-uses` when recovery decisions need
+the authoritative lifecycle rather than transcript presentation state.
+
 File-oriented tools use OpenCode-style model-facing argument names: `filePath`, `oldString`, `newString`, `replaceAll`, `content`, and `patchText`. Search-scoped tools use `path` where it means the base path for a search (`glob`, `grep`).
 
 Tools that need a working directory implement `DirectoryScopedTool`:

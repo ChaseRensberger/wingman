@@ -4,6 +4,7 @@ import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import type { Message, ModelCall, ToolActivity, ToolCallPart, ToolPart, ToolResultPart } from "@/lib/types";
 import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
+import { lookupToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { formatDuration } from "@/lib/tool-display";
 import { Button } from "@wingman/core/components/core/button";
 import { Markdown } from "./markdown";
@@ -55,41 +56,43 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
       >
         {message.content.map((part, idx) => {
           if (part.type === "text") {
-            const textPart = part as { text: string };
+            const textPart = part as { id?: string; text: string };
             if (isAssistant) {
-              return <Markdown key={idx} text={textPart.text} isStreaming={isStreaming} />;
+              return <Markdown key={textPart.id ?? idx} text={textPart.text} isStreaming={isStreaming} />;
             }
             return (
-              <div key={idx} className="whitespace-pre-wrap text-sm">
+              <div key={textPart.id ?? idx} className="whitespace-pre-wrap text-sm">
                 {textPart.text}
               </div>
             );
           }
           if (part.type === "reasoning") {
-            const reasoningPart = part as { reasoning: string };
-            return <ReasoningPart key={idx} reasoning={reasoningPart.reasoning} />;
+            const reasoningPart = part as { id?: string; reasoning: string };
+            return <ReasoningPart key={reasoningPart.id ?? idx} reasoning={reasoningPart.reasoning} />;
           }
 			if (part.type === "tool_call") {
 				const call = part as ToolCallPart;
+				const key = toolActivityKey(call) ?? call.call_id;
 				return (
-					<div key={idx} className={compactBottom ? "mt-0" : "mt-1"}>
-						<ToolActivityItem call={call} result={toolResultsById?.get(call.call_id)} activity={toolActivitiesById?.get(call.call_id)} compact={compactBottom} />
+					<div key={call.id ?? key} className={compactBottom ? "mt-0" : "mt-1"}>
+						<ToolActivityItem call={call} result={toolResultsById?.get(key) ?? toolResultsById?.get(call.call_id)} activity={toolActivitiesById ? lookupToolActivity(toolActivitiesById, call) : undefined} compact={compactBottom} />
 					</div>
 				);
           }
           if (part.type === "tool") {
             const tool = part as ToolPart;
-            const call = { type: "tool_call" as const, call_id: tool.call_id, name: tool.name, input: tool.input };
+            const call = { type: "tool_call" as const, tool_use_id: tool.tool_use_id, call_id: tool.call_id, name: tool.name, input: tool.input };
             const result = tool.state === "completed" || tool.state === "error"
-              ? { type: "tool_result" as const, call_id: tool.call_id, name: tool.name, output: tool.output ? [{ type: "text" as const, text: tool.output }] : [], is_error: tool.state === "error", metadata: tool.metadata }
+              ? { type: "tool_result" as const, tool_use_id: tool.tool_use_id, call_id: tool.call_id, name: tool.name, output: tool.output ? [{ type: "text" as const, text: tool.output }] : [], is_error: tool.state === "error", metadata: tool.metadata }
               : undefined;
-				return <div key={idx} className={compactBottom ? "mt-0" : "mt-1"}><ToolActivityItem call={call} result={result} activity={{ call_id: tool.call_id, tool: tool.name, status: tool.state, input: tool.input, output: tool.output, metadata: tool.metadata, error: tool.error }} compact={compactBottom} /></div>;
+				return <div key={tool.id ?? tool.tool_use_id ?? tool.call_id} className={compactBottom ? "mt-0" : "mt-1"}><ToolActivityItem call={call} result={result} activity={{ tool_use_id: tool.tool_use_id, call_id: tool.call_id, tool: tool.name, status: tool.state, input: tool.input, output: tool.output, metadata: tool.metadata, error: tool.error }} compact={compactBottom} /></div>;
           }
           if (part.type === "tool_result") {
             const result = part as ToolResultPart;
-            if (toolCallsById?.has(result.call_id)) return null;
-            const call = { type: "tool_call" as const, call_id: result.call_id, name: result.name || "tool", input: {} };
-            return <div key={idx} className="mt-1"><ToolActivityItem call={call} result={result} activity={toolActivitiesById?.get(result.call_id)} /></div>;
+            const key = toolActivityKey(result) ?? result.call_id;
+            if (toolCallsById?.has(key) || toolCallsById?.has(result.call_id)) return null;
+            const call = { type: "tool_call" as const, tool_use_id: result.tool_use_id, call_id: result.call_id, name: result.name || "tool", input: {} };
+            return <div key={result.id ?? key} className="mt-1"><ToolActivityItem call={call} result={result} activity={toolActivitiesById ? lookupToolActivity(toolActivitiesById, result) : undefined} /></div>;
           }
           return (
             <div key={idx} className="text-xs text-muted-foreground">

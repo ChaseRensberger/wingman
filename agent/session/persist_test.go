@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 func TestPersistModelCallStoresUsageUnavailableAndEstimatedCost(t *testing.T) {
@@ -392,8 +395,211 @@ func TestRunPersistsModelCallRunAndProviderIdentity(t *testing.T) {
 	}
 }
 
+func TestRunPersistsToolUseLifecycleAndHydratesToolUseID(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_tool_lifecycle"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_tool_lifecycle", SessionID: stored.ID, Message: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	client := &sequencedToolClient{messages: []models.Message{
+		{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call_1", Name: "test", Input: map[string]any{"original": true}}}},
+		{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "done"}}},
+	}}
+	sess := New(
+		WithID(stored.ID), WithRunID("run_tool_lifecycle"), WithStore(data), WithClient(client),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+		WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(_ context.Context, inv tool.Invocation) (tool.Result, error) {
+			if inv.Input["rewritten"] != true {
+				t.Fatalf("tool input = %#v", inv.Input)
+			}
+			return tool.Result{Text: "model-visible output", Metadata: map[string]any{"source": "tool"}}, nil
+		})),
+		WithPlugin(beforeToolRewritePlugin{}),
+	)
+	if _, err := sess.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	uses, err := data.ListToolUses(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uses) != 1 {
+		t.Fatalf("tool uses = %#v", uses)
+	}
+	use := uses[0]
+	if use.ID == "" || use.RunID != "run_tool_lifecycle" || use.ModelCallID == "" || use.AssistantMessageID == "" || use.PartID == "" || use.CallID != "call_1" || use.Step != 1 || use.Ordinal != 1 || use.Status != store.ToolUseStatusCompleted || use.ProposedAt.IsZero() || use.AuthorizedAt.IsZero() || use.StartedAt.IsZero() || use.CompletedAt.IsZero() {
+		t.Fatalf("tool use = %#v", use)
+	}
+	var input, metadata map[string]any
+	if err := json.Unmarshal(use.InputJSON, &input); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(use.MetadataJSON, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if input["rewritten"] != true || use.Output != "model-visible output" || metadata["source"] != "tool" {
+		t.Fatalf("tool use payload = %#v, input=%#v, metadata=%#v", use, input, metadata)
+	}
+	hydrated := New(WithID(stored.ID), WithStore(data))
+	if err := hydrated.hydrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	part := hydrated.History()[1].Content[0].(models.ToolPart)
+	if part.ToolUseID != use.ID || models.PartID(part) != use.PartID {
+		t.Fatalf("hydrated tool part = %#v, use = %#v", part, use)
+	}
+}
+
+func TestToolUseRecorderMapsFailureAndDecline(t *testing.T) {
+	for _, status := range []run.ToolUseStatus{run.ToolUseStatusFailed, run.ToolUseStatusDeclined} {
+		t.Run(string(status), func(t *testing.T) {
+			data := memory.NewStore()
+			if err := data.CreateSession(&store.Session{ID: "ses_status"}); err != nil {
+				t.Fatal(err)
+			}
+			recorder := &toolUseRecorder{store: data, sessionID: "ses_status", runID: ""}
+			id, err := recorder.Propose(context.Background(), run.ToolUseProposeInfo{Step: 1, Ordinal: 1, CallID: "call", Name: "test", Args: map[string]any{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := recorder.Finish(context.Background(), run.ToolUseFinishInfo{Step: 1, Ordinal: 1, ToolUseID: id, CallID: "call", Name: "test", Args: map[string]any{}, Status: status, ErrorMessage: "terminal"}); err != nil {
+				t.Fatal(err)
+			}
+			uses, err := data.ListToolUses(context.Background(), "ses_status")
+			if err != nil || len(uses) != 1 || uses[0].Status != string(status) || uses[0].ErrorMessage != "terminal" {
+				t.Fatalf("uses=%#v err=%v", uses, err)
+			}
+		})
+	}
+}
+
+func TestRunPersistsParallelToolUsesWithDistinctIDsAndOrdinals(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_parallel_tools"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	client := &sequencedToolClient{messages: []models.Message{
+		{Role: models.RoleAssistant, Content: models.Content{
+			models.ToolCallPart{CallID: "call_1", Name: "test", Input: map[string]any{"n": float64(1)}},
+			models.ToolCallPart{CallID: "call_2", Name: "test", Input: map[string]any{"n": float64(2)}},
+		}},
+		{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "done"}}},
+	}}
+	var mu sync.Mutex
+	executed := 0
+	sess := New(WithID(stored.ID), WithStore(data), WithClient(client), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}), WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(context.Context, tool.Invocation) (tool.Result, error) {
+		mu.Lock()
+		executed++
+		mu.Unlock()
+		return tool.Result{}, nil
+	})))
+	if _, err := sess.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	uses, err := data.ListToolUses(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executed != 2 || len(uses) != 2 || uses[0].ID == uses[1].ID || uses[0].Ordinal != 1 || uses[1].Ordinal != 2 {
+		t.Fatalf("executed=%d uses=%#v", executed, uses)
+	}
+}
+
+func TestToolUseStartPersistenceFailurePreventsExecution(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_start_failure"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	client := &sequencedToolClient{messages: []models.Message{{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call", Name: "test", Input: map[string]any{}}}}}}
+	failing := &failingToolUseStore{Store: data, failStatus: store.ToolUseStatusStarted}
+	executed := 0
+	sess := New(WithID(stored.ID), WithStore(failing), WithClient(client), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}), WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(context.Context, tool.Invocation) (tool.Result, error) {
+		executed++
+		return tool.Result{}, nil
+	})))
+	if _, err := sess.Run(context.Background(), "hello"); err == nil || !errors.Is(err, errSaveToolUse) || executed != 0 {
+		t.Fatalf("err=%v executed=%d", err, executed)
+	}
+}
+
+func TestToolUseTerminalPersistenceFailureDoesNotReexecute(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_finish_failure"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	client := &sequencedToolClient{messages: []models.Message{{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call", Name: "test", Input: map[string]any{}}}}}}
+	failing := &failingToolUseStore{Store: data, failStatus: store.ToolUseStatusCompleted}
+	executed := 0
+	sess := New(WithID(stored.ID), WithStore(failing), WithClient(client), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}), WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(context.Context, tool.Invocation) (tool.Result, error) {
+		executed++
+		return tool.Result{}, nil
+	})))
+	if _, err := sess.Run(context.Background(), "hello"); err == nil || !errors.Is(err, errSaveToolUse) || executed != 1 {
+		t.Fatalf("err=%v executed=%d", err, executed)
+	}
+}
+
 type requestCaptureClient struct {
 	request models.Request
+}
+
+type beforeToolRewritePlugin struct{}
+
+func (beforeToolRewritePlugin) Name() string { return "before-tool-rewrite" }
+
+func (beforeToolRewritePlugin) Install(reg *plugin.Registry) error {
+	reg.RegisterBeforeToolCall(func(context.Context, run.ToolCall) (map[string]any, error) {
+		return map[string]any{"rewritten": true}, nil
+	})
+	return nil
+}
+
+type sequencedToolClient struct {
+	mu       sync.Mutex
+	messages []models.Message
+	next     int
+}
+
+func (c *sequencedToolClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *sequencedToolClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *sequencedToolClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	c.mu.Lock()
+	if c.next >= len(c.messages) {
+		c.mu.Unlock()
+		return nil, errors.New("unexpected Stream")
+	}
+	message := c.messages[c.next]
+	c.next++
+	c.mu.Unlock()
+	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+	stream.Close(&message, nil)
+	return stream, nil
+}
+
+var errSaveToolUse = errors.New("save tool use failed")
+
+type failingToolUseStore struct {
+	store.Store
+	failStatus string
+}
+
+func (s *failingToolUseStore) SaveToolUse(ctx context.Context, use store.ToolUse) error {
+	if use.Status == s.failStatus {
+		return errSaveToolUse
+	}
+	return s.Store.SaveToolUse(ctx, use)
 }
 
 var errSaveMessage = errors.New("save message failed")

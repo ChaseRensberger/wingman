@@ -23,3 +23,24 @@ func TestClassifyToolProgress(t *testing.T) {
 		t.Fatalf("data = %#v, want %#v", data, event)
 	}
 }
+
+func TestClassifyToolUseLifecycle(t *testing.T) {
+	call := run.ToolCall{ID: "call_test", ToolUseID: "tlu_test", Name: "bash", Args: map[string]any{"command": "pwd"}}
+	for _, test := range []struct {
+		event run.Event
+		want  string
+	}{
+		{run.ToolUseProposedEvent{Call: call}, "tool_proposed"},
+		{run.ToolUseAuthorizedEvent{Call: call}, "tool_authorized"},
+	} {
+		typ, data := classify(test.event)
+		if typ != test.want {
+			t.Errorf("type = %q, want %q", typ, test.want)
+		}
+		switch data.(type) {
+		case run.ToolUseProposedEvent, run.ToolUseAuthorizedEvent:
+		default:
+			t.Errorf("data = %#v, want tool use lifecycle event", data)
+		}
+	}
+}

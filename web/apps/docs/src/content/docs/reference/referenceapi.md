@@ -140,6 +140,7 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `GET` | `/sessions` | List sessions |
 | `GET` | `/sessions/{id}` | Get session including history |
 | `GET` | `/sessions/{id}/model-calls` | List physical upstream model attempts in start-time order |
+| `GET` | `/sessions/{id}/tool-uses` | List durable tool invocations in proposal/source order |
 | `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
 | `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
@@ -222,7 +223,8 @@ curl -sS -X DELETE \
 ```
 
 A successful delete permanently removes the aggregate stream, public event
-history, queued and completed runs, messages, parts, and model-call records.
+history, queued and completed runs, messages, parts, model-call records, and
+tool-use records.
 Wingman retains no tombstone. Active SSE streams close and active execution is
 canceled and settled before the response returns.
 
@@ -287,6 +289,42 @@ assistant message.
   }
 ]
 ```
+
+### Tool-use response
+
+`GET /sessions/{id}/tool-uses` returns the authoritative lifecycle for every
+model-proposed tool invocation. Rows are ordered by proposal time and source
+ordinal. `id` is Wingman's stable identity; `call_id` is provider correlation
+data and may repeat across runs.
+
+```json
+[
+  {
+    "id": "tlu_...",
+    "session_id": "ses_...",
+    "run_id": "run_...",
+    "model_call_id": "mcl_...",
+    "assistant_message_id": "msg_...",
+    "part_id": "prt_...",
+    "step": 1,
+    "ordinal": 1,
+    "call_id": "call_...",
+    "name": "bash",
+    "status": "completed",
+    "input": { "command": "pwd" },
+    "output": "/home/me/project",
+    "metadata": { "exit_code": 0 },
+    "proposed_at": "2026-07-30T12:00:02Z",
+    "authorized_at": "2026-07-30T12:00:02Z",
+    "started_at": "2026-07-30T12:00:02Z",
+    "completed_at": "2026-07-30T12:00:03Z"
+  }
+]
+```
+
+Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
+`interrupted`, or `declined`. On server startup, unfinished records become
+`interrupted`; Wingman does not automatically replay them.
 
 ### Streaming
 

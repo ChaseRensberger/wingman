@@ -210,6 +210,13 @@ Pending tool parts are checkpointed before Wingman starts local tool execution.
 This preserves truthful input and state for inspection after interruption; it
 does not provide exactly-once execution of external side effects.
 
+Each persisted tool part also carries a stable `tool_use_id`. The corresponding
+tool-use record commits `started` before execution and stores the exact durable
+lifecycle, rewritten input, output, metadata, errors, and timing. Unfinished
+records become `interrupted` on server startup and are not automatically
+replayed. Use `/sessions/{id}/tool-uses` when a client needs execution authority;
+the tool part remains the transcript presentation.
+
 ## Usage and Context
 
 Persisted sessions store one normalized model-call record per physical upstream

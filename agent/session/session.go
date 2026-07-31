@@ -615,6 +615,11 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			model:     model,
 			modelInfo: modelInfo,
 		}
+		cfg.ToolUseLifecycle = &toolUseRecorder{
+			store:     s.store,
+			sessionID: s.id,
+			runID:     runID,
+		}
 	}
 
 	start := time.Now()

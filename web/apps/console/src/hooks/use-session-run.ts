@@ -1,8 +1,9 @@
 import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import { wfetch } from "@/lib/client";
-import { formatSessionError, isRecord } from "@/lib/session-detail";
+import { formatSessionError } from "@/lib/session-detail";
 import { readSSE, type SessionEvent } from "@/lib/session-stream";
+import { reduceToolActivity } from "@/lib/tool-activity-state";
 import type { Message, Session, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
@@ -67,73 +68,15 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			const callID = typeof data.call_id === "string" ? data.call_id : "";
 			const delta = typeof data.delta === "string" ? data.delta : "";
 			if (!callID || !delta) return;
-			setToolActivities((previous) => {
-				const next = new Map(previous);
-				const current = next.get(callID);
-				const inputText = (current?.input_text ?? "") + delta;
-				let input = current?.input;
-				try {
-					const parsed = JSON.parse(inputText);
-					if (isRecord(parsed)) input = parsed;
-				} catch {
-					// Partial tool input is not valid JSON until the provider finishes it.
-				}
-				next.set(callID, {
-					call_id: callID,
-					tool: typeof data.tool === "string" ? data.tool : (current?.tool ?? "tool"),
-					status: current?.status ?? "pending",
-					...current,
-					input,
-					input_text: inputText,
-				});
-				return next;
-			});
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "input", ...data, delta }));
 			return;
 		}
 		if (ev.type === "session.tool.progress") {
-			const callID = typeof data.call_id === "string" ? data.call_id : "";
-			if (!callID) return;
-			setToolActivities((previous) => {
-				const next = new Map(previous);
-				const current = next.get(callID);
-				const metadata = isRecord(data.metadata)
-					? { ...(current?.metadata ?? {}), ...data.metadata }
-					: current?.metadata;
-				next.set(callID, {
-					call_id: callID,
-					tool: typeof data.tool === "string" ? data.tool : (current?.tool ?? "tool"),
-					status: current?.status ?? "running",
-					...current,
-					output: (current?.output ?? "") + (typeof data.output_delta === "string" ? data.output_delta : ""),
-					metadata,
-				});
-				return next;
-			});
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "progress", ...data }));
 			return;
 		}
 		if (ev.type === "session.tool.updated") {
-			const callID = typeof data.call_id === "string" ? data.call_id : "";
-			const tool = typeof data.tool === "string" ? data.tool : "";
-			const status = data.status;
-			if (!callID || !tool || !["pending", "running", "completed", "error"].includes(String(status))) return;
-			setToolActivities((previous) => {
-				const next = new Map(previous);
-				const current = next.get(callID);
-				next.set(callID, {
-					...current,
-					call_id: callID,
-					tool,
-					status: status as ToolActivity["status"],
-					input: isRecord(data.input) ? data.input : current?.input,
-					output: typeof data.output === "string" ? data.output : current?.output,
-					metadata: Object.hasOwn(data, "metadata") ? (isRecord(data.metadata) ? data.metadata : undefined) : current?.metadata,
-					error: typeof data.error === "string" ? data.error : current?.error,
-					started_at: typeof data.started_at === "string" ? data.started_at : current?.started_at,
-					completed_at: typeof data.completed_at === "string" ? data.completed_at : current?.completed_at,
-					duration_ms: typeof data.duration_ms === "number" ? data.duration_ms : current?.duration_ms,
-				});
-				return next;
-			});
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "updated", ...data }));
 			return;
 		}
 		if (ev.type === "session.text.delta") {

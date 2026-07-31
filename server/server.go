@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -257,6 +258,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/", s.handleListSessions)
 		r.Get("/{id}", s.handleGetSession)
 		r.Get("/{id}/model-calls", s.handleListSessionModelCalls)
+		r.Get("/{id}/tool-uses", s.handleListSessionToolUses)
 		r.Post("/{id}/rename", s.handleRenameSession)
 		r.Post("/{id}/move", s.handleMoveSession)
 		r.Delete("/{id}", s.handleDeleteSession)
@@ -334,8 +336,9 @@ func (s *Server) ListenAndServe(addr string) error {
 // shutdown, the underlying error otherwise.
 func (s *Server) Serve(srv *http.Server) error {
 	if s.store != nil {
-		_ = s.store.AbortRunningSessionRuns(context.Background())
-		s.runs.resumeQueued(context.Background())
+		if err := s.recoverStartup(context.Background()); err != nil {
+			return err
+		}
 	}
 	srv.Handler = s.router
 	s.logger.Info("server starting", "addr", srv.Addr)
@@ -344,6 +347,17 @@ func (s *Server) Serve(srv *http.Server) error {
 		return nil
 	}
 	return err
+}
+
+func (s *Server) recoverStartup(ctx context.Context) error {
+	if err := s.store.InterruptActiveToolUses(ctx); err != nil {
+		return fmt.Errorf("interrupt active tool uses: %w", err)
+	}
+	if err := s.store.AbortRunningSessionRuns(ctx); err != nil {
+		return fmt.Errorf("abort running session runs: %w", err)
+	}
+	s.runs.resumeQueued(ctx)
+	return nil
 }
 
 // Shutdown initiates a graceful drain. It:

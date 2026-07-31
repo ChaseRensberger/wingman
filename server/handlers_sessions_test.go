@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -365,26 +366,97 @@ func TestListSessionModelCallsNotFound(t *testing.T) {
 	}
 }
 
-func TestForwardRunEventPublishesToolUpdates(t *testing.T) {
+func TestListSessionToolUses(t *testing.T) {
+	data := memory.NewStore()
+	owner, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := data.CreateClient("Other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_tools", ClientID: owner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, use := range []store.ToolUse{
+		{ID: "tlu_second", SessionID: "ses_tools", Name: "write", Status: store.ToolUseStatusProposed, Step: 1, Ordinal: 2, ProposedAt: time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC), InputJSON: []byte(`{"path":"b"}`), MetadataJSON: []byte(`{"source":"test"}`)},
+		{ID: "tlu_first", SessionID: "ses_tools", Name: "read", Status: store.ToolUseStatusProposed, Step: 1, Ordinal: 1, ProposedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), InputJSON: []byte(`{"path":"a"}`), MetadataJSON: []byte(`{"source":"test"}`)},
+	} {
+		if err := data.SaveToolUse(context.Background(), use); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := New(Config{Store: data})
+
+	request := httptest.NewRequest(http.MethodGet, "/sessions/ses_tools/tool-uses", nil)
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var uses []map[string]json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&uses); err != nil {
+		t.Fatal(err)
+	}
+	if len(uses) != 2 || string(uses[0]["id"]) != `"tlu_first"` || string(uses[1]["id"]) != `"tlu_second"` {
+		t.Fatalf("uses = %#v, want source-ordered tool uses", uses)
+	}
+	for _, use := range uses {
+		for _, field := range []string{"input", "metadata"} {
+			var value map[string]any
+			if err := json.Unmarshal(use[field], &value); err != nil {
+				t.Fatalf("%s = %s, want JSON object: %v", field, use[field], err)
+			}
+		}
+		if _, ok := use["input_json"]; ok {
+			t.Fatalf("raw storage field exposed: %#v", use)
+		}
+		if _, ok := use["metadata_json"]; ok {
+			t.Fatalf("raw storage field exposed: %#v", use)
+		}
+	}
+
+	for _, test := range []struct {
+		path   string
+		client string
+		want   int
+	}{
+		{"/sessions/ses_tools/tool-uses", other.ID, http.StatusForbidden},
+		{"/sessions/ses_missing/tool-uses", "", http.StatusNotFound},
+	} {
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		if test.client != "" {
+			request.Header.Set("X-Wingman-Client", test.client)
+		}
+		response := httptest.NewRecorder()
+		server.router.ServeHTTP(response, request)
+		if response.Code != test.want {
+			t.Errorf("%s status = %d, want %d", test.path, response.Code, test.want)
+		}
+	}
+}
+
+func TestForwardRunEventPublishesToolLifecycle(t *testing.T) {
 	data := memory.NewStore()
 	if err := data.CreateSession(&store.Session{ID: "ses_test", Title: "Test"}); err != nil {
 		t.Fatal(err)
 	}
 
 	server := New(Config{Store: data})
-	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{
-		Data: run.ToolExecutionStartEvent{Call: run.ToolCall{ID: "call_test", Name: "bash", Args: map[string]any{"command": "pwd"}}},
-	})
-	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{
-		Data: run.ToolExecutionEndEvent{Result: run.ToolResult{
-			CallID:   "call_test",
-			Name:     "bash",
-			Args:     map[string]any{"command": "pwd"},
-			Output:   "/tmp",
-			Metadata: map[string]any{"exit_code": 0},
-			Duration: time.Second,
-		}},
-	})
+	proposedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	call := run.ToolCall{ID: "call_test", ToolUseID: "tlu_test", Name: "bash", Args: map[string]any{"command": "pwd"}, Step: 2, Ordinal: 1, MessageID: "msg_test", PartID: "part_test", ModelCallID: "mcl_test", ProposedAt: proposedAt}
+	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{Data: run.ToolUseProposedEvent{Call: call}})
+	call.Args = map[string]any{"command": "ls"}
+	call.AuthorizedAt = proposedAt.Add(time.Second)
+	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{Data: run.ToolUseAuthorizedEvent{Call: call}})
+	call.StartedAt = call.AuthorizedAt.Add(time.Second)
+	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{Data: run.ToolExecutionStartEvent{Call: call}})
+	for _, status := range []run.ToolUseStatus{run.ToolUseStatusCompleted, run.ToolUseStatusDeclined, run.ToolUseStatusInterrupted} {
+		server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{Data: run.ToolExecutionEndEvent{Result: run.ToolResult{
+			CallID: "call_test", ToolUseID: "tlu_test", Status: status, Name: "bash", Args: call.Args, Output: "/tmp", Metadata: map[string]any{"exit_code": 0}, Duration: time.Second,
+		}}})
+	}
 
 	events, err := data.ListSessionEvents(context.Background(), "ses_test", 0, 10)
 	if err != nil {
@@ -401,14 +473,28 @@ func TestForwardRunEventPublishesToolUpdates(t *testing.T) {
 		}
 		updates = append(updates, update)
 	}
-	if len(updates) != 2 {
-		t.Fatalf("tool updates = %d, want 2", len(updates))
+	if len(updates) != 6 {
+		t.Fatalf("tool updates = %d, want 6", len(updates))
 	}
-	if updates[0]["status"] != "running" || updates[1]["status"] != "completed" {
+	for _, update := range updates {
+		if update["tool_use_id"] != "tlu_test" {
+			t.Fatalf("tool use id = %#v, want tlu_test", update)
+		}
+	}
+	if updates[0]["status"] != "proposed" || updates[1]["status"] != "authorized" || updates[2]["status"] != "started" || updates[3]["status"] != "completed" || updates[4]["status"] != "declined" || updates[5]["status"] != "interrupted" {
 		t.Fatalf("tool statuses = %#v", updates)
 	}
-	if updates[1]["duration_ms"] != float64(1000) {
-		t.Fatalf("duration_ms = %#v, want 1000", updates[1]["duration_ms"])
+	if updates[1]["input"].(map[string]any)["command"] != "ls" || updates[3]["duration_ms"] != float64(1000) {
+		t.Fatalf("tool updates = %#v", updates)
+	}
+	called := 0
+	for _, event := range events {
+		if event.Type == "session.tool.called" {
+			called++
+		}
+	}
+	if called != 1 {
+		t.Fatalf("session.tool.called events = %d, want proposal only", called)
 	}
 }
 
@@ -423,7 +509,7 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 	defer unsubscribe()
 
 	server.forwardRunEvent(context.Background(), "ses_test", "run_test", session.StreamEvent{
-		Data: run.ToolExecutionProgressEvent{CallID: "call_test", Name: "bash", OutputDelta: "partial"},
+		Data: run.ToolExecutionProgressEvent{CallID: "call_test", ToolUseID: "tlu_test", Name: "bash", OutputDelta: "partial"},
 	})
 
 	select {
@@ -435,7 +521,7 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 		if err := json.Unmarshal(event.DataJSON, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if payload["run_id"] != "run_test" || payload["call_id"] != "call_test" || payload["output_delta"] != "partial" {
+		if payload["run_id"] != "run_test" || payload["call_id"] != "call_test" || payload["tool_use_id"] != "tlu_test" || payload["output_delta"] != "partial" {
 			t.Fatalf("payload = %#v", payload)
 		}
 	case <-time.After(time.Second):
@@ -448,5 +534,86 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 	}
 	if len(stored) != 0 {
 		t.Fatalf("persisted progress events = %d, want 0", len(stored))
+	}
+}
+
+type startupRecoveryStore struct {
+	store.Store
+	order        []string
+	interruptErr error
+	abortErr     error
+}
+
+func (s *startupRecoveryStore) InterruptActiveToolUses(context.Context) error {
+	s.order = append(s.order, "interrupt")
+	if s.interruptErr != nil {
+		return s.interruptErr
+	}
+	return s.Store.InterruptActiveToolUses(context.Background())
+}
+
+func (s *startupRecoveryStore) AbortRunningSessionRuns(context.Context) error {
+	s.order = append(s.order, "abort")
+	if s.abortErr != nil {
+		return s.abortErr
+	}
+	return s.Store.AbortRunningSessionRuns(context.Background())
+}
+
+func (s *startupRecoveryStore) ListQueuedSessionRunSessions(context.Context) ([]string, error) {
+	s.order = append(s.order, "resume")
+	return nil, nil
+}
+
+func TestRecoverStartupInterruptsToolsBeforeRuns(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_recovery"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveToolUse(context.Background(), store.ToolUse{ID: "tlu_recovery", SessionID: "ses_recovery", Name: "bash", Status: store.ToolUseStatusProposed}); err != nil {
+		t.Fatal(err)
+	}
+	recoveryStore := &startupRecoveryStore{Store: data}
+	server := New(Config{Store: recoveryStore})
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(recoveryStore.order, ","), "interrupt,abort,resume"; got != want {
+		t.Fatalf("recovery order = %q, want %q", got, want)
+	}
+	uses, err := data.ListToolUses(context.Background(), "ses_recovery")
+	if err != nil || len(uses) != 1 || uses[0].Status != store.ToolUseStatusInterrupted {
+		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	uses, err = data.ListToolUses(context.Background(), "ses_recovery")
+	if err != nil || uses[0].Status != store.ToolUseStatusInterrupted {
+		t.Fatalf("second recovery tool uses = %#v, error = %v", uses, err)
+	}
+}
+
+func TestRecoverStartupStopsOnFailure(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		interrupt error
+		abort     error
+		wantOrder string
+	}{
+		{"interrupt", errors.New("interrupt failed"), nil, "interrupt"},
+		{"abort", nil, errors.New("abort failed"), "interrupt,abort"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recoveryStore := &startupRecoveryStore{Store: memory.NewStore(), interruptErr: test.interrupt, abortErr: test.abort}
+			server := New(Config{Store: recoveryStore})
+			err := server.recoverStartup(context.Background())
+			if !errors.Is(err, test.interrupt) && !errors.Is(err, test.abort) {
+				t.Fatalf("error = %v, want wrapped recovery failure", err)
+			}
+			if got := strings.Join(recoveryStore.order, ","); got != test.wantOrder {
+				t.Fatalf("recovery order = %q, want %q", got, test.wantOrder)
+			}
+		})
 	}
 }

@@ -39,6 +39,56 @@ const (
 	SessionRunStatusAborted   = "aborted"
 )
 
+const (
+	ToolUseStatusProposed    = "proposed"
+	ToolUseStatusAuthorized  = "authorized"
+	ToolUseStatusStarted     = "started"
+	ToolUseStatusCompleted   = "completed"
+	ToolUseStatusFailed      = "failed"
+	ToolUseStatusInterrupted = "interrupted"
+	ToolUseStatusDeclined    = "declined"
+)
+
+// ToolUse records one durable tool invocation lifecycle.
+type ToolUse struct {
+	ID                 string    `json:"id"`
+	SessionID          string    `json:"session_id"`
+	RunID              string    `json:"run_id,omitempty"`
+	ModelCallID        string    `json:"model_call_id,omitempty"`
+	AssistantMessageID string    `json:"assistant_message_id,omitempty"`
+	PartID             string    `json:"part_id,omitempty"`
+	Step               int       `json:"step"`
+	Ordinal            int       `json:"ordinal"`
+	CallID             string    `json:"call_id,omitempty"`
+	Name               string    `json:"name"`
+	Status             string    `json:"status"`
+	InputJSON          []byte    `json:"-"`
+	Output             string    `json:"output,omitempty"`
+	MetadataJSON       []byte    `json:"-"`
+	ErrorType          string    `json:"error_type,omitempty"`
+	ErrorMessage       string    `json:"error_message,omitempty"`
+	ProposedAt         time.Time `json:"proposed_at,omitempty"`
+	AuthorizedAt       time.Time `json:"authorized_at,omitempty"`
+	StartedAt          time.Time `json:"started_at,omitempty"`
+	CompletedAt        time.Time `json:"completed_at,omitempty"`
+	CreatedAt          time.Time `json:"created_at,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at,omitempty"`
+}
+
+// MarshalJSON exposes stored JSON payloads as JSON values rather than base64.
+func (u ToolUse) MarshalJSON() ([]byte, error) {
+	type alias ToolUse
+	return json.Marshal(struct {
+		*alias
+		Input    json.RawMessage `json:"input,omitempty"`
+		Metadata json.RawMessage `json:"metadata,omitempty"`
+	}{
+		alias:    (*alias)(&u),
+		Input:    u.InputJSON,
+		Metadata: u.MetadataJSON,
+	})
+}
+
 // SessionRun is a durably admitted prompt and its immutable effective agent
 // configuration. Runs are claimed in sequence order per session.
 type SessionRun struct {

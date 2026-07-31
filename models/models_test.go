@@ -133,6 +133,36 @@ func TestToolPartProviderFieldsPreservedThroughNormalizationAndExpansion(t *test
 	}
 }
 
+func TestToolUseIDPreservedThroughJSONNormalizationAndExpansion(t *testing.T) {
+	part := ToolResultPart{ID: "part_1", ToolUseID: "tlu_1", CallID: "call_1", Name: "bash", Output: Content{TextPart{Text: "ok"}}}
+	b, err := MarshalPart(part)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := UnmarshalPart(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded.(ToolResultPart).ToolUseID; got != "tlu_1" {
+		t.Fatalf("JSON ToolUseID = %q", got)
+	}
+	messages := NormalizeMessages([]Message{
+		{Role: RoleAssistant, Content: Content{ToolCallPart{ID: "part_1", ToolUseID: "tlu_1", CallID: "call_1", Name: "bash", Input: map[string]any{}}}},
+		{Role: RoleTool, Content: Content{part}},
+	})
+	tool := messages[0].Content[0].(ToolPart)
+	if tool.ToolUseID != "tlu_1" {
+		t.Fatalf("normalized ToolUseID = %q", tool.ToolUseID)
+	}
+	expanded := ExpandToolMessages(messages)
+	if got := expanded[0].Content[0].(ToolCallPart).ToolUseID; got != "tlu_1" {
+		t.Fatalf("expanded call ToolUseID = %q", got)
+	}
+	if got := expanded[1].Content[0].(ToolResultPart).ToolUseID; got != "tlu_1" {
+		t.Fatalf("expanded result ToolUseID = %q", got)
+	}
+}
+
 func TestNormalizeMessagesPreservesToolRawAndProviderFieldsOnResultReplacement(t *testing.T) {
 	messages := []Message{
 		{Role: RoleAssistant, Content: Content{ToolPart{CallID: "call_1", Name: "bash", State: ToolStatePending, Input: map[string]any{"command": "pwd"}, InputRaw: `{"command":"pwd"}`, ProviderExecuted: true, ProviderMetadata: Meta{"call": "metadata"}}}},

@@ -118,7 +118,7 @@ Durable events are stored and replayed. They reconstruct the transcript and fina
 | `session.text.completed` | A text block reached its final value. |
 | `session.reasoning.completed` | A reasoning block reached its final value. |
 | `session.tool.called` | The model requested a tool. |
-| `session.tool.updated` | A tool reached a running or terminal state, including its latest durable input, output, metadata, error, and timing. |
+| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`, including its latest durable input, output, metadata, error, and timing. |
 | `session.tool.completed` | A tool finished successfully. |
 | `session.tool.failed` | A tool failed. |
 | `session.message.created` | A message was appended to history. |
@@ -160,9 +160,16 @@ which the delta was checkpointed. Tool progress also includes `call_id`:
 }
 ```
 
-Tool progress uses `call_id` to merge updates into the corresponding tool part.
-Append `output_delta` to the visible output and shallow-merge `metadata`; replace
-both with the values from the later durable `session.tool.updated` event.
+Before proposal, tool-input deltas use `run_id` plus provider `call_id` as a
+temporary correlation key. Once `session.tool.called` or
+`session.tool.updated` supplies `tool_use_id`, migrate that transient state to
+the durable ID. Provider call IDs may repeat across runs and must not be used as
+session-global identity.
+
+Tool progress includes `tool_use_id`. Append `output_delta` to the visible
+output and shallow-merge `metadata`; replace both with values from the later
+durable `session.tool.updated` event. Treat that event's exact lifecycle status
+as authoritative.
 
 Treat `session.message.created` as the authoritative snapshot. Replace an
 existing message with the same `message.id` when its `revision` is newer or

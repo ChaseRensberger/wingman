@@ -50,3 +50,37 @@ func TestModelCallAttemptsMatchSQLiteContract(t *testing.T) {
 		t.Fatalf("updated call = %#v", calls[0])
 	}
 }
+
+func TestToolUseLifecycleMatchesSQLiteContract(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	session := &store.Session{ID: "ses_tools"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_tools", SessionID: session.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := store.ToolUse{ID: "tlu_test", SessionID: session.ID, RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_1", Name: "read", Status: store.ToolUseStatusProposed, InputJSON: []byte(`{"path":"a"}`)}
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status = store.ToolUseStatusAuthorized
+	use.InputJSON[9] = 'b'
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveToolUses(ctx); err != nil {
+		t.Fatal(err)
+	}
+	uses, err := data.ListToolUses(ctx, session.ID)
+	if err != nil || len(uses) != 1 || uses[0].Status != store.ToolUseStatusInterrupted || uses[0].ErrorType != "process_interrupted" {
+		t.Fatalf("uses = %#v, error = %v", uses, err)
+	}
+	uses[0].InputJSON[0] = '['
+	again, err := data.ListToolUses(ctx, session.ID)
+	if err != nil || again[0].InputJSON[0] != '{' {
+		t.Fatalf("tool use JSON was not deep copied: %#v, %v", again, err)
+	}
+}

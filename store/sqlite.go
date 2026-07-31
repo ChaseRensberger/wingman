@@ -1430,6 +1430,145 @@ func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]M
 	return out, nil
 }
 
+// SaveToolUse inserts or authoritatively advances one tool-use lifecycle.
+func (s *SQLiteStore) SaveToolUse(ctx context.Context, use ToolUse) error {
+	if use.ID == "" {
+		use.ID = NewID(PrefixToolUse)
+	}
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := toolUseSessionExists(ctx, tx, use.SessionID); err != nil {
+		return err
+	}
+	existing, err := scanToolUse(tx.QueryRowContext(ctx, `SELECT `+toolUseColumns+` FROM tool_uses WHERE id = ?`, use.ID))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read tool use: %w", err)
+	}
+	now := time.Now().UTC()
+	if errors.Is(err, sql.ErrNoRows) {
+		if use.Status != ToolUseStatusProposed {
+			return ErrToolUseInvalidTransition
+		}
+		if use.RunID != "" {
+			var runSession string
+			if err := tx.QueryRowContext(ctx, `SELECT session_id FROM session_runs WHERE id = ?`, use.RunID).Scan(&runSession); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return fmt.Errorf("session run %s does not belong to session %s", use.RunID, use.SessionID)
+				}
+				return err
+			}
+			if runSession != use.SessionID {
+				return fmt.Errorf("session run %s does not belong to session %s", use.RunID, use.SessionID)
+			}
+			var conflictingID string
+			err := tx.QueryRowContext(ctx, `SELECT id FROM tool_uses WHERE run_id = ? AND step = ? AND ordinal = ?`, use.RunID, use.Step, use.Ordinal).Scan(&conflictingID)
+			if err == nil && conflictingID != use.ID {
+				return ErrToolUseIdentityConflict
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
+		if use.ProposedAt.IsZero() {
+			use.ProposedAt = now
+		}
+		if use.CreatedAt.IsZero() {
+			use.CreatedAt = now
+		}
+		if use.UpdatedAt.IsZero() {
+			use.UpdatedAt = now
+		}
+		if err := insertToolUse(ctx, tx, use); err != nil {
+			return fmt.Errorf("insert tool use: %w", err)
+		}
+		return tx.Commit(ctx)
+	}
+	if !sameToolUseIdentity(existing, use) {
+		return ErrToolUseIdentityConflict
+	}
+	use.CreatedAt = existing.CreatedAt
+	use.ProposedAt = existing.ProposedAt
+	if use.AuthorizedAt.IsZero() {
+		use.AuthorizedAt = existing.AuthorizedAt
+	}
+	if use.StartedAt.IsZero() {
+		use.StartedAt = existing.StartedAt
+	}
+	if use.CompletedAt.IsZero() {
+		use.CompletedAt = existing.CompletedAt
+	}
+	if use.UpdatedAt.IsZero() {
+		use.UpdatedAt = existing.UpdatedAt
+	}
+	if use.Status == existing.Status {
+		if !sameToolUse(existing, use) {
+			return ErrToolUseInvalidTransition
+		}
+		return tx.Commit(ctx)
+	}
+	if !legalToolUseTransition(existing.Status, use.Status) {
+		return ErrToolUseInvalidTransition
+	}
+	if use.Status != ToolUseStatusAuthorized && !bytes.Equal(existing.InputJSON, use.InputJSON) {
+		return ErrToolUseInvalidTransition
+	}
+	if use.UpdatedAt.IsZero() || use.UpdatedAt.Equal(existing.UpdatedAt) {
+		use.UpdatedAt = now
+	}
+	if use.Status == ToolUseStatusAuthorized && use.AuthorizedAt.IsZero() {
+		use.AuthorizedAt = now
+	}
+	if use.Status == ToolUseStatusStarted && use.StartedAt.IsZero() {
+		use.StartedAt = now
+	}
+	if isToolUseTerminal(use.Status) && use.CompletedAt.IsZero() {
+		use.CompletedAt = now
+	}
+	if err := updateToolUse(ctx, tx, use); err != nil {
+		return fmt.Errorf("update tool use: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
+// ListToolUses returns tool uses in their source order for a session.
+func (s *SQLiteStore) ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+toolUseColumns+` FROM tool_uses WHERE session_id = ? ORDER BY proposed_at, step, ordinal, id`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query tool uses: %w", err)
+	}
+	defer rows.Close()
+	out := []ToolUse{}
+	for rows.Next() {
+		use, err := scanToolUse(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, use)
+	}
+	return out, rows.Err()
+}
+
+// InterruptActiveToolUses marks work that cannot survive process shutdown.
+func (s *SQLiteStore) InterruptActiveToolUses(ctx context.Context) error {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE status IN (?, ?, ?)`, ToolUseStatusInterrupted, "process_interrupted", "tool use interrupted because the process stopped", now, now, ToolUseStatusProposed, ToolUseStatusAuthorized, ToolUseStatusStarted)
+	if err != nil {
+		return fmt.Errorf("interrupt active tool uses: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error) {
 	tx, err := s.beginImmediate(ctx)
 	if err != nil {
@@ -1739,6 +1878,11 @@ const modelCallColumns = `
 	context_tokens, context_window, COALESCE(context_percent, 0), cost,
 	structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at`
 
+const toolUseColumns = `
+	id, session_id, COALESCE(run_id, ''), COALESCE(model_call_id, ''), COALESCE(assistant_message_id, ''), COALESCE(part_id, ''),
+	step, ordinal, call_id, name, status, input_json, output, metadata_json, error_type, error_message,
+	proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
+
 const sessionRunColumns = `
 	id, session_id, request_id, request_hash, admitted_version,
 	work_dir, workspace_id, client_id, sequence, status, message, agent_json,
@@ -1817,6 +1961,113 @@ func scanModelCall(r rowScanner) (ModelCall, error) {
 	call.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	call.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return call, nil
+}
+
+func toolUseSessionExists(ctx context.Context, tx *immediateTx, sessionID string) error {
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func scanToolUse(r rowScanner) (ToolUse, error) {
+	var use ToolUse
+	var input, output, metadata, errorType, errorMessage, authorizedAt, startedAt, completedAt sql.NullString
+	var proposedAt, createdAt, updatedAt string
+	err := r.Scan(&use.ID, &use.SessionID, &use.RunID, &use.ModelCallID, &use.AssistantMessageID, &use.PartID,
+		&use.Step, &use.Ordinal, &use.CallID, &use.Name, &use.Status, &input, &output, &metadata, &errorType, &errorMessage,
+		&proposedAt, &authorizedAt, &startedAt, &completedAt, &createdAt, &updatedAt)
+	if err != nil {
+		return ToolUse{}, err
+	}
+	if input.Valid {
+		use.InputJSON = []byte(input.String)
+	}
+	if output.Valid {
+		use.Output = output.String
+	}
+	if metadata.Valid {
+		use.MetadataJSON = []byte(metadata.String)
+	}
+	if errorType.Valid {
+		use.ErrorType = errorType.String
+	}
+	if errorMessage.Valid {
+		use.ErrorMessage = errorMessage.String
+	}
+	use.ProposedAt, _ = time.Parse(time.RFC3339Nano, proposedAt)
+	if authorizedAt.Valid {
+		use.AuthorizedAt, _ = time.Parse(time.RFC3339Nano, authorizedAt.String)
+	}
+	if startedAt.Valid {
+		use.StartedAt, _ = time.Parse(time.RFC3339Nano, startedAt.String)
+	}
+	if completedAt.Valid {
+		use.CompletedAt, _ = time.Parse(time.RFC3339Nano, completedAt.String)
+	}
+	use.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	use.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	return use, nil
+}
+
+func insertToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO tool_uses (`+toolUseColumnsInsert+`) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, toolUseArgs(use)...)
+	return err
+}
+
+func updateToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
+	_, err := tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, input_json = ?, output = ?, metadata_json = ?, error_type = ?, error_message = ?, authorized_at = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
+		use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.UpdatedAt), use.ID)
+	return err
+}
+
+const toolUseColumnsInsert = `id, session_id, run_id, model_call_id, assistant_message_id, part_id, step, ordinal, call_id, name, status, input_json, output, metadata_json, error_type, error_message, proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
+
+func toolUseArgs(use ToolUse) []any {
+	return []any{use.ID, use.SessionID, use.RunID, use.ModelCallID, use.AssistantMessageID, use.PartID, use.Step, use.Ordinal, use.CallID, use.Name, use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.ProposedAt), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.CreatedAt), nullableTime(use.UpdatedAt)}
+}
+
+func nullableString(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+func nullableTime(v time.Time) *string {
+	if v.IsZero() {
+		return nil
+	}
+	s := v.UTC().Format(time.RFC3339Nano)
+	return &s
+}
+
+func sameToolUseIdentity(a, b ToolUse) bool {
+	return a.SessionID == b.SessionID && a.RunID == b.RunID && a.ModelCallID == b.ModelCallID && a.AssistantMessageID == b.AssistantMessageID && a.PartID == b.PartID && a.Step == b.Step && a.Ordinal == b.Ordinal && a.CallID == b.CallID && a.Name == b.Name
+}
+
+func sameToolUse(a, b ToolUse) bool {
+	return sameToolUseIdentity(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+}
+
+func legalToolUseTransition(from, to string) bool {
+	switch from {
+	case ToolUseStatusProposed:
+		return to == ToolUseStatusAuthorized || to == ToolUseStatusDeclined || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted
+	case ToolUseStatusAuthorized:
+		return to == ToolUseStatusStarted || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted
+	case ToolUseStatusStarted:
+		return to == ToolUseStatusCompleted || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted
+	}
+	return false
+}
+
+func isToolUseTerminal(status string) bool {
+	return status == ToolUseStatusCompleted || status == ToolUseStatusFailed || status == ToolUseStatusInterrupted || status == ToolUseStatusDeclined
 }
 
 // scanAgent reads one agent row from any rowScanner.

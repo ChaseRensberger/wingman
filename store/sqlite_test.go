@@ -231,6 +231,53 @@ func TestSQLiteModelCallPreservesTimestampPrecision(t *testing.T) {
 	}
 }
 
+func TestSQLiteToolUseLifecycleAndInterruption(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_tools"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_tools", SessionID: "ses_tools"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := ToolUse{ID: "tlu_test", SessionID: "ses_tools", RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_1", Name: "read", Status: ToolUseStatusProposed, InputJSON: []byte(`{"path":"a"}`)}
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveToolUse(ctx, ToolUse{ID: use.ID, SessionID: use.SessionID, RunID: use.RunID, Step: 1, Ordinal: 0, CallID: use.CallID, Name: use.Name, Status: ToolUseStatusStarted}); !errors.Is(err, ErrToolUseInvalidTransition) {
+		t.Fatalf("skip error = %v", err)
+	}
+	use.Status = ToolUseStatusAuthorized
+	use.InputJSON = []byte(`{"path":"rewritten"}`)
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status = ToolUseStatusStarted
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveToolUses(ctx); err != nil {
+		t.Fatal(err)
+	}
+	uses, err := data.ListToolUses(ctx, "ses_tools")
+	if err != nil || len(uses) != 1 || uses[0].Status != ToolUseStatusInterrupted || uses[0].ErrorType != "process_interrupted" || uses[0].CompletedAt.IsZero() {
+		t.Fatalf("uses = %#v, error = %v", uses, err)
+	}
+	interrupted := uses[0]
+	interrupted.Status = ToolUseStatusCompleted
+	if err := data.SaveToolUse(ctx, interrupted); !errors.Is(err, ErrToolUseInvalidTransition) {
+		t.Fatalf("terminal transition error = %v", err)
+	}
+	if err := data.SaveToolUse(ctx, ToolUse{ID: "tlu_conflict", SessionID: "ses_tools", RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_2", Name: "write", Status: ToolUseStatusProposed}); !errors.Is(err, ErrToolUseIdentityConflict) {
+		t.Fatalf("identity conflict error = %v", err)
+	}
+}
+
 func TestSQLiteSeedsFridayAgent(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {
@@ -370,7 +417,11 @@ func TestSQLiteSaveMessageRevisionRaceAcrossHandles(t *testing.T) {
 		go func(save struct {
 			data    *SQLiteStore
 			message StoredMessage
-		}) { defer wg.Done(); <-start; errs <- save.data.SaveMessage(ctx, save.message) }(save)
+		}) {
+			defer wg.Done()
+			<-start
+			errs <- save.data.SaveMessage(ctx, save.message)
+		}(save)
 	}
 	close(start)
 	wg.Wait()

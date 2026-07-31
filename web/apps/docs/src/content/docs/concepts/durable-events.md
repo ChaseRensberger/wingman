@@ -79,7 +79,7 @@ HTTP server.
 The aggregate event log records session creation, title changes, location
 changes, and run admissions. An admission captures its request identity, prompt,
 effective Agent and model, output schema, client, and placement snapshot.
-Messages, model calls, and tool calls are persisted in their respective state
+Messages, model calls, and tool uses are persisted in their respective state
 tables and are not yet represented in aggregate history.
 
 ## Hard Purge
@@ -87,7 +87,8 @@ tables and are not yet represented in aggregate history.
 Deletion is not an aggregate event. `DELETE /sessions/{id}` requires the
 session's current version and atomically removes both the projection and the
 entire aggregate stream. The same transaction removes all session-owned runs,
-public events, messages, parts, and model calls through foreign-key cascades.
+public events, messages, parts, model calls, and tool uses through foreign-key
+cascades.
 
 Wingman retains no deletion event or tombstone. After the transaction commits,
 the server closes live event streams, cancels active execution, and waits for

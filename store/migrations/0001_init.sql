@@ -149,6 +149,38 @@ CREATE INDEX idx_model_calls_session_started_at ON model_calls(session_id, start
 CREATE INDEX idx_model_calls_assistant_message ON model_calls(assistant_message_id);
 CREATE INDEX idx_model_calls_session_status ON model_calls(session_id, status);
 
+CREATE TABLE tool_uses (
+    id                   TEXT PRIMARY KEY,
+    session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    run_id               TEXT REFERENCES session_runs(id) ON DELETE CASCADE,
+    model_call_id        TEXT REFERENCES model_calls(id) ON DELETE SET NULL,
+    assistant_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    part_id              TEXT REFERENCES parts(id) ON DELETE SET NULL,
+    step                 INTEGER NOT NULL,
+    ordinal              INTEGER NOT NULL,
+    call_id              TEXT NOT NULL DEFAULT '',
+    name                 TEXT NOT NULL,
+    status               TEXT NOT NULL,
+    input_json           TEXT,
+    output               TEXT,
+    metadata_json        TEXT,
+    error_type           TEXT,
+    error_message        TEXT,
+    proposed_at          TEXT NOT NULL,
+    authorized_at        TEXT,
+    started_at           TEXT,
+    completed_at         TEXT,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
+);
+
+CREATE INDEX idx_tool_uses_session_proposed_at ON tool_uses(session_id, proposed_at, step, ordinal, id);
+CREATE UNIQUE INDEX idx_tool_uses_run_step_ordinal ON tool_uses(run_id, step, ordinal)
+WHERE run_id IS NOT NULL AND run_id <> '';
+CREATE INDEX idx_tool_uses_status ON tool_uses(status);
+CREATE INDEX idx_tool_uses_assistant_message ON tool_uses(assistant_message_id);
+CREATE INDEX idx_tool_uses_part ON tool_uses(part_id);
+
 CREATE TABLE session_events (
     id         TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

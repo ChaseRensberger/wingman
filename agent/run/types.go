@@ -29,7 +29,8 @@
 //     wrapped as a StreamPartEvent. Consumers that want to forward
 //     provider streaming verbatim (e.g., the SSE handler) can do so.
 //   - High-level lifecycle events: IterationStartEvent, IterationEndEvent,
-//     ToolExecutionStartEvent, ToolExecutionEndEvent, MessageEvent. These
+//     ToolUseProposedEvent, ToolUseAuthorizedEvent, ToolExecutionStartEvent,
+//     ToolExecutionEndEvent, MessageEvent. These
 //     are convenient framing for UI consumers that don't want to track
 //     stream parts themselves.
 //
@@ -137,6 +138,70 @@ type Config struct {
 	// message snapshot as it is assembled. It may assign message and part IDs.
 	// Unlike Sink, checkpoint failures stop the run.
 	MessageCheckpoint MessageCheckpoint
+
+	// ToolUseLifecycle durably records tool-use transitions. It provides a
+	// pre-side-effect started fence and terminal accounting; it does not make
+	// tool execution exactly-once.
+	ToolUseLifecycle ToolUseLifecycle
+}
+
+// ToolUseStatus is a terminal durable tool-use status.
+type ToolUseStatus string
+
+const (
+	ToolUseStatusCompleted   ToolUseStatus = "completed"
+	ToolUseStatusFailed      ToolUseStatus = "failed"
+	ToolUseStatusInterrupted ToolUseStatus = "interrupted"
+	ToolUseStatusDeclined    ToolUseStatus = "declined"
+)
+
+// ToolUseLifecycle durably tracks a model-proposed tool use. Implementations
+// may receive calls concurrently for different tool uses.
+type ToolUseLifecycle interface {
+	Propose(ctx context.Context, info ToolUseProposeInfo) (toolUseID string, err error)
+	Authorize(ctx context.Context, info ToolUseAuthorizeInfo) error
+	Start(ctx context.Context, info ToolUseStartInfo) error
+	Finish(ctx context.Context, info ToolUseFinishInfo) error
+}
+
+// ToolUseProposeInfo identifies a proposed model tool call before execution.
+type ToolUseProposeInfo struct {
+	Step, Ordinal                  int
+	CallID, Name                   string
+	Args                           map[string]any
+	MessageID, PartID, ModelCallID string
+	ProposedAt                     time.Time
+}
+
+// ToolUseAuthorizeInfo records the authoritative, hook-rewritten arguments.
+type ToolUseAuthorizeInfo struct {
+	Step, Ordinal                  int
+	ToolUseID, CallID, Name        string
+	Args                           map[string]any
+	MessageID, PartID, ModelCallID string
+	AuthorizedAt                   time.Time
+}
+
+// ToolUseStartInfo records the durable boundary immediately before execution.
+type ToolUseStartInfo struct {
+	Step, Ordinal                  int
+	ToolUseID, CallID, Name        string
+	Args                           map[string]any
+	MessageID, PartID, ModelCallID string
+	StartedAt                      time.Time
+}
+
+// ToolUseFinishInfo records terminal accounting for a proposed tool use.
+type ToolUseFinishInfo struct {
+	Step, Ordinal                                    int
+	ToolUseID, CallID, Name                          string
+	Args                                             map[string]any
+	MessageID, PartID, ModelCallID                   string
+	ProposedAt, AuthorizedAt, StartedAt, CompletedAt time.Time
+	Status                                           ToolUseStatus
+	ToolResult                                       ToolResult
+	ErrorType, ErrorMessage                          string
+	Failure                                          error
 }
 
 // MessageCheckpoint persists an authoritative assistant message snapshot.
@@ -428,33 +493,45 @@ var ErrSkipTool = errors.New("skip tool")
 type ToolCall struct {
 	// ID is the provider-assigned call ID. Use this to correlate hook
 	// invocations with tool result messages.
-	ID string
+	ID string `json:"call_id"`
+
+	ToolUseID    string    `json:"tool_use_id,omitempty"`
+	MessageID    string    `json:"message_id,omitempty"`
+	PartID       string    `json:"part_id,omitempty"`
+	ModelCallID  string    `json:"model_call_id,omitempty"`
+	Step         int       `json:"step,omitempty"`
+	Ordinal      int       `json:"ordinal,omitempty"`
+	ProposedAt   time.Time `json:"proposed_at,omitempty"`
+	AuthorizedAt time.Time `json:"authorized_at,omitempty"`
+	StartedAt    time.Time `json:"started_at,omitempty"`
 
 	// Name is the tool's registered name.
-	Name string
+	Name string `json:"name"`
 
 	// Args is the parsed tool arguments. The loop guarantees this is
 	// never nil; absent args are an empty map.
-	Args map[string]any
+	Args map[string]any `json:"args"`
 
 	// Tool is the resolved Tool implementation, or nil if the model
 	// called an unknown tool. BeforeToolCall fires even for unknown
 	// tools so hooks can synthesize a custom error.
-	Tool tool.Tool
+	Tool tool.Tool `json:"-"`
 }
 
 // ToolResult is the outcome of a single tool execution.
 type ToolResult struct {
-	CallID   string
-	Name     string
-	Args     map[string]any
-	Output   string
-	Error    string
-	Metadata map[string]any
-	IsError  bool
+	CallID    string         `json:"call_id"`
+	ToolUseID string         `json:"tool_use_id,omitempty"`
+	Status    ToolUseStatus  `json:"status,omitempty"`
+	Name      string         `json:"name"`
+	Args      map[string]any `json:"args"`
+	Output    string         `json:"output,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	IsError   bool           `json:"is_error"`
 	// Duration is the wall-clock time spent in Tool.Execute (excluding
 	// hook overhead). Zero for skipped or unknown-tool calls.
-	Duration time.Duration
+	Duration time.Duration `json:"duration,omitempty"`
 }
 
 // Turn is one iteration of the loop: an assistant message and the tool
@@ -577,8 +654,18 @@ type MessageEvent struct {
 	Message models.Message `json:"message"`
 }
 
-// ToolExecutionStartEvent fires immediately before Tool.Execute is
-// invoked (or, for unknown/skipped tools, where it would have been).
+// ToolUseProposedEvent fires after a durable tool-use proposal commits.
+type ToolUseProposedEvent struct {
+	Call ToolCall `json:"call"`
+}
+
+// ToolUseAuthorizedEvent fires after authoritative arguments are durably authorized.
+type ToolUseAuthorizedEvent struct {
+	Call ToolCall `json:"call"`
+}
+
+// ToolExecutionStartEvent fires immediately before Tool.Execute, after the
+// durable Start transition commits.
 type ToolExecutionStartEvent struct {
 	Call ToolCall `json:"call"`
 }
@@ -588,6 +675,7 @@ type ToolExecutionStartEvent struct {
 // streaming produce these events.
 type ToolExecutionProgressEvent struct {
 	CallID      string         `json:"call_id"`
+	ToolUseID   string         `json:"tool_use_id,omitempty"`
 	Name        string         `json:"name"`
 	OutputDelta string         `json:"output_delta,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
@@ -667,6 +755,8 @@ type ContextTransformedEvent struct {
 func (IterationStartEvent) isEvent()        {}
 func (IterationEndEvent) isEvent()          {}
 func (MessageEvent) isEvent()               {}
+func (ToolUseProposedEvent) isEvent()       {}
+func (ToolUseAuthorizedEvent) isEvent()     {}
 func (ToolExecutionStartEvent) isEvent()    {}
 func (ToolExecutionProgressEvent) isEvent() {}
 func (ToolExecutionEndEvent) isEvent()      {}

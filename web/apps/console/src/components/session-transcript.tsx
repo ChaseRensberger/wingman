@@ -8,6 +8,7 @@ import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
 import { shouldShowThinking } from "@/lib/session-detail";
+import { sameToolActivity } from "@/lib/tool-activity-state";
 import type { Message, ModelCall, ToolActivity, ToolCallPart, ToolResultPart } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
 
@@ -60,8 +61,8 @@ export function SessionTranscript({
 	onRetry,
 	scroll,
 }: Props) {
-	const renderedToolCalls = new Set(messages.flatMap((message) => message.content.flatMap((part) => part.type === "tool_call" || part.type === "tool" ? [(part as ToolCallPart).call_id] : [])));
-	const pendingToolActivities = [...toolActivitiesById.values()].filter((activity) => !renderedToolCalls.has(activity.call_id));
+	const renderedToolCalls = messages.flatMap((message) => message.content.filter((part) => part.type === "tool_call" || part.type === "tool") as ToolCallPart[]);
+	const pendingToolActivities = [...toolActivitiesById.values()].filter((activity) => !renderedToolCalls.some((call) => sameToolActivity(call, activity)));
 	const hasActiveTool = [...toolActivitiesById.values()].some((activity) => activity.status === "pending" || activity.status === "running");
 	const showThinking = shouldShowThinking(isStreaming, Boolean(streamingText || streamingReasoning || hasActiveTool));
 	return (
@@ -83,7 +84,7 @@ export function SessionTranscript({
 								return <ChatMessage key={message.id ?? index} message={message} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivitiesById} modelCall={call} agentName={agentNames.get(call?.agent_id ?? "")} compactTop={hasText && previousHasTool} compactBottom={hasTool && nextHasText} />;
 							})}
 							{streamingReasoning && <div className="px-4"><ReasoningPart reasoning={streamingReasoning} isStreaming /></div>}
-							{pendingToolActivities.map((activity) => <div key={activity.call_id} className="px-4"><ToolActivityItem call={{ type: "tool_call", call_id: activity.call_id, name: activity.tool, input: activity.input ?? {} }} activity={activity} /></div>)}
+							{pendingToolActivities.map((activity) => <div key={activity.tool_use_id ?? `${activity.run_id ?? "legacy"}:${activity.call_id}`} className="px-4"><ToolActivityItem call={{ type: "tool_call", tool_use_id: activity.tool_use_id, call_id: activity.call_id, name: activity.tool, input: activity.input ?? {} }} activity={activity} /></div>)}
 							{streamingText && <ChatMessage message={{ role: "assistant", content: [{ type: "text", text: streamingText }] }} isStreaming />}
 							{showThinking && <ThinkingIndicator />}
 							{failedRun && <div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6"><div className="flex items-start gap-2"><WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" weight="fill" /><div className="min-w-0 flex-1"><div className="font-medium text-destructive">Message failed</div><pre data-scrollable tabIndex={0} className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">{failedRun.error}</pre></div></div><div className="mt-3 flex justify-end gap-2"><Button size="sm" variant="ghost" type="button" onClick={onCopyFailedRunError}>{copiedFailedRunError ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}{copiedFailedRunError ? "Copied" : "Copy error"}</Button><Button size="sm" type="button" onClick={onRetry} disabled={isStreaming}><ArrowClockwiseIcon className="size-4" />Retry</Button></div></div>}

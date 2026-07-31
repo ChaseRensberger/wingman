@@ -153,6 +153,24 @@ func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, calls)
 }
 
+func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+
+	uses, err := s.store.ListToolUses(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, uses)
+}
+
 type SessionDetailResponse struct {
 	*store.Session
 	History         []models.Message `json:"history"`

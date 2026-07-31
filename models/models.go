@@ -147,6 +147,7 @@ func (ReasoningPart) Type() string { return "reasoning" }
 // Session history stores this part; providers receive a derived tool-result message.
 type ToolPart struct {
 	ID               string         `json:"id,omitempty"`
+	ToolUseID        string         `json:"tool_use_id,omitempty"`
 	CallID           string         `json:"call_id"`
 	Name             string         `json:"name"`
 	State            ToolState      `json:"state"`
@@ -175,6 +176,7 @@ const (
 // ToolCallPart is a completed tool call inside a message.
 type ToolCallPart struct {
 	ID               string         `json:"id,omitempty"`
+	ToolUseID        string         `json:"tool_use_id,omitempty"`
 	CallID           string         `json:"call_id"`
 	Name             string         `json:"name"`
 	Input            map[string]any `json:"input"`
@@ -187,6 +189,7 @@ func (ToolCallPart) Type() string { return "tool_call" }
 // ToolResultPart is the outcome of a tool execution.
 type ToolResultPart struct {
 	ID               string `json:"id,omitempty"`
+	ToolUseID        string `json:"tool_use_id,omitempty"`
 	CallID           string `json:"call_id"`
 	Name             string `json:"name,omitempty"`
 	Output           []Part `json:"output"`
@@ -209,6 +212,7 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(struct {
 		ID               string            `json:"id,omitempty"`
+		ToolUseID        string            `json:"tool_use_id,omitempty"`
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
@@ -216,12 +220,13 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		Metadata         Meta              `json:"metadata,omitempty"`
 		ProviderExecuted bool              `json:"provider_executed,omitempty"`
 		ProviderMetadata Meta              `json:"provider_metadata,omitempty"`
-	}{p.ID, p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
+	}{p.ID, p.ToolUseID, p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
 }
 
 func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID               string            `json:"id,omitempty"`
+		ToolUseID        string            `json:"tool_use_id,omitempty"`
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
@@ -235,6 +240,7 @@ func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	}
 	p.CallID = raw.CallID
 	p.ID = raw.ID
+	p.ToolUseID = raw.ToolUseID
 	p.Name = raw.Name
 	p.IsError = raw.IsError
 	p.Metadata = raw.Metadata
@@ -408,7 +414,7 @@ func NormalizeMessages(messages []Message) []Message {
 				continue
 			}
 			text := toolResultText(result)
-			tool := ToolPart{ID: result.ID, CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata, ProviderExecuted: result.ProviderExecuted, ProviderMetadata: result.ProviderMetadata}
+			tool := ToolPart{ID: result.ID, ToolUseID: result.ToolUseID, CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata, ProviderExecuted: result.ProviderExecuted, ProviderMetadata: result.ProviderMetadata}
 			if result.IsError {
 				tool.State = ToolStateError
 				tool.Output = ""
@@ -444,7 +450,7 @@ func ExpandToolMessages(messages []Message) []Message {
 				hasUnresolvedTool = true
 				continue
 			}
-			content = append(content, ToolCallPart{ID: tool.ID, CallID: tool.CallID, Name: tool.Name, Input: tool.Input, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
+			content = append(content, ToolCallPart{ID: tool.ID, ToolUseID: tool.ToolUseID, CallID: tool.CallID, Name: tool.Name, Input: tool.Input, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
 			text := tool.Output
 			if tool.State == ToolStateError {
 				if tool.Output != "" && tool.Error != "" {
@@ -453,7 +459,7 @@ func ExpandToolMessages(messages []Message) []Message {
 					text = tool.Error
 				}
 			}
-			results = append(results, ToolResultPart{ID: tool.ID, CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
+			results = append(results, ToolResultPart{ID: tool.ID, ToolUseID: tool.ToolUseID, CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
 		}
 		if hasUnresolvedTool && len(content) == 0 {
 			continue
@@ -471,7 +477,7 @@ func normalizeToolCalls(content Content) Content {
 	out := make(Content, 0, len(content))
 	for _, part := range content {
 		if call, ok := part.(ToolCallPart); ok {
-			out = append(out, ToolPart{ID: call.ID, CallID: call.CallID, Name: call.Name, State: ToolStatePending, Input: call.Input, ProviderExecuted: call.ProviderExecuted, ProviderMetadata: call.ProviderMetadata})
+			out = append(out, ToolPart{ID: call.ID, ToolUseID: call.ToolUseID, CallID: call.CallID, Name: call.Name, State: ToolStatePending, Input: call.Input, ProviderExecuted: call.ProviderExecuted, ProviderMetadata: call.ProviderMetadata})
 			continue
 		}
 		out = append(out, part)
@@ -486,7 +492,14 @@ func replaceToolPart(messages []Message, tool ToolPart) bool {
 		}
 		for j, part := range messages[i].Content {
 			current, ok := part.(ToolPart)
-			if !ok || current.CallID != tool.CallID {
+			if !ok {
+				continue
+			}
+			if tool.ToolUseID != "" {
+				if current.ToolUseID != tool.ToolUseID {
+					continue
+				}
+			} else if current.CallID != tool.CallID {
 				continue
 			}
 			tool.Input = current.Input
@@ -494,6 +507,9 @@ func replaceToolPart(messages []Message, tool ToolPart) bool {
 			tool.StartedAt = current.StartedAt
 			if current.ID != "" {
 				tool.ID = current.ID
+			}
+			if tool.ToolUseID == "" {
+				tool.ToolUseID = current.ToolUseID
 			}
 			if !tool.ProviderExecuted {
 				tool.ProviderExecuted = current.ProviderExecuted

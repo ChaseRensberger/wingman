@@ -7,6 +7,7 @@ import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, pers
 import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
+import { toolActivityKey } from "@/lib/tool-activity-state";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { SessionComposer } from "@/components/session-composer";
@@ -433,10 +434,10 @@ function SessionDetailPage() {
 		for (const part of msg.content) {
 			if (part.type === "tool_call") {
 				const toolCall = part as ToolCallPart;
-				toolCallsById.set(toolCall.call_id, toolCall);
+				toolCallsById.set(toolActivityKey(toolCall) ?? toolCall.call_id, toolCall);
 			} else if (part.type === "tool_result") {
 				const toolResult = part as ToolResultPart;
-				toolResultsById.set(toolResult.call_id, toolResult);
+				toolResultsById.set(toolActivityKey(toolResult) ?? toolResult.call_id, toolResult);
 			}
 		}
 	}

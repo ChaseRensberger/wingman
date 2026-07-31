@@ -283,30 +283,36 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		}
 		data["message"] = v.Message
 		s.persistRunEvent(ctx, sessionID, "session.message.created", data)
+	case run.ToolUseProposedEvent:
+		toolData := toolCallEventData(runID, v.Call)
+		toolData["status"] = "proposed"
+		toolData["proposed_at"] = v.Call.ProposedAt
+		s.persistRunEvent(ctx, sessionID, "session.tool.called", toolData)
+		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
+	case run.ToolUseAuthorizedEvent:
+		toolData := toolCallEventData(runID, v.Call)
+		toolData["status"] = "authorized"
+		toolData["authorized_at"] = v.Call.AuthorizedAt
+		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
 	case run.ToolExecutionStartEvent:
-		data["call_id"] = v.Call.ID
-		data["tool"] = v.Call.Name
-		data["input"] = v.Call.Args
-		s.persistRunEvent(ctx, sessionID, "session.tool.called", data)
-		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
-			"run_id":     runID,
-			"call_id":    v.Call.ID,
-			"tool":       v.Call.Name,
-			"status":     "running",
-			"input":      v.Call.Args,
-			"started_at": time.Now().UTC(),
-		})
+		toolData := toolCallEventData(runID, v.Call)
+		toolData["status"] = "started"
+		toolData["started_at"] = v.Call.StartedAt
+		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
 	case run.ToolExecutionProgressEvent:
 		s.publishRunEvent(sessionID, "session.tool.progress", map[string]any{
 			"run_id":       runID,
 			"call_id":      v.CallID,
+			"tool_use_id":  v.ToolUseID,
 			"tool":         v.Name,
 			"output_delta": v.OutputDelta,
 			"metadata":     v.Metadata,
 		})
 	case run.ToolExecutionEndEvent:
 		data["call_id"] = v.Result.CallID
+		data["tool_use_id"] = v.Result.ToolUseID
 		data["tool"] = v.Result.Name
+		data["status"] = v.Result.Status
 		data["output"] = v.Result.Output
 		data["error"] = v.Result.Error
 		data["metadata"] = v.Result.Metadata
@@ -315,13 +321,17 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		} else {
 			s.persistRunEvent(ctx, sessionID, "session.tool.completed", data)
 		}
-		status := "completed"
-		if v.Result.IsError {
-			status = "error"
+		status := string(v.Result.Status)
+		if status == "" {
+			status = "completed"
+			if v.Result.IsError {
+				status = "failed"
+			}
 		}
 		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
 			"run_id":       runID,
 			"call_id":      v.Result.CallID,
+			"tool_use_id":  v.Result.ToolUseID,
 			"tool":         v.Result.Name,
 			"status":       status,
 			"input":        v.Result.Args,
@@ -338,6 +348,21 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		data["raw_json"] = v.RawJSON
 		data["parsed"] = v.Parsed
 		s.persistRunEvent(ctx, sessionID, "session.structured_output.completed", data)
+	}
+}
+
+func toolCallEventData(runID string, call run.ToolCall) map[string]any {
+	return map[string]any{
+		"run_id":        runID,
+		"tool_use_id":   call.ToolUseID,
+		"call_id":       call.ID,
+		"tool":          call.Name,
+		"input":         call.Args,
+		"step":          call.Step,
+		"ordinal":       call.Ordinal,
+		"message_id":    call.MessageID,
+		"part_id":       call.PartID,
+		"model_call_id": call.ModelCallID,
 	}
 }
 

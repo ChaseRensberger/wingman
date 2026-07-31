@@ -33,6 +33,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"sessions":         {"aggregate_version"},
 		"session_runs":     {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id"},
 		"model_calls":      {"run_id", "provider_request_id"},
+		"tool_uses":        {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "proposed_at"},
 		"aggregate_events": {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
 	} {
 		for _, column := range columns {
@@ -41,7 +42,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "session_events", "aggregate_events", "auth"} {
+	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "session_events", "aggregate_events", "auth"} {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("table %s count=%d error=%v", table, count, err)
 		}
@@ -55,6 +56,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	for _, index := range []string{
 		"idx_session_runs_session_request_id",
 		"idx_model_calls_session_started_at",
+		"idx_tool_uses_run_step_ordinal",
 		"idx_aggregate_events_stream",
 		"idx_session_events_session_seq",
 	} {
