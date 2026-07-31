@@ -24,7 +24,7 @@ The running daemon publishes its OpenAPI 3.1 contract at `/openapi.json`. The
 contract includes canonical errors, request and response resources, and typed
 unions for persistent-session and one-shot run events.
 
-The repository also contains the generated `@wingman/client` fetch client. To
+The repository also contains the generated `@wingman-actor/client` fetch client. To
 regenerate its checked-in contract artifacts after an API change, run these
 commands from the repository root:
 

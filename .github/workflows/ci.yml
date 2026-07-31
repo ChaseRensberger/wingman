@@ -31,7 +31,7 @@ jobs:
 
       - name: Check browser client boundaries
         working-directory: web
-        run: bun --filter @wingman/client test
+        run: bun --filter @wingman-actor/client test
 
       - name: Vet
         run: go vet ./...

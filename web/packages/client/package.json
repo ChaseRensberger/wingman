@@ -1,5 +1,5 @@
 {
-  "name": "@wingman/client",
+  "name": "@wingman-actor/client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
