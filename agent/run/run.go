@@ -332,6 +332,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	}
 
 	turn := Turn{Step: step, Attempt: 1}
+	assistantMsg := models.Message{Role: models.RoleAssistant, State: models.MessageStateInProgress, Revision: 1}
+	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+		return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+	}
 	turn.Trace = models.NewCallTrace(req, models.LoweredOptions{})
 	if lop, ok := r.cfg.Client.(interface {
 		LoweredOptions(context.Context, models.Request) models.LoweredOptions
@@ -343,16 +347,19 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
 			Step:      turn.Step,
 			Attempt:   turn.Attempt,
+			MessageID: assistantMsg.ID,
 			StartedAt: turn.StartedAt,
 			Trace:     turn.Trace,
 		})
 		if err != nil {
-			return Turn{}, fmt.Errorf("model call start: %w", err)
+			return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, fmt.Errorf("model call start: %w", err))
 		}
 		turn.ModelCallID = callID
 	}
 
-	stream, err := r.cfg.Client.Stream(ctx, req)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	stream, err := r.cfg.Client.Stream(streamCtx, req)
 	if err != nil {
 		turn.CompletedAt = time.Now()
 		if withRequestID, ok := err.(interface{ ProviderRequestID() string }); ok {
@@ -360,7 +367,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 		failure := fmt.Errorf("model stream: %w", err)
 		turn.Failure = failure
-		return turn, r.finishModelCall(ctx, turn, nil, models.Usage{}, failure, failure)
+		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
+		turn.Assistant = assistantMsg
+		return turn, r.finishModelCall(ctx, turn, &assistantMsg, models.Usage{}, failure, failure)
 	}
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's
@@ -368,40 +377,75 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// stream.Final(); we also snapshot per-turn usage from FinishPart
 	// here since stream.Final() only returns the message.
 	var turnUsage models.Usage
+	var finishReason models.FinishReason
 	var providerRequestID string
+	partIndexes := make(map[string]int)
 	for part := range stream.Iter() {
 		if fp, ok := part.(models.FinishPart); ok {
 			turnUsage = fp.Usage
+			finishReason = fp.Reason
 		}
 		if metadata, ok := part.(models.ResponseMetadataPart); ok {
 			if requestID, ok := metadata.Meta["request_id"].(string); ok {
 				providerRequestID = requestID
 			}
 		}
-		r.emit(StreamPartEvent{Step: step, Part: part})
+		partID, changed := applyStreamPart(&assistantMsg, partIndexes, part)
+		if changed {
+			assistantMsg.Revision++
+			if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+				cancelStream()
+				go func() {
+					for range stream.Iter() {
+					}
+				}()
+				err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+				turn.Assistant, turn.Failure = assistantMsg, err
+				turn.CompletedAt, turn.Usage, turn.ProviderRequestID = time.Now(), turnUsage, providerRequestID
+				return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, err, err)
+			}
+			if partID != "" {
+				partID = models.PartID(assistantMsg.Content[partIndexes[streamPartProviderID(part)]])
+			}
+		}
+		r.emit(StreamPartEvent{Step: step, MessageID: assistantMsg.ID, PartID: partID, Revision: assistantMsg.Revision, Part: part})
 	}
-	assistantMsg, err := stream.Final()
+	finalMsg, err := stream.Final()
 	turn.CompletedAt = time.Now()
 	if err != nil {
 		failure := fmt.Errorf("stream.Final: %w", err)
 		turn.Failure = failure
 		turn.Usage = turnUsage
 		turn.ProviderRequestID = providerRequestID
-		return turn, r.finishModelCall(ctx, turn, nil, turnUsage, failure, failure)
+		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
+		turn.Assistant = assistantMsg
+		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, failure, failure)
 	}
-	if assistantMsg == nil {
+	if finalMsg == nil {
 		err := errors.New("model returned nil assistant message without error")
 		turn.Failure = err
 		turn.Usage = turnUsage
 		turn.ProviderRequestID = providerRequestID
-		return turn, r.finishModelCall(ctx, turn, nil, turnUsage, err, err)
+		err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+		turn.Assistant, turn.Failure = assistantMsg, err
+		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, err, err)
 	}
 	if !turnUsage.Empty() {
-		assistantMsg.Usage = &turnUsage
+		finalMsg.Usage = &turnUsage
 	}
 	turn.Usage = turnUsage
 	turn.ProviderRequestID = providerRequestID
-	if err := r.finishModelCall(ctx, turn, assistantMsg, turnUsage, nil, nil); err != nil {
+	mergeFinalAssistant(&assistantMsg, *finalMsg)
+	if finishReason != "" {
+		assistantMsg.FinishReason = finishReason
+	}
+	assistantMsg.Revision++
+	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+		err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+		turn.Assistant, turn.Failure = assistantMsg, err
+		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, nil, err)
+	}
+	if err := r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, nil, nil); err != nil {
 		return turn, err
 	}
 
@@ -414,18 +458,31 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CachedInputTokens += turnUsage.CachedInputTokens
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
-	calls := extractToolCalls(*assistantMsg)
+	calls := extractToolCalls(assistantMsg)
 	if len(calls) == 0 {
-		r.messages = append(r.messages, *assistantMsg)
-		r.emit(MessageEvent{Step: step, Message: *assistantMsg})
-		turn.Assistant = *assistantMsg
+		assistantMsg.State = models.MessageStateCompleted
+		assistantMsg.Revision++
+		if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+			err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+			turn.Assistant, turn.Failure = assistantMsg, err
+			return turn, err
+		}
+		r.messages = append(r.messages, assistantMsg)
+		r.emit(MessageEvent{Step: step, Message: assistantMsg})
+		turn.Assistant = assistantMsg
 		return turn, nil
 	}
 
 	// Retain the assistant turn before executing tools so a hook failure does
 	// not discard the model's tool calls. The terminal state is emitted below.
 	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, nil)
-	r.messages = append(r.messages, *assistantMsg)
+	assistantMsg.Revision++
+	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+		err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+		turn.Assistant, turn.Failure = assistantMsg, err
+		return turn, err
+	}
+	r.messages = append(r.messages, assistantMsg)
 
 	// Resolve each call against the registry. Unknown-tool calls get a
 	// nil Tool; BeforeToolCall still fires so hooks can synthesize.
@@ -455,8 +512,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		for i := range resolved {
 			res, err := r.executeOne(ctx, resolved[i])
 			if err != nil {
-				r.finalizeToolTurn(&turn, assistantMsg, results)
-				return turn, err
+				return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateFailed, err)
 			}
 			results[i] = res
 		}
@@ -488,16 +544,196 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			}
 		}
 		if firstErr != nil {
-			r.finalizeToolTurn(&turn, assistantMsg, results)
-			return turn, firstErr
+			return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateFailed, firstErr)
 		}
 	default:
 		return turn, fmt.Errorf("unknown ToolExecutionMode: %q", mode)
 	}
 
-	r.finalizeToolTurn(&turn, assistantMsg, results)
-
+	if err := r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateCompleted, nil); err != nil {
+		return turn, err
+	}
 	return turn, nil
+}
+
+func (r *runner) checkpoint(ctx context.Context, step int, message *models.Message) error {
+	if r.cfg.MessageCheckpoint == nil {
+		return nil
+	}
+	saved, err := r.cfg.MessageCheckpoint.Save(ctx, MessageCheckpointInfo{Step: step, Message: *message})
+	if err != nil {
+		return fmt.Errorf("message checkpoint: %w", err)
+	}
+	*message = saved
+	return nil
+}
+
+// retainFailedAssistant settles the local snapshot even when the caller's
+// context was cancelled. It is intentionally best-effort after the first
+// checkpoint failure: the original failure remains visible to the caller.
+func (r *runner) retainFailedAssistant(ctx context.Context, step int, message *models.Message, runErr error) error {
+	message.State = models.MessageStateFailed
+	message.Revision++
+	checkpointErr := r.checkpoint(context.WithoutCancel(ctx), step, message)
+	r.messages = append(r.messages, *message)
+	return errors.Join(runErr, checkpointErr)
+}
+
+func streamPartProviderID(part models.StreamPart) string {
+	switch p := part.(type) {
+	case models.TextStartPart:
+		return p.ID
+	case models.TextDeltaPart:
+		return p.ID
+	case models.TextEndPart:
+		return p.ID
+	case models.ReasoningStartPart:
+		return p.ID
+	case models.ReasoningDeltaPart:
+		return p.ID
+	case models.ReasoningEndPart:
+		return p.ID
+	case models.ToolInputStartPart:
+		return p.ID
+	case models.ToolInputDeltaPart:
+		return p.ID
+	case models.ToolInputEndPart:
+		return p.ID
+	case models.ToolCallPart_:
+		return p.ID
+	}
+	return ""
+}
+
+// applyStreamPart updates the canonical snapshot and returns the provider
+// block ID for a mutated durable part.
+func applyStreamPart(message *models.Message, indexes map[string]int, part models.StreamPart) (string, bool) {
+	id := streamPartProviderID(part)
+	appendPart := func(p models.Part) {
+		indexes[id] = len(message.Content)
+		message.Content = append(message.Content, p)
+	}
+	switch p := part.(type) {
+	case models.TextStartPart:
+		appendPart(models.TextPart{Text: "", ProviderMetadata: p.ProviderMetadata})
+	case models.TextDeltaPart:
+		i, ok := indexes[id]
+		if !ok {
+			return "", false
+		}
+		text := message.Content[i].(models.TextPart)
+		text.Text += p.Delta
+		text.ProviderMetadata = p.ProviderMetadata
+		message.Content[i] = text
+	case models.TextEndPart:
+		if _, ok := indexes[id]; !ok {
+			return "", false
+		}
+	case models.ReasoningStartPart:
+		appendPart(models.ReasoningPart{Reasoning: "", ProviderMetadata: p.ProviderMetadata})
+	case models.ReasoningDeltaPart:
+		i, ok := indexes[id]
+		if !ok {
+			return "", false
+		}
+		reasoning := message.Content[i].(models.ReasoningPart)
+		reasoning.Reasoning += p.Delta
+		reasoning.ProviderMetadata = p.ProviderMetadata
+		message.Content[i] = reasoning
+	case models.ReasoningEndPart:
+		if _, ok := indexes[id]; !ok {
+			return "", false
+		}
+	case models.ToolInputStartPart:
+		appendPart(models.ToolPart{Name: p.ToolName, State: models.ToolStatePending, Input: map[string]any{}, ProviderMetadata: p.ProviderMetadata})
+	case models.ToolInputDeltaPart:
+		i, ok := indexes[id]
+		if !ok {
+			return "", false
+		}
+		toolPart := message.Content[i].(models.ToolPart)
+		toolPart.InputRaw += p.Delta
+		toolPart.ProviderMetadata = p.ProviderMetadata
+		message.Content[i] = toolPart
+	case models.ToolInputEndPart:
+		if _, ok := indexes[id]; !ok {
+			return "", false
+		}
+	case models.ToolCallPart_:
+		i, ok := indexes[id]
+		if !ok {
+			appendPart(models.ToolPart{CallID: p.ID, Name: p.ToolName, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata})
+			return id, true
+		}
+		toolPart, ok := message.Content[i].(models.ToolPart)
+		if !ok {
+			return "", false
+		}
+		toolPart.CallID, toolPart.Name, toolPart.Input = p.ID, p.ToolName, p.Input
+		toolPart.ProviderExecuted, toolPart.ProviderMetadata = p.ProviderExecuted, p.ProviderMetadata
+		message.Content[i] = toolPart
+	default:
+		return "", false
+	}
+	return id, true
+}
+
+func mergeFinalAssistant(current *models.Message, final models.Message) {
+	texts, reasonings := make(map[int]string), make(map[int]string)
+	tools := make(map[string]models.ToolPart)
+	textN, reasoningN := 0, 0
+	for _, part := range current.Content {
+		switch p := part.(type) {
+		case models.TextPart:
+			texts[textN] = p.ID
+			textN++
+		case models.ReasoningPart:
+			reasonings[reasoningN] = p.ID
+			reasoningN++
+		case models.ToolPart:
+			tools[p.CallID] = p
+		case models.ToolCallPart:
+			tools[p.CallID] = models.ToolPart{ID: p.ID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
+		}
+	}
+	textN, reasoningN = 0, 0
+	content := make(models.Content, len(final.Content))
+	for i, part := range final.Content {
+		id := ""
+		switch p := part.(type) {
+		case models.TextPart:
+			id = texts[textN]
+			textN++
+		case models.ReasoningPart:
+			id = reasonings[reasoningN]
+			reasoningN++
+		case models.ToolCallPart:
+			if streamed, ok := tools[p.CallID]; ok {
+				streamed.CallID = p.CallID
+				streamed.Name = p.Name
+				streamed.State = models.ToolStatePending
+				streamed.Input = p.Input
+				streamed.ProviderExecuted = p.ProviderExecuted
+				streamed.ProviderMetadata = p.ProviderMetadata
+				part = streamed
+				id = streamed.ID
+			}
+		case models.ToolPart:
+			if streamed, ok := tools[p.CallID]; ok {
+				p.ID = streamed.ID
+				if p.InputRaw == "" {
+					p.InputRaw = streamed.InputRaw
+				}
+				part = p
+				id = p.ID
+			}
+		}
+		if id != "" {
+			part = models.WithPartID(part, id)
+		}
+		content[i] = part
+	}
+	current.Content, current.FinishReason, current.Origin, current.Usage, current.Metadata = content, final.FinishReason, final.Origin, final.Usage, final.Metadata
 }
 
 // finishModelCall records terminal physical-call state exactly once. The
@@ -521,12 +757,22 @@ func (r *runner) finishModelCall(ctx context.Context, turn Turn, assistant *mode
 	return errors.Join(runErr, hookErr)
 }
 
-func (r *runner) finalizeToolTurn(turn *Turn, assistantMsg *models.Message, results []ToolResult) {
+func (r *runner) finalizeToolTurn(ctx context.Context, turn *Turn, assistantMsg *models.Message, results []ToolResult, state models.MessageState, runErr error) error {
 	turn.Results = completedToolResults(results)
 	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, turn.Results)
+	assistantMsg.State = state
+	assistantMsg.Revision++
+	if err := r.checkpoint(context.WithoutCancel(ctx), turn.Step, assistantMsg); err != nil {
+		r.messages[len(r.messages)-1] = *assistantMsg
+		turn.Assistant = *assistantMsg
+		return errors.Join(runErr, err)
+	}
 	turn.Assistant = *assistantMsg
 	r.messages[len(r.messages)-1] = *assistantMsg
-	r.emit(MessageEvent{Step: turn.Step, Message: *assistantMsg})
+	if state == models.MessageStateCompleted {
+		r.emit(MessageEvent{Step: turn.Step, Message: *assistantMsg})
+	}
+	return runErr
 }
 
 func completedToolResults(results []ToolResult) []ToolResult {
@@ -546,24 +792,20 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 	}
 	out := make(models.Content, 0, len(content))
 	for _, part := range content {
-		var call models.ToolCallPart
+		var toolPart models.ToolPart
 		switch p := part.(type) {
 		case models.ToolCallPart:
-			call = p
+			toolPart = models.ToolPart{ID: p.ID, CallID: p.CallID, Name: p.Name, State: models.ToolStatePending, Input: p.Input, ProviderExecuted: p.ProviderExecuted, ProviderMetadata: p.ProviderMetadata}
 		case models.ToolPart:
-			call = models.ToolCallPart{CallID: p.CallID, Name: p.Name, Input: p.Input}
+			toolPart = p
 		default:
 			out = append(out, part)
 			continue
 		}
-		result, ok := byCallID[call.CallID]
+		result, ok := byCallID[toolPart.CallID]
 		if !ok {
-			out = append(out, models.ToolPart{
-				CallID: call.CallID,
-				Name:   call.Name,
-				State:  models.ToolStatePending,
-				Input:  call.Input,
-			})
+			toolPart.State = models.ToolStatePending
+			out = append(out, toolPart)
 			continue
 		}
 		state := models.ToolStateCompleted
@@ -572,17 +814,14 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 		}
 		completedAt := time.Now().UTC().UnixMilli()
 		startedAt := completedAt - result.Duration.Milliseconds()
-		out = append(out, models.ToolPart{
-			CallID:      call.CallID,
-			Name:        call.Name,
-			State:       state,
-			Input:       result.Args,
-			Output:      result.Output,
-			Metadata:    result.Metadata,
-			Error:       result.Error,
-			StartedAt:   startedAt,
-			CompletedAt: completedAt,
-		})
+		toolPart.State = state
+		toolPart.Input = result.Args
+		toolPart.Output = result.Output
+		toolPart.Metadata = result.Metadata
+		toolPart.Error = result.Error
+		toolPart.StartedAt = startedAt
+		toolPart.CompletedAt = completedAt
+		out = append(out, toolPart)
 	}
 	return out
 }
@@ -984,8 +1223,11 @@ func buildToolDefs(ts []tool.Tool) []models.ToolDef {
 func extractToolCalls(msg models.Message) []models.ToolCallPart {
 	var calls []models.ToolCallPart
 	for _, p := range msg.Content {
-		if c, ok := p.(models.ToolCallPart); ok {
+		switch c := p.(type) {
+		case models.ToolCallPart:
 			calls = append(calls, c)
+		case models.ToolPart:
+			calls = append(calls, models.ToolCallPart{ID: c.ID, CallID: c.CallID, Name: c.Name, Input: c.Input, ProviderExecuted: c.ProviderExecuted, ProviderMetadata: c.ProviderMetadata})
 		}
 	}
 	return calls

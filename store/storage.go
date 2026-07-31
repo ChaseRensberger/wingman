@@ -10,6 +10,8 @@ var ErrClientNameExists = errors.New("client name already exists")
 var ErrWorkspaceNameExists = errors.New("workspace name already exists")
 var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict")
 var ErrModelCallAttemptConflict = errors.New("model call attempt conflict")
+var ErrMessageRevisionStale = errors.New("message revision stale")
+var ErrMessageRevisionConflict = errors.New("message revision conflict")
 
 // SessionRunAdmissionConflict reports conflicting reuse of a request identity.
 type SessionRunAdmissionConflict struct {
@@ -43,11 +45,8 @@ type Store interface {
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
 	AbortRunningSessionRuns(ctx context.Context) error
 
-	// UpsertMessage inserts or updates a message row keyed by ID.
-	// It does not touch parts.
-	UpsertMessage(ctx context.Context, msg StoredMessage) error
-	// UpsertPart inserts or updates a part row keyed by ID.
-	UpsertPart(ctx context.Context, part StoredPart) error
+	// SaveMessage atomically stores a complete authoritative message revision.
+	SaveMessage(ctx context.Context, msg StoredMessage) error
 	// ListMessages returns all messages for the session ordered by Idx
 	// ASC, with each message's Parts populated and ordered by Sequence
 	// ASC. Returns ErrSessionNotFound if the session does not exist.

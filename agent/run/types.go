@@ -132,6 +132,22 @@ type Config struct {
 	// immediately before dispatch; Finish runs after the provider stream ends
 	// and before any tool execution. nil disables model-call lifecycle hooks.
 	ModelCallLifecycle ModelCallLifecycle
+
+	// MessageCheckpoint synchronously persists the authoritative assistant
+	// message snapshot as it is assembled. It may assign message and part IDs.
+	// Unlike Sink, checkpoint failures stop the run.
+	MessageCheckpoint MessageCheckpoint
+}
+
+// MessageCheckpoint persists an authoritative assistant message snapshot.
+type MessageCheckpoint interface {
+	Save(ctx context.Context, info MessageCheckpointInfo) (models.Message, error)
+}
+
+// MessageCheckpointInfo identifies the turn and complete assistant snapshot.
+type MessageCheckpointInfo struct {
+	Step    int
+	Message models.Message
 }
 
 // ModelCallLifecycle persists or observes the lifecycle of a physical model
@@ -145,6 +161,7 @@ type ModelCallLifecycle interface {
 type ModelCallStartInfo struct {
 	Step      int
 	Attempt   int
+	MessageID string
 	StartedAt time.Time
 	Trace     models.CallTrace
 }
@@ -590,8 +607,11 @@ type ToolExecutionEndEvent struct {
 // to forward provider streaming verbatim (e.g., over SSE) consume these.
 // Consumers that only want lifecycle events ignore them.
 type StreamPartEvent struct {
-	Step int               `json:"step"`
-	Part models.StreamPart `json:"part"`
+	Step      int               `json:"step"`
+	MessageID string            `json:"message_id,omitempty"`
+	PartID    string            `json:"part_id,omitempty"`
+	Revision  int64             `json:"revision,omitempty"`
+	Part      models.StreamPart `json:"part"`
 }
 
 func (e StreamPartEvent) MarshalJSON() ([]byte, error) {
@@ -600,11 +620,13 @@ func (e StreamPartEvent) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(struct {
-		Step int             `json:"step"`
-		Part json.RawMessage `json:"part"`
+		Step      int             `json:"step"`
+		MessageID string          `json:"message_id,omitempty"`
+		PartID    string          `json:"part_id,omitempty"`
+		Revision  int64           `json:"revision,omitempty"`
+		Part      json.RawMessage `json:"part"`
 	}{
-		Step: e.Step,
-		Part: part,
+		Step: e.Step, MessageID: e.MessageID, PartID: e.PartID, Revision: e.Revision, Part: part,
 	})
 }
 

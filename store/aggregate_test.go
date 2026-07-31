@@ -279,10 +279,10 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := data.UpsertMessage(ctx, StoredMessage{ID: "msg_purge", SessionID: session.ID, Role: "user", CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatal(err)
-	}
-	if err := data.UpsertPart(ctx, StoredPart{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{"text":"purge"}`), CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := data.SaveMessage(ctx, StoredMessage{
+		ID: "msg_purge", SessionID: session.ID, Role: "user", Revision: 1, State: "completed", CreatedAt: now, UpdatedAt: now,
+		Parts: []StoredPart{{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{"text":"purge"}`), CreatedAt: now, UpdatedAt: now}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := data.UpsertModelCall(ctx, ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1, Status: ModelCallStatusCompleted}); err != nil {

@@ -154,7 +154,15 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		if (ev.type === "session.message.created") {
 			const message = data.message as Message | undefined;
 			if (!message) return;
-			setSession((previous) => previous ? { ...previous, history: [...previous.history, message] } : previous);
+			setSession((previous) => {
+				if (!previous) return previous;
+				const index = message.id ? previous.history.findIndex((candidate) => candidate.id === message.id) : -1;
+				if (index < 0) return { ...previous, history: [...previous.history, message] };
+				if ((previous.history[index].revision ?? 0) > (message.revision ?? 0)) return previous;
+				const history = [...previous.history];
+				history[index] = message;
+				return { ...previous, history };
+			});
 			if (message.role === "assistant") {
 				setStreamingText("");
 				setStreamingReasoning("");

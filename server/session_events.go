@@ -273,11 +273,11 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 			switch p := part.(type) {
 			case models.TextPart:
 				if p.Text != "" {
-					s.persistRunEvent(ctx, sessionID, "session.text.completed", map[string]any{"run_id": runID, "text": p.Text})
+					s.persistRunEvent(ctx, sessionID, "session.text.completed", map[string]any{"run_id": runID, "message_id": v.Message.ID, "part_id": p.ID, "revision": v.Message.Revision, "text": p.Text})
 				}
 			case models.ReasoningPart:
 				if p.Reasoning != "" {
-					s.persistRunEvent(ctx, sessionID, "session.reasoning.completed", map[string]any{"run_id": runID, "text": p.Reasoning})
+					s.persistRunEvent(ctx, sessionID, "session.reasoning.completed", map[string]any{"run_id": runID, "message_id": v.Message.ID, "part_id": p.ID, "revision": v.Message.Revision, "text": p.Reasoning})
 				}
 			}
 		}
@@ -342,7 +342,7 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 }
 
 func (s *Server) forwardStreamPart(sessionID, runID string, e run.StreamPartEvent) {
-	base := map[string]any{"run_id": runID, "step": e.Step}
+	base := map[string]any{"run_id": runID, "step": e.Step, "message_id": e.MessageID, "part_id": e.PartID, "revision": e.Revision}
 	switch p := e.Part.(type) {
 	case models.ToolInputStartPart:
 		base["call_id"] = p.ID

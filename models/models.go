@@ -28,6 +28,9 @@ const (
 // ------------------------------------------------------------------
 
 type Message struct {
+	ID           string         `json:"id,omitempty"`
+	Revision     int64          `json:"revision,omitempty"`
+	State        MessageState   `json:"state,omitempty"`
 	Role         Role           `json:"role"`
 	Content      Content        `json:"content"`
 	FinishReason FinishReason   `json:"finish_reason,omitempty"`
@@ -35,6 +38,14 @@ type Message struct {
 	Usage        *Usage         `json:"usage,omitempty"`
 	Metadata     Meta           `json:"metadata,omitempty"`
 }
+
+type MessageState string
+
+const (
+	MessageStateInProgress MessageState = "in_progress"
+	MessageStateCompleted  MessageState = "completed"
+	MessageStateFailed     MessageState = "failed"
+)
 
 type Meta map[string]any
 
@@ -104,6 +115,7 @@ func (OpaquePart) isPart()     {}
 
 // TextPart is a plain text block.
 type TextPart struct {
+	ID               string `json:"id,omitempty"`
 	Text             string `json:"text"`
 	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
@@ -112,6 +124,7 @@ func (TextPart) Type() string { return "text" }
 
 // ImagePart is an image reference.
 type ImagePart struct {
+	ID               string `json:"id,omitempty"`
 	URL              string `json:"url,omitempty"`
 	Base64           string `json:"base64,omitempty"`
 	MediaType        string `json:"media_type,omitempty"`
@@ -122,6 +135,7 @@ func (ImagePart) Type() string { return "image" }
 
 // ReasoningPart carries model reasoning text.
 type ReasoningPart struct {
+	ID               string `json:"id,omitempty"`
 	Reasoning        string `json:"reasoning"`
 	Encrypted        string `json:"encrypted,omitempty"`
 	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
@@ -132,15 +146,19 @@ func (ReasoningPart) Type() string { return "reasoning" }
 // ToolPart is an assistant-owned tool invocation and its current execution state.
 // Session history stores this part; providers receive a derived tool-result message.
 type ToolPart struct {
-	CallID      string         `json:"call_id"`
-	Name        string         `json:"name"`
-	State       ToolState      `json:"state"`
-	Input       map[string]any `json:"input"`
-	Output      string         `json:"output,omitempty"`
-	Metadata    Meta           `json:"metadata,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	StartedAt   int64          `json:"started_at,omitempty"`
-	CompletedAt int64          `json:"completed_at,omitempty"`
+	ID               string         `json:"id,omitempty"`
+	CallID           string         `json:"call_id"`
+	Name             string         `json:"name"`
+	State            ToolState      `json:"state"`
+	Input            map[string]any `json:"input"`
+	InputRaw         string         `json:"input_raw,omitempty"`
+	Output           string         `json:"output,omitempty"`
+	Metadata         Meta           `json:"metadata,omitempty"`
+	ProviderExecuted bool           `json:"provider_executed,omitempty"`
+	ProviderMetadata Meta           `json:"provider_metadata,omitempty"`
+	Error            string         `json:"error,omitempty"`
+	StartedAt        int64          `json:"started_at,omitempty"`
+	CompletedAt      int64          `json:"completed_at,omitempty"`
 }
 
 func (ToolPart) Type() string { return "tool" }
@@ -156,6 +174,7 @@ const (
 
 // ToolCallPart is a completed tool call inside a message.
 type ToolCallPart struct {
+	ID               string         `json:"id,omitempty"`
 	CallID           string         `json:"call_id"`
 	Name             string         `json:"name"`
 	Input            map[string]any `json:"input"`
@@ -167,6 +186,7 @@ func (ToolCallPart) Type() string { return "tool_call" }
 
 // ToolResultPart is the outcome of a tool execution.
 type ToolResultPart struct {
+	ID               string `json:"id,omitempty"`
 	CallID           string `json:"call_id"`
 	Name             string `json:"name,omitempty"`
 	Output           []Part `json:"output"`
@@ -188,6 +208,7 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		raw[i] = b
 	}
 	return json.Marshal(struct {
+		ID               string            `json:"id,omitempty"`
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
@@ -195,11 +216,12 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		Metadata         Meta              `json:"metadata,omitempty"`
 		ProviderExecuted bool              `json:"provider_executed,omitempty"`
 		ProviderMetadata Meta              `json:"provider_metadata,omitempty"`
-	}{p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
+	}{p.ID, p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
 }
 
 func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	var raw struct {
+		ID               string            `json:"id,omitempty"`
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
@@ -212,6 +234,7 @@ func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	p.CallID = raw.CallID
+	p.ID = raw.ID
 	p.Name = raw.Name
 	p.IsError = raw.IsError
 	p.Metadata = raw.Metadata
@@ -232,31 +255,93 @@ func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 // Raw should be the complete JSON payload, including the "type" field.
 type OpaquePart struct {
 	TypeName string `json:"-"`
+	ID       string `json:"-"`
 	Raw      []byte `json:"raw"`
 }
 
 func (p OpaquePart) Type() string { return p.TypeName }
 
 func (p OpaquePart) MarshalJSON() ([]byte, error) {
+	var raw map[string]json.RawMessage
 	if p.Raw != nil {
-		return p.Raw, nil
+		if err := json.Unmarshal(p.Raw, &raw); err != nil {
+			return nil, err
+		}
+	} else {
+		raw = make(map[string]json.RawMessage)
 	}
-	return json.Marshal(struct {
-		Type string `json:"type"`
-		Raw  []byte `json:"raw"`
-	}{p.TypeName, nil})
+	if p.TypeName != "" {
+		raw["type"] = json.RawMessage(fmt.Appendf(nil, `%q`, p.TypeName))
+	}
+	if p.ID != "" {
+		raw["id"] = json.RawMessage(fmt.Appendf(nil, `%q`, p.ID))
+	}
+	return json.Marshal(raw)
 }
 
 func (p *OpaquePart) UnmarshalJSON(data []byte) error {
 	p.Raw = data
 	var wrapper struct {
 		Type string `json:"type"`
+		ID   string `json:"id"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return err
 	}
 	p.TypeName = wrapper.Type
+	p.ID = wrapper.ID
 	return nil
+}
+
+// PartID returns the stable identity of a built-in part.
+func PartID(p Part) string {
+	switch p := p.(type) {
+	case TextPart:
+		return p.ID
+	case ImagePart:
+		return p.ID
+	case ReasoningPart:
+		return p.ID
+	case ToolPart:
+		return p.ID
+	case ToolCallPart:
+		return p.ID
+	case ToolResultPart:
+		return p.ID
+	case OpaquePart:
+		return p.ID
+	default:
+		return ""
+	}
+}
+
+// WithPartID returns p with id assigned when p is a built-in part.
+func WithPartID(p Part, id string) Part {
+	switch p := p.(type) {
+	case TextPart:
+		p.ID = id
+		return p
+	case ImagePart:
+		p.ID = id
+		return p
+	case ReasoningPart:
+		p.ID = id
+		return p
+	case ToolPart:
+		p.ID = id
+		return p
+	case ToolCallPart:
+		p.ID = id
+		return p
+	case ToolResultPart:
+		p.ID = id
+		return p
+	case OpaquePart:
+		p.ID = id
+		return p
+	default:
+		return p
+	}
 }
 
 // ------------------------------------------------------------------
@@ -323,7 +408,7 @@ func NormalizeMessages(messages []Message) []Message {
 				continue
 			}
 			text := toolResultText(result)
-			tool := ToolPart{CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata}
+			tool := ToolPart{ID: result.ID, CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata, ProviderExecuted: result.ProviderExecuted, ProviderMetadata: result.ProviderMetadata}
 			if result.IsError {
 				tool.State = ToolStateError
 				tool.Output = ""
@@ -359,7 +444,7 @@ func ExpandToolMessages(messages []Message) []Message {
 				hasUnresolvedTool = true
 				continue
 			}
-			content = append(content, ToolCallPart{CallID: tool.CallID, Name: tool.Name, Input: tool.Input})
+			content = append(content, ToolCallPart{ID: tool.ID, CallID: tool.CallID, Name: tool.Name, Input: tool.Input, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
 			text := tool.Output
 			if tool.State == ToolStateError {
 				if tool.Output != "" && tool.Error != "" {
@@ -368,7 +453,7 @@ func ExpandToolMessages(messages []Message) []Message {
 					text = tool.Error
 				}
 			}
-			results = append(results, ToolResultPart{CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata})
+			results = append(results, ToolResultPart{ID: tool.ID, CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
 		}
 		if hasUnresolvedTool && len(content) == 0 {
 			continue
@@ -386,7 +471,7 @@ func normalizeToolCalls(content Content) Content {
 	out := make(Content, 0, len(content))
 	for _, part := range content {
 		if call, ok := part.(ToolCallPart); ok {
-			out = append(out, ToolPart{CallID: call.CallID, Name: call.Name, State: ToolStatePending, Input: call.Input})
+			out = append(out, ToolPart{ID: call.ID, CallID: call.CallID, Name: call.Name, State: ToolStatePending, Input: call.Input, ProviderExecuted: call.ProviderExecuted, ProviderMetadata: call.ProviderMetadata})
 			continue
 		}
 		out = append(out, part)
@@ -405,7 +490,17 @@ func replaceToolPart(messages []Message, tool ToolPart) bool {
 				continue
 			}
 			tool.Input = current.Input
+			tool.InputRaw = current.InputRaw
 			tool.StartedAt = current.StartedAt
+			if current.ID != "" {
+				tool.ID = current.ID
+			}
+			if !tool.ProviderExecuted {
+				tool.ProviderExecuted = current.ProviderExecuted
+			}
+			if tool.ProviderMetadata == nil {
+				tool.ProviderMetadata = current.ProviderMetadata
+			}
 			messages[i].Content[j] = tool
 			return true
 		}
@@ -424,9 +519,8 @@ func toolResultText(part ToolResultPart) string {
 }
 
 func MarshalPart(p Part) ([]byte, error) {
-	// OpaquePart carries its own fully-formed JSON.
 	if op, ok := p.(OpaquePart); ok {
-		return op.Raw, nil
+		return json.Marshal(op)
 	}
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -450,7 +544,11 @@ func UnmarshalPart(data []byte) (Part, error) {
 	fn, ok := partRegistry[wrapper.Type]
 	partRegistryMu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unknown part type: %s", wrapper.Type)
+		var p OpaquePart
+		if err := json.Unmarshal(data, &p); err != nil {
+			return nil, err
+		}
+		return p, nil
 	}
 	return fn(data)
 }

@@ -1,6 +1,36 @@
 package models
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestMessageJSONIdentityAndState(t *testing.T) {
+	message := Message{ID: "msg_1", Revision: 3, State: MessageStateCompleted, Role: RoleUser, Content: Content{TextPart{ID: "part_1", Text: "hello"}}}
+	b, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Message
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != message.ID || got.Revision != message.Revision || got.State != message.State {
+		t.Fatalf("message identity = %#v", got)
+	}
+}
+
+func TestPartIDHelpersForBuiltins(t *testing.T) {
+	parts := []Part{
+		TextPart{}, ImagePart{}, ReasoningPart{}, ToolPart{}, ToolCallPart{}, ToolResultPart{}, OpaquePart{TypeName: "plugin"},
+	}
+	for _, part := range parts {
+		got := WithPartID(part, "part_1")
+		if PartID(got) != "part_1" {
+			t.Fatalf("PartID(%T) = %q", got, PartID(got))
+		}
+	}
+}
 
 func TestNormalizeMessagesFoldsLegacyToolResults(t *testing.T) {
 	messages := []Message{
@@ -71,6 +101,103 @@ func TestExpandToolMessagesOmitsUnresolvedTool(t *testing.T) {
 	if expanded := ExpandToolMessages(messages); len(expanded) != 0 {
 		t.Fatalf("expanded messages = %#v, want unresolved tool omitted", expanded)
 	}
+}
+
+func TestToolPartProviderFieldsPreservedThroughNormalizationAndExpansion(t *testing.T) {
+	messages := []Message{{Role: RoleAssistant, Content: Content{ToolCallPart{
+		ID:               "part_1",
+		CallID:           "call_1",
+		Name:             "bash",
+		Input:            map[string]any{"command": "pwd"},
+		ProviderExecuted: true,
+		ProviderMetadata: Meta{"provider_call": "abc"},
+	}}}}
+
+	normalized := NormalizeMessages(messages)
+	tool := normalized[0].Content[0].(ToolPart)
+	if tool.ID != "part_1" || !tool.ProviderExecuted || tool.ProviderMetadata["provider_call"] != "abc" {
+		t.Fatalf("normalized tool = %#v", tool)
+	}
+	tool.InputRaw = `{"command":"pwd"}`
+	tool.State = ToolStateCompleted
+	normalized[0].Content[0] = tool
+
+	expanded := ExpandToolMessages(normalized)
+	call := expanded[0].Content[0].(ToolCallPart)
+	result := expanded[1].Content[0].(ToolResultPart)
+	if call.ID != tool.ID || !call.ProviderExecuted || call.ProviderMetadata["provider_call"] != "abc" {
+		t.Fatalf("expanded call = %#v", call)
+	}
+	if result.ID != tool.ID || !result.ProviderExecuted || result.ProviderMetadata["provider_call"] != "abc" {
+		t.Fatalf("expanded result = %#v", result)
+	}
+}
+
+func TestNormalizeMessagesPreservesToolRawAndProviderFieldsOnResultReplacement(t *testing.T) {
+	messages := []Message{
+		{Role: RoleAssistant, Content: Content{ToolPart{CallID: "call_1", Name: "bash", State: ToolStatePending, Input: map[string]any{"command": "pwd"}, InputRaw: `{"command":"pwd"}`, ProviderExecuted: true, ProviderMetadata: Meta{"call": "metadata"}}}},
+		{Role: RoleTool, Content: Content{ToolResultPart{CallID: "call_1", Name: "bash", Output: Content{TextPart{Text: "/tmp"}}}}},
+	}
+
+	normalized := NormalizeMessages(messages)
+	tool := normalized[0].Content[0].(ToolPart)
+	if tool.InputRaw != `{"command":"pwd"}` || !tool.ProviderExecuted || tool.ProviderMetadata["call"] != "metadata" {
+		t.Fatalf("replaced tool = %#v", tool)
+	}
+}
+
+func TestUnknownPartNestedJSONRoundTrip(t *testing.T) {
+	input := []byte(`{"type":"future","id":"part_1","nested":{"items":[1,{"key":"value"}]},"extra":true}`)
+	part, err := UnmarshalPart(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaque, ok := part.(OpaquePart)
+	if !ok || opaque.ID != "part_1" || opaque.TypeName != "future" {
+		t.Fatalf("part = %#v", part)
+	}
+	got, err := MarshalPart(part)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wantValue, gotValue any
+	if err := json.Unmarshal(input, &wantValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatal(err)
+	}
+	if !jsonEqual(wantValue, gotValue) {
+		t.Fatalf("round trip = %s, want %s", got, input)
+	}
+}
+
+func TestWithPartIDOpaquePreservesUnknownFields(t *testing.T) {
+	part, err := UnmarshalPart([]byte(`{"type":"future","nested":{"key":"value"},"extra":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := MarshalPart(WithPartID(part, "part_2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(got, &value); err != nil {
+		t.Fatal(err)
+	}
+	if value["id"] != "part_2" || value["type"] != "future" || value["extra"] != true {
+		t.Fatalf("opaque JSON = %s", got)
+	}
+	nested := value["nested"].(map[string]any)
+	if nested["key"] != "value" {
+		t.Fatalf("opaque JSON = %s", got)
+	}
+}
+
+func jsonEqual(a, b any) bool {
+	aJSON, _ := json.Marshal(a)
+	bJSON, _ := json.Marshal(b)
+	return string(aJSON) == string(bJSON)
 }
 
 func TestNewCallTraceRedactsAndShapes(t *testing.T) {

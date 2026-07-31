@@ -75,12 +75,12 @@ export function SessionTranscript({
 					) : (
 						<div>
 							{messages.map((message, index) => {
-								const call = modelCallsByMessageId.get(typeof message.metadata?.message_id === "string" ? message.metadata.message_id : "");
+								const call = modelCallsByMessageId.get(message.id ?? "");
 								const hasTool = message.role === "assistant" && message.content.some((part) => part.type === "tool" || part.type === "tool_call");
 								const hasText = message.role === "assistant" && message.content.some((part) => part.type === "text");
 								const previousHasTool = index > 0 && messages[index - 1].role === "assistant" && messages[index - 1].content.some((part) => part.type === "tool" || part.type === "tool_call");
 								const nextHasText = index < messages.length - 1 && messages[index + 1].role === "assistant" && messages[index + 1].content.some((part) => part.type === "text");
-								return <ChatMessage key={index} message={message} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivitiesById} modelCall={call} agentName={agentNames.get(call?.agent_id ?? "")} compactTop={hasText && previousHasTool} compactBottom={hasTool && nextHasText} />;
+								return <ChatMessage key={message.id ?? index} message={message} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={toolActivitiesById} modelCall={call} agentName={agentNames.get(call?.agent_id ?? "")} compactTop={hasText && previousHasTool} compactBottom={hasTool && nextHasText} />;
 							})}
 							{streamingReasoning && <div className="px-4"><ReasoningPart reasoning={streamingReasoning} isStreaming /></div>}
 							{pendingToolActivities.map((activity) => <div key={activity.call_id} className="px-4"><ToolActivityItem call={{ type: "tool_call", call_id: activity.call_id, name: activity.tool, input: activity.input ?? {} }} activity={activity} /></div>)}

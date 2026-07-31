@@ -85,6 +85,8 @@ type StoredMessage struct {
 	SessionID    string
 	Idx          int
 	Role         string
+	Revision     int64
+	State        string
 	MetadataJSON []byte
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

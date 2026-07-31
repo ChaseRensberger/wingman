@@ -62,53 +62,65 @@ func (s *Session) hydrate(ctx context.Context) error {
 	return nil
 }
 
-// persistMessage writes a single message and its parts to the store.
-func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx int) (string, error) {
+// persistMessage atomically writes a complete message revision to the store.
+func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx int) (models.Message, error) {
 	if s.store == nil {
-		return "", nil
+		return msg, nil
+	}
+	if msg.ID == "" {
+		msg.ID = store.NewID(store.PrefixMessage)
+	}
+	if msg.Revision == 0 {
+		msg.Revision = 1
+	}
+	if msg.State == "" {
+		msg.State = models.MessageStateCompleted
 	}
 	now := time.Now().UTC()
 	sm := store.StoredMessage{
-		ID:        store.NewID(store.PrefixMessage),
+		ID:        msg.ID,
 		SessionID: s.id,
 		Idx:       idx,
 		Role:      string(msg.Role),
+		Revision:  msg.Revision,
+		State:     string(msg.State),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	metadata, err := marshalMessageMetadata(msg)
 	if err != nil {
-		return "", err
+		return models.Message{}, err
 	}
 	if len(metadata) > 0 {
 		b, err := json.Marshal(metadata)
 		if err != nil {
-			return "", fmt.Errorf("marshal metadata: %w", err)
+			return models.Message{}, fmt.Errorf("marshal metadata: %w", err)
 		}
 		sm.MetadataJSON = b
 	}
-	if err := s.store.UpsertMessage(ctx, sm); err != nil {
-		return "", fmt.Errorf("upsert message: %w", err)
-	}
 	for i, part := range msg.Content {
+		if models.PartID(part) == "" {
+			part = models.WithPartID(part, store.NewID(store.PrefixPart))
+			msg.Content[i] = part
+		}
 		payload, err := models.MarshalPart(part)
 		if err != nil {
-			return "", fmt.Errorf("marshal part[%d]: %w", i, err)
+			return models.Message{}, fmt.Errorf("marshal part[%d]: %w", i, err)
 		}
-		sp := store.StoredPart{
-			ID:          store.NewID(store.PrefixPart),
+		sm.Parts = append(sm.Parts, store.StoredPart{
+			ID:          models.PartID(part),
 			MessageID:   sm.ID,
 			Sequence:    i,
 			Kind:        part.Type(),
 			PayloadJSON: payload,
 			CreatedAt:   now,
 			UpdatedAt:   now,
-		}
-		if err := s.store.UpsertPart(ctx, sp); err != nil {
-			return "", fmt.Errorf("upsert part[%d]: %w", i, err)
-		}
+		})
 	}
-	return sm.ID, nil
+	if err := s.store.SaveMessage(ctx, sm); err != nil {
+		return models.Message{}, fmt.Errorf("save message: %w", err)
+	}
+	return msg, nil
 }
 
 type modelCallRecorder struct {
@@ -129,6 +141,7 @@ func (r *modelCallRecorder) Start(ctx context.Context, info run.ModelCallStartIn
 		Trace:       info.Trace,
 	})
 	call.Status = store.ModelCallStatusStarted
+	call.AssistantMessageID = info.MessageID
 	if err := r.store.UpsertModelCall(ctx, call); err != nil {
 		return "", err
 	}
@@ -251,7 +264,10 @@ func estimatedCost(usage models.Usage, info models.ModelInfo) *float64 {
 
 func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {
 	msg := models.Message{
-		Role: models.Role(sm.Role),
+		ID:       sm.ID,
+		Revision: sm.Revision,
+		State:    models.MessageState(sm.State),
+		Role:     models.Role(sm.Role),
 	}
 	if len(sm.MetadataJSON) > 0 {
 		var meta models.Meta
@@ -267,6 +283,9 @@ func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {
 		part, err := models.UnmarshalPart(sp.PayloadJSON)
 		if err != nil {
 			return models.Message{}, fmt.Errorf("unmarshal part[%d]: %w", i, err)
+		}
+		if models.PartID(part) == "" {
+			part = models.WithPartID(part, sp.ID)
 		}
 		content[i] = part
 	}

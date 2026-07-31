@@ -118,10 +118,10 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	if err := data.UpsertMessage(ctx, store.StoredMessage{ID: "msg_purge", SessionID: session.ID, Role: "user", CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatal(err)
-	}
-	if err := data.UpsertPart(ctx, store.StoredPart{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{}`)}); err != nil {
+	if err := data.SaveMessage(ctx, store.StoredMessage{
+		ID: "msg_purge", SessionID: session.ID, Role: "user", Revision: 1, State: "completed", CreatedAt: now, UpdatedAt: now,
+		Parts: []store.StoredPart{{ID: "prt_purge", MessageID: "msg_purge", Kind: "text", PayloadJSON: []byte(`{}`), CreatedAt: now, UpdatedAt: now}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := data.UpsertModelCall(ctx, store.ModelCall{ID: "mcl_purge", SessionID: session.ID, Step: 1}); err != nil {

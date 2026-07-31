@@ -260,3 +260,128 @@ func TestSQLiteSeedsFridayAgent(t *testing.T) {
 	}
 	t.Fatal("Friday agent was not seeded")
 }
+
+func TestSQLiteSaveMessageRevisionedAndRollback(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_messages"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := StoredMessage{ID: "msg_one", SessionID: "ses_messages", Idx: 1, Role: "assistant", Parts: []StoredPart{{ID: "part_one", MessageID: "msg_one", Sequence: 1, Kind: "text", PayloadJSON: []byte(`{"text":"one"}`)}}}
+	if err := data.SaveMessage(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, initial); err != nil {
+		t.Fatalf("exact retry: %v", err)
+	}
+	conflict := initial
+	conflict.Parts[0].PayloadJSON = []byte(`{"text":"changed"}`)
+	if err := data.SaveMessage(ctx, conflict); !errors.Is(err, ErrMessageRevisionConflict) {
+		t.Fatalf("conflict = %v", err)
+	}
+	updated := initial
+	updated.Revision = 2
+	updated.Parts = []StoredPart{{ID: "part_two", MessageID: "msg_one", Sequence: 1, Kind: "text", PayloadJSON: []byte(`{"text":"two"}`)}}
+	if err := data.SaveMessage(ctx, updated); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, initial); !errors.Is(err, ErrMessageRevisionStale) {
+		t.Fatalf("stale = %v", err)
+	}
+	if _, err := data.db.Exec(`CREATE TRIGGER reject_part BEFORE INSERT ON parts WHEN NEW.id = 'part_bad' BEGIN SELECT RAISE(ABORT, 'reject'); END`); err != nil {
+		t.Fatal(err)
+	}
+	failed := updated
+	failed.Revision = 3
+	failed.State = "streaming"
+	failed.Parts = []StoredPart{{ID: "part_bad", MessageID: "msg_one", Sequence: 1, Kind: "text", PayloadJSON: []byte(`{}`)}}
+	if err := data.SaveMessage(ctx, failed); err == nil {
+		t.Fatal("trigger save succeeded")
+	}
+	messages, err := data.ListMessages(ctx, "ses_messages")
+	if err != nil || len(messages) != 1 || messages[0].Revision != 2 || messages[0].State != "completed" || len(messages[0].Parts) != 1 || messages[0].Parts[0].ID != "part_two" {
+		t.Fatalf("messages=%#v err=%v", messages, err)
+	}
+}
+
+func TestSQLiteSaveMessageRejectsInvalidOwnershipAndIndex(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	ctx := context.Background()
+	message := StoredMessage{ID: "msg_one", SessionID: "ses_messages", Idx: 1, Role: "user", Parts: []StoredPart{{ID: "part_one", MessageID: "msg_one", Kind: "text", PayloadJSON: []byte(`{}`)}}}
+	if err := data.SaveMessage(ctx, message); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing parent = %v", err)
+	}
+	if err := data.CreateSession(&Session{ID: "ses_messages"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, StoredMessage{ID: "msg_two", SessionID: "ses_messages", Idx: 1, Role: "user"}); err == nil {
+		t.Fatal("duplicate index succeeded")
+	}
+	if err := data.SaveMessage(ctx, StoredMessage{ID: "msg_two", SessionID: "ses_messages", Idx: 2, Role: "user", Parts: []StoredPart{{ID: "part_one", MessageID: "msg_two", Kind: "text", PayloadJSON: []byte(`{}`)}}}); err == nil {
+		t.Fatal("part ownership conflict succeeded")
+	}
+}
+
+func TestSQLiteSaveMessageRevisionRaceAcrossHandles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	first, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	second, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	ctx := context.Background()
+	if err := first.CreateSession(&Session{ID: "ses_race"}); err != nil {
+		t.Fatal(err)
+	}
+	base := StoredMessage{ID: "msg_race", SessionID: "ses_race", Idx: 1, Role: "assistant", Parts: []StoredPart{{ID: "part_base", MessageID: "msg_race", Kind: "text", PayloadJSON: []byte(`{}`)}}}
+	if err := first.SaveMessage(ctx, base); err != nil {
+		t.Fatal(err)
+	}
+	v2 := base
+	v2.Revision = 2
+	v2.Parts = []StoredPart{{ID: "part_two", MessageID: "msg_race", Kind: "text", PayloadJSON: []byte(`{"revision":2}`)}}
+	v3 := base
+	v3.Revision = 3
+	v3.Parts = []StoredPart{{ID: "part_three", MessageID: "msg_race", Kind: "text", PayloadJSON: []byte(`{"revision":3}`)}}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, save := range []struct {
+		data    *SQLiteStore
+		message StoredMessage
+	}{{first, v2}, {second, v3}} {
+		wg.Add(1)
+		go func(save struct {
+			data    *SQLiteStore
+			message StoredMessage
+		}) { defer wg.Done(); <-start; errs <- save.data.SaveMessage(ctx, save.message) }(save)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil && !errors.Is(err, ErrMessageRevisionStale) {
+			t.Fatalf("race error = %v", err)
+		}
+	}
+	messages, err := first.ListMessages(ctx, "ses_race")
+	if err != nil || len(messages) != 1 || messages[0].Revision != 3 || len(messages[0].Parts) != 1 || messages[0].Parts[0].ID != "part_three" {
+		t.Fatalf("messages=%#v err=%v", messages, err)
+	}
+}

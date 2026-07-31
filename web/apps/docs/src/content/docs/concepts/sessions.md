@@ -198,6 +198,18 @@ Session history is stored as messages with typed parts. A part is Wingman's prov
 
 Tool result parts contain model-facing text and may also contain metadata for clients. File-editing tools use this metadata to expose changed files, patches, and addition/deletion counts so UIs can render diffs without parsing prose. Parts let Wingman preserve provider-specific richness without storing provider-native wire formats. UIs can render each block differently, and plugins can introduce custom content.
 
+Persisted messages have a stable `id`, monotonic `revision`, and a `state` of
+`in_progress`, `completed`, or `failed`. Every built-in part also has a stable
+`id`. Wingman stores each complete message revision and its parts atomically, so
+a reload cannot observe a message row from one revision with parts from
+another. Text, reasoning, and raw tool input are checkpointed while the
+provider stream is active. If streaming fails, the identified partial assistant
+message remains in history with `state: "failed"`.
+
+Pending tool parts are checkpointed before Wingman starts local tool execution.
+This preserves truthful input and state for inspection after interruption; it
+does not provide exactly-once execution of external side effects.
+
 ## Usage and Context
 
 Persisted sessions store one normalized model-call record per physical upstream

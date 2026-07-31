@@ -4,6 +4,7 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -790,38 +791,154 @@ func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64
 
 // ---- messages and parts --------------------------------------------------
 
-func (s *Store) UpsertMessage(ctx context.Context, msg store.StoredMessage) error {
+func (s *Store) SaveMessage(ctx context.Context, msg store.StoredMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if msg.Revision == 0 {
+		msg.Revision = 1
+	}
+	if msg.State == "" {
+		msg.State = "completed"
+	}
+	if _, ok := s.sessions[msg.SessionID]; !ok {
+		return store.ErrSessionNotFound
+	}
+	if err := validateMessageParts(msg); err != nil {
+		return err
+	}
 	if existing, ok := s.messages[msg.ID]; ok {
-		msg.CreatedAt = existing.CreatedAt
-		msg.Idx = existing.Idx
+		if existing.SessionID != msg.SessionID || existing.Idx != msg.Idx || existing.Role != msg.Role {
+			return fmt.Errorf("message identity is immutable")
+		}
+		if msg.Revision < existing.Revision {
+			return store.ErrMessageRevisionStale
+		}
+		existingParts := messageParts(s.parts, msg.ID)
+		if msg.Revision == existing.Revision {
+			if messageRevisionEqual(*existing, existingParts, msg) {
+				return nil
+			}
+			return store.ErrMessageRevisionConflict
+		}
+		return s.replaceMessageLocked(existing, msg, existingParts)
 	}
-	msg.Parts = nil
-	if msg.MetadataJSON != nil {
-		b := make([]byte, len(msg.MetadataJSON))
-		copy(b, msg.MetadataJSON)
-		msg.MetadataJSON = b
+	for _, existing := range s.messages {
+		if existing.SessionID == msg.SessionID && existing.Idx == msg.Idx {
+			return fmt.Errorf("message index belongs to %s", existing.ID)
+		}
 	}
-	s.messages[msg.ID] = &msg
+	for _, part := range msg.Parts {
+		if owner, ok := s.parts[part.ID]; ok && owner.MessageID != msg.ID {
+			return fmt.Errorf("part %s belongs to message %s", part.ID, owner.MessageID)
+		}
+	}
+	now := time.Now().UTC()
+	if msg.CreatedAt.IsZero() {
+		msg.CreatedAt = now
+	}
+	if msg.UpdatedAt.IsZero() {
+		msg.UpdatedAt = now
+	}
+	stored := copyMessage(&msg)
+	stored.Parts = nil
+	s.messages[msg.ID] = &stored
+	for _, part := range msg.Parts {
+		if part.CreatedAt.IsZero() {
+			part.CreatedAt = now
+		}
+		if part.UpdatedAt.IsZero() {
+			part.UpdatedAt = now
+		}
+		cp := copyPart(&part)
+		s.parts[part.ID] = &cp
+	}
 	return nil
 }
 
-func (s *Store) UpsertPart(ctx context.Context, part store.StoredPart) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func validateMessageParts(msg store.StoredMessage) error {
+	ids := make(map[string]struct{}, len(msg.Parts))
+	sequences := make(map[int]struct{}, len(msg.Parts))
+	for _, part := range msg.Parts {
+		if part.MessageID != msg.ID {
+			return fmt.Errorf("part %s does not belong to message %s", part.ID, msg.ID)
+		}
+		if _, ok := ids[part.ID]; ok {
+			return fmt.Errorf("duplicate part ID %s", part.ID)
+		}
+		if _, ok := sequences[part.Sequence]; ok {
+			return fmt.Errorf("duplicate part sequence %d", part.Sequence)
+		}
+		ids[part.ID] = struct{}{}
+		sequences[part.Sequence] = struct{}{}
+	}
+	return nil
+}
 
-	if existing, ok := s.parts[part.ID]; ok {
-		part.CreatedAt = existing.CreatedAt
-		part.Sequence = existing.Sequence
+func messageParts(parts map[string]*store.StoredPart, messageID string) []store.StoredPart {
+	out := make([]store.StoredPart, 0)
+	for _, part := range parts {
+		if part.MessageID == messageID {
+			out = append(out, copyPart(part))
+		}
 	}
-	if part.PayloadJSON != nil {
-		b := make([]byte, len(part.PayloadJSON))
-		copy(b, part.PayloadJSON)
-		part.PayloadJSON = b
+	sort.Slice(out, func(i, j int) bool { return out[i].Sequence < out[j].Sequence })
+	return out
+}
+
+func messageRevisionEqual(existing store.StoredMessage, existingParts []store.StoredPart, incoming store.StoredMessage) bool {
+	if existing.Role != incoming.Role || existing.State != incoming.State || !bytes.Equal(existing.MetadataJSON, incoming.MetadataJSON) || len(existingParts) != len(incoming.Parts) {
+		return false
 	}
-	s.parts[part.ID] = &part
+	for i := range existingParts {
+		a, b := existingParts[i], incoming.Parts[i]
+		if a.ID != b.ID || a.Sequence != b.Sequence || a.Kind != b.Kind || !bytes.Equal(a.PayloadJSON, b.PayloadJSON) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) replaceMessageLocked(existing *store.StoredMessage, msg store.StoredMessage, oldParts []store.StoredPart) error {
+	for _, part := range msg.Parts {
+		if owner, ok := s.parts[part.ID]; ok && owner.MessageID != msg.ID {
+			return fmt.Errorf("part %s belongs to message %s", part.ID, owner.MessageID)
+		}
+	}
+	now := time.Now().UTC()
+	if msg.UpdatedAt.IsZero() {
+		msg.UpdatedAt = now
+	}
+	msg.CreatedAt = existing.CreatedAt
+	stored := copyMessage(&msg)
+	stored.Parts = nil
+	oldByID := make(map[string]store.StoredPart, len(oldParts))
+	for _, part := range oldParts {
+		oldByID[part.ID] = part
+	}
+	newParts := make(map[string]*store.StoredPart, len(msg.Parts))
+	for _, part := range msg.Parts {
+		if old, ok := oldByID[part.ID]; ok {
+			part.CreatedAt = old.CreatedAt
+		} else if part.CreatedAt.IsZero() {
+			part.CreatedAt = now
+		}
+		if part.UpdatedAt.IsZero() {
+			part.UpdatedAt = now
+		}
+		cp := copyPart(&part)
+		newParts[part.ID] = &cp
+	}
+	// All validation and copies complete before replacing either authoritative set.
+	s.messages[msg.ID] = &stored
+	for id, part := range s.parts {
+		if part.MessageID == msg.ID {
+			delete(s.parts, id)
+		}
+	}
+	for id, part := range newParts {
+		s.parts[id] = part
+	}
 	return nil
 }
 

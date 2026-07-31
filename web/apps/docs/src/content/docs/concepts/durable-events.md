@@ -82,11 +82,6 @@ effective Agent and model, output schema, client, and placement snapshot.
 Messages, model calls, and tool calls are persisted in their respective state
 tables and are not yet represented in aggregate history.
 
-Migration `0007_session_run_admission.sql` backfills an admission event for each
-existing run. Historical runs had no request identity or placement snapshot, so
-the migration leaves request identity empty and uses the session's current
-placement and client as the best available snapshot.
-
 ## Hard Purge
 
 Deletion is not an aggregate event. `DELETE /sessions/{id}` requires the
@@ -97,13 +92,6 @@ public events, messages, parts, and model calls through foreign-key cascades.
 Wingman retains no deletion event or tombstone. After the transaction commits,
 the server closes live event streams, cancels active execution, and waits for
 the session worker to settle before returning success.
-
-## Existing Databases
-
-Migration `0006_aggregate_events.sql` creates the event log, adds the session
-projection version, and backfills one `session.created` event for every existing
-session. Existing session IDs, metadata, timestamps, Workspace relationships,
-and client attribution are preserved.
 
 ## Aggregate Events vs. Streaming Events
 

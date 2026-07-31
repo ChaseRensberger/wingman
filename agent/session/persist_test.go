@@ -181,8 +181,15 @@ func TestRunPersistsStartedModelCallBeforeDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || calls[0].Status != store.ModelCallStatusStarted || calls[0].RunID != "run_started" || calls[0].ID == "" {
+	if len(calls) != 1 || calls[0].Status != store.ModelCallStatusStarted || calls[0].RunID != "run_started" || calls[0].ID == "" || calls[0].AssistantMessageID == "" {
 		t.Fatalf("calls before dispatch release = %#v", calls)
+	}
+	messages, err := data.ListMessages(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[1].ID != calls[0].AssistantMessageID || messages[1].State != string(models.MessageStateInProgress) || messages[1].Revision != 1 {
+		t.Fatalf("messages before dispatch release = %#v", messages)
 	}
 	callID := calls[0].ID
 	close(client.release)
@@ -223,11 +230,109 @@ func TestRunPersistsFailedModelCall(t *testing.T) {
 		t.Fatalf("call count = %d, want 1", len(calls))
 	}
 	call := calls[0]
-	if call.Status != store.ModelCallStatusFailed || call.ErrorMessage != "model stream: stream failed" || call.AssistantMessageID != "" {
-		t.Fatalf("call = %#v, want failed call without assistant message", call)
+	if call.Status != store.ModelCallStatusFailed || call.ErrorMessage != "model stream: stream failed" || call.AssistantMessageID == "" {
+		t.Fatalf("call = %#v, want failed call with checkpointed assistant message", call)
 	}
 	if call.StartedAt.IsZero() || call.CompletedAt.IsZero() || len(call.MetadataJSON) == 0 {
 		t.Fatalf("call = %#v, want timing and trace", call)
+	}
+}
+
+func TestPersistMessageAtomicallyAssignsAndPreservesIdentities(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_message"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	sess := New(WithID(stored.ID), WithStore(data))
+	message, err := sess.persistMessage(context.Background(), models.Message{
+		ID:       "msg_user",
+		Revision: 7,
+		State:    models.MessageStateInProgress,
+		Role:     models.RoleUser,
+		Content: models.Content{
+			models.TextPart{ID: "part_text", Text: "hello"},
+			models.ToolResultPart{CallID: "call_1"},
+		},
+	}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.ID != "msg_user" || message.Revision != 7 || message.State != models.MessageStateInProgress || models.PartID(message.Content[0]) != "part_text" || models.PartID(message.Content[1]) == "" {
+		t.Fatalf("persisted message = %#v", message)
+	}
+	messages, err := data.ListMessages(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].ID != message.ID || messages[0].Revision != message.Revision || messages[0].State != string(message.State) || len(messages[0].Parts) != 2 || messages[0].Parts[1].ID != models.PartID(message.Content[1]) {
+		t.Fatalf("stored messages = %#v", messages)
+	}
+}
+
+func TestStoredMessageToModelRestoresIdentitiesAndOpaquePart(t *testing.T) {
+	sm := store.StoredMessage{
+		ID: "msg_opaque", Revision: 4, State: string(models.MessageStateFailed), Role: string(models.RoleAssistant),
+		Parts: []store.StoredPart{{ID: "part_opaque", PayloadJSON: []byte(`{"type":"plugin_part","value":{"x":1}}`)}},
+	}
+	message, err := StoredMessageToModel(sm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.ID != sm.ID || message.Revision != sm.Revision || message.State != models.MessageStateFailed || models.PartID(message.Content[0]) != "part_opaque" {
+		t.Fatalf("message = %#v", message)
+	}
+	opaque, ok := message.Content[0].(models.OpaquePart)
+	if !ok || string(opaque.Raw) != string(sm.Parts[0].PayloadJSON) {
+		t.Fatalf("opaque part = %#v", message.Content[0])
+	}
+}
+
+func TestCheckpointPersistenceFailurePreventsProviderDispatch(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_checkpoint_failure"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	failing := &failingSaveStore{Store: data, failAfter: 1}
+	client := &dispatchSpyClient{}
+	sess := New(
+		WithID(stored.ID),
+		WithStore(failing),
+		WithClient(client),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+	)
+	if _, err := sess.Run(context.Background(), "hello"); err == nil || !errors.Is(err, errSaveMessage) || client.dispatched {
+		t.Fatalf("err = %v, dispatched = %v", err, client.dispatched)
+	}
+}
+
+func TestAssistantCheckpointsUpdateOneMessageWithStableIdentity(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_assistant_checkpoints"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	sess := New(
+		WithID(stored.ID),
+		WithStore(data),
+		WithClient(&metadataRequestClient{}),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+	)
+	if _, err := sess.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want user and one assistant", len(messages))
+	}
+	assistant := messages[1]
+	history := sess.History()
+	if assistant.Idx != 1 || assistant.ID == "" || assistant.ID != history[1].ID || assistant.Revision != history[1].Revision || assistant.State != string(models.MessageStateCompleted) || models.PartID(history[1].Content[0]) == "" {
+		t.Fatalf("stored assistant = %#v, history = %#v", assistant, history[1])
 	}
 }
 
@@ -289,6 +394,37 @@ func TestRunPersistsModelCallRunAndProviderIdentity(t *testing.T) {
 
 type requestCaptureClient struct {
 	request models.Request
+}
+
+var errSaveMessage = errors.New("save message failed")
+
+type failingSaveStore struct {
+	store.Store
+	saves     int
+	failAfter int
+}
+
+func (s *failingSaveStore) SaveMessage(ctx context.Context, message store.StoredMessage) error {
+	s.saves++
+	if s.saves > s.failAfter {
+		return errSaveMessage
+	}
+	return s.Store.SaveMessage(ctx, message)
+}
+
+type dispatchSpyClient struct{ dispatched bool }
+
+func (c *dispatchSpyClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *dispatchSpyClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *dispatchSpyClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	c.dispatched = true
+	return nil, errors.New("unexpected Stream")
 }
 
 type failingRequestClient struct{}

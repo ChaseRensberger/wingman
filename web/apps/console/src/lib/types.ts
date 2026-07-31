@@ -92,6 +92,9 @@ export interface DirectoryListing {
 }
 
 export interface Message {
+  id?: string;
+  revision?: number;
+  state?: "in_progress" | "completed" | "failed";
   role: "user" | "assistant" | "tool";
   content: Part[];
   metadata?: Record<string, unknown>;
@@ -169,6 +172,7 @@ export type Part =
   | OpaquePart;
 
 export interface TextPart {
+  id?: string;
   type: "text";
   text: string;
   signature?: string;
@@ -176,6 +180,7 @@ export interface TextPart {
 }
 
 export interface ReasoningPart {
+  id?: string;
   type: "reasoning";
   reasoning: string;
   signature?: string;
@@ -184,6 +189,7 @@ export interface ReasoningPart {
 }
 
 export interface ImagePart {
+  id?: string;
   type: "image";
   data: string;
   mime_type: string;
@@ -191,6 +197,7 @@ export interface ImagePart {
 }
 
 export interface ToolCallPart {
+  id?: string;
   type: "tool_call";
   call_id: string;
   name: string;
@@ -200,11 +207,13 @@ export interface ToolCallPart {
 }
 
 export interface ToolPart {
+  id?: string;
   type: "tool";
   call_id: string;
   name: string;
   state: "pending" | "running" | "completed" | "error";
   input: Record<string, unknown>;
+  input_raw?: string;
   output?: string;
   metadata?: Record<string, unknown>;
   error?: string;
@@ -227,6 +236,7 @@ export interface ToolActivity {
 }
 
 export interface ToolResultPart {
+	id?: string;
 	type: "tool_result";
 	call_id: string;
 	name?: string;

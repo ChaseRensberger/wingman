@@ -91,6 +91,43 @@ type Session struct {
 	mu      sync.RWMutex
 }
 
+// sessionMessagePersistence assigns one durable history index to every
+// message emitted during a run. Checkpoints and the serialized sink share it.
+type sessionMessagePersistence struct {
+	mu               sync.Mutex
+	session          *Session
+	nextIdx          int
+	assistantIndexes map[int]int
+}
+
+func (p *sessionMessagePersistence) Save(ctx context.Context, info run.MessageCheckpointInfo) (models.Message, error) {
+	p.mu.Lock()
+	if p.assistantIndexes == nil {
+		p.assistantIndexes = make(map[int]int)
+	}
+	idx, ok := p.assistantIndexes[info.Step]
+	if !ok {
+		idx = p.nextIdx
+		p.nextIdx++
+		p.assistantIndexes[info.Step] = idx
+	}
+	p.mu.Unlock()
+	return p.session.persistMessage(ctx, info.Message, idx)
+}
+
+func (p *sessionMessagePersistence) indexForEvent(event run.MessageEvent) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if event.Message.Role == models.RoleAssistant && event.Step > 0 {
+		if idx, ok := p.assistantIndexes[event.Step]; ok {
+			return idx
+		}
+	}
+	idx := p.nextIdx
+	p.nextIdx++
+	return idx
+}
+
 // Option configures a new Session.
 type Option func(*Session)
 
@@ -454,10 +491,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		Content: models.Content{models.TextPart{Text: message}},
 	})
 	userMsgIdx := len(s.history) - 1
-	if _, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx); err != nil {
+	userMsg, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx)
+	if err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
+	s.history[userMsgIdx] = userMsg
 	historySnap := append([]models.Message(nil), s.history...)
 	s.mu.Unlock()
 
@@ -507,8 +546,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	// messageSink, plugin sinks, and extraSink. Tool results are
 	// collected from res.Turns after the loop returns.
 	var persistErr error
-	nextMsgIdx := len(historySnap)
-	assistantMessageIDs := make(map[int]string)
+	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(historySnap)}
 	if logger != nil {
 		logger = logger.With(
 			"session_id", s.id,
@@ -523,14 +561,15 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		logLoopEvent(logger, e)
 		if me, ok := e.(run.MessageEvent); ok {
 			if s.store != nil {
-				msgID, err := s.persistMessage(ctx, me.Message, nextMsgIdx)
+				idx := messagePersistence.indexForEvent(me)
+				message, err := s.persistMessage(ctx, me.Message, idx)
 				if err != nil && persistErr == nil {
 					persistErr = err
 				}
-				if err == nil && me.Message.Role == models.RoleAssistant && me.Step > 0 {
-					assistantMessageIDs[me.Step] = msgID
+				if err == nil {
+					me.Message = message
+					e = me
 				}
-				nextMsgIdx++
 			}
 			if messageSink != nil {
 				messageSink(me.Message)
@@ -567,6 +606,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		},
 	}
 	if s.store != nil {
+		cfg.MessageCheckpoint = messagePersistence
 		cfg.ModelCallLifecycle = &modelCallRecorder{
 			store:     s.store,
 			sessionID: s.id,
@@ -634,7 +674,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 				if turn.Step == res.Steps {
 					structuredOutput = res.StructuredOutput
 				}
-				if err := s.persistModelCall(context.WithoutCancel(ctx), assistantMessageIDs[turn.Step], turn, model, modelInfo, runID, agentID, stopReason, structuredOutput); err != nil && persistErr == nil {
+				if err := s.persistModelCall(context.WithoutCancel(ctx), turn.Assistant.ID, turn, model, modelInfo, runID, agentID, stopReason, structuredOutput); err != nil && persistErr == nil {
 					persistErr = err
 				}
 			}

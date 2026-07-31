@@ -12,6 +12,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -51,6 +52,10 @@ func (s *SQLiteStore) beginImmediate(ctx context.Context) (*immediateTx, error) 
 
 func (tx *immediateTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return tx.conn.QueryRowContext(ctx, query, args...)
+}
+
+func (tx *immediateTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return tx.conn.QueryContext(ctx, query, args...)
 }
 
 func (tx *immediateTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -978,50 +983,193 @@ func (s *SQLiteStore) PurgeSession(ctx context.Context, id string, expectedVersi
 	return tx.Commit(ctx)
 }
 
-// UpsertMessage inserts or updates a message row keyed by ID.
-// Does not touch parts. Idx and created_at are preserved on update.
-func (s *SQLiteStore) UpsertMessage(ctx context.Context, msg StoredMessage) error {
-	createdAt := msg.CreatedAt.UTC().Format(time.RFC3339)
-	updatedAt := msg.UpdatedAt.UTC().Format(time.RFC3339)
-
-	var metadataJSON *string
-	if msg.MetadataJSON != nil {
-		s := string(msg.MetadataJSON)
-		metadataJSON = &s
+// SaveMessage atomically stores a complete authoritative message revision.
+func (s *SQLiteStore) SaveMessage(ctx context.Context, msg StoredMessage) error {
+	if msg.Revision == 0 {
+		msg.Revision = 1
 	}
-
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO messages (id, session_id, idx, role, metadata_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			role = excluded.role,
-			metadata_json = excluded.metadata_json,
-			updated_at = excluded.updated_at
-	`, msg.ID, msg.SessionID, msg.Idx, msg.Role, metadataJSON, createdAt, updatedAt)
+	if msg.State == "" {
+		msg.State = "completed"
+	}
+	if err := validateMessageParts(msg); err != nil {
+		return err
+	}
+	tx, err := s.beginImmediate(ctx)
 	if err != nil {
-		return fmt.Errorf("upsert message: %w", err)
+		return err
+	}
+	defer tx.Rollback()
+	var session int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, msg.SessionID).Scan(&session); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+	var existing StoredMessage
+	var metadata sql.NullString
+	var created, updated string
+	err = tx.QueryRowContext(ctx, `SELECT id, session_id, idx, role, revision, state, metadata_json, created_at, updated_at FROM messages WHERE id = ?`, msg.ID).Scan(&existing.ID, &existing.SessionID, &existing.Idx, &existing.Role, &existing.Revision, &existing.State, &metadata, &created, &updated)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read message: %w", err)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		var conflicting string
+		err = tx.QueryRowContext(ctx, `SELECT id FROM messages WHERE session_id = ? AND idx = ?`, msg.SessionID, msg.Idx).Scan(&conflicting)
+		if err == nil {
+			return fmt.Errorf("message index belongs to %s", conflicting)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		return insertMessageTx(ctx, tx, msg, time.Now().UTC())
+	}
+	if existing.SessionID != msg.SessionID || existing.Idx != msg.Idx || existing.Role != msg.Role {
+		return fmt.Errorf("message identity is immutable")
+	}
+	existing.MetadataJSON = nullableStringBytes(metadata)
+	existing.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+	existing.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	existing.Parts, err = listMessagePartsTx(ctx, tx, existing.ID)
+	if err != nil {
+		return err
+	}
+	if msg.Revision < existing.Revision {
+		return ErrMessageRevisionStale
+	}
+	if msg.Revision == existing.Revision {
+		if messageRevisionEqual(existing, msg) {
+			return tx.Commit(ctx)
+		}
+		return ErrMessageRevisionConflict
+	}
+	return replaceMessageRevisionTx(ctx, tx, existing, msg, time.Now().UTC())
+}
+
+func validateMessageParts(msg StoredMessage) error {
+	partIDs := make(map[string]struct{}, len(msg.Parts))
+	sequences := make(map[int]struct{}, len(msg.Parts))
+	for _, part := range msg.Parts {
+		if part.MessageID != msg.ID {
+			return fmt.Errorf("part %s does not belong to message %s", part.ID, msg.ID)
+		}
+		if _, ok := partIDs[part.ID]; ok {
+			return fmt.Errorf("duplicate part ID %s", part.ID)
+		}
+		if _, ok := sequences[part.Sequence]; ok {
+			return fmt.Errorf("duplicate part sequence %d", part.Sequence)
+		}
+		partIDs[part.ID] = struct{}{}
+		sequences[part.Sequence] = struct{}{}
 	}
 	return nil
 }
 
-// UpsertPart inserts or updates a part row keyed by ID.
-// Sequence (mapped to idx) and created_at are preserved on update.
-func (s *SQLiteStore) UpsertPart(ctx context.Context, part StoredPart) error {
-	createdAt := part.CreatedAt.UTC().Format(time.RFC3339)
-	updatedAt := part.UpdatedAt.UTC().Format(time.RFC3339)
+func nullableStringBytes(v sql.NullString) []byte {
+	if !v.Valid {
+		return nil
+	}
+	return []byte(v.String)
+}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO parts (id, message_id, idx, kind, payload_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			kind = excluded.kind,
-			payload_json = excluded.payload_json,
-			updated_at = excluded.updated_at
-	`, part.ID, part.MessageID, part.Sequence, part.Kind, string(part.PayloadJSON), createdAt, updatedAt)
-	if err != nil {
-		return fmt.Errorf("upsert part: %w", err)
+func messageRevisionEqual(existing, incoming StoredMessage) bool {
+	if existing.Role != incoming.Role || existing.State != incoming.State || !bytes.Equal(existing.MetadataJSON, incoming.MetadataJSON) || len(existing.Parts) != len(incoming.Parts) {
+		return false
+	}
+	for i := range existing.Parts {
+		a, b := existing.Parts[i], incoming.Parts[i]
+		if a.ID != b.ID || a.Sequence != b.Sequence || a.Kind != b.Kind || !bytes.Equal(a.PayloadJSON, b.PayloadJSON) {
+			return false
+		}
+	}
+	return true
+}
+
+func insertMessageTx(ctx context.Context, tx *immediateTx, msg StoredMessage, now time.Time) error {
+	created, updated := messageTimes(msg, now)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (id, session_id, idx, role, revision, state, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, msg.ID, msg.SessionID, msg.Idx, msg.Role, msg.Revision, msg.State, nullableJSON(msg.MetadataJSON), created, updated); err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+	if err := insertPartsTx(ctx, tx, msg.Parts, nil, now); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func replaceMessageRevisionTx(ctx context.Context, tx *immediateTx, existing, msg StoredMessage, now time.Time) error {
+	_, updated := messageTimes(msg, now)
+	if _, err := tx.ExecContext(ctx, `UPDATE messages SET revision = ?, state = ?, metadata_json = ?, updated_at = ? WHERE id = ?`, msg.Revision, msg.State, nullableJSON(msg.MetadataJSON), updated, msg.ID); err != nil {
+		return fmt.Errorf("update message: %w", err)
+	}
+	oldParts := make(map[string]StoredPart, len(existing.Parts))
+	for _, part := range existing.Parts {
+		oldParts[part.ID] = part
+	}
+	for _, part := range msg.Parts {
+		var owner string
+		err := tx.QueryRowContext(ctx, `SELECT message_id FROM parts WHERE id = ?`, part.ID).Scan(&owner)
+		if err == nil && owner != msg.ID {
+			return fmt.Errorf("part %s belongs to message %s", part.ID, owner)
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM parts WHERE message_id = ?`, msg.ID); err != nil {
+		return fmt.Errorf("delete message parts: %w", err)
+	}
+	if err := insertPartsTx(ctx, tx, msg.Parts, oldParts, now); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func messageTimes(msg StoredMessage, now time.Time) (string, string) {
+	if msg.CreatedAt.IsZero() {
+		msg.CreatedAt = now
+	}
+	if msg.UpdatedAt.IsZero() {
+		msg.UpdatedAt = now
+	}
+	return msg.CreatedAt.UTC().Format(time.RFC3339Nano), msg.UpdatedAt.UTC().Format(time.RFC3339Nano)
+}
+
+func insertPartsTx(ctx context.Context, tx *immediateTx, parts []StoredPart, old map[string]StoredPart, now time.Time) error {
+	for _, part := range parts {
+		if oldPart, ok := old[part.ID]; ok {
+			part.CreatedAt = oldPart.CreatedAt
+		} else if part.CreatedAt.IsZero() {
+			part.CreatedAt = now
+		}
+		if part.UpdatedAt.IsZero() {
+			part.UpdatedAt = now
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO parts (id, message_id, idx, kind, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, part.ID, part.MessageID, part.Sequence, part.Kind, string(part.PayloadJSON), part.CreatedAt.UTC().Format(time.RFC3339Nano), part.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("insert message part: %w", err)
+		}
 	}
 	return nil
+}
+
+func listMessagePartsTx(ctx context.Context, tx *immediateTx, messageID string) ([]StoredPart, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id, message_id, idx, kind, payload_json, created_at, updated_at FROM parts WHERE message_id = ? ORDER BY idx ASC`, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	parts := make([]StoredPart, 0)
+	for rows.Next() {
+		var part StoredPart
+		var payload, created, updated string
+		if err := rows.Scan(&part.ID, &part.MessageID, &part.Sequence, &part.Kind, &payload, &created, &updated); err != nil {
+			return nil, err
+		}
+		part.PayloadJSON = []byte(payload)
+		part.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		part.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		parts = append(parts, part)
+	}
+	return parts, rows.Err()
 }
 
 // ListMessages returns all messages for the session ordered by Idx ASC,
@@ -1029,16 +1177,21 @@ func (s *SQLiteStore) UpsertPart(ctx context.Context, part StoredPart) error {
 // Returns ErrSessionNotFound if the session does not exist.
 // Returns an empty slice (not nil) when the session has no messages.
 func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 	var exists int
-	if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrSessionNotFound
 		}
 		return nil, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, idx, role, metadata_json, created_at, updated_at
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, session_id, idx, role, revision, state, metadata_json, created_at, updated_at
 		FROM messages
 		WHERE session_id = ?
 		ORDER BY idx ASC
@@ -1053,7 +1206,7 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 		var m StoredMessage
 		var metadataJSON sql.NullString
 		var createdAt, updatedAt string
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Idx, &m.Role, &metadataJSON, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Idx, &m.Role, &m.Revision, &m.State, &metadataJSON, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		m.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -1073,7 +1226,7 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 		return []StoredMessage{}, nil
 	}
 
-	partRows, err := s.db.QueryContext(ctx, `
+	partRows, err := tx.QueryContext(ctx, `
 		SELECT p.id, p.message_id, p.idx, p.kind, p.payload_json, p.created_at, p.updated_at
 		FROM parts p
 		JOIN messages m ON p.message_id = m.id
@@ -1107,6 +1260,9 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 		return nil, err
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return msgs, nil
 }
 
