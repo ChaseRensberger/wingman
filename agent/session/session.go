@@ -710,6 +710,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
+		SessionID:          s.id,
+		RunID:              runID,
+		AgentID:            agentID,
 		Client:             client,
 		Model:              model,
 		ModelInfo:          modelInfo,

@@ -1019,8 +1019,16 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 	r.emit(ToolExecutionStartEvent{Call: call})
 	start := time.Now()
 	inv := tool.Invocation{
-		Input:   call.Args,
-		WorkDir: r.cfg.WorkDir,
+		Input:       call.Args,
+		WorkDir:     r.cfg.WorkDir,
+		SessionID:   r.cfg.SessionID,
+		RunID:       r.cfg.RunID,
+		AgentID:     r.cfg.AgentID,
+		ToolUseID:   call.ToolUseID,
+		CallID:      call.ID,
+		MessageID:   call.MessageID,
+		PartID:      call.PartID,
+		ModelCallID: call.ModelCallID,
 		Progress: tool.NewProgress(func(delta string, metadata map[string]any) {
 			r.emit(ToolExecutionProgressEvent{
 				CallID:      call.ID,

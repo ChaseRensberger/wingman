@@ -18,21 +18,21 @@ const (
 	localDirName = ".wingman"
 )
 
-// Manifest declares one out-of-process plugin executable and the tools it
-// contributes. Commands are executed directly; shell expansion is not applied.
+// Manifest declares the bootstrap data for one out-of-process plugin executable.
+// Commands are executed directly; shell expansion is not applied.
 type Manifest struct {
-	ID      string     `json:"id"`
-	Name    string     `json:"name,omitempty"`
-	Command []string   `json:"command"`
-	Tools   []ToolSpec `json:"tools,omitempty"`
-	Path    string     `json:"-"`
+	ID      string         `json:"id"`
+	Name    string         `json:"name,omitempty"`
+	Command []string       `json:"command"`
+	Config  map[string]any `json:"config,omitempty"`
+	Path    string         `json:"-"`
 }
 
 // ToolSpec is the manifest shape for a plugin-contributed LLM tool.
 type ToolSpec struct {
 	Name            string                 `json:"name"`
 	Description     string                 `json:"description"`
-	InputSchema     tool.InputSchema       `json:"input_schema"`
+	InputSchema     map[string]any         `json:"input_schema"`
 	OutputSchema    map[string]any         `json:"output_schema,omitempty"`
 	Sequential      bool                   `json:"sequential,omitempty"`
 	DirectoryScoped bool                   `json:"directory_scoped,omitempty"`
@@ -119,16 +119,20 @@ func validateManifest(m Manifest) error {
 	if len(m.Command) == 0 || m.Command[0] == "" {
 		return fmt.Errorf("plugin command is required")
 	}
-	seen := make(map[string]struct{}, len(m.Tools))
-	for _, spec := range m.Tools {
+	return nil
+}
+
+func validateToolSpecs(specs []ToolSpec) error {
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
 		if spec.Name == "" {
 			return fmt.Errorf("tool name is required")
 		}
 		if spec.Description == "" {
 			return fmt.Errorf("tool %q description is required", spec.Name)
 		}
-		if spec.InputSchema.Type == "" {
-			return fmt.Errorf("tool %q input_schema.type is required", spec.Name)
+		if spec.InputSchema["type"] != "object" {
+			return fmt.Errorf("tool %q input_schema.type must be object", spec.Name)
 		}
 		if _, exists := seen[spec.Name]; exists {
 			return fmt.Errorf("duplicate tool name %q", spec.Name)
@@ -147,7 +151,8 @@ func (t *manifestTool) Name() string        { return t.spec.Name }
 func (t *manifestTool) Description() string { return t.spec.Description }
 func (t *manifestTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: t.spec.Name, Description: t.spec.Description, InputSchema: t.spec.InputSchema,
+		Name: t.spec.Name, Description: t.spec.Description,
+		InputSchema: tool.InputSchema{Type: "object"}, RawInputSchema: t.spec.InputSchema,
 		OutputSchema: t.spec.OutputSchema, Sequential: t.spec.Sequential,
 		DirectoryScoped: t.spec.DirectoryScoped, Permission: t.spec.Permission,
 	}

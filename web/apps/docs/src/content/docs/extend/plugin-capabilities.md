@@ -62,6 +62,19 @@ events while a timed-out callback remains blocked.
 
 ## RPC Plugin Support
 
-RPC plugins declare tools in a manifest and implement `tool.execute` over stdio JSON-RPC.
+RPC plugin manifests contain only bootstrap identity, command, and configuration.
+The process negotiates protocol version 1 through `plugin.initialize` and returns
+its authoritative identity, capabilities, and tool contributions. Tool calls can
+run concurrently and receive session, run, agent, call, message, part, model-call,
+and working-directory identity.
 
-The RPC protocol page documents the tool execution support exposed by the stock server.
+RPC plugins can negotiate request cancellation, progress notifications, and
+health checks. Wingman captures bounded stderr and structured diagnostics,
+tracks process exit and health, and performs bounded graceful shutdown. Reloads
+stage and validate a complete generation before atomic publication; a failed
+candidate leaves the previous generation active.
+
+Protocol version 1 activates tools only. Other contribution domains remain
+deferred until their daemon-owned generation APIs exist.
+
+The RPC protocol page defines the exact wire contract exposed by the stock server.

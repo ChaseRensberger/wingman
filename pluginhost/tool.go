@@ -7,9 +7,8 @@ import (
 )
 
 type rpcTool struct {
-	manager  *Manager
-	pluginID string
-	spec     ToolSpec
+	plugin *loadedPlugin
+	spec   ToolSpec
 }
 
 func (t *rpcTool) Name() string { return t.spec.Name }
@@ -20,7 +19,8 @@ func (t *rpcTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:            t.spec.Name,
 		Description:     t.spec.Description,
-		InputSchema:     t.spec.InputSchema,
+		InputSchema:     tool.InputSchema{Type: "object"},
+		RawInputSchema:  t.spec.InputSchema,
 		OutputSchema:    t.spec.OutputSchema,
 		Sequential:      t.spec.Sequential,
 		DirectoryScoped: t.spec.DirectoryScoped,
@@ -29,5 +29,5 @@ func (t *rpcTool) Definition() tool.Definition {
 }
 
 func (t *rpcTool) Execute(ctx context.Context, inv tool.Invocation) (tool.Result, error) {
-	return t.manager.executeToolResult(ctx, t.pluginID, t.spec.Name, inv.Input, inv.WorkDir)
+	return t.plugin.executeTool(ctx, t.spec.Name, inv)
 }

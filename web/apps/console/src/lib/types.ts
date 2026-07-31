@@ -63,6 +63,37 @@ export interface ProviderOAuthAttempt {
   error?: string;
 }
 
+export interface PluginDiagnostic {
+  source: string;
+  level?: string;
+  message: string;
+  fields?: Record<string, unknown>;
+}
+
+export interface PluginStatus {
+  id: string;
+  name?: string;
+  path: string;
+  tools?: string[];
+  running: boolean;
+  error?: string;
+  protocol_version?: number;
+  plugin_version?: string;
+  capabilities?: string[];
+  status: "running" | "degraded" | "failed" | "stopped";
+  pid?: number;
+  started_at?: string;
+  exited_at?: string;
+  last_health_at?: string;
+  health_message?: string;
+  diagnostics?: PluginDiagnostic[];
+}
+
+export interface PluginsResponse {
+  plugins: PluginStatus[];
+  errors?: Array<{ path: string; error: string }>;
+}
+
 export interface Session {
   id: string;
   version: number;

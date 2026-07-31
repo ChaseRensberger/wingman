@@ -15,7 +15,7 @@ import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type { MCPResponse, MCPServer, ToolCatalogItem, ToolsResponse } from "@/lib/types";
+import type { MCPResponse, MCPServer, PluginsResponse, PluginStatus, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 
 export const Route = createFileRoute("/tools")({
   component: ToolsPage,
@@ -24,17 +24,23 @@ export const Route = createFileRoute("/tools")({
 function ToolsPage() {
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [servers, setServers] = useState<MCPServer[]>([]);
+  const [plugins, setPlugins] = useState<PluginStatus[]>([]);
+  const [pluginErrors, setPluginErrors] = useState<PluginsResponse["errors"]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [reloadingPlugins, setReloadingPlugins] = useState(false);
 
   async function load() {
     try {
-      const [toolData, mcpData] = await Promise.all([
+      const [toolData, mcpData, pluginData] = await Promise.all([
         wfetch("/tools") as Promise<ToolsResponse>,
         wfetch("/mcp") as Promise<MCPResponse>,
+        wfetch("/plugins/") as Promise<PluginsResponse>,
       ]);
       setTools(toolData.tools ?? []);
       setServers(mcpData.servers ?? []);
+      setPlugins(pluginData.plugins ?? []);
+      setPluginErrors(pluginData.errors ?? []);
     } finally {
       setLoading(false);
     }
@@ -56,6 +62,20 @@ function ToolsPage() {
     }
   }
 
+  async function reloadPlugins() {
+    setReloadingPlugins(true);
+    try {
+      const data = (await wfetch("/plugins/reload", { method: "POST" })) as PluginsResponse;
+      setPlugins(data.plugins ?? []);
+      setPluginErrors(data.errors ?? []);
+      await load();
+    } catch (err) {
+      showErrorToast(err);
+    } finally {
+      setReloadingPlugins(false);
+    }
+  }
+
   const grouped = useMemo(() => {
     const groups = new Map<string, ToolCatalogItem[]>();
     for (const tool of tools) {
@@ -73,6 +93,57 @@ function ToolsPage() {
           Tools available to agents, grouped by native Wingman tools, external plugins, and MCP servers.
         </p>
       </div>
+
+      <section className="mb-6 rounded-xl border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">RPC plugins</h2>
+            <p className="text-xs text-muted-foreground">Supervised external plugin processes and negotiated capabilities.</p>
+          </div>
+          <Button size="sm" variant="outline" disabled={reloadingPlugins} onClick={reloadPlugins}>
+            {reloadingPlugins ? "Reloading..." : "Reload"}
+          </Button>
+        </div>
+        {pluginErrors?.map((item) => (
+          <div key={`${item.path}:${item.error}`} className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+            <span className="font-mono">{item.path}</span>: {item.error}
+          </div>
+        ))}
+        {plugins.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">No RPC plugins loaded.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plugin</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Process</TableHead>
+                <TableHead>Capabilities</TableHead>
+                <TableHead>Tools</TableHead>
+                <TableHead>Health / diagnostics</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {plugins.map((plugin) => (
+                <TableRow key={plugin.id}>
+                  <TableCell>
+                    <div className="font-medium">{plugin.name || plugin.id}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{plugin.id}</div>
+                  </TableCell>
+                  <TableCell><Badge variant={pluginStatusVariant(plugin.status)}>{plugin.status}</Badge></TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    <div>{plugin.pid ? `PID ${plugin.pid}` : "No process"}</div>
+                    <div>{plugin.plugin_version ? `v${plugin.plugin_version}` : "Unversioned"}, protocol {plugin.protocol_version ?? "-"}</div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{plugin.capabilities?.join(", ") || "None"}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{plugin.tools?.join(", ") || "None"}</TableCell>
+                  <TableCell className="max-w-sm text-xs text-muted-foreground">{pluginDiagnostic(plugin)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
 
       {servers.length > 0 && (
         <section className="mb-6 rounded-xl border bg-card p-4">
@@ -199,4 +270,17 @@ function traitSummary(tool: ToolCatalogItem) {
     tool.permission?.action ? `permission:${tool.permission.action}` : null,
   ].filter(Boolean);
   return traits.join(", ");
+}
+
+function pluginStatusVariant(status: PluginStatus["status"]) {
+  if (status === "running") return "default" as const;
+  if (status === "failed") return "destructive" as const;
+  return "outline" as const;
+}
+
+function pluginDiagnostic(plugin: PluginStatus) {
+  if (plugin.error) return plugin.error;
+  const latest = plugin.diagnostics?.at(-1);
+  if (latest) return `${latest.source}: ${latest.message}`;
+  return plugin.health_message || "-";
 }

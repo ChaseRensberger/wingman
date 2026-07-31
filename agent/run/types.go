@@ -52,6 +52,12 @@ import (
 // Config carries everything the loop needs to run. All fields except
 // Client, Model, and Messages have sensible zero-value defaults.
 type Config struct {
+	// SessionID, RunID, and AgentID identify the owning execution for tools and
+	// external extension processes. They may be empty for direct SDK runs.
+	SessionID string
+	RunID     string
+	AgentID   string
+
 	// Client streams provider requests. Required.
 	Client models.Client
 

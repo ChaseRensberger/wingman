@@ -762,7 +762,9 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 		opts = append(opts, session.WithRunID(runID))
 	}
 	if s.plugins != nil {
-		s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir)
+		if err := s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir); err != nil {
+			return nil, fmt.Errorf("load project plugins: %w", err)
+		}
 	}
 	tools, err := s.resolveTools(stored.Tools)
 	if err != nil {

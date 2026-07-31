@@ -76,6 +76,24 @@ func TestExecuteOneRejectsMissingStructuredResult(t *testing.T) {
 	}
 }
 
+func TestExecuteOnePassesInvocationIdentity(t *testing.T) {
+	var got tool.Invocation
+	call := ToolCall{
+		ID: "call_1", ToolUseID: "tlu_1", MessageID: "msg_1", PartID: "prt_1", ModelCallID: "mdl_1",
+		Name: "identity", Args: map[string]any{}, Tool: tool.NewFuncTool("identity", "", tool.Definition{Name: "identity", InputSchema: tool.InputSchema{Type: "object"}}, func(_ context.Context, inv tool.Invocation) (tool.Result, error) {
+			got = inv
+			return tool.Result{}, nil
+		}),
+	}
+	r := &runner{cfg: Config{SessionID: "ses_1", RunID: "run_1", AgentID: "agt_1"}, eventCh: make(chan Event, 2)}
+	if _, err := r.executeOne(context.Background(), call); err != nil {
+		t.Fatal(err)
+	}
+	if got.SessionID != "ses_1" || got.RunID != "run_1" || got.AgentID != "agt_1" || got.ToolUseID != "tlu_1" || got.CallID != "call_1" || got.MessageID != "msg_1" || got.PartID != "prt_1" || got.ModelCallID != "mdl_1" {
+		t.Fatalf("invocation identity = %#v", got)
+	}
+}
+
 type noDispatchClient struct{}
 
 func (noDispatchClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {

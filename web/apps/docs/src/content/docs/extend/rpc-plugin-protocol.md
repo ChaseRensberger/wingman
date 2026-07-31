@@ -7,210 +7,315 @@ order: 1003
 
 # RPC Plugin Protocol
 
-RPC plugins are external executables started by Wingman. They are discovered from global plugin directories and communicate with Wingman over newline-delimited JSON-RPC on stdio.
+RPC plugins are external executables that Wingman supervises. They exchange
+newline-delimited JSON-RPC 2.0 messages with Wingman over stdin and stdout.
+Protocol version 1 supports tool contributions.
 
-RPC plugins are the right fit when you want the stock `wingman serve` binary to load an out-of-process plugin from disk.
+Use RPC plugins when the stock `wingman serve` binary must load a polyglot,
+out-of-process extension. RPC isolates Wingman from plugin crashes. It is not an
+OS security sandbox: the plugin runs with the same operating-system permissions
+as Wingman.
 
 ## Discovery
 
-Wingman always checks the default global plugin directory:
+Wingman loads global plugins from:
 
 ```text
 ~/.config/wingman/plugins/
 ```
 
-Add more global plugin directories with config or CLI flags:
+Add global directories with configuration or CLI flags:
 
 ```jsonc
 {
   "plugins": {
-    "dirs": ["~/wingman-plugins"]
+    "dirs": ["/home/me/wingman-plugins"]
   }
 }
 ```
 
 ```bash
-wingman serve --plugin-dir ~/wingman-plugins
+wingman serve --plugin-dir /home/me/wingman-plugins
 ```
 
-Disable external plugin loading with:
+For a session with a working directory, Wingman also loads manifests from
+`<work_dir>/.wingman/plugins/`. A failed project-plugin generation prevents that
+session from starting and leaves the previous plugin generation active.
 
-```bash
-wingman serve --no-plugins
-```
+Disable external plugins with `wingman serve --no-plugins`.
 
-## Manifest
+## Bootstrap Manifest
 
-A plugin is declared by a `wingman-plugin.json` file. Files ending in `.plugin.json` are also loaded.
+Name a manifest `wingman-plugin.json` or use the suffix `.plugin.json`.
 
 ```json
 {
   "id": "example.greet",
   "name": "Greeting Plugin",
   "command": ["node", "/absolute/path/to/greet-plugin.js"],
-  "tools": [
-    {
-      "name": "greet",
-      "description": "Greet someone by name",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Name to greet"
-          }
-        },
-        "required": ["name"]
-      }
-    }
-  ]
+  "config": {
+    "language": "en"
+  }
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
-| `id` | string | yes | Stable plugin identifier. |
-| `name` | string | no | Human-readable plugin name. |
-| `command` | string array | yes | Executable and arguments. Shell expansion is not applied. |
-| `tools` | array | no | Tool declarations contributed by this plugin. |
+| `id` | string | yes | Stable plugin identifier. The initialized process must return this exact ID. |
+| `name` | string | no | Bootstrap display name. Initialized process metadata is authoritative. |
+| `command` | string array | yes | Executable and arguments. Wingman does not use shell expansion. |
+| `config` | object | no | Plugin-specific configuration sent during initialization. |
 
-## Tool Schema
+The manifest starts the process only. Tools and capabilities come from the
+initialization result, not the manifest.
 
-Tool input schemas use Wingman's JSON Schema subset:
+## Initialization
 
-- Object-shaped inputs.
-- Property `type`.
-- Optional property `description`.
-- Optional property `enum`.
-- Optional top-level `required`.
-
-Each tool may also declare:
-
-| Field | Type | Description |
-|---|---:|---|
-| `output_schema` | JSON Schema object | Required shape of a successful result's `structured` value. |
-| `sequential` | boolean | Run a batch sequentially when it contains this tool. |
-| `directory_scoped` | boolean | Require the session to have a working directory. |
-| `permission` | object | Permission `action` and optional input `resource_fields`. |
-
-Manifest tool names must be unique and cannot collide with any other effective
-daemon tool. Input and output schemas are compiled during catalog construction.
-
-## `tool.execute`
-
-Wingman calls `tool.execute` when the model invokes a plugin tool.
-
-Request:
+The first host request is `plugin.initialize`:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
-  "method": "tool.execute",
+  "method": "plugin.initialize",
   "params": {
-    "tool": "greet",
-    "params": { "name": "Chase" },
-    "work_dir": "/home/chase/project"
+    "host_name": "Wingman",
+    "host_version": "v0.1.0",
+    "supported_protocol_versions": [1],
+    "supported_contribution_kinds": ["tools"],
+    "plugin": {
+      "id": "example.greet",
+      "name": "Greeting Plugin",
+      "config": {
+        "language": "en"
+      }
+    }
   }
 }
 ```
 
-Response:
+The plugin selects one offered protocol version and returns its authoritative
+identity, capabilities, and contributions:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
+    "protocol_version": 1,
+    "plugin": {
+      "id": "example.greet",
+      "name": "Greeting Plugin",
+      "version": "1.0.0"
+    },
+    "capabilities": ["cancellation", "progress", "health"],
+    "contributions": {
+      "tools": [
+        {
+          "name": "greet",
+          "description": "Greet someone by name",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Wingman rejects the complete candidate generation if initialization fails, the
+protocol or plugin ID does not match, a capability is unsupported, a schema is
+invalid, or contribution names collide.
+
+## Capabilities
+
+| Capability | Plugin behavior |
+|---|---|
+| `cancellation` | Handle `$/cancelRequest` notifications. |
+| `progress` | Send `tool.progress` notifications for active tool requests. |
+| `health` | Implement `plugin.health`. Initialization includes a required health check. |
+
+Do not return capabilities that the plugin does not implement. Protocol version
+1 rejects unknown capabilities.
+
+## Tool Contributions
+
+Every tool requires `name`, `description`, and an object-shaped
+`input_schema`. Input and output values use JSON Schema. Wingman compiles both
+schemas before publishing the generation.
+
+| Field | Type | Description |
+|---|---:|---|
+| `output_schema` | JSON Schema object | Required shape of a successful result's `structured` value. |
+| `sequential` | boolean | Run a model-request batch sequentially when it contains this tool. |
+| `directory_scoped` | boolean | Require the session to have a working directory. |
+| `permission` | object | Permission `action` and optional input `resource_fields`. |
+
+## Tool Execution
+
+Wingman can send concurrent `tool.execute` requests to one plugin process.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tool.execute",
+  "params": {
+    "tool": "greet",
+    "input": { "name": "Chase" },
+    "context": {
+      "session_id": "ses_123",
+      "run_id": "run_123",
+      "agent_id": "agt_123",
+      "tool_use_id": "tlu_123",
+      "call_id": "call_123",
+      "message_id": "msg_123",
+      "part_id": "prt_123",
+      "model_call_id": "mdl_123",
+      "work_dir": "/home/chase/project"
+    }
+  }
+}
+```
+
+Return model-facing text separately from structured content and client metadata:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
     "text": "Hello, Chase",
     "structured": { "greeting": "Hello, Chase" },
-    "metadata": {
-      "source": "greet-plugin"
-    }
+    "metadata": { "language": "en" }
   }
 }
 ```
 
 | Result field | Type | Required | Description |
 |---|---:|---:|---|
-| `text` | string | yes | Model-facing tool output. This is sent back to the provider in the next tool-result message. |
-| `structured` | any JSON value | when `output_schema` is declared | Client-neutral structured content. Wingman validates it before completing the tool use. |
-| `metadata` | object | no | Client-facing data persisted with the tool result part. Use it for render hints, identifiers, counts, and similar structured data. |
+| `text` | string | no | Model-facing tool output. |
+| `structured` | any JSON value | when `output_schema` is declared | Structured result validated by Wingman. |
+| `metadata` | object | no | Client-facing data persisted with the result. |
 
-Do not put model instructions in `metadata`; providers do not receive it as tool output.
+Do not put model instructions in `metadata`. Providers do not receive metadata
+as tool output.
 
-Error response:
+Return JSON-RPC errors for failed calls:
 
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 1,
+  "id": 2,
   "error": {
-    "message": "missing name"
+    "code": -32602,
+    "message": "name is required"
   }
 }
 ```
 
-## Minimal Node Plugin
+## Progress And Cancellation
 
-```js
-#!/usr/bin/env node
-
-process.stdin.setEncoding("utf8")
-
-let buffer = ""
-process.stdin.on("data", (chunk) => {
-  buffer += chunk
-  for (;;) {
-    const idx = buffer.indexOf("\n")
-    if (idx < 0) return
-    const line = buffer.slice(0, idx).trim()
-    buffer = buffer.slice(idx + 1)
-    if (line) handle(JSON.parse(line))
-  }
-})
-
-function handle(req) {
-  if (req.method !== "tool.execute" || req.params.tool !== "greet") {
-    reply(req.id, null, { message: "unknown method or tool" })
-    return
-  }
-  reply(req.id, { text: `Hello, ${req.params.params.name}` })
-}
-
-function reply(id, result, error) {
-  const body = error
-    ? { jsonrpc: "2.0", id, error }
-    : { jsonrpc: "2.0", id, result }
-  process.stdout.write(`${JSON.stringify(body)}\n`)
-}
-```
-
-## Use The Tool
-
-Plugin tools are selected the same way as built-in tools: include the tool name in an agent's `tools` allow-list.
+With the `progress` capability, report progress for the active request ID:
 
 ```json
 {
-  "name": "Greeter",
-  "instructions": "Use greet when the user asks for a greeting.",
-  "model_ref": "anthropic/claude-sonnet-5",
-  "tools": ["greet"]
+  "jsonrpc": "2.0",
+  "method": "tool.progress",
+  "params": {
+    "request_id": 2,
+    "output_delta": "Looking up greeting preferences...",
+    "metadata": { "stage": "lookup" }
+  }
 }
 ```
 
-## Inspect Loaded Plugins
+With the `cancellation` capability, Wingman sends this notification when the
+request context ends:
 
-List loaded plugins and non-fatal load errors:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "$/cancelRequest",
+  "params": { "id": 2 }
+}
+```
+
+Cancel only that request. Keep the plugin process and other requests running.
+
+## Health And Diagnostics
+
+With the `health` capability, implement `plugin.health`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "plugin.health"
+}
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "status": "ok",
+    "message": "ready"
+  }
+}
+```
+
+After initialization, a failed health check marks the plugin as degraded. It
+does not immediately remove the plugin's tools.
+
+Write human-readable diagnostics to stderr, or send structured `plugin.log`
+notifications:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "plugin.log",
+  "params": {
+    "level": "info",
+    "message": "cache refreshed",
+    "fields": { "entries": 42 }
+  }
+}
+```
+
+Wingman keeps a bounded recent diagnostic buffer. Stdout is reserved for JSON-RPC.
+
+## Shutdown And Replacement
+
+Before retirement, Wingman stops new generation-bound calls and waits for active
+calls to drain within a bounded timeout. It then sends `plugin.shutdown`, closes
+stdin, and waits for the process to exit. Wingman kills the process if the
+shutdown deadline expires.
+
+Reload builds and validates a complete candidate generation before publication.
+If candidate startup or validation fails, Wingman keeps the previous generation
+active. After a successful atomic swap, it retires the previous generation.
+
+## Inspect Plugins
+
+List status, negotiated capabilities, health, process data, contributions, and
+bounded diagnostics:
 
 ```bash
 curl http://127.0.0.1:2323/plugins/
 ```
 
-Reload global plugins:
+Reload global and accepted project plugin directories:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload
 ```
 
-External plugins run with the same permissions as the Wingman process. Install plugins only from sources you trust.
+Install plugins only from sources you trust.

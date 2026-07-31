@@ -88,9 +88,17 @@ func cloneProgressMetadata(metadata map[string]any) map[string]any {
 
 // Invocation carries everything a tool needs to execute a single call.
 type Invocation struct {
-	Input    map[string]any
-	WorkDir  string
-	Progress *Progress
+	Input       map[string]any
+	WorkDir     string
+	SessionID   string
+	RunID       string
+	AgentID     string
+	ToolUseID   string
+	CallID      string
+	MessageID   string
+	PartID      string
+	ModelCallID string
+	Progress    *Progress
 }
 
 // SequentialTool is an optional interface a Tool can implement to force
