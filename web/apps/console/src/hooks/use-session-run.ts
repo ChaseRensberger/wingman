@@ -2,9 +2,9 @@ import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetSta
 
 import { wfetch } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
-import { readSSE, type SessionEvent } from "@/lib/session-stream";
+import { parseSessionEvent, readSSE, type SessionEvent, type SessionEventEnvelope } from "@/lib/session-stream";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
-import type { Message, PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
+import type { PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 export type SessionRunRequest = Omit<FailedRun, "error">;
@@ -27,7 +27,7 @@ export function isTerminalSessionRunEvent(type: string): boolean {
 	return terminalRunEvents.has(type);
 }
 
-export function sessionRunEventError(data: Record<string, unknown>): string {
+export function sessionRunEventError(data: { error_message?: string; error?: string; error_type?: string }): string {
 	return typeof data.error_message === "string" ? data.error_message : typeof data.error === "string" ? data.error : typeof data.error_type === "string" ? data.error_type : "Run failed";
 }
 
@@ -101,7 +101,7 @@ type Options = {
 async function latestSessionEventSeq(sessionId: string): Promise<number> {
 	let after = 0;
 	for (;;) {
-		const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEvent[]; has_more?: boolean };
+		const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEventEnvelope[]; has_more?: boolean };
 		const events = page.data ?? [];
 		if (events.length === 0) return after;
 		after = events.at(-1)?.cursor?.seq ?? after;
@@ -196,46 +196,44 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 	function applySessionEvent(ev: SessionEvent): string | undefined {
 		if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) lastEventSeqRef.current = ev.cursor.seq;
-		const data = ev.data ?? {};
-		if ((ev.type === "session.permission.requested" || ev.type === "session.permission.resolved") && isPermissionRequest(data)) {
-			const request = data;
+		if ((ev.type === "session.permission.requested" || ev.type === "session.permission.resolved") && isPermissionRequest(ev.data)) {
+			const request = ev.data;
 			setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, ev.type === "session.permission.requested" ? { type: "requested", request } : { type: "resolved", request }));
 			return;
 		}
-		if (activeRunRef.current?.runId && typeof data.run_id === "string" && data.run_id !== activeRunRef.current.runId) return;
+		if ("run_id" in ev.data && activeRunRef.current?.runId && ev.data.run_id !== activeRunRef.current.runId) return;
 		if (ev.type === "session.tool.input.delta") {
-			const callID = typeof data.call_id === "string" ? data.call_id : "";
-			const delta = typeof data.delta === "string" ? data.delta : "";
+			const callID = ev.data.call_id ?? "";
+			const delta = ev.data.delta;
 			if (!callID || !delta) return;
-			setToolActivities((previous) => reduceToolActivity(previous, { type: "input", ...data, delta }));
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "input", ...ev.data, delta }));
 			return;
 		}
 		if (ev.type === "session.tool.progress") {
-			setToolActivities((previous) => reduceToolActivity(previous, { type: "progress", ...data }));
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "progress", ...ev.data }));
 			return;
 		}
 		if (ev.type === "session.tool.updated") {
-			setToolActivities((previous) => reduceToolActivity(previous, { type: "updated", ...data }));
+			setToolActivities((previous) => reduceToolActivity(previous, { type: "updated", ...ev.data }));
 			return;
 		}
 		if (ev.type === "session.text.delta") {
-			const delta = typeof data.delta === "string" ? data.delta : "";
+			const delta = ev.data.delta;
 			if (delta) setStreamingText((previous) => previous + delta);
 			return;
 		}
 		if (ev.type === "session.reasoning.delta") {
-			const delta = typeof data.delta === "string" ? data.delta : "";
+			const delta = ev.data.delta;
 			if (delta) setStreamingReasoning((previous) => previous + delta);
 			return;
 		}
 		if (ev.type === "session.reasoning.completed") {
-			const text = typeof data.text === "string" ? data.text : "";
+			const text = ev.data.text;
 			if (text) setStreamingReasoning(text);
 			return;
 		}
 		if (ev.type === "session.message.created") {
-			const message = data.message as Message | undefined;
-			if (!message) return;
+			const message = ev.data.message;
 			setSession((previous) => {
 				if (!previous) return previous;
 				const index = message.id ? previous.history.findIndex((candidate) => candidate.id === message.id) : -1;
@@ -251,15 +249,15 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			}
 			return;
 		}
-		if (isTerminalSessionRunEvent(ev.type)) {
-			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
+		if (ev.type === "session.run.completed" || ev.type === "session.run.failed" || ev.type === "session.run.aborted") {
+			if (activeRunRef.current?.runId && ev.data.run_id !== activeRunRef.current.runId) return;
 			if (ev.type === "session.run.completed") {
-				const usage = data.usage as Usage | undefined;
+				const usage = ev.data.usage;
 				if (usage) setLatestRunUsage(usage);
 			}
 			if (activeRunRef.current) activeRunRef.current = { ...activeRunRef.current, completed: true };
 			setIsStreaming(false);
-			return ev.type === "session.run.completed" ? undefined : sessionRunEventError(data);
+			return ev.type === "session.run.completed" ? undefined : sessionRunEventError(ev.data);
 		}
 	}
 
@@ -272,14 +270,16 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		for await (const event of readSSE(response)) {
 			if (signal.aborted || activeRunRef.current?.sessionId !== id) return { resync: false, synchronized };
 			if (!event.event || event.event.startsWith(":")) continue;
-			const envelope = event.data as SessionEvent;
-			const control = sessionStreamControl(event.event) ?? sessionStreamControl(envelope.type);
+			const parsed = parseSessionEvent(event.data);
+			if (!parsed) continue;
+			const control = sessionStreamControl(event.event) ?? sessionStreamControl(parsed.event.type);
 			if (control === "synchronized") {
 				synchronized = true;
 				continue;
 			}
 			if (control === "resync_required") return { resync: true, synchronized };
-			const terminalError = applySessionEvent(envelope);
+			if (!parsed.known) continue;
+			const terminalError = applySessionEvent(parsed.event);
 			if (activeRunRef.current?.completed) return { resync: false, synchronized, terminalError };
 		}
 		return { resync: false, synchronized };

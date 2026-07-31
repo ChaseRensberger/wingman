@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
@@ -16,6 +18,14 @@ func apiAgent(value *store.Agent) api.Agent {
 		Tools: slices.Clone(value.Tools), Permissions: slices.Clone(value.Permissions),
 		ModelRef: value.ModelRef, Options: maps.Clone(value.Options), OutputSchema: maps.Clone(value.OutputSchema),
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+func storeAgent(value *api.AgentSpec) *store.Agent {
+	return &store.Agent{
+		ID: value.ID, Name: value.Name, Instructions: value.Instructions,
+		Tools: slices.Clone(value.Tools), Permissions: slices.Clone(value.Permissions),
+		ModelRef: value.ModelRef, Options: maps.Clone(value.Options), OutputSchema: maps.Clone(value.OutputSchema),
 	}
 }
 
@@ -106,4 +116,103 @@ func apiModelCalls(values []store.ModelCall) []api.ModelCall {
 		result[i] = apiModelCall(value)
 	}
 	return result
+}
+
+func apiSessionRun(value store.SessionRun) api.SessionRun {
+	return api.SessionRun{
+		ID: value.ID, SessionID: value.SessionID, RequestID: value.RequestID,
+		AdmittedVersion: value.AdmittedVersion, WorkDir: value.WorkDir, WorkspaceID: value.WorkspaceID,
+		ClientID: value.ClientID, Sequence: value.Sequence, Status: value.Status, Message: value.Message,
+		Agent: apiAgent(&value.Agent), ErrorType: value.ErrorType, ErrorMessage: value.ErrorMessage,
+		CreatedAt: value.CreatedAt, StartedAt: value.StartedAt, CompletedAt: value.CompletedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+func apiSessionRuns(values []store.SessionRun) []api.SessionRun {
+	result := make([]api.SessionRun, len(values))
+	for i, value := range values {
+		result[i] = apiSessionRun(value)
+	}
+	return result
+}
+
+func apiToolUse(value store.ToolUse) api.ToolUse {
+	return api.ToolUse{
+		ID: value.ID, SessionID: value.SessionID, RunID: value.RunID, ModelCallID: value.ModelCallID,
+		AssistantMessageID: value.AssistantMessageID, PartID: value.PartID, Step: value.Step, Ordinal: value.Ordinal,
+		CallID: value.CallID, Name: value.Name, Status: value.Status,
+		Input: append(json.RawMessage(nil), value.InputJSON...), Output: value.Output,
+		Structured: append(json.RawMessage(nil), value.StructuredJSON...), Metadata: append(json.RawMessage(nil), value.MetadataJSON...),
+		ErrorType: value.ErrorType, ErrorMessage: value.ErrorMessage, ProposedAt: value.ProposedAt,
+		AuthorizedAt: value.AuthorizedAt, StartedAt: value.StartedAt, CompletedAt: value.CompletedAt,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+func apiToolUses(values []store.ToolUse) []api.ToolUse {
+	result := make([]api.ToolUse, len(values))
+	for i, value := range values {
+		result[i] = apiToolUse(value)
+	}
+	return result
+}
+
+func apiPermissionRequest(value store.PermissionRequest) api.PermissionRequest {
+	return api.PermissionRequest{
+		ID: value.ID, SessionID: value.SessionID, RunID: value.RunID, ToolUseID: value.ToolUseID,
+		CallID: value.CallID, Action: value.Action, Resources: slices.Clone(value.Resources), Status: value.Status,
+		Response: value.Response, ErrorType: value.ErrorType, ErrorMessage: value.ErrorMessage,
+		CreatedAt: value.CreatedAt, ResolvedAt: value.ResolvedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+func apiPermissionRequests(values []store.PermissionRequest) []api.PermissionRequest {
+	result := make([]api.PermissionRequest, len(values))
+	for i, value := range values {
+		result[i] = apiPermissionRequest(value)
+	}
+	return result
+}
+
+func apiPermissionGrant(value store.PermissionGrant) api.PermissionGrant {
+	return api.PermissionGrant{ID: value.ID, SessionID: value.SessionID, Action: value.Action, Resource: value.Resource, CreatedAt: value.CreatedAt}
+}
+
+func apiPermissionGrants(values []store.PermissionGrant) []api.PermissionGrant {
+	result := make([]api.PermissionGrant, len(values))
+	for i, value := range values {
+		result[i] = apiPermissionGrant(value)
+	}
+	return result
+}
+
+func apiSessionEvent(value store.SessionEvent) (api.SessionEvent, error) {
+	raw := value.Data
+	if len(raw) == 0 {
+		raw = value.DataJSON
+	}
+	data, err := api.DecodeSessionEventData(api.SessionEventType(value.Type), raw)
+	if err != nil {
+		return api.SessionEvent{}, err
+	}
+	result := api.SessionEvent{ID: value.ID, Type: api.SessionEventType(value.Type), Data: data}
+	if !value.Time.IsZero() {
+		result.Time = value.Time.UTC().Format(time.RFC3339Nano)
+	}
+	if value.Seq > 0 && value.SessionID != "" {
+		result.Cursor = &api.SessionEventCursor{SessionID: value.SessionID, Seq: value.Seq}
+	}
+	return result, nil
+}
+
+func apiSessionEvents(values []store.SessionEvent) ([]api.SessionEvent, error) {
+	result := make([]api.SessionEvent, len(values))
+	for i, value := range values {
+		event, err := apiSessionEvent(value)
+		if err != nil {
+			return nil, fmt.Errorf("event %s: %w", value.ID, err)
+		}
+		result[i] = event
+	}
+	return result, nil
 }

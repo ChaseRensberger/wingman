@@ -114,6 +114,8 @@ Field meanings:
 | `data` | Event-specific payload. |
 
 For live-only activity without `cursor`, the SSE `id` is the event ID.
+Treat `type` as the payload discriminator. Ignore event types that the client
+does not recognize; do not interpret an unknown payload as a known event.
 
 ## Stream Controls
 
@@ -262,7 +264,12 @@ later queued runs for the session.
 
 ## One-Shot `/run` Stream
 
-`POST /run` returns a separate, non-persistent SSE stream. It forwards the raw session stream event names, including `stream_part`; its JSON `data:` value is the raw stream envelope with `type`, `version`, and event-specific `data`. These events are not rewritten into `session.*` events and cannot be replayed.
+`POST /run` returns a separate, non-persistent SSE stream. It uses the session
+stream event names, including `stream_part`, but the HTTP boundary converts each
+payload to the public lower-case JSON contract. Its JSON `data:` value is an
+envelope with `type`, `version`, and event-specific `data`. These events are not
+rewritten into `session.*` events and cannot be replayed. Treat `type` as a
+discriminator and ignore unknown event types.
 
 On success, `/run` sends a terminal `done` event containing usage and step
 information, then closes. If setup or streaming fails, it sends a terminal

@@ -123,10 +123,13 @@ func TestMethodNotAllowedIncludesAllowHeader(t *testing.T) {
 }
 
 func TestRunStreamErrorsUseCanonicalEnvelope(t *testing.T) {
-	event := canonicalRunStreamEvent(session.StreamEvent{
+	event, err := canonicalRunStreamEvent(session.StreamEvent{
 		Type: "error", Version: session.EnvelopeVersion, Data: map[string]string{"error": "provider failed"},
 	}, "req_test")
-	failure, ok := event.Data.(api.Error)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure, ok := event.Data.(api.RunErrorEventData)
 	if !ok {
 		t.Fatalf("error data type = %T", event.Data)
 	}

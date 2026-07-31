@@ -150,7 +150,7 @@ func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, uses)
+	writeJSON(w, http.StatusOK, apiToolUses(uses))
 }
 
 func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models.Message, error) {
@@ -321,39 +321,6 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.StatusResponse{Status: "deleted"})
 }
 
-type messageOutputSchema struct {
-	Name   string         `json:"name,omitempty"`
-	Schema map[string]any `json:"schema"`
-}
-
-type MessageSessionRequest struct {
-	RequestID    string               `json:"request_id,omitempty"`
-	AgentID      string               `json:"agent_id"`
-	ModelRef     string               `json:"model_ref,omitempty"`
-	ModelRoute   *models.ModelInfo    `json:"model_route,omitempty"`
-	Message      string               `json:"message"`
-	OutputSchema *messageOutputSchema `json:"output_schema,omitempty"`
-}
-
-type MessageSessionResponse struct {
-	RunID          string `json:"run_id"`
-	Status         string `json:"status"`
-	SessionVersion int64  `json:"session_version"`
-}
-
-// RunRequest is the body for POST /run. In ephemeral mode agent is
-// required and agent_id is rejected. In normal mode either agent_id
-// (looked up from the store) or agent (inline spec) is accepted.
-type RunRequest struct {
-	AgentID          string               `json:"agent_id,omitempty"`
-	Agent            *store.Agent         `json:"agent,omitempty"`
-	ModelRef         string               `json:"model_ref,omitempty"`
-	ModelRoute       *models.ModelInfo    `json:"model_route,omitempty"`
-	Message          string               `json:"message"`
-	OutputSchema     *messageOutputSchema `json:"output_schema,omitempty"`
-	WorkingDirectory string               `json:"working_directory,omitempty"`
-}
-
 func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.writeError(w, http.StatusNotImplemented, "persistence is disabled; use POST /run for ephemeral runs")
@@ -376,7 +343,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req MessageSessionRequest
+	var req api.MessageSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -453,16 +420,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	if admission.Run.Status == store.SessionRunStatusQueued {
 		s.runs.wake(id)
 	}
-	writeJSON(w, http.StatusAccepted, MessageSessionResponse{RunID: admission.Run.ID, Status: admission.Run.Status, SessionVersion: admission.SessionVersion})
-}
-
-// AbortSessionResponse reports how many in-flight runs were cancelled.
-// Aborted is 0 when no run was active for the session; the request
-// still returns 200 because cancellation is idempotent — clients
-// shouldn't have to coordinate to issue an abort.
-type AbortSessionResponse struct {
-	SessionID string `json:"session_id"`
-	Aborted   int    `json:"aborted"`
+	writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: admission.Run.ID, Status: admission.Run.Status, SessionVersion: admission.SessionVersion})
 }
 
 func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
@@ -475,7 +433,7 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := s.runs.abort(id)
-	writeJSON(w, http.StatusOK, AbortSessionResponse{SessionID: id, Aborted: n})
+	writeJSON(w, http.StatusOK, api.AbortSessionResponse{SessionID: id, Aborted: n})
 }
 
 func (s *Server) handleListSessionRuns(w http.ResponseWriter, r *http.Request) {
@@ -492,10 +450,7 @@ func (s *Server) handleListSessionRuns(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if runs == nil {
-		runs = []store.SessionRun{}
-	}
-	writeJSON(w, http.StatusOK, runs)
+	writeJSON(w, http.StatusOK, apiSessionRuns(runs))
 }
 
 func (s *Server) handleGetSessionRun(w http.ResponseWriter, r *http.Request) {
@@ -516,7 +471,7 @@ func (s *Server) handleGetSessionRun(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, run)
+	writeJSON(w, http.StatusOK, apiSessionRun(*run))
 }
 
 func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
@@ -551,13 +506,13 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 		if transition.Changed {
 			s.events.publish(transition.Event)
 		}
-		writeJSON(w, http.StatusOK, transition.Run)
+		writeJSON(w, http.StatusOK, apiSessionRun(transition.Run))
 	case store.SessionRunStatusRunning:
 		if s.runs.abort(id) == 0 {
 			s.writeError(w, http.StatusConflict, "run is not active on this server")
 			return
 		}
-		writeJSON(w, http.StatusAccepted, run)
+		writeJSON(w, http.StatusAccepted, apiSessionRun(*run))
 	default:
 		s.writeError(w, http.StatusConflict, "run is already terminal")
 	}
@@ -568,7 +523,7 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 // mode), runs one turn, and streams events back via SSE. No session is
 // persisted.
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
-	var req RunRequest
+	var req api.RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -592,7 +547,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		}
 		storedAgent = a
 	} else if req.Agent != nil {
-		storedAgent = req.Agent
+		storedAgent = storeAgent(req.Agent)
 	} else {
 		s.writeError(w, http.StatusBadRequest, "agent or agent_id is required")
 		return
@@ -666,14 +621,17 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for stream.Next() {
-		event := canonicalRunStreamEvent(stream.Event(), w.Header().Get("X-Request-ID"))
+		event, err := canonicalRunStreamEvent(stream.Event(), w.Header().Get("X-Request-ID"))
+		if err != nil {
+			continue
+		}
 		data, err := json.Marshal(event)
 		if err != nil {
 			continue
 		}
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 		flusher.Flush()
-		if event.Type == "error" {
+		if event.Type == api.RunStreamEventError {
 			return
 		}
 	}
@@ -684,36 +642,112 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := stream.Result()
-	doneEnvelope := session.StreamEvent{
-		Type:    "done",
+	doneEnvelope := api.RunStreamEvent{
+		Type:    api.RunStreamEventDone,
 		Version: session.EnvelopeVersion,
-		Data: map[string]any{
-			"usage": result.Usage,
-			"steps": result.Steps,
-		},
+		Data:    api.RunDoneEventData{Usage: result.Usage, Steps: result.Steps},
 	}
 	doneData, _ := json.Marshal(doneEnvelope)
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 	flusher.Flush()
 }
 
-func canonicalRunStreamEvent(event session.StreamEvent, requestID string) session.StreamEvent {
-	if event.Type != "error" {
-		return event
+func canonicalRunStreamEvent(event session.StreamEvent, requestID string) (api.RunStreamEvent, error) {
+	result := api.RunStreamEvent{Type: api.RunStreamEventType(event.Type), Version: event.Version}
+	switch data := event.Data.(type) {
+	case run.IterationStartEvent:
+		result.Data = api.RunIterationStartEventData{Step: data.Step}
+	case run.IterationEndEvent:
+		result.Data = api.RunIterationEndEventData{Step: data.Step, Turn: apiRunTurn(data.Turn)}
+	case run.MessageEvent:
+		result.Data = api.RunMessageEventData{Step: data.Step, Message: data.Message}
+	case run.ToolUseProposedEvent:
+		result.Data = api.RunToolProposedEventData{Call: apiRunToolCall(data.Call)}
+	case run.ToolUseAuthorizedEvent:
+		result.Data = api.RunToolAuthorizedEventData{Call: apiRunToolCall(data.Call)}
+	case run.ToolExecutionStartEvent:
+		result.Data = api.RunToolStartEventData{Call: apiRunToolCall(data.Call)}
+	case run.ToolExecutionProgressEvent:
+		result.Data = api.RunToolProgressEventData{CallID: data.CallID, ToolUseID: data.ToolUseID, Name: data.Name, OutputDelta: data.OutputDelta, Metadata: data.Metadata}
+	case run.ToolExecutionEndEvent:
+		result.Data = api.RunToolEndEventData{Result: apiRunToolResult(data.Result)}
+	case run.StreamPartEvent:
+		part, err := models.MarshalStreamPart(data.Part)
+		if err != nil {
+			return api.RunStreamEvent{}, err
+		}
+		result.Data = api.RunStreamPartEventData{Step: data.Step, MessageID: data.MessageID, PartID: data.PartID, Revision: data.Revision, Part: part}
+	case run.ContextTransformedEvent:
+		result.Data = api.RunContextTransformedEventData{Step: data.Step, Phase: data.Phase, OriginalCount: data.OriginalCount, NewCount: data.NewCount, Head: data.Head}
+	case map[string]string:
+		message := data["error"]
+		if message == "" {
+			message = "run failed"
+		}
+		result.Data = api.RunErrorEventData{Code: api.ErrorCodeRunFailed, Message: message, RequestID: requestID}
+	case map[string]any:
+		if event.Type == string(api.RunStreamEventStructuredOutput) {
+			result.Data = api.RunStructuredOutputEventData{
+				Schema: stringValue(data["schema"]), RawJSON: stringValue(data["raw_json"]), Parsed: mapValue(data["parsed"]),
+			}
+		} else {
+			result.Data = api.UnknownRunStreamEventData{Value: data}
+		}
+	default:
+		result.Data = api.UnknownRunStreamEventData{Value: data}
 	}
-	message := "run failed"
-	if data, ok := event.Data.(map[string]string); ok && data["error"] != "" {
-		message = data["error"]
+	return result, nil
+}
+
+func apiRunTurn(value run.Turn) api.RunTurn {
+	results := make([]api.RunToolResult, len(value.Results))
+	for i, result := range value.Results {
+		results[i] = apiRunToolResult(result)
 	}
-	event.Data = api.Error{Code: api.ErrorCodeRunFailed, Message: message, RequestID: requestID}
-	return event
+	errorMessage := ""
+	if value.Failure != nil {
+		errorMessage = value.Failure.Error()
+	}
+	return api.RunTurn{
+		Step: value.Step, ModelCallID: value.ModelCallID, Attempt: value.Attempt,
+		ProviderRequestID: value.ProviderRequestID, Assistant: value.Assistant, Results: results,
+		Usage: value.Usage, StartedAt: value.StartedAt, CompletedAt: value.CompletedAt,
+		Trace: value.Trace, Error: errorMessage,
+	}
+}
+
+func apiRunToolCall(value run.ToolCall) api.RunToolCall {
+	return api.RunToolCall{
+		CallID: value.ID, ToolUseID: value.ToolUseID, MessageID: value.MessageID, PartID: value.PartID,
+		ModelCallID: value.ModelCallID, Step: value.Step, Ordinal: value.Ordinal,
+		ProposedAt: formatEventTime(value.ProposedAt), AuthorizedAt: formatEventTime(value.AuthorizedAt), StartedAt: formatEventTime(value.StartedAt),
+		Name: value.Name, Args: value.Args,
+	}
+}
+
+func apiRunToolResult(value run.ToolResult) api.RunToolResult {
+	return api.RunToolResult{
+		CallID: value.CallID, ToolUseID: value.ToolUseID, Status: string(value.Status), Name: value.Name,
+		Args: value.Args, Output: value.Output, Structured: value.Structured, Error: value.Error,
+		ErrorType: value.ErrorType, Metadata: value.Metadata, IsError: value.IsError, Duration: int64(value.Duration),
+	}
+}
+
+func stringValue(value any) string {
+	result, _ := value.(string)
+	return result
+}
+
+func mapValue(value any) map[string]any {
+	result, _ := value.(map[string]any)
+	return result
 }
 
 func writeRunStreamError(w http.ResponseWriter, flusher http.Flusher, err error) {
-	event := session.StreamEvent{
-		Type:    "error",
+	event := api.RunStreamEvent{
+		Type:    api.RunStreamEventError,
 		Version: session.EnvelopeVersion,
-		Data: api.Error{
+		Data: api.RunErrorEventData{
 			Code: api.ErrorCodeRunFailed, Message: err.Error(), RequestID: w.Header().Get("X-Request-ID"),
 		},
 	}

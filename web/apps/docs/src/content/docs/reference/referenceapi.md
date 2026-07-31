@@ -177,6 +177,10 @@ The response includes the canonical run ID, current run status, and aggregate
 version after admission. Read `/sessions/{id}/runs/{runID}` for authoritative
 status and `/sessions/{id}/events` for execution progress.
 
+Run, tool-use, permission-request, permission-grant, event-history, and abort
+responses are public API resources. Their JSON shape is independent of the
+database projection structs used to persist them.
+
 ### Create request
 
 ```json
@@ -484,7 +488,11 @@ Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-
 
 ## Ephemeral run endpoint
 
-`POST /run` creates an in-memory session, streams the run, and does not persist the session or its messages. Unlike persistent session SSE, it forwards the raw run stream (including `stream_part`) and ends with `done` on success or `error` on a terminal failure; it cannot be replayed.
+`POST /run` creates an in-memory session, streams the run, and does not persist
+the session or its messages. Unlike persistent session SSE, it uses the one-shot
+run event vocabulary (including `stream_part`) and ends with `done` on success
+or `error` on a terminal failure; it cannot be replayed. Event payload fields use
+the public lower-case JSON contract rather than internal Go field names.
 
 In normal persistent mode, pass either `agent_id` or an inline `agent`:
 

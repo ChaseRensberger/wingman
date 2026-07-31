@@ -57,6 +57,38 @@ func TestSessionSummaryAndDetailUsePublicDTOs(t *testing.T) {
 	}
 }
 
+func TestCanonicalRunStreamEventUsesPublicPayloadShape(t *testing.T) {
+	event, err := canonicalRunStreamEvent(session.StreamEvent{
+		Type: "context_transformed", Version: session.EnvelopeVersion,
+		Data: run.ContextTransformedEvent{Step: 2, Phase: "before_step", OriginalCount: 4, NewCount: 2},
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"Step"`) || !strings.Contains(string(encoded), `"original_count":4`) {
+		t.Fatalf("event = %s", encoded)
+	}
+
+	event, err = canonicalRunStreamEvent(session.StreamEvent{
+		Type: "stream_part", Version: session.EnvelopeVersion,
+		Data: run.StreamPartEvent{Step: 1, MessageID: "msg_1", Part: models.TextDeltaPart{Delta: "hi"}},
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"type":"text_delta"`) || !strings.Contains(string(encoded), `"delta":"hi"`) {
+		t.Fatalf("event = %s", encoded)
+	}
+}
+
 func TestCreateSessionCommitsAggregateEvent(t *testing.T) {
 	t.Parallel()
 
@@ -284,7 +316,7 @@ func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.
 	if requestCtx.Err() != context.Canceled {
 		t.Fatalf("request context error = %v, want canceled", requestCtx.Err())
 	}
-	var first MessageSessionResponse
+	var first api.MessageSessionResponse
 	if err := json.NewDecoder(response.Body).Decode(&first); err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +332,7 @@ func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.
 	if retryResponse.Code != http.StatusAccepted {
 		t.Fatalf("retry status = %d, want %d: %s", retryResponse.Code, http.StatusAccepted, retryResponse.Body.String())
 	}
-	var second MessageSessionResponse
+	var second api.MessageSessionResponse
 	if err := json.NewDecoder(retryResponse.Body).Decode(&second); err != nil {
 		t.Fatal(err)
 	}

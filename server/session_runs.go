@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -176,9 +177,9 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 
 	sess := &store.Session{ID: queued.SessionID, WorkDir: queued.WorkDir, WorkspaceID: queued.WorkspaceID, ClientID: queued.ClientID}
 	var err error
-	var schema *messageOutputSchema
+	var schema *api.OutputSchema
 	if len(queued.OutputSchemaJSON) > 0 {
-		schema = &messageOutputSchema{}
+		schema = &api.OutputSchema{}
 		err = json.Unmarshal(queued.OutputSchemaJSON, schema)
 	}
 	if err == nil {

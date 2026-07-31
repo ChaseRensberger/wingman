@@ -15,6 +15,17 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface AgentSpec {
+  id?: string;
+  name: string;
+  instructions?: string;
+  tools?: string[];
+  permissions?: Agent["permissions"];
+  model_ref?: string;
+  options?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -156,6 +167,40 @@ export interface PermissionRequest {
   created_at: string;
   resolved_at?: string;
   updated_at: string;
+}
+
+export interface PermissionGrant {
+  id: string;
+  session_id: string;
+  action: string;
+  resource: string;
+  created_at: string;
+}
+
+export interface ToolUse {
+  id: string;
+  session_id: string;
+  run_id?: string;
+  model_call_id?: string;
+  assistant_message_id?: string;
+  part_id?: string;
+  step: number;
+  ordinal: number;
+  call_id?: string;
+  name: string;
+  status: "proposed" | "authorized" | "started" | "completed" | "failed" | "interrupted" | "declined";
+  input?: Record<string, unknown>;
+  output?: string;
+  structured?: unknown;
+  metadata?: Record<string, unknown>;
+  error_type?: string;
+  error_message?: string;
+  proposed_at?: string;
+  authorized_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Workspace {

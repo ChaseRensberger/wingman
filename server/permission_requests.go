@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/agent/run"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -165,10 +166,6 @@ func permissionOutcome(request store.PermissionRequest) (run.PermissionResponse,
 	}
 }
 
-type permissionReplyRequest struct {
-	Response string `json:"response"`
-}
-
 func (s *Server) handleListPermissionRequests(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
@@ -183,10 +180,7 @@ func (s *Server) handleListPermissionRequests(w http.ResponseWriter, r *http.Req
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if requests == nil {
-		requests = []store.PermissionRequest{}
-	}
-	writeJSON(w, http.StatusOK, requests)
+	writeJSON(w, http.StatusOK, apiPermissionRequests(requests))
 }
 
 func (s *Server) handleListPermissionGrants(w http.ResponseWriter, r *http.Request) {
@@ -203,10 +197,7 @@ func (s *Server) handleListPermissionGrants(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if grants == nil {
-		grants = []store.PermissionGrant{}
-	}
-	writeJSON(w, http.StatusOK, grants)
+	writeJSON(w, http.StatusOK, apiPermissionGrants(grants))
 }
 
 func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +209,7 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 	if _, ok := s.authorizeSessionForRequest(w, r, sessionID); !ok {
 		return
 	}
-	var reply permissionReplyRequest
+	var reply api.PermissionReplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&reply); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -247,7 +238,7 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 	if !transition.Changed {
 		if transition.Request.Status == status && transition.Request.Response == reply.Response {
 			s.permissionRequests.notify(transition.Request)
-			writeJSON(w, http.StatusOK, transition.Request)
+			writeJSON(w, http.StatusOK, apiPermissionRequest(transition.Request))
 			return
 		}
 		s.writeError(w, http.StatusConflict, "permission request is already resolved")
@@ -255,5 +246,5 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 	}
 	s.events.publish(transition.Event)
 	s.permissionRequests.notify(transition.Request)
-	writeJSON(w, http.StatusOK, transition.Request)
+	writeJSON(w, http.StatusOK, apiPermissionRequest(transition.Request))
 }

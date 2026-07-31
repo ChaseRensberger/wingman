@@ -12,6 +12,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/go-chi/chi/v5"
@@ -135,7 +136,11 @@ func newSessionEvent(sessionID, typ string, data any) (store.SessionEvent, error
 }
 
 func writeSSEEvent(w http.ResponseWriter, event store.SessionEvent) error {
-	b, err := json.Marshal(event)
+	public, err := apiSessionEvent(event)
+	if err != nil {
+		return err
+	}
+	b, err := json.Marshal(public)
 	if err != nil {
 		return err
 	}
@@ -171,7 +176,12 @@ func (s *Server) handleSessionEventsHistory(w http.ResponseWriter, r *http.Reque
 	if len(events) > 0 {
 		lastSeq = events[len(events)-1].Seq
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": events, "has_more": lastSeq < watermark})
+	public, err := apiSessionEvents(events)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, api.SessionEventPage{Data: public, HasMore: lastSeq < watermark})
 }
 
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +240,7 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	// This boundary is live-only; its sequence is the durable cursor a client
 	// should use to resume, not a separately stored event.
-	synchronized, _ := newSessionEvent(sessionID, "session.events.synchronized", map[string]int64{"cursor": watermark, "watermark": watermark})
+	synchronized, _ := newSessionEvent(sessionID, string(api.SessionEventEventsSynchronized), api.EventsSynchronizedEventData{Cursor: watermark, Watermark: watermark})
 	synchronized.Seq = watermark
 	synchronized.ID = strconv.FormatInt(watermark, 10)
 	if err := writeSSEEvent(w, synchronized); err != nil {
@@ -323,7 +333,7 @@ func (s *Server) replaySessionEvents(ctx context.Context, w http.ResponseWriter,
 }
 
 func (s *Server) writeSessionEventsResync(w http.ResponseWriter, flusher http.Flusher, sessionID string, cursor int64, reason string) {
-	event, _ := newSessionEvent(sessionID, "session.events.resync_required", map[string]any{"cursor": cursor, "reason": reason})
+	event, _ := newSessionEvent(sessionID, string(api.SessionEventEventsResyncRequired), api.EventsResyncRequiredEventData{Cursor: cursor, Reason: reason})
 	event.Seq = cursor
 	event.ID = strconv.FormatInt(cursor, 10)
 	if writeSSEEvent(w, event) == nil {
@@ -373,68 +383,57 @@ func (s *Server) authorizeSessionForRequest(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e session.StreamEvent) {
-	data := map[string]any{"run_id": runID}
 	switch v := e.Data.(type) {
 	case run.IterationStartEvent:
-		data["step"] = v.Step
-		s.persistRunEvent(ctx, sessionID, "session.step.started", data)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventStepStarted), api.StepEventData{RunID: runID, Step: v.Step})
 	case run.IterationEndEvent:
-		data["step"] = v.Step
-		data["usage"] = v.Turn.Usage
-		s.persistRunEvent(ctx, sessionID, "session.step.completed", data)
+		usage := v.Turn.Usage
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventStepCompleted), api.StepEventData{RunID: runID, Step: v.Step, Usage: &usage})
 	case run.MessageEvent:
 		for _, part := range v.Message.Content {
 			switch p := part.(type) {
 			case models.TextPart:
 				if p.Text != "" {
-					s.persistRunEvent(ctx, sessionID, "session.text.completed", map[string]any{"run_id": runID, "message_id": v.Message.ID, "part_id": p.ID, "revision": v.Message.Revision, "text": p.Text})
+					s.persistRunEvent(ctx, sessionID, string(api.SessionEventTextCompleted), api.ContentCompletedEventData{RunID: runID, MessageID: v.Message.ID, PartID: p.ID, Revision: v.Message.Revision, Text: p.Text})
 				}
 			case models.ReasoningPart:
 				if p.Reasoning != "" {
-					s.persistRunEvent(ctx, sessionID, "session.reasoning.completed", map[string]any{"run_id": runID, "message_id": v.Message.ID, "part_id": p.ID, "revision": v.Message.Revision, "text": p.Reasoning})
+					s.persistRunEvent(ctx, sessionID, string(api.SessionEventReasoningCompleted), api.ContentCompletedEventData{RunID: runID, MessageID: v.Message.ID, PartID: p.ID, Revision: v.Message.Revision, Text: p.Reasoning})
 				}
 			}
 		}
-		data["message"] = v.Message
-		s.persistRunEvent(ctx, sessionID, "session.message.created", data)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventMessageCreated), api.MessageCreatedEventData{RunID: runID, Message: v.Message})
 	case run.ToolUseProposedEvent:
 		toolData := toolCallEventData(runID, v.Call)
-		toolData["status"] = "proposed"
-		toolData["proposed_at"] = v.Call.ProposedAt
-		s.persistRunEvent(ctx, sessionID, "session.tool.called", toolData)
-		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
+		toolData.Status = "proposed"
+		toolData.ProposedAt = formatEventTime(v.Call.ProposedAt)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolCalled), toolData)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolUpdated), toolData)
 	case run.ToolUseAuthorizedEvent:
 		toolData := toolCallEventData(runID, v.Call)
-		toolData["status"] = "authorized"
-		toolData["authorized_at"] = v.Call.AuthorizedAt
-		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
+		toolData.Status = "authorized"
+		toolData.AuthorizedAt = formatEventTime(v.Call.AuthorizedAt)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolUpdated), toolData)
 	case run.ToolExecutionStartEvent:
 		toolData := toolCallEventData(runID, v.Call)
-		toolData["status"] = "started"
-		toolData["started_at"] = v.Call.StartedAt
-		s.persistRunEvent(ctx, sessionID, "session.tool.updated", toolData)
+		toolData.Status = "started"
+		toolData.StartedAt = formatEventTime(v.Call.StartedAt)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolUpdated), toolData)
 	case run.ToolExecutionProgressEvent:
-		s.publishRunEvent(sessionID, "session.tool.progress", map[string]any{
-			"run_id":       runID,
-			"call_id":      v.CallID,
-			"tool_use_id":  v.ToolUseID,
-			"tool":         v.Name,
-			"output_delta": v.OutputDelta,
-			"metadata":     v.Metadata,
+		s.publishRunEvent(sessionID, string(api.SessionEventToolProgress), api.ToolEventData{
+			RunID: runID, CallID: v.CallID, ToolUseID: v.ToolUseID, Tool: v.Name,
+			OutputDelta: v.OutputDelta, Metadata: v.Metadata,
 		})
 	case run.ToolExecutionEndEvent:
-		data["call_id"] = v.Result.CallID
-		data["tool_use_id"] = v.Result.ToolUseID
-		data["tool"] = v.Result.Name
-		data["status"] = v.Result.Status
-		data["output"] = v.Result.Output
-		data["structured"] = v.Result.Structured
-		data["error"] = v.Result.Error
-		data["metadata"] = v.Result.Metadata
+		data := api.ToolEventData{
+			RunID: runID, CallID: v.Result.CallID, ToolUseID: v.Result.ToolUseID, Tool: v.Result.Name,
+			Status: string(v.Result.Status), Output: v.Result.Output, Structured: v.Result.Structured,
+			Error: v.Result.Error, Metadata: v.Result.Metadata,
+		}
 		if v.Result.IsError {
-			s.persistRunEvent(ctx, sessionID, "session.tool.failed", data)
+			s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolFailed), data)
 		} else {
-			s.persistRunEvent(ctx, sessionID, "session.tool.completed", data)
+			s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolCompleted), data)
 		}
 		status := string(v.Result.Status)
 		if status == "" {
@@ -443,63 +442,45 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 				status = "failed"
 			}
 		}
-		s.persistRunEvent(ctx, sessionID, "session.tool.updated", map[string]any{
-			"run_id":       runID,
-			"call_id":      v.Result.CallID,
-			"tool_use_id":  v.Result.ToolUseID,
-			"tool":         v.Result.Name,
-			"status":       status,
-			"input":        v.Result.Args,
-			"output":       v.Result.Output,
-			"structured":   v.Result.Structured,
-			"metadata":     v.Result.Metadata,
-			"error":        v.Result.Error,
-			"completed_at": time.Now().UTC(),
-			"duration_ms":  v.Result.Duration.Milliseconds(),
-		})
+		data.Status = status
+		data.Input = v.Result.Args
+		data.CompletedAt = formatEventTime(time.Now().UTC())
+		data.DurationMS = v.Result.Duration.Milliseconds()
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventToolUpdated), data)
 	case run.StreamPartEvent:
 		s.forwardStreamPart(sessionID, runID, v)
 	case run.StructuredOutputEvent:
-		data["schema"] = v.Schema
-		data["raw_json"] = v.RawJSON
-		data["parsed"] = v.Parsed
-		s.persistRunEvent(ctx, sessionID, "session.structured_output.completed", data)
+		s.persistRunEvent(ctx, sessionID, string(api.SessionEventStructuredOutputCompleted), api.StructuredOutputEventData{RunID: runID, Schema: v.Schema, RawJSON: v.RawJSON, Parsed: v.Parsed})
 	}
 }
 
-func toolCallEventData(runID string, call run.ToolCall) map[string]any {
-	return map[string]any{
-		"run_id":        runID,
-		"tool_use_id":   call.ToolUseID,
-		"call_id":       call.ID,
-		"tool":          call.Name,
-		"input":         call.Args,
-		"step":          call.Step,
-		"ordinal":       call.Ordinal,
-		"message_id":    call.MessageID,
-		"part_id":       call.PartID,
-		"model_call_id": call.ModelCallID,
+func toolCallEventData(runID string, call run.ToolCall) api.ToolEventData {
+	return api.ToolEventData{
+		RunID: runID, ToolUseID: call.ToolUseID, CallID: call.ID, Tool: call.Name, Input: call.Args,
+		Step: call.Step, Ordinal: call.Ordinal, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID,
 	}
+}
+
+func formatEventTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func (s *Server) forwardStreamPart(sessionID, runID string, e run.StreamPartEvent) {
-	base := map[string]any{"run_id": runID, "step": e.Step, "message_id": e.MessageID, "part_id": e.PartID, "revision": e.Revision}
 	switch p := e.Part.(type) {
 	case models.ToolInputStartPart:
-		base["call_id"] = p.ID
-		base["tool"] = p.ToolName
-		base["status"] = "pending"
-		s.publishRunEvent(sessionID, "session.tool.updated", base)
+		s.publishRunEvent(sessionID, string(api.SessionEventToolUpdated), api.ToolEventData{
+			RunID: runID, Step: e.Step, MessageID: e.MessageID, PartID: e.PartID, Revision: e.Revision,
+			CallID: p.ID, Tool: p.ToolName, Status: "pending",
+		})
 	case models.TextDeltaPart:
-		base["delta"] = p.Delta
-		s.publishRunEvent(sessionID, "session.text.delta", base)
+		s.publishRunEvent(sessionID, string(api.SessionEventTextDelta), api.ContentDeltaEventData{RunID: runID, Step: e.Step, MessageID: e.MessageID, PartID: e.PartID, Revision: e.Revision, Delta: p.Delta})
 	case models.ReasoningDeltaPart:
-		base["delta"] = p.Delta
-		s.publishRunEvent(sessionID, "session.reasoning.delta", base)
+		s.publishRunEvent(sessionID, string(api.SessionEventReasoningDelta), api.ContentDeltaEventData{RunID: runID, Step: e.Step, MessageID: e.MessageID, PartID: e.PartID, Revision: e.Revision, Delta: p.Delta})
 	case models.ToolInputDeltaPart:
-		base["call_id"] = p.ID
-		base["delta"] = p.Delta
-		s.publishRunEvent(sessionID, "session.tool.input.delta", base)
+		s.publishRunEvent(sessionID, string(api.SessionEventToolInputDelta), api.ContentDeltaEventData{RunID: runID, Step: e.Step, MessageID: e.MessageID, PartID: e.PartID, Revision: e.Revision, CallID: p.ID, Delta: p.Delta})
 	}
 }
 
