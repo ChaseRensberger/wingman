@@ -53,7 +53,6 @@ type Manager struct {
 
 	mu          sync.RWMutex
 	generation  *generation
-	localDirs   map[string]struct{}
 	errors      []LoadError
 	closed      bool
 	rootCtx     context.Context
@@ -96,11 +95,10 @@ func New(ctx context.Context, globalDirs []string) (*Manager, error) {
 	rootCtx, rootCancel := context.WithCancel(ctx)
 	m := &Manager{
 		globalDirs: compactDirs(globalDirs),
-		localDirs:  make(map[string]struct{}),
 		rootCtx:    rootCtx,
 		rootCancel: rootCancel,
 	}
-	if err := m.reload(ctx, nil, false); err != nil {
+	if err := m.reload(ctx); err != nil {
 		rootCancel()
 		return nil, err
 	}
@@ -116,34 +114,12 @@ func DefaultGlobalDir() (string, error) {
 	return filepath.Join(home, ".config", "wingman", "plugins"), nil
 }
 
-// Reload stages all global and previously accepted project-local plugin dirs.
+// Reload stages every plugin directory owned by this execution scope.
 func (m *Manager) Reload(ctx context.Context) error {
-	return m.reload(ctx, nil, false)
+	return m.reload(ctx)
 }
 
-// EnsureWorkDir stages a generation that also contains workDir's local plugins.
-func (m *Manager) EnsureWorkDir(ctx context.Context, workDir string) error {
-	local := LocalPluginDir(workDir)
-	if local == "" {
-		return nil
-	}
-	paths, err := manifestPaths(local)
-	if err != nil {
-		return fmt.Errorf("discover project plugins: %w", err)
-	}
-	if len(paths) == 0 {
-		return nil
-	}
-	m.mu.RLock()
-	_, exists := m.localDirs[local]
-	m.mu.RUnlock()
-	if exists {
-		return nil
-	}
-	return m.reload(ctx, &local, true)
-}
-
-func (m *Manager) reload(ctx context.Context, proposedLocal *string, addLocal bool) error {
+func (m *Manager) reload(ctx context.Context) error {
 	m.lifecycleMu.Lock()
 	defer m.lifecycleMu.Unlock()
 
@@ -152,15 +128,8 @@ func (m *Manager) reload(ctx context.Context, proposedLocal *string, addLocal bo
 		m.mu.RUnlock()
 		return errors.New("plugin manager is closed")
 	}
-	locals := make([]string, 0, len(m.localDirs)+1)
-	for dir := range m.localDirs {
-		locals = append(locals, dir)
-	}
+	dirs := append([]string(nil), m.globalDirs...)
 	m.mu.RUnlock()
-	if proposedLocal != nil {
-		locals = append(locals, *proposedLocal)
-	}
-	dirs := compactDirs(append(append([]string(nil), m.globalDirs...), locals...))
 	candidate, err := m.stage(ctx, dirs)
 	if err != nil {
 		return err
@@ -170,13 +139,10 @@ func (m *Manager) reload(ctx context.Context, proposedLocal *string, addLocal bo
 	old := m.generation
 	m.generation = candidate
 	m.errors = nil
-	if addLocal && proposedLocal != nil {
-		m.localDirs[*proposedLocal] = struct{}{}
-	}
 	m.mu.Unlock()
 
 	if old != nil {
-		if err := old.retire(); err != nil {
+		if err := old.retireWithTimeout(); err != nil {
 			m.addError(LoadError{Path: "plugin retirement", Error: err.Error()})
 		}
 	}
@@ -185,6 +151,13 @@ func (m *Manager) reload(ctx context.Context, proposedLocal *string, addLocal bo
 
 // Close gracefully retires all plugin processes and cancels the manager root.
 func (m *Manager) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	return m.CloseContext(ctx)
+}
+
+// CloseContext retires all plugin processes within the caller's deadline.
+func (m *Manager) CloseContext(ctx context.Context) error {
 	m.lifecycleMu.Lock()
 	defer m.lifecycleMu.Unlock()
 	m.mu.Lock()
@@ -198,7 +171,7 @@ func (m *Manager) Close() error {
 
 	var err error
 	if current != nil {
-		err = current.retire()
+		err = current.retire(ctx)
 		if err != nil {
 			m.addError(LoadError{Path: "plugin retirement", Error: err.Error()})
 		}
@@ -271,7 +244,7 @@ func (m *Manager) stage(ctx context.Context, dirs []string) (*generation, error)
 	gctx, cancel := context.WithCancel(m.rootCtx)
 	g := &generation{ctx: gctx, cancel: cancel, plugins: make(map[string]*loadedPlugin), toolOwners: make(map[string]*loadedPlugin)}
 	fail := func(err error) (*generation, error) {
-		_ = g.retire()
+		_ = g.retireWithTimeout()
 		return nil, err
 	}
 	for _, manifest := range manifests {
@@ -514,9 +487,13 @@ func (p *loadedPlugin) release() {
 	p.mu.Unlock()
 }
 
-func (g *generation) retire() error {
+func (g *generation) retireWithTimeout() error {
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+	return g.retire(ctx)
+}
+
+func (g *generation) retire(ctx context.Context) error {
 	ids := make([]string, 0, len(g.plugins))
 	for id := range g.plugins {
 		ids = append(ids, id)

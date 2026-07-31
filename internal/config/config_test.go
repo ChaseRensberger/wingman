@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	wingmcp "github.com/chaserensberger/wingman/mcp"
 	"github.com/chaserensberger/wingman/permission"
 )
 
@@ -33,7 +34,7 @@ func TestLoad(t *testing.T) {
 				"permissions":{"bash":"ask"},
 				"agent_permissions":{"research":{"read":"allow"}},
 				"provider":{"custom":{"name":"Custom","options":{"baseURL":"https://example.test","query":{"version":"1"}}}},
-				"mcp":{"filesystem":{"type":"stdio","command":["mcp-filesystem"],"environment":{"HOME":"/tmp"}}}
+				"mcp":{"filesystem":{"type":"local","command":["mcp-filesystem"],"cwd":"~/project","environment":{"HOME":"/tmp"}}}
 			}`,
 			check: func(t *testing.T, cfg Config) {
 				if cfg.Server.Port != 8080 {
@@ -59,6 +60,10 @@ func TestLoad(t *testing.T) {
 		{name: "empty provider key", contents: `{"provider":{"":{}}}`, wantErr: "provider has an empty key"},
 		{name: "empty agent permission key", contents: `{"agent_permissions":{" ":"allow"}}`, wantErr: "agent_permissions has an empty key"},
 		{name: "empty MCP key", contents: `{"mcp":{"":{}}}`, wantErr: "mcp has an empty key"},
+		{name: "invalid MCP type", contents: `{"mcp":{"bad":{"type":"stdio","command":["bad"]}}}`, wantErr: "type must be local or remote"},
+		{name: "missing local MCP command", contents: `{"mcp":{"bad":{"type":"local"}}}`, wantErr: "local command is required"},
+		{name: "invalid remote MCP URL", contents: `{"mcp":{"bad":{"type":"remote","url":"relative"}}}`, wantErr: "absolute HTTP URL"},
+		{name: "unsupported MCP OAuth", contents: `{"mcp":{"remote":{"type":"remote","url":"https://example.test","oauth":{}}}}`, wantErr: "unknown field"},
 	}
 
 	for _, test := range tests {
@@ -88,6 +93,7 @@ func TestNormalize(t *testing.T) {
 	input := Default()
 	input.Server.DB = "~/data/wingman.db"
 	input.Plugins.Dirs = []string{"~", "~/plugins", "/opt/plugins"}
+	input.MCP = map[string]wingmcp.ServerConfig{"local": {Type: "local", Command: []string{"test"}, CWD: "~/project"}}
 	input.AgentPermissions = map[string]permission.Ruleset{"agent": {{Action: "read", Resource: "*", Effect: permission.EffectAllow}}}
 
 	got, err := input.Normalize("/home/wingman")
@@ -96,6 +102,9 @@ func TestNormalize(t *testing.T) {
 	}
 	if got.Server.DB != "/home/wingman/data/wingman.db" {
 		t.Fatalf("DB = %q", got.Server.DB)
+	}
+	if got.MCP["local"].CWD != "/home/wingman/project" {
+		t.Fatalf("MCP cwd = %q", got.MCP["local"].CWD)
 	}
 	defaults, err := Default().Normalize("/home/wingman")
 	if err != nil {

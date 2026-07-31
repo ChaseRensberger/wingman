@@ -21,6 +21,7 @@ import (
 )
 
 const defaultTimeout = 30 * time.Second
+const retirementTimeout = 5 * time.Second
 
 var sanitizeRE = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
 
@@ -50,26 +51,49 @@ type ToolInfo struct {
 type Manager struct {
 	cfg Config
 
-	mu      sync.RWMutex
-	servers map[string]*serverState
+	mu          sync.RWMutex
+	lifecycleMu sync.Mutex
+	servers     map[string]*serverState
+	closed      bool
+	connect     connector
 }
 
 type serverState struct {
-	name    string
-	cfg     ServerConfig
-	status  string
-	err     string
-	session *mcpsdk.ClientSession
-	tools   []*mcpsdk.Tool
+	name       string
+	cfg        ServerConfig
+	status     string
+	err        string
+	generation *connectionGeneration
+}
+
+type connection interface {
+	CallTool(context.Context, *mcpsdk.CallToolParams) (*mcpsdk.CallToolResult, error)
+	Close() error
+}
+
+type connector func(context.Context, string, ServerConfig) (connection, []*mcpsdk.Tool, error)
+
+type connectionGeneration struct {
+	connection connection
+	tools      []*mcpsdk.Tool
+
+	mu        sync.Mutex
+	accepting bool
+	calls     sync.WaitGroup
 }
 
 // New creates a manager and connects all enabled configured servers.
 func New(ctx context.Context, cfg Config) *Manager {
-	m := &Manager{cfg: cfg.normalized(), servers: map[string]*serverState{}}
+	m := newManager(cfg, connectServer)
+	m.ConnectEnabled(ctx)
+	return m
+}
+
+func newManager(cfg Config, connect connector) *Manager {
+	m := &Manager{cfg: cloneConfig(cfg).normalized(), servers: map[string]*serverState{}, connect: connect}
 	for name, serverCfg := range m.cfg.Servers {
 		m.servers[name] = &serverState{name: name, cfg: serverCfg, status: "disabled"}
 	}
-	m.ConnectEnabled(ctx)
 	return m
 }
 
@@ -89,16 +113,35 @@ func (m *Manager) ConnectEnabled(ctx context.Context) {
 
 // Close disconnects all active MCP sessions.
 func (m *Manager) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), retirementTimeout)
+	defer cancel()
+	return m.CloseContext(ctx)
+}
+
+// CloseContext disconnects all active MCP sessions within one shared deadline.
+func (m *Manager) CloseContext(ctx context.Context) error {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	var errs []error
-	for _, state := range m.servers {
-		if state.session != nil {
-			errs = append(errs, state.session.Close())
-			state.session = nil
-		}
+	if m.closed {
+		m.mu.Unlock()
+		return nil
 	}
-	return errors.Join(errs...)
+	m.closed = true
+	retired := make([]*connectionGeneration, 0, len(m.servers))
+	for _, state := range m.servers {
+		if state.generation != nil {
+			retireLocked(state.generation)
+			retired = append(retired, state.generation)
+			state.generation = nil
+		}
+		state.status = "disabled"
+		state.err = ""
+	}
+	m.mu.Unlock()
+
+	return retireAll(ctx, retired)
 }
 
 // Status returns a stable snapshot of configured MCP server status.
@@ -113,8 +156,12 @@ func (m *Manager) Status() []Status {
 	out := make([]Status, 0, len(names))
 	for _, name := range names {
 		state := m.servers[name]
-		tools := make([]string, 0, len(state.tools))
-		for _, def := range state.tools {
+		var defs []*mcpsdk.Tool
+		if state.generation != nil {
+			defs = state.generation.tools
+		}
+		tools := make([]string, 0, len(defs))
+		for _, def := range defs {
 			tools = append(tools, toolName(name, def.Name))
 		}
 		sort.Strings(tools)
@@ -136,14 +183,24 @@ func (m *Manager) Tools() []tool.Tool {
 	defer m.mu.RUnlock()
 	var out []tool.Tool
 	for _, state := range m.servers {
-		if state.session == nil || state.status != "connected" {
+		if state.generation == nil || state.status != "connected" {
 			continue
 		}
-		for _, def := range state.tools {
-			out = append(out, &mcpTool{manager: m, server: state.name, remoteName: def.Name, def: def})
+		for _, def := range state.generation.tools {
+			out = append(out, &mcpTool{generation: state.generation, server: state.name, remoteName: def.Name, def: def})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name() != out[j].Name() {
+			return out[i].Name() < out[j].Name()
+		}
+		left := out[i].(*mcpTool)
+		right := out[j].(*mcpTool)
+		if left.server != right.server {
+			return left.server < right.server
+		}
+		return left.remoteName < right.remoteName
+	})
 	return out
 }
 
@@ -153,7 +210,10 @@ func (m *Manager) ToolInfos() []ToolInfo {
 	defer m.mu.RUnlock()
 	var out []ToolInfo
 	for _, state := range m.servers {
-		for _, def := range state.tools {
+		if state.generation == nil || state.status != "connected" {
+			continue
+		}
+		for _, def := range state.generation.tools {
 			out = append(out, ToolInfo{
 				Name:         toolName(state.name, def.Name),
 				Description:  def.Description,
@@ -166,92 +226,156 @@ func (m *Manager) ToolInfos() []ToolInfo {
 			})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		if out[i].Server != out[j].Server {
+			return out[i].Server < out[j].Server
+		}
+		return out[i].RemoteName < out[j].RemoteName
+	})
 	return out
 }
 
 // Connect connects or reconnects a configured MCP server.
 func (m *Manager) Connect(ctx context.Context, name string) error {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+
 	m.mu.RLock()
 	state := m.servers[name]
+	closed := m.closed
 	m.mu.RUnlock()
 	if state == nil {
 		return fmt.Errorf("MCP server not found: %s", name)
 	}
+	if closed {
+		return errors.New("MCP manager is closed")
+	}
 	if !state.cfg.isEnabled() {
-		m.setFailed(name, "disabled", "")
-		return nil
+		return m.disconnectLocked(name)
 	}
 
-	session, tools, err := connectServer(ctx, name, state.cfg)
+	conn, tools, err := m.connect(ctx, name, state.cfg)
+	if err == nil && conn == nil {
+		err = errors.New("MCP connection is nil")
+	}
+	if err != nil && conn != nil {
+		_ = conn.Close()
+	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	state = m.servers[name]
 	if state == nil {
-		if session != nil {
-			_ = session.Close()
+		m.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
 		}
 		return fmt.Errorf("MCP server not found: %s", name)
 	}
-	if state.session != nil {
-		_ = state.session.Close()
-	}
 	if err != nil {
-		state.session = nil
-		state.tools = nil
-		state.status = "failed"
+		if state.generation == nil {
+			state.status = "failed"
+		} else {
+			state.status = "connected"
+		}
 		state.err = err.Error()
+		m.mu.Unlock()
 		return err
 	}
-	state.session = session
-	state.tools = tools
+
+	newGeneration := &connectionGeneration{connection: conn, tools: tools, accepting: true}
+	oldGeneration := state.generation
+	if oldGeneration != nil {
+		retireLocked(oldGeneration)
+	}
+	state.generation = newGeneration
 	state.status = "connected"
 	state.err = ""
-	return nil
+	m.mu.Unlock()
+
+	return retireWithTimeout(oldGeneration)
 }
 
 // Disconnect closes a connected MCP server without removing its config.
 func (m *Manager) Disconnect(name string) error {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+	return m.disconnectLocked(name)
+}
+
+func (m *Manager) disconnectLocked(name string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	state := m.servers[name]
 	if state == nil {
+		m.mu.Unlock()
 		return fmt.Errorf("MCP server not found: %s", name)
 	}
-	if state.session != nil {
-		_ = state.session.Close()
+	oldGeneration := state.generation
+	if oldGeneration != nil {
+		retireLocked(oldGeneration)
 	}
-	state.session = nil
-	state.tools = nil
+	state.generation = nil
 	state.status = "disabled"
 	state.err = ""
-	return nil
+	m.mu.Unlock()
+	return retireWithTimeout(oldGeneration)
 }
 
-func (m *Manager) callTool(ctx context.Context, server, remoteName string, args map[string]any) (*mcpsdk.CallToolResult, error) {
-	m.mu.RLock()
-	state := m.servers[server]
-	var session *mcpsdk.ClientSession
-	if state != nil {
-		session = state.session
+func (g *connectionGeneration) callTool(ctx context.Context, remoteName string, args map[string]any) (*mcpsdk.CallToolResult, error) {
+	g.mu.Lock()
+	if !g.accepting {
+		g.mu.Unlock()
+		return nil, errors.New("MCP connection has been retired")
 	}
-	m.mu.RUnlock()
-	if session == nil {
-		return nil, fmt.Errorf("MCP server %q is not connected", server)
-	}
-	return session.CallTool(ctx, &mcpsdk.CallToolParams{Name: remoteName, Arguments: args})
+	g.calls.Add(1)
+	g.mu.Unlock()
+	defer g.calls.Done()
+	return g.connection.CallTool(ctx, &mcpsdk.CallToolParams{Name: remoteName, Arguments: args})
 }
 
-func (m *Manager) setFailed(name, status, msg string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if state := m.servers[name]; state != nil {
-		state.status = status
-		state.err = msg
-	}
+func retireLocked(g *connectionGeneration) {
+	g.mu.Lock()
+	g.accepting = false
+	g.mu.Unlock()
 }
 
-func connectServer(ctx context.Context, name string, cfg ServerConfig) (*mcpsdk.ClientSession, []*mcpsdk.Tool, error) {
+func retireWithTimeout(g *connectionGeneration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), retirementTimeout)
+	defer cancel()
+	return retire(ctx, g)
+}
+
+func retire(ctx context.Context, g *connectionGeneration) error {
+	if g == nil {
+		return nil
+	}
+	done := make(chan struct{})
+	go func() {
+		g.calls.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return errors.Join(ctx.Err(), g.connection.Close())
+	}
+	return g.connection.Close()
+}
+
+func retireAll(ctx context.Context, generations []*connectionGeneration) error {
+	errs := make(chan error, len(generations))
+	for _, generation := range generations {
+		go func() { errs <- retire(ctx, generation) }()
+	}
+	joined := make([]error, 0, len(generations))
+	for range generations {
+		joined = append(joined, <-errs)
+	}
+	return errors.Join(joined...)
+}
+
+func connectServer(ctx context.Context, name string, cfg ServerConfig) (connection, []*mcpsdk.Tool, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout(cfg))
 	defer cancel()
 	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "wingman", Version: "dev"}, &mcpsdk.ClientOptions{Capabilities: &mcpsdk.ClientCapabilities{}})

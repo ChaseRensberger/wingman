@@ -8,13 +8,12 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/models"
-	"github.com/chaserensberger/wingman/models/catalog"
 	"github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/store"
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
-	providers := provider.List()
+	providers := s.providers.List()
 	dtos := make([]ProviderDTO, 0, len(providers))
 	for _, meta := range providers {
 		dtos = append(dtos, s.providerToDTO(meta))
@@ -25,7 +24,7 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	meta, err := provider.Get(name)
+	meta, err := s.providers.Get(name)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -66,14 +65,14 @@ func (s *Server) providerToDTO(meta provider.ProviderMeta) ProviderDTO {
 }
 
 func (s *Server) providerRoute(providerID string) ProviderRouteDTO {
-	baseURL, _ := catalog.GetProviderBaseURL(providerID)
+	baseURL, _ := s.providers.Catalog().GetProviderBaseURL(providerID)
 	route := ProviderRouteDTO{
 		BaseURL:       baseURL,
 		BaseURLSource: "catalog",
 		AuthEnabled:   true,
 		AuthSource:    "default",
 	}
-	if cfg, ok := s.providers[providerID]; ok {
+	if cfg, ok := s.providers.Config(providerID); ok {
 		if cfg.Options.BaseURL != "" {
 			route.BaseURL = cfg.Options.BaseURL
 			route.BaseURLSource = "config"
@@ -87,7 +86,7 @@ func (s *Server) providerRoute(providerID string) ProviderRouteDTO {
 }
 
 func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
-	if cfg, ok := s.providers[providerID]; ok && cfg.Options.Auth != nil && !*cfg.Options.Auth {
+	if cfg, ok := s.providers.Config(providerID); ok && cfg.Options.Auth != nil && !*cfg.Options.Auth {
 		return ProviderAuthStatusDTO{Configured: false, Source: "disabled"}
 	}
 
@@ -100,7 +99,7 @@ func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
 		}
 	}
 
-	if models, ok := catalog.GetModels(providerID); ok {
+	if models, ok := s.providers.Catalog().GetModels(providerID); ok {
 		for _, model := range models {
 			for _, env := range model.Env {
 				if os.Getenv(env) != "" {
@@ -175,7 +174,7 @@ func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 	}
 
 	for name, cred := range req.Providers {
-		if !provider.IsValid(name) {
+		if !s.providers.IsValid(name) {
 			writeError(w, http.StatusBadRequest, "unknown provider: "+name)
 			return
 		}
@@ -197,7 +196,7 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 	}
 	providerName := chi.URLParam(r, "provider")
 
-	if !provider.IsValid(providerName) {
+	if !s.providers.IsValid(providerName) {
 		writeError(w, http.StatusBadRequest, "unknown provider: "+providerName)
 		return
 	}
@@ -258,12 +257,12 @@ func modelToDTO(info models.ModelInfo) ModelDTO {
 func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	if !provider.IsValid(name) {
+	if !s.providers.IsValid(name) {
 		writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
-	rawModels, ok := catalog.GetModels(name)
+	rawModels, ok := s.providers.Catalog().GetModels(name)
 	if !ok {
 		writeError(w, http.StatusNotFound, "no models for provider: "+name)
 		return
@@ -271,7 +270,7 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 
 	dtos := make(map[string]ModelDTO, len(rawModels))
 	for id := range rawModels {
-		if info, ok := catalog.Get(name, id); ok {
+		if info, ok := s.providers.Catalog().Get(name, id); ok {
 			dtos[id] = modelToDTO(info)
 		}
 	}
@@ -283,12 +282,12 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 	name := chi.URLParam(r, "name")
 	modelID := chi.URLParam(r, "model")
 
-	if !provider.IsValid(name) {
+	if !s.providers.IsValid(name) {
 		writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
-	info, ok := catalog.Get(name, modelID)
+	info, ok := s.providers.Catalog().Get(name, modelID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
 		return

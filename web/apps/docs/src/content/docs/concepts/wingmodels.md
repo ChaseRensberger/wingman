@@ -135,6 +135,11 @@ without mutating process configuration.
 
 The embedded catalog provides model identity, lab metadata, provider defaults, and executable route metadata. Catalog membership is not an execution gate: callers can still provide explicit route metadata for custom models.
 
+At daemon startup, Wingman copies the embedded catalog and applies configured
+provider routes and models to a new immutable generation. The source catalog is
+not changed. An invalid candidate fails before Wingman opens storage or starts
+plugin and MCP processes.
+
 Catalog files live under:
 
 ```text

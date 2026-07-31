@@ -102,12 +102,15 @@ Disable external plugin loading with:
 wingman serve --no-plugins
 ```
 
-Wingman discovers project-local plugins when it first builds a session with that
-project as its working directory. The external-plugin manager is shared by the
-daemon, so a discovered project-local plugin remains available to later
-sessions, including sessions without a working directory, until a plugin reload
-or daemon restart. Tool names must be globally unique across native, RPC, and MCP
-sources; a collision makes catalog composition fail instead of replacing a tool.
+Wingman discovers project-local plugins when it builds the execution scope for a
+session's working directory. Sessions in the same canonical directory share the
+plugin processes. A project plugin is never visible in another directory or in
+the directoryless scope.
+
+The scope closes its plugin processes after its last session releases the scope
+and the idle timeout ends. Tool names must be unique across native, RPC, and MCP
+sources in that scope. A collision makes catalog composition fail instead of
+replacing a tool.
 
 An external plugin is declared by a `wingman-plugin.json` file. Files ending in `.plugin.json` are also loaded.
 
@@ -162,7 +165,7 @@ List loaded plugins and non-fatal load errors:
 curl http://127.0.0.1:2323/plugins/
 ```
 
-Reload global plugins:
+Reload plugins in the directoryless scope:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload

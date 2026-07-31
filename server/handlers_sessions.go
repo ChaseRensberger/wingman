@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
@@ -436,7 +437,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	effectiveAgent := s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
-	validationSession, err := s.buildSession(effectiveAgent, sess)
+	validationSession, err := s.buildSession(r.Context(), effectiveAgent, sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -644,7 +645,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		WorkDir: workDir,
 	}
 
-	runSession, err := s.buildEphemeralSession(storedAgent, sess)
+	runSession, err := s.buildEphemeralSession(r.Context(), storedAgent, sess)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -729,24 +730,40 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // registry, resolves the tool registry, and wires persistence directly
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
-func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""))
+func (s *Server) buildSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""))
 }
 
-func (s *Server) buildSessionForRun(stored *store.Agent, sess *store.Session, runID string) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID))
+func (s *Server) buildSessionForRun(ctx context.Context, stored *store.Agent, sess *store.Session, runID string) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID))
 }
 
-func (s *Server) buildEphemeralSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, nil, "", nil)
+func (s *Server) buildEphemeralSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil)
 }
 
-func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter) (*session.Session, error) {
+func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter) (*session.Session, error) {
 	if stored.ModelRef == "" {
 		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
+	executionScope, releaseScope, err := s.executionScope(ctx, sess.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+	keepScope := false
+	defer func() {
+		if !keepScope {
+			releaseScope()
+		}
+	}()
+	providers := s.providers
+	workDir := sess.WorkDir
+	if executionScope != nil {
+		providers = executionScope.Providers()
+		workDir = executionScope.WorkDir()
+	}
 
-	modelRef, modelInfo, client, err := s.buildModelClient(stored)
+	modelRef, modelInfo, client, err := s.buildModelClient(stored, providers)
 	if err != nil {
 		return nil, err
 	}
@@ -756,7 +773,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 		session.WithClient(client),
 		session.WithModelRef(modelRef, modelInfo),
 		session.WithSystem(stored.Instructions),
-		session.WithWorkDir(sess.WorkDir),
+		session.WithWorkDir(workDir),
 		session.WithPermissions(s.effectivePermissions(stored)),
 		session.WithPermissionPrompter(prompter),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
@@ -768,12 +785,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 	if runID != "" {
 		opts = append(opts, session.WithRunID(runID))
 	}
-	if s.plugins != nil {
-		if err := s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir); err != nil {
-			return nil, fmt.Errorf("load project plugins: %w", err)
-		}
-	}
-	tools, err := s.resolveTools(stored.Tools)
+	tools, err := s.resolveTools(executionScope, stored.Tools)
 	if err != nil {
 		return nil, err
 	}
@@ -787,7 +799,12 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 			Strict: true,
 		}))
 	}
+	opts = append(opts, session.WithCleanup(func(context.Context) error {
+		releaseScope()
+		return nil
+	}))
 
+	keepScope = true
 	return session.New(opts...), nil
 }
 
@@ -804,12 +821,12 @@ func (s *Server) effectivePermissions(agent *store.Agent) permission.Ruleset {
 }
 
 // buildModelClient resolves a model ref and returns a route-backed model client.
-func (s *Server) buildModelClient(stored *store.Agent) (models.ModelRef, models.ModelInfo, models.Client, error) {
+func (s *Server) buildModelClient(stored *store.Agent, providers *provider.Registry) (models.ModelRef, models.ModelInfo, models.Client, error) {
 	ref, ok := models.ParseModelRef(stored.ModelRef)
 	if !ok {
 		return models.ModelRef{}, models.ModelInfo{}, nil, fmt.Errorf("invalid model_ref: %s", stored.ModelRef)
 	}
-	info, err := s.resolveModelInfo(ref, stored.Options)
+	info, err := s.resolveModelInfo(providers.Catalog(), ref, stored.Options)
 	if err != nil {
 		return models.ModelRef{}, models.ModelInfo{}, nil, err
 	}
@@ -831,11 +848,11 @@ func (s *Server) buildModelClient(stored *store.Agent) (models.ModelRef, models.
 			ExpiresAt: cred.ExpiresAt, AccountID: cred.AccountID,
 		}
 	}
-	return ref, info, provider.NewClientWithCredentials(credentials, s.providers, s.refreshProviderCredential), nil
+	return ref, info, providers.NewClientWithCredentials(credentials, s.refreshProviderCredential), nil
 }
 
-func (s *Server) resolveModelInfo(ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
-	if info, ok := catalog.Get(ref.Provider, ref.ID); ok {
+func (s *Server) resolveModelInfo(modelCatalog *catalog.Catalog, ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
+	if info, ok := modelCatalog.Get(ref.Provider, ref.ID); ok {
 		return info, nil
 	}
 	info, ok, err := modelRouteFromOptions(options)
@@ -906,8 +923,14 @@ func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, rou
 
 // resolveTools maps stored names to one validated live catalog. A configured
 // tool becoming unavailable is an explicit session construction error.
-func (s *Server) resolveTools(toolNames []string) ([]tool.Tool, error) {
-	registry, _, err := s.toolCatalog()
+func (s *Server) resolveTools(scope *execution.Scope, toolNames []string) ([]tool.Tool, error) {
+	var registry *tool.Registry
+	var err error
+	if scope != nil {
+		registry, err = scope.ToolCatalog()
+	} else {
+		registry, _, err = s.toolCatalog(nil)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -925,18 +948,4 @@ func (s *Server) resolveTools(toolNames []string) ([]tool.Tool, error) {
 		tools = append(tools, t)
 	}
 	return tools, nil
-}
-
-func nativeTools() map[string]tool.Tool {
-	return map[string]tool.Tool{
-		"apply_patch": tool.NewApplyPatchTool(),
-		"bash":        tool.NewBashTool(),
-		"read":        tool.NewReadTool(),
-		"write":       tool.NewWriteTool(),
-		"edit":        tool.NewEditTool(),
-		"glob":        tool.NewGlobTool(),
-		"grep":        tool.NewGrepTool(),
-		"webfetch":    tool.NewWebFetchTool(),
-		"websearch":   tool.NewWebSearchTool(),
-	}
 }

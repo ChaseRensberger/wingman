@@ -69,6 +69,7 @@ type Session struct {
 	closed           bool
 	closeDone        chan struct{}
 	closeErr         error
+	cleanups         []func(context.Context) error
 
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
@@ -244,6 +245,15 @@ func WithRunID(id string) Option {
 	return func(s *Session) { s.runID = id }
 }
 
+// WithCleanup adds cleanup that runs in reverse order when the session closes.
+func WithCleanup(cleanup func(context.Context) error) Option {
+	return func(s *Session) {
+		if cleanup != nil {
+			s.cleanups = append(s.cleanups, cleanup)
+		}
+	}
+}
+
 // WithTransformHistory installs a raw hook that runs before each loop step
 // and may persistently mutate the message slice (compaction-shaped).
 // Composed *after* any plugin-contributed TransformHistory hooks; receives
@@ -372,8 +382,14 @@ func (s *Session) Close(ctx context.Context) error {
 	s.mu.Lock()
 	generation := s.generation
 	s.generation = nil
+	cleanups := append([]func(context.Context) error(nil), s.cleanups...)
+	s.cleanups = nil
 	s.mu.Unlock()
-	err := generation.Close(ctx)
+	errs := []error{generation.Close(ctx)}
+	for i := len(cleanups) - 1; i >= 0; i-- {
+		errs = append(errs, cleanups[i](ctx))
+	}
+	err := errors.Join(errs...)
 	s.mu.Lock()
 	s.closeErr = err
 	close(s.closeDone)

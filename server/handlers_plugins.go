@@ -8,23 +8,35 @@ type pluginsResponse struct {
 }
 
 func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
-	if s.plugins == nil {
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	if scope == nil || scope.Plugins() == nil {
 		writeJSON(w, http.StatusOK, pluginsResponse{Plugins: []any{}})
 		return
 	}
-	plugins, errs := s.plugins.Status()
+	plugins, errs := scope.Plugins().Status()
 	writeJSON(w, http.StatusOK, pluginsResponse{Plugins: plugins, Errors: errs})
 }
 
 func (s *Server) handleReloadPlugins(w http.ResponseWriter, r *http.Request) {
-	if s.plugins == nil {
-		writeJSON(w, http.StatusOK, pluginsResponse{Plugins: []any{}})
-		return
-	}
-	if err := s.plugins.Reload(r.Context()); err != nil {
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	plugins, errs := s.plugins.Status()
+	defer release()
+	if scope == nil || scope.Plugins() == nil {
+		writeJSON(w, http.StatusOK, pluginsResponse{Plugins: []any{}})
+		return
+	}
+	if err := scope.Plugins().Reload(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	plugins, errs := scope.Plugins().Status()
 	writeJSON(w, http.StatusOK, pluginsResponse{Plugins: plugins, Errors: errs})
 }

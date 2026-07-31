@@ -11,37 +11,55 @@ type mcpResponse struct {
 }
 
 func (s *Server) handleListMCP(w http.ResponseWriter, r *http.Request) {
-	if s.mcp == nil {
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	if scope == nil || scope.MCP() == nil {
 		writeJSON(w, http.StatusOK, mcpResponse{Servers: []any{}})
 		return
 	}
-	writeJSON(w, http.StatusOK, mcpResponse{Servers: s.mcp.Status()})
+	writeJSON(w, http.StatusOK, mcpResponse{Servers: scope.MCP().Status()})
 }
 
 func (s *Server) handleConnectMCP(w http.ResponseWriter, r *http.Request) {
-	if s.mcp == nil {
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	if scope == nil || scope.MCP() == nil {
 		writeError(w, http.StatusNotFound, "MCP is not configured")
 		return
 	}
 	name := chi.URLParam(r, "name")
-	if err := s.mcp.Connect(r.Context(), name); err != nil {
+	if err := scope.MCP().Connect(r.Context(), name); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, mcpResponse{Servers: s.mcp.Status()})
+	writeJSON(w, http.StatusOK, mcpResponse{Servers: scope.MCP().Status()})
 }
 
 func (s *Server) handleDisconnectMCP(w http.ResponseWriter, r *http.Request) {
-	if s.mcp == nil {
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	if scope == nil || scope.MCP() == nil {
 		writeError(w, http.StatusNotFound, "MCP is not configured")
 		return
 	}
 	name := chi.URLParam(r, "name")
-	if err := s.mcp.Disconnect(name); err != nil {
+	if err := scope.MCP().Disconnect(name); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, mcpResponse{Servers: s.mcp.Status()})
+	writeJSON(w, http.StatusOK, mcpResponse{Servers: scope.MCP().Status()})
 }
 
 func (s *Server) handleAuthMCP(w http.ResponseWriter, r *http.Request) {

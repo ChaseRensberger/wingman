@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -39,7 +40,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if err := s.validateAgentTools(req.Tools); err != nil {
+	if err := s.validateAgentTools(r.Context(), req.Tools); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -132,7 +133,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		a.Instructions = *req.Instructions
 	}
 	if req.Tools != nil {
-		if err := s.validateAgentTools(req.Tools); err != nil {
+		if err := s.validateAgentTools(r.Context(), req.Tools); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -160,8 +161,13 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
-func (s *Server) validateAgentTools(names []string) error {
-	_, err := s.resolveTools(names)
+func (s *Server) validateAgentTools(ctx context.Context, names []string) error {
+	scope, release, err := s.executionScope(ctx, "")
+	if err != nil {
+		return err
+	}
+	defer release()
+	_, err = s.resolveTools(scope, names)
 	return err
 }
 

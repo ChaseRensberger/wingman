@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/internal/observability"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
 	provider "github.com/chaserensberger/wingman/models/providers"
@@ -62,21 +63,15 @@ type storeResource struct {
 	close func() error
 }
 
-type pluginResource struct {
-	manager *pluginhost.Manager
-	close   func() error
-}
-
-type mcpResource struct {
-	manager *wingmcp.Manager
-	close   func() error
+type scopeResource struct {
+	manager *execution.Manager
+	close   func(context.Context) error
 }
 
 type factories struct {
-	openStore  func(string) (storeResource, error)
-	newPlugins func(context.Context, []string) (pluginResource, error)
-	newMCP     func(context.Context, map[string]wingmcp.ServerConfig) (mcpResource, error)
-	newServer  func(server.Config) lifecycleServer
+	openStore func(string) (storeResource, error)
+	newScopes func(execution.Config) (scopeResource, error)
+	newServer func(server.Config) lifecycleServer
 }
 
 // App is the lifecycle root for one Wingman daemon.
@@ -85,12 +80,11 @@ type App struct {
 	cancel context.CancelFunc
 	cfg    Config
 
-	server  lifecycleServer
-	logger  *slog.Logger
-	logs    *observability.LogBuffer
-	store   storeResource
-	plugins pluginResource
-	mcp     mcpResource
+	server lifecycleServer
+	logger *slog.Logger
+	logs   *observability.LogBuffer
+	store  storeResource
+	scopes scopeResource
 
 	closeMu   sync.Mutex
 	closing   bool
@@ -130,6 +124,13 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 			return fail(fmt.Errorf("initialize logging: %w", err))
 		}
 	}
+	providers, err := provider.NewRegistry(cfg.Providers)
+	if err != nil {
+		return fail(fmt.Errorf("initialize provider registry: %w", err))
+	}
+	if err := (wingmcp.Config{Servers: cfg.MCP}).Validate(); err != nil {
+		return fail(fmt.Errorf("validate MCP config: %w", err))
+	}
 
 	if !cfg.Ephemeral {
 		path := cfg.DBPath
@@ -148,38 +149,28 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		rollback = append(rollback, resource.close)
 	}
 
+	dirs := append([]string(nil), cfg.PluginDirs...)
 	if !cfg.DisablePlugins {
-		dir := cfg.DefaultPluginDir
-		if dir == "" {
-			var err error
-			dir, err = pluginhost.DefaultGlobalDir()
+		defaultDir := cfg.DefaultPluginDir
+		if defaultDir == "" {
+			defaultDir, err = pluginhost.DefaultGlobalDir()
 			if err != nil {
 				return fail(fmt.Errorf("resolve default plugin directory: %w", err))
 			}
 		}
-		dirs := append([]string{dir}, cfg.PluginDirs...)
-		resource, err := f.newPlugins(root, dirs)
-		if err != nil {
-			return fail(fmt.Errorf("initialize plugins: %w", err))
-		}
-		a.plugins = resource
-		rollback = append(rollback, resource.close)
+		dirs = append([]string{defaultDir}, dirs...)
 	}
-
-	mcpResource, err := f.newMCP(root, cfg.MCP)
+	a.scopes, err = f.newScopes(execution.Config{
+		RootContext: root, PluginDirs: dirs, DisablePlugins: cfg.DisablePlugins,
+		MCP: cfg.MCP, Providers: providers, NativeTools: execution.BuiltinTools(),
+	})
 	if err != nil {
-		return fail(fmt.Errorf("initialize MCP: %w", err))
+		return fail(fmt.Errorf("initialize execution scopes: %w", err))
 	}
-	a.mcp = mcpResource
-	rollback = append(rollback, mcpResource.close)
-
-	// Config overlays remain process-global until Wave C2 introduces immutable
-	// application-owned provider and catalog generations.
-	provider.RegisterConfig(cfg.Providers)
+	rollback = append(rollback, func() error { return a.scopes.close(context.Background()) })
 	a.server = f.newServer(server.Config{
 		RootContext: root, Store: a.store.store, WebDevURL: cfg.WebDevURL,
-		Logger: a.logger, Logs: a.logs, Plugins: a.plugins.manager, MCP: a.mcp.manager,
-		Providers: cfg.Providers, Permissions: cfg.Permissions,
+		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
@@ -245,7 +236,6 @@ func (a *App) Serve(ctx context.Context, listener net.Listener) error {
 	a.closing = true
 	a.closeMu.Unlock()
 	a.cancel()
-	_ = listener.Close()
 	httpErr := httpServer.Shutdown(shutdownCtx)
 	if httpErr != nil {
 		httpErr = errors.Join(httpErr, httpServer.Close())
@@ -301,11 +291,8 @@ func (a *App) close(ctx context.Context) error {
 		return err
 	}
 	var errs []error
-	if a.mcp.close != nil {
-		errs = append(errs, a.mcp.close())
-	}
-	if a.plugins.close != nil {
-		errs = append(errs, a.plugins.close())
+	if a.scopes.close != nil {
+		errs = append(errs, a.scopes.close(ctx))
 	}
 	if a.store.close != nil {
 		errs = append(errs, a.store.close())
@@ -323,16 +310,12 @@ func defaultFactories() factories {
 			}
 			return storeResource{store: value, close: value.Close}, nil
 		},
-		newPlugins: func(ctx context.Context, dirs []string) (pluginResource, error) {
-			value, err := pluginhost.New(ctx, dirs)
+		newScopes: func(cfg execution.Config) (scopeResource, error) {
+			manager, err := execution.NewManager(cfg)
 			if err != nil {
-				return pluginResource{}, err
+				return scopeResource{}, err
 			}
-			return pluginResource{manager: value, close: value.Close}, nil
-		},
-		newMCP: func(ctx context.Context, servers map[string]wingmcp.ServerConfig) (mcpResource, error) {
-			value := wingmcp.New(ctx, wingmcp.Config{Servers: servers})
-			return mcpResource{manager: value, close: value.Close}, nil
+			return scopeResource{manager: manager, close: manager.CloseContext}, nil
 		},
 		newServer: func(cfg server.Config) lifecycleServer { return server.New(cfg) },
 	}

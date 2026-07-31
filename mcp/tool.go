@@ -12,7 +12,7 @@ import (
 )
 
 type mcpTool struct {
-	manager    *Manager
+	generation *connectionGeneration
 	server     string
 	remoteName string
 	def        *mcpsdk.Tool
@@ -33,7 +33,7 @@ func (t *mcpTool) Definition() tool.Definition {
 }
 
 func (t *mcpTool) Execute(ctx context.Context, inv tool.Invocation) (tool.Result, error) {
-	res, err := t.manager.callTool(ctx, t.server, t.remoteName, inv.Input)
+	res, err := t.generation.callTool(ctx, t.remoteName, inv.Input)
 	if err != nil {
 		return tool.Result{}, err
 	}

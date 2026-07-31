@@ -1,9 +1,6 @@
 package openaicompat
 
-import (
-	"github.com/chaserensberger/wingman/models/catalog"
-	provider "github.com/chaserensberger/wingman/models/providers"
-)
+import provider "github.com/chaserensberger/wingman/models/providers"
 
 type profile struct {
 	id      string
@@ -16,11 +13,8 @@ func init() {
 		{id: "openai-compatible", name: "OpenAI Compatible"},
 		{id: "xai", name: "xAI", baseURL: "https://api.x.ai/v1"},
 	} {
-		meta := provider.ProviderMeta{ID: p.id, Name: p.name}
+		meta := provider.ProviderMeta{ID: p.id, Name: p.name, BaseURL: p.baseURL}
 		meta.AuthTypes = []provider.AuthType{{Type: "api_key"}}
 		provider.Register(meta)
-		if p.baseURL != "" {
-			catalog.RegisterProviderOverlay(p.id, p.baseURL, nil)
-		}
 	}
 }

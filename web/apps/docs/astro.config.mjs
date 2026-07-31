@@ -81,6 +81,7 @@ export default defineConfig({
           label: "Concepts",
           items: [
             { label: "Clients", slug: "concepts/clients" },
+            { label: "Execution Scopes", slug: "concepts/execution-scopes" },
             { label: "Sessions", slug: "concepts/sessions" },
             {
               label: "Durable Events and Projections",

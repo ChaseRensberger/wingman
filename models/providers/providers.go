@@ -1,4 +1,4 @@
-// Package provider is the global model provider registry and default client.
+// Package provider provides immutable model-provider generations and clients.
 package provider
 
 import (
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -24,49 +25,42 @@ type AuthType struct {
 type ProviderMeta struct {
 	ID        string     `json:"id"`
 	Name      string     `json:"name"`
+	BaseURL   string     `json:"base_url,omitempty"`
 	AuthTypes []AuthType `json:"auth_types,omitempty"`
 }
 
 var (
-	registryMu sync.RWMutex
-	registry   = make(map[string]ProviderMeta)
+	registryMu        sync.RWMutex
+	registry          = make(map[string]ProviderMeta)
+	registryFrozen    bool
+	builtinOnce       sync.Once
+	builtinGeneration *Registry
 )
 
-// Register adds a provider to the global registry. Overwrites existing entries.
+// Register adds built-in provider metadata during package initialization. It
+// panics after the first registry generation freezes the built-in snapshot.
 func Register(meta ProviderMeta) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
+	if registryFrozen {
+		panic("provider: built-in registry is frozen")
+	}
 	registry[meta.ID] = meta
 }
 
-// List returns all registered providers in an unspecified order.
+// List returns all registered built-in providers in deterministic ID order.
 func List() []ProviderMeta {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	out := make([]ProviderMeta, 0, len(registry))
-	for _, m := range registry {
-		out = append(out, m)
-	}
-	return out
+	return builtinRegistry().List()
 }
 
 // Get returns the metadata for a provider by ID.
 func Get(id string) (ProviderMeta, error) {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	m, ok := registry[id]
-	if !ok {
-		return ProviderMeta{}, fmt.Errorf("unknown provider: %s", id)
-	}
-	return m, nil
+	return builtinRegistry().Get(id)
 }
 
 // IsValid reports whether a provider ID is registered.
 func IsValid(id string) bool {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	_, ok := registry[id]
-	return ok
+	return builtinRegistry().IsValid(id)
 }
 
 // Client resolves catalog model refs and explicit custom model routes.
@@ -74,7 +68,14 @@ type Client struct {
 	Auth        map[string]string
 	Credentials map[string]Credential
 	Refresh     func(context.Context, string, Credential) (Credential, error)
-	Providers   map[string]ProviderConfig
+	registry    *Registry
+}
+
+// Registry is an immutable provider and catalog generation.
+type Registry struct {
+	providers map[string]ProviderMeta
+	catalog   *catalog.Catalog
+	configs   map[string]ProviderConfig
 }
 
 // Credential is one provider credential resolved by a caller-owned auth store.
@@ -104,44 +105,150 @@ type ProviderOptions struct {
 	Query      map[string]string `json:"query,omitempty"`
 }
 
-// NewClient constructs a route-backed provider client.
-func NewClient(auth map[string]string) *Client {
-	return &Client{Auth: auth}
-}
+// NewRegistry creates an immutable generation from built-in providers and config.
+func NewRegistry(configs map[string]ProviderConfig) (*Registry, error) {
+	registryMu.Lock()
+	registryFrozen = true
+	metas := make(map[string]ProviderMeta, len(registry))
+	for id, meta := range registry {
+		metas[id] = cloneMeta(meta)
+	}
+	registryMu.Unlock()
 
-// NewClientWithConfig constructs a route-backed provider client with
-// process-local provider overlays.
-func NewClientWithConfig(auth map[string]string, providers map[string]ProviderConfig) *Client {
-	return &Client{Auth: auth, Providers: providers}
-}
-
-// NewClientWithCredentials constructs a route-backed client with richer stored credentials.
-func NewClientWithCredentials(credentials map[string]Credential, providers map[string]ProviderConfig, refresh func(context.Context, string, Credential) (Credential, error)) *Client {
-	return &Client{Credentials: credentials, Providers: providers, Refresh: refresh}
-}
-
-// RegisterConfig adds config-defined providers and model metadata for this process.
-// Existing provider IDs keep their registered metadata unless config supplies fields.
-func RegisterConfig(providers map[string]ProviderConfig) {
-	for id, cfg := range providers {
-		if id == "" {
-			continue
+	overlays := map[string]catalog.ProviderOverlay{}
+	for id, meta := range metas {
+		if meta.BaseURL != "" {
+			overlays[id] = catalog.ProviderOverlay{BaseURL: meta.BaseURL}
 		}
-		meta, err := Get(id)
-		if err != nil {
+	}
+	ids := make([]string, 0, len(configs))
+	for id := range configs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	snapshot := make(map[string]ProviderConfig, len(configs))
+	for _, id := range ids {
+		if id == "" {
+			return nil, fmt.Errorf("provider ID is required")
+		}
+		cfg := cloneConfig(configs[id])
+		meta, exists := metas[id]
+		if !exists {
 			meta = ProviderMeta{ID: id, Name: id, AuthTypes: []AuthType{{Type: "api_key"}}}
 		}
 		if cfg.Name != "" {
 			meta.Name = cfg.Name
 		}
 		if len(cfg.AuthTypes) > 0 {
-			meta.AuthTypes = cfg.AuthTypes
+			meta.AuthTypes = append([]AuthType(nil), cfg.AuthTypes...)
 		}
-		Register(meta)
-		if len(cfg.Models) > 0 {
-			catalog.RegisterProviderOverlay(id, cfg.Options.BaseURL, cfg.Models)
+		baseURL := cfg.Options.BaseURL
+		if baseURL == "" {
+			baseURL, _ = catalog.GetProviderBaseURL(id)
 		}
+		if baseURL == "" {
+			baseURL = meta.BaseURL
+		}
+		modelIDs := make([]string, 0, len(cfg.Models))
+		for modelID := range cfg.Models {
+			modelIDs = append(modelIDs, modelID)
+		}
+		sort.Strings(modelIDs)
+		for _, modelID := range modelIDs {
+			info := cfg.Models[modelID]
+			if modelID == "" {
+				return nil, fmt.Errorf("provider %q: model ID is required", id)
+			}
+			if info.Provider == "" {
+				info.Provider = id
+			}
+			if info.ID == "" {
+				info.ID = modelID
+			}
+			if info.Provider != id || info.ID != modelID {
+				return nil, fmt.Errorf("provider %q: model %q identity does not match its map key", id, modelID)
+			}
+			if _, err := protocolFor(info.API); err != nil {
+				return nil, fmt.Errorf("provider %q model %q: %w", id, modelID, err)
+			}
+			if info.BaseURL == "" {
+				info.BaseURL = baseURL
+			}
+			if info.BaseURL == "" {
+				return nil, fmt.Errorf("provider %q model %q: base URL is required", id, modelID)
+			}
+			cfg.Models[modelID] = info
+		}
+		meta.BaseURL = baseURL
+		metas[id] = meta
+		overlays[id] = catalog.ProviderOverlay{BaseURL: baseURL, Models: cfg.Models}
+		snapshot[id] = cfg
 	}
+	c, err := catalog.New(overlays)
+	if err != nil {
+		return nil, err
+	}
+	return &Registry{providers: metas, catalog: c, configs: snapshot}, nil
+}
+
+// Catalog returns this generation's immutable catalog snapshot.
+func (r *Registry) Catalog() *catalog.Catalog { return r.catalog }
+
+// List returns generation providers in deterministic ID order.
+func (r *Registry) List() []ProviderMeta {
+	out := make([]ProviderMeta, 0, len(r.providers))
+	for _, meta := range r.providers {
+		out = append(out, cloneMeta(meta))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Get returns a generation provider by ID.
+func (r *Registry) Get(id string) (ProviderMeta, error) {
+	meta, ok := r.providers[id]
+	if !ok {
+		return ProviderMeta{}, fmt.Errorf("unknown provider: %s", id)
+	}
+	return cloneMeta(meta), nil
+}
+
+// IsValid reports whether a provider ID exists in this generation.
+func (r *Registry) IsValid(id string) bool { _, ok := r.providers[id]; return ok }
+
+// Config returns the immutable authored overlay for one provider.
+func (r *Registry) Config(id string) (ProviderConfig, bool) {
+	cfg, ok := r.configs[id]
+	return cloneConfig(cfg), ok
+}
+
+// NewClient creates a credential-keyed client for this generation.
+func (r *Registry) NewClient(auth map[string]string) *Client { return &Client{Auth: auth, registry: r} }
+
+// NewClientWithCredentials creates a credential-backed client for this generation.
+func (r *Registry) NewClientWithCredentials(credentials map[string]Credential, refresh func(context.Context, string, Credential) (Credential, error)) *Client {
+	return &Client{Credentials: credentials, Refresh: refresh, registry: r}
+}
+
+func builtinRegistry() *Registry {
+	builtinOnce.Do(func() {
+		var err error
+		builtinGeneration, err = NewRegistry(nil)
+		if err != nil {
+			panic(err)
+		}
+	})
+	return builtinGeneration
+}
+
+// NewClient constructs a route-backed client using built-in providers.
+func NewClient(auth map[string]string) *Client {
+	return builtinRegistry().NewClient(auth)
+}
+
+// NewClientWithCredentials constructs a built-in client with richer stored credentials.
+func NewClientWithCredentials(credentials map[string]Credential, refresh func(context.Context, string, Credential) (Credential, error)) *Client {
+	return builtinRegistry().NewClientWithCredentials(credentials, refresh)
 }
 
 // Prepare lowers a request into provider-native JSON without sending it.
@@ -177,16 +284,13 @@ func (c *Client) Generate(ctx context.Context, req models.Request) (*models.Mess
 }
 
 func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
-	info, err := resolveModelInfo(ref)
+	info, err := resolveModelInfo(c.registry.catalog, ref)
 	if err != nil {
 		return nil, err
 	}
 	var cfg ProviderConfig
-	if providerCfg, ok := c.Providers[info.Provider]; ok {
+	if providerCfg, ok := c.registry.configs[info.Provider]; ok {
 		cfg = providerCfg
-		if cfg.Options.BaseURL != "" {
-			info.BaseURL = cfg.Options.BaseURL
-		}
 	}
 	protocol, err := protocolFor(info.API)
 	if err != nil {
@@ -299,11 +403,11 @@ func routeHeaders(protocol httpmodel.Protocol, credential Credential) map[string
 	return nil
 }
 
-func resolveModelInfo(ref models.ModelRef) (models.ModelInfo, error) {
+func resolveModelInfo(c *catalog.Catalog, ref models.ModelRef) (models.ModelInfo, error) {
 	if ref.Provider == "" || ref.ID == "" {
 		return models.ModelInfo{}, fmt.Errorf("model ref is required")
 	}
-	if info, ok := catalog.Get(ref.Provider, ref.ID); ok {
+	if info, ok := c.Get(ref.Provider, ref.ID); ok {
 		return info, nil
 	}
 	if ref.API == "" || ref.BaseURL == "" {
@@ -319,6 +423,38 @@ func resolveModelInfo(ref models.ModelRef) (models.ModelInfo, error) {
 		MaxOutput:     ref.MaxOutput,
 		Capabilities:  ref.Capabilities,
 	}, nil
+}
+
+func cloneMeta(meta ProviderMeta) ProviderMeta {
+	meta.AuthTypes = append([]AuthType(nil), meta.AuthTypes...)
+	return meta
+}
+
+func cloneConfig(cfg ProviderConfig) ProviderConfig {
+	cfg.AuthTypes = append([]AuthType(nil), cfg.AuthTypes...)
+	cfg.Options.Query = cloneStrings(cfg.Options.Query)
+	if cfg.Options.Auth != nil {
+		auth := *cfg.Options.Auth
+		cfg.Options.Auth = &auth
+	}
+	modelsByID := cfg.Models
+	cfg.Models = make(map[string]models.ModelInfo, len(modelsByID))
+	for id, info := range modelsByID {
+		info.Env = append([]string(nil), info.Env...)
+		cfg.Models[id] = info
+	}
+	return cfg
+}
+
+func cloneStrings(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func protocolFor(api models.API) (httpmodel.Protocol, error) {

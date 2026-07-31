@@ -37,20 +37,17 @@ type modelFile struct {
 		StructuredOutput bool `toml:"structured_output"`
 	} `toml:"capabilities"`
 }
-
 type providerFile struct {
 	Name    string   `toml:"name"`
 	Doc     string   `toml:"doc"`
 	BaseURL string   `toml:"base_url"`
 	Env     []string `toml:"env"`
 }
-
 type labFile struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
 	Website     string `toml:"website"`
 }
-
 type canonicalModelFile struct {
 	Lab         string `toml:"lab"`
 	Name        string `toml:"name"`
@@ -93,122 +90,116 @@ type RouteInfo struct {
 	BaseModel string `json:"base_model,omitempty"`
 }
 
-var (
-	loadOnce        sync.Once
-	loadErr         error
+// ProviderOverlay supplies per-generation provider defaults and model routes.
+type ProviderOverlay struct {
+	BaseURL string
+	Models  map[string]models.ModelInfo
+}
+
+// Catalog is an immutable snapshot of model routes and provider defaults.
+type Catalog struct {
 	byRef           map[string]models.ModelInfo
 	byProv          map[string]map[string]models.ModelInfo
 	byDefault       map[string]providerFile
 	labs            map[string]LabInfo
 	canonicalModels map[string]ModelMetadata
 	routes          []RouteInfo
-	overlayMu       sync.RWMutex
-	overlayRef      = map[string]models.ModelInfo{}
-	overlayProv     = map[string]map[string]models.ModelInfo{}
-	overlayDefault  = map[string]providerFile{}
+}
+
+var (
+	loadOnce sync.Once
+	loadErr  error
+	builtin  *Catalog
 )
 
 func load() error {
 	loadOnce.Do(func() {
-		byRef = map[string]models.ModelInfo{}
-		byProv = map[string]map[string]models.ModelInfo{}
-		byDefault = map[string]providerFile{}
-		labs = map[string]LabInfo{}
-		canonicalModels = map[string]ModelMetadata{}
-		if err := loadLabs(); err != nil {
-			loadErr = err
-			return
-		}
-		if err := loadCanonicalModels(); err != nil {
-			loadErr = err
-			return
-		}
-		entries, err := fs.ReadDir("providers")
-		if err != nil {
-			loadErr = err
-			return
-		}
-		for _, providerDir := range entries {
-			if !providerDir.IsDir() {
-				continue
-			}
-			provider := providerDir.Name()
-			providerDefaults, err := readProviderFile(provider)
-			if err != nil {
-				loadErr = err
-				return
-			}
-			byDefault[provider] = providerDefaults
-			files, err := fs.ReadDir(filepath.Join("providers", provider, "models"))
-			if err != nil {
-				loadErr = err
-				return
-			}
-			for _, file := range files {
-				if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
-					continue
-				}
-				path := filepath.Join("providers", provider, "models", file.Name())
-				b, err := fs.ReadFile(path)
-				if err != nil {
-					loadErr = err
-					return
-				}
-				var src modelFile
-				if err := toml.Unmarshal(b, &src); err != nil {
-					loadErr = fmt.Errorf("%s: %w", path, err)
-					return
-				}
-				if src.Provider == "" {
-					src.Provider = provider
-				}
-				if src.BaseURL == "" {
-					src.BaseURL = providerDefaults.BaseURL
-				}
-				if len(src.Env) == 0 {
-					src.Env = providerDefaults.Env
-				}
-				if src.ID == "" || src.API == "" {
-					loadErr = fmt.Errorf("%s: id and api are required", path)
-					return
-				}
-				if src.BaseModel != "" {
-					if _, ok := canonicalModels[src.BaseModel]; !ok {
-						loadErr = fmt.Errorf("%s: unknown base_model %q", path, src.BaseModel)
-						return
-					}
-				}
-				info := models.ModelInfo{
-					Provider:          src.Provider,
-					ID:                src.ID,
-					API:               models.API(src.API),
-					BaseURL:           src.BaseURL,
-					Env:               src.Env,
-					ContextWindow:     src.ContextWindow,
-					MaxOutput:         src.MaxOutput,
-					InputCostPerMTok:  src.InputCost,
-					OutputCostPerMTok: src.OutputCost,
-					Capabilities: models.ModelCapabilities{
-						Tools:            src.Capabilities.Tools,
-						Images:           src.Capabilities.Images,
-						Reasoning:        src.Capabilities.Reasoning,
-						StructuredOutput: src.Capabilities.StructuredOutput,
-					},
-				}
-				ref := info.Provider + "/" + info.ID
-				byRef[ref] = info
-				if byProv[info.Provider] == nil {
-					byProv[info.Provider] = map[string]models.ModelInfo{}
-				}
-				byProv[info.Provider][info.ID] = info
-				routes = append(routes, RouteInfo{ModelInfo: info, BaseModel: src.BaseModel})
-			}
-		}
+		builtin = &Catalog{byRef: map[string]models.ModelInfo{}, byProv: map[string]map[string]models.ModelInfo{}, byDefault: map[string]providerFile{}, labs: map[string]LabInfo{}, canonicalModels: map[string]ModelMetadata{}}
+		loadErr = loadEmbedded(builtin)
 	})
 	return loadErr
 }
 
-func loadLabs() error {
+func loadEmbedded(c *Catalog) error {
+	if err := loadLabs(c); err != nil {
+		return err
+	}
+	if err := loadCanonicalModels(c); err != nil {
+		return err
+	}
+	entries, err := fs.ReadDir("providers")
+	if err != nil {
+		return err
+	}
+	for _, dir := range entries {
+		if !dir.IsDir() {
+			continue
+		}
+		provider := dir.Name()
+		defaults, err := readProviderFile(provider)
+		if err != nil {
+			return err
+		}
+		c.byDefault[provider] = defaults
+		files, err := fs.ReadDir(filepath.Join("providers", provider, "models"))
+		if err != nil {
+			return err
+		}
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
+				continue
+			}
+			path := filepath.Join("providers", provider, "models", file.Name())
+			b, err := fs.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			var src modelFile
+			if err := toml.Unmarshal(b, &src); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			if src.Provider == "" {
+				src.Provider = provider
+			}
+			if src.BaseURL == "" {
+				src.BaseURL = defaults.BaseURL
+			}
+			if len(src.Env) == 0 {
+				src.Env = defaults.Env
+			}
+			if src.ID == "" || src.API == "" {
+				return fmt.Errorf("%s: id and api are required", path)
+			}
+			if src.BaseModel != "" {
+				if _, ok := c.canonicalModels[src.BaseModel]; !ok {
+					return fmt.Errorf("%s: unknown base_model %q", path, src.BaseModel)
+				}
+			}
+			info := models.ModelInfo{Provider: src.Provider, ID: src.ID, API: models.API(src.API), BaseURL: src.BaseURL, Env: append([]string(nil), src.Env...), ContextWindow: src.ContextWindow, MaxOutput: src.MaxOutput, InputCostPerMTok: src.InputCost, OutputCostPerMTok: src.OutputCost, Capabilities: models.ModelCapabilities{Tools: src.Capabilities.Tools, Images: src.Capabilities.Images, Reasoning: src.Capabilities.Reasoning, StructuredOutput: src.Capabilities.StructuredOutput}}
+			c.addRoute(info, src.BaseModel)
+		}
+	}
+	return nil
+}
+
+func (c *Catalog) addRoute(info models.ModelInfo, baseModel string) {
+	c.byRef[info.Provider+"/"+info.ID] = info
+	if c.byProv[info.Provider] == nil {
+		c.byProv[info.Provider] = map[string]models.ModelInfo{}
+	}
+	c.byProv[info.Provider][info.ID] = info
+	for i := range c.routes {
+		if c.routes[i].Provider == info.Provider && c.routes[i].ID == info.ID {
+			if baseModel == "" {
+				baseModel = c.routes[i].BaseModel
+			}
+			c.routes[i] = RouteInfo{ModelInfo: info, BaseModel: baseModel}
+			return
+		}
+	}
+	c.routes = append(c.routes, RouteInfo{ModelInfo: info, BaseModel: baseModel})
+}
+func loadLabs(c *Catalog) error {
 	entries, err := fs.ReadDir("labs")
 	if err != nil {
 		return err
@@ -236,12 +227,11 @@ func loadLabs() error {
 		} else if !errors.Is(err, iofs.ErrNotExist) {
 			return err
 		}
-		labs[entry.Name()] = LabInfo{ID: entry.Name(), Name: src.Name, Description: src.Description, Website: src.Website, Logo: logo}
+		c.labs[entry.Name()] = LabInfo{ID: entry.Name(), Name: src.Name, Description: src.Description, Website: src.Website, Logo: logo}
 	}
 	return nil
 }
-
-func loadCanonicalModels() error {
+func loadCanonicalModels(c *Catalog) error {
 	providers, err := fs.ReadDir("models")
 	if err != nil {
 		return err
@@ -270,16 +260,15 @@ func loadCanonicalModels() error {
 			if src.Lab == "" || src.Name == "" || src.Description == "" {
 				return fmt.Errorf("%s: lab, name, and description are required", path)
 			}
-			if _, ok := labs[src.Lab]; !ok {
+			if _, ok := c.labs[src.Lab]; !ok {
 				return fmt.Errorf("%s: unknown lab %q", path, src.Lab)
 			}
 			id := provider.Name() + "/" + strings.TrimSuffix(file.Name(), ".toml")
-			canonicalModels[id] = ModelMetadata{ID: id, Lab: src.Lab, Name: src.Name, Description: src.Description, ReleaseDate: src.ReleaseDate, LastUpdated: src.LastUpdated}
+			c.canonicalModels[id] = ModelMetadata{ID: id, Lab: src.Lab, Name: src.Name, Description: src.Description, ReleaseDate: src.ReleaseDate, LastUpdated: src.LastUpdated}
 		}
 	}
 	return nil
 }
-
 func readProviderFile(provider string) (providerFile, error) {
 	path := filepath.Join("providers", provider, "provider.toml")
 	b, err := fs.ReadFile(path)
@@ -296,77 +285,132 @@ func readProviderFile(provider string) (providerFile, error) {
 	return src, nil
 }
 
-// GetRef returns metadata for a provider-qualified model ref.
-func GetRef(ref string) (models.ModelInfo, bool) {
-	overlayMu.RLock()
-	if info, ok := overlayRef[ref]; ok {
-		overlayMu.RUnlock()
-		return info, true
+// Builtin returns the immutable embedded catalog.
+func Builtin() *Catalog {
+	if load() != nil {
+		return nil
 	}
-	overlayMu.RUnlock()
+	return builtin
+}
 
+// New builds an immutable catalog snapshot by applying overlays to the embedded catalog.
+func New(overlays map[string]ProviderOverlay) (*Catalog, error) {
 	if err := load(); err != nil {
-		return models.ModelInfo{}, false
+		return nil, err
 	}
-	info, ok := byRef[ref]
+	c := builtin.clone()
+	ids := make([]string, 0, len(overlays))
+	for id := range overlays {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if id == "" {
+			return nil, fmt.Errorf("provider ID is required")
+		}
+		overlay := overlays[id]
+		defaults := c.byDefault[id]
+		if overlay.BaseURL != "" {
+			defaults.BaseURL = overlay.BaseURL
+			for _, info := range c.byProv[id] {
+				info.BaseURL = overlay.BaseURL
+				c.addRoute(info, "")
+			}
+		}
+		c.byDefault[id] = defaults
+		modelIDs := make([]string, 0, len(overlay.Models))
+		for modelID := range overlay.Models {
+			modelIDs = append(modelIDs, modelID)
+		}
+		sort.Strings(modelIDs)
+		for _, modelID := range modelIDs {
+			info := overlay.Models[modelID]
+			if modelID == "" || info.ID == "" {
+				return nil, fmt.Errorf("provider %q: model ID is required", id)
+			}
+			if info.Provider != id || info.ID != modelID {
+				return nil, fmt.Errorf("provider %q: model %q identity does not match its map key", id, modelID)
+			}
+			if info.BaseURL == "" {
+				info.BaseURL = defaults.BaseURL
+			}
+			if info.BaseURL == "" {
+				return nil, fmt.Errorf("provider %q model %q: base URL is required", id, modelID)
+			}
+			info.Env = append([]string(nil), info.Env...)
+			c.addRoute(info, "")
+		}
+	}
+	return c, nil
+}
+func (c *Catalog) clone() *Catalog {
+	out := &Catalog{byRef: map[string]models.ModelInfo{}, byProv: map[string]map[string]models.ModelInfo{}, byDefault: map[string]providerFile{}, labs: map[string]LabInfo{}, canonicalModels: map[string]ModelMetadata{}, routes: make([]RouteInfo, len(c.routes))}
+	for i, route := range c.routes {
+		route.Env = append([]string(nil), route.Env...)
+		out.routes[i] = route
+	}
+	for k, v := range c.byRef {
+		v.Env = append([]string(nil), v.Env...)
+		out.byRef[k] = v
+	}
+	for p, m := range c.byProv {
+		out.byProv[p] = map[string]models.ModelInfo{}
+		for id, v := range m {
+			v.Env = append([]string(nil), v.Env...)
+			out.byProv[p][id] = v
+		}
+	}
+	for k, v := range c.byDefault {
+		v.Env = append([]string(nil), v.Env...)
+		out.byDefault[k] = v
+	}
+	for k, v := range c.labs {
+		out.labs[k] = v
+	}
+	for k, v := range c.canonicalModels {
+		out.canonicalModels[k] = v
+	}
+	return out
+}
+
+// GetRef returns metadata for a provider-qualified model ref.
+func (c *Catalog) GetRef(ref string) (models.ModelInfo, bool) {
+	info, ok := c.byRef[ref]
+	if ok {
+		info.Env = append([]string(nil), info.Env...)
+	}
 	return info, ok
 }
 
 // GetModels returns the model catalog for a provider.
-func GetModels(provider string) (map[string]models.ModelInfo, bool) {
-	out := map[string]models.ModelInfo{}
-	if err := load(); err != nil {
+func (c *Catalog) GetModels(provider string) (map[string]models.ModelInfo, bool) {
+	m, ok := c.byProv[provider]
+	if !ok {
 		return nil, false
 	}
-	if m, ok := byProv[provider]; ok {
-		for id, info := range m {
-			out[id] = info
-		}
-	}
-	overlayMu.RLock()
-	if m, ok := overlayProv[provider]; ok {
-		for id, info := range m {
-			out[id] = info
-		}
-	}
-	overlayMu.RUnlock()
-	if len(out) == 0 {
-		return nil, false
+	out := make(map[string]models.ModelInfo, len(m))
+	for id, info := range m {
+		info.Env = append([]string(nil), info.Env...)
+		out[id] = info
 	}
 	return out, true
 }
 
 // Get returns a single model's metadata.
-func Get(provider, modelID string) (models.ModelInfo, bool) {
-	return GetRef(provider + "/" + modelID)
+func (c *Catalog) Get(provider, modelID string) (models.ModelInfo, bool) {
+	return c.GetRef(provider + "/" + modelID)
 }
 
 // GetProviderBaseURL returns the catalog default base URL for a provider.
-func GetProviderBaseURL(provider string) (string, bool) {
-	overlayMu.RLock()
-	if defaults, ok := overlayDefault[provider]; ok && defaults.BaseURL != "" {
-		overlayMu.RUnlock()
-		return defaults.BaseURL, true
-	}
-	overlayMu.RUnlock()
-
-	if err := load(); err != nil {
-		return "", false
-	}
-	defaults, ok := byDefault[provider]
-	if !ok || defaults.BaseURL == "" {
-		return "", false
-	}
-	return defaults.BaseURL, true
+func (c *Catalog) GetProviderBaseURL(provider string) (string, bool) {
+	defaults, ok := c.byDefault[provider]
+	return defaults.BaseURL, ok && defaults.BaseURL != ""
 }
 
-// ListLabs returns the labs represented in the embedded catalog.
-func ListLabs() []LabInfo {
-	if err := load(); err != nil {
-		return nil
-	}
-	out := make([]LabInfo, 0, len(labs))
-	for _, lab := range labs {
+// ListLabs returns the labs represented in the catalog.
+func (c *Catalog) ListLabs() []LabInfo {
+	out := make([]LabInfo, 0, len(c.labs))
+	for _, lab := range c.labs {
 		out = append(out, lab)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -374,90 +418,103 @@ func ListLabs() []LabInfo {
 }
 
 // ListCanonicalModels returns model metadata independently of provider routes.
-func ListCanonicalModels() []ModelMetadata {
-	if err := load(); err != nil {
-		return nil
-	}
-	out := make([]ModelMetadata, 0, len(canonicalModels))
-	for _, model := range canonicalModels {
+func (c *Catalog) ListCanonicalModels() []ModelMetadata {
+	out := make([]ModelMetadata, 0, len(c.canonicalModels))
+	for _, model := range c.canonicalModels {
 		out = append(out, model)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// ListProviders returns the embedded catalog's provider metadata.
-func ListProviders() []ProviderInfo {
-	if err := load(); err != nil {
-		return nil
-	}
-	out := make([]ProviderInfo, 0, len(byDefault))
-	for id, provider := range byDefault {
+// ListProviders returns the catalog's provider metadata.
+func (c *Catalog) ListProviders() []ProviderInfo {
+	out := make([]ProviderInfo, 0, len(c.byDefault))
+	for id, provider := range c.byDefault {
 		name := provider.Name
 		if name == "" {
 			name = id
 		}
-		out = append(out, ProviderInfo{ID: id, Name: name, Doc: provider.Doc, BaseURL: provider.BaseURL, Env: provider.Env})
+		out = append(out, ProviderInfo{ID: id, Name: name, Doc: provider.Doc, BaseURL: provider.BaseURL, Env: append([]string(nil), provider.Env...)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// ListRoutes returns every embedded provider/model route.
-func ListRoutes() []RouteInfo {
-	if err := load(); err != nil {
-		return nil
+// ListRoutes returns every provider/model route.
+func (c *Catalog) ListRoutes() []RouteInfo {
+	out := append([]RouteInfo(nil), c.routes...)
+	for i := range out {
+		out[i].Env = append([]string(nil), out[i].Env...)
 	}
-	out := append([]RouteInfo(nil), routes...)
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Provider+"/"+out[i].ID < out[j].Provider+"/"+out[j].ID
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Provider+"/"+out[i].ID < out[j].Provider+"/"+out[j].ID })
 	return out
 }
 
 // LabLogo returns the embedded SVG logo for a lab.
-func LabLogo(id string) ([]byte, bool) {
-	if err := load(); err != nil {
-		return nil, false
-	}
-	if _, ok := labs[id]; !ok {
+func (c *Catalog) LabLogo(id string) ([]byte, bool) {
+	if _, ok := c.labs[id]; !ok {
 		return nil, false
 	}
 	b, err := fs.ReadFile(filepath.Join("labs", id, "logo.svg"))
-	if err != nil {
-		return nil, false
-	}
-	return b, true
+	return b, err == nil
 }
 
-// RegisterProviderOverlay adds process-local provider defaults and model metadata.
-// Config overlays win over the embedded catalog for the running daemon.
-func RegisterProviderOverlay(provider string, baseURL string, modelsByID map[string]models.ModelInfo) {
-	overlayMu.Lock()
-	defer overlayMu.Unlock()
-	if baseURL != "" {
-		overlayDefault[provider] = providerFile{BaseURL: baseURL}
+// Package-level functions provide compatibility access to the built-in catalog.
+func GetRef(ref string) (models.ModelInfo, bool) {
+	c := Builtin()
+	if c == nil {
+		return models.ModelInfo{}, false
 	}
-	if len(modelsByID) == 0 {
-		return
+	return c.GetRef(ref)
+}
+func GetModels(provider string) (map[string]models.ModelInfo, bool) {
+	c := Builtin()
+	if c == nil {
+		return nil, false
 	}
-	if overlayProv[provider] == nil {
-		overlayProv[provider] = map[string]models.ModelInfo{}
+	return c.GetModels(provider)
+}
+func Get(provider, modelID string) (models.ModelInfo, bool) { return GetRef(provider + "/" + modelID) }
+func GetProviderBaseURL(provider string) (string, bool) {
+	c := Builtin()
+	if c == nil {
+		return "", false
 	}
-	for id, info := range modelsByID {
-		if info.Provider == "" {
-			info.Provider = provider
-		}
-		if info.ID == "" {
-			info.ID = id
-		}
-		if info.BaseURL == "" {
-			info.BaseURL = baseURL
-		}
-		if overlayProv[info.Provider] == nil {
-			overlayProv[info.Provider] = map[string]models.ModelInfo{}
-		}
-		overlayProv[info.Provider][info.ID] = info
-		overlayRef[info.Provider+"/"+info.ID] = info
+	return c.GetProviderBaseURL(provider)
+}
+func ListLabs() []LabInfo {
+	c := Builtin()
+	if c == nil {
+		return nil
 	}
+	return c.ListLabs()
+}
+func ListCanonicalModels() []ModelMetadata {
+	c := Builtin()
+	if c == nil {
+		return nil
+	}
+	return c.ListCanonicalModels()
+}
+func ListProviders() []ProviderInfo {
+	c := Builtin()
+	if c == nil {
+		return nil
+	}
+	return c.ListProviders()
+}
+func ListRoutes() []RouteInfo {
+	c := Builtin()
+	if c == nil {
+		return nil
+	}
+	return c.ListRoutes()
+}
+func LabLogo(id string) ([]byte, bool) {
+	c := Builtin()
+	if c == nil {
+		return nil, false
+	}
+	return c.LabLogo(id)
 }

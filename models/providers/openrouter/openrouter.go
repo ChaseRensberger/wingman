@@ -2,7 +2,6 @@ package openrouter
 
 import (
 	"github.com/chaserensberger/wingman/models"
-	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
 )
 
@@ -20,5 +19,4 @@ func init() {
 		Name:      "OpenRouter",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
 	})
-	catalog.RegisterProviderOverlay(ID, "https://openrouter.ai/api/v1", nil)
 }

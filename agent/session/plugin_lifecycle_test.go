@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -123,6 +124,20 @@ func TestConcurrentCloseWaitsForCleanup(t *testing.T) {
 	close(release)
 	if err := <-first; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCloseRunsSessionCleanupsInReverseOrder(t *testing.T) {
+	var order []string
+	sess := New(
+		WithCleanup(func(context.Context) error { order = append(order, "first"); return nil }),
+		WithCleanup(func(context.Context) error { order = append(order, "second"); return nil }),
+	)
+	if err := sess.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"second", "first"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("cleanup order = %v, want %v", order, want)
 	}
 }
 

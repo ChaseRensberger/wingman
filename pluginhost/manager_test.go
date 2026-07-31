@@ -233,21 +233,20 @@ func TestManagerReloadSwapsGenerationAndDrainsActiveCall(t *testing.T) {
 	}
 }
 
-func TestManagerHealthExitAndEnsureWorkDirRollback(t *testing.T) {
+func TestManagerHealthExitAndReloadRollback(t *testing.T) {
 	global := t.TempDir()
-	work := t.TempDir()
 	writeManagerManifest(t, global, "global", "health")
 	m := newTestManager(t, global)
 	defer m.Close()
-	writeManagerManifest(t, LocalPluginDir(work), "local", "bad-id")
-	if err := m.EnsureWorkDir(context.Background(), work); err == nil {
-		t.Fatal("EnsureWorkDir() succeeded")
+	writeManagerManifest(t, global, "local", "bad-id")
+	if err := m.Reload(context.Background()); err == nil {
+		t.Fatal("Reload() succeeded")
 	}
 	if len(m.Tools()) != 1 {
 		t.Fatalf("tools after rollback = %d", len(m.Tools()))
 	}
-	writeManagerManifest(t, LocalPluginDir(work), "local", "dies")
-	if err := m.EnsureWorkDir(context.Background(), work); err != nil {
+	writeManagerManifest(t, global, "local", "dies")
+	if err := m.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(100 * time.Millisecond)

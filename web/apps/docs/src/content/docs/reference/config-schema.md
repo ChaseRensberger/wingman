@@ -163,6 +163,9 @@ There is no config-file equivalent for `--no-plugins`.
 | `enabled` | boolean | no | Whether the server connects at startup. Defaults to `true`. |
 | `timeout` | number | no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
 
+Wingman validates MCP definitions before it constructs daemon resources. The
+`cwd` field supports `~` and `~/...` expansion for the effective user.
+
 See [MCP Servers](/configure/mcp) for local and remote examples, status checks, and current limits.
 
 ## `permissions`

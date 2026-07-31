@@ -19,11 +19,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/internal/observability"
-	wingmcp "github.com/chaserensberger/wingman/mcp"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
-	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
 )
@@ -37,9 +36,8 @@ type Server struct {
 	webDevURL          string
 	logger             *slog.Logger
 	logs               *observability.LogBuffer
-	plugins            *pluginhost.Manager
-	mcp                *wingmcp.Manager
-	providers          map[string]provider.ProviderConfig
+	scopes             *execution.Manager
+	providers          *provider.Registry
 	permissions        permission.Ruleset
 	agentPermissions   map[string]permission.Ruleset
 	oauth              *oauthManager
@@ -66,9 +64,7 @@ type Config struct {
 	WebDevURL        string
 	Logger           *slog.Logger
 	Logs             *observability.LogBuffer
-	Plugins          *pluginhost.Manager
-	MCP              *wingmcp.Manager
-	Providers        map[string]provider.ProviderConfig
+	Scopes           *execution.Manager
 	Permissions      permission.Ruleset
 	AgentPermissions map[string]permission.Ruleset
 	// PermissionTimeout bounds interactive permission requests. Values less
@@ -87,6 +83,13 @@ func New(cfg Config) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	var providers *provider.Registry
+	if cfg.Scopes != nil {
+		providers = cfg.Scopes.Providers()
+	}
+	if providers == nil {
+		providers, _ = provider.NewRegistry(nil)
+	}
 	s := &Server{
 		store:            cfg.Store,
 		router:           chi.NewRouter(),
@@ -94,9 +97,8 @@ func New(cfg Config) *Server {
 		webDevURL:        cfg.WebDevURL,
 		logger:           logger,
 		logs:             cfg.Logs,
-		plugins:          cfg.Plugins,
-		mcp:              cfg.MCP,
-		providers:        cfg.Providers,
+		scopes:           cfg.Scopes,
+		providers:        providers,
 		permissions:      cfg.Permissions,
 		agentPermissions: cfg.AgentPermissions,
 		oauth:            newOAuthManager(ctx, cfg.Store),
@@ -473,6 +475,17 @@ func (s *Server) waitInflight(ctx context.Context) error {
 
 // ShutdownCtx is cancelled when the server begins closing.
 func (s *Server) ShutdownCtx() context.Context { return s.shutdownCtx }
+
+func (s *Server) executionScope(ctx context.Context, workDir string) (*execution.Scope, func(), error) {
+	if s.scopes == nil {
+		return nil, func() {}, nil
+	}
+	lease, err := s.scopes.Acquire(ctx, workDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return lease.Scope(), func() { _ = lease.Close(context.Background()) }, nil
+}
 
 type ErrorResponse struct {
 	Error string `json:"error"`

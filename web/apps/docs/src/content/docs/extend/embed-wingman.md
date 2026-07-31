@@ -75,7 +75,8 @@ does not need daemon HTTP behavior.
 ## Shutdown Contract
 
 `App.Close` first cancels application work and waits for the server domain. It
-then closes MCP, external plugins, and storage.
+then closes execution scopes and storage. Scope closure stops MCP connections
+before external plugin processes.
 
 If the supplied context ends before server work drains, dependencies remain
 open. Call `App.Close` again with a new context to continue shutdown.

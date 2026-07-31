@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chaserensberger/wingman/execution"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
+	"github.com/chaserensberger/wingman/models"
+	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/server"
 )
 
@@ -38,23 +41,58 @@ func (s *fakeServer) Close(context.Context) error {
 
 func TestNewRollsBackResourcesInReverseOrder(t *testing.T) {
 	var order []string
-	wantErr := errors.New("MCP failed")
+	wantErr := errors.New("scope failed")
 	_, err := newWithFactories(context.Background(), Config{}, factories{
 		openStore: func(string) (storeResource, error) {
 			return storeResource{close: func() error { order = append(order, "store"); return nil }}, nil
 		},
-		newPlugins: func(context.Context, []string) (pluginResource, error) {
-			return pluginResource{close: func() error { order = append(order, "plugins"); return nil }}, nil
-		},
-		newMCP: func(context.Context, map[string]wingmcp.ServerConfig) (mcpResource, error) {
-			return mcpResource{}, wantErr
+		newScopes: func(execution.Config) (scopeResource, error) {
+			return scopeResource{}, wantErr
 		},
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("New() error = %v", err)
 	}
-	if want := []string{"plugins", "store"}; !reflect.DeepEqual(order, want) {
+	if want := []string{"store"}; !reflect.DeepEqual(order, want) {
 		t.Fatalf("rollback order = %v, want %v", order, want)
+	}
+}
+
+func TestNewValidatesProviderGenerationBeforeOpeningStore(t *testing.T) {
+	opened := false
+	_, err := newWithFactories(context.Background(), Config{Providers: map[string]provider.ProviderConfig{
+		"invalid": {Options: provider.ProviderOptions{BaseURL: "https://example.test"}, Models: map[string]models.ModelInfo{
+			"model": {API: "unsupported"},
+		}},
+	}}, factories{
+		openStore: func(string) (storeResource, error) {
+			opened = true
+			return storeResource{}, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("New accepted invalid provider config")
+	}
+	if opened {
+		t.Fatal("store opened before provider validation")
+	}
+}
+
+func TestNewValidatesMCPBeforeOpeningStore(t *testing.T) {
+	opened := false
+	_, err := newWithFactories(context.Background(), Config{MCP: map[string]wingmcp.ServerConfig{
+		"invalid": {Type: "remote", URL: "relative"},
+	}}, factories{
+		openStore: func(string) (storeResource, error) {
+			opened = true
+			return storeResource{}, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("New accepted invalid MCP config")
+	}
+	if opened {
+		t.Fatal("store opened before MCP validation")
 	}
 }
 
@@ -65,11 +103,8 @@ func TestNewRollsBackAllResourcesWhenServerStartFails(t *testing.T) {
 		openStore: func(string) (storeResource, error) {
 			return storeResource{close: func() error { order = append(order, "store"); return nil }}, nil
 		},
-		newPlugins: func(context.Context, []string) (pluginResource, error) {
-			return pluginResource{close: func() error { order = append(order, "plugins"); return nil }}, nil
-		},
-		newMCP: func(context.Context, map[string]wingmcp.ServerConfig) (mcpResource, error) {
-			return mcpResource{close: func() error { order = append(order, "mcp"); return nil }}, nil
+		newScopes: func(execution.Config) (scopeResource, error) {
+			return scopeResource{close: func(context.Context) error { order = append(order, "scopes"); return nil }}, nil
 		},
 		newServer: func(server.Config) lifecycleServer {
 			return &orderedFakeServer{fakeServer: fakeServer{startErr: wantErr}, order: &order}
@@ -78,7 +113,7 @@ func TestNewRollsBackAllResourcesWhenServerStartFails(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("New() error = %v", err)
 	}
-	if want := []string{"server", "mcp", "plugins", "store"}; !reflect.DeepEqual(order, want) {
+	if want := []string{"server", "scopes", "store"}; !reflect.DeepEqual(order, want) {
 		t.Fatalf("rollback order = %v, want %v", order, want)
 	}
 }
@@ -99,9 +134,8 @@ func TestCloseWaitsForServerBeforeDependenciesAndCanRetry(t *testing.T) {
 	var order []string
 	a := &App{
 		cancel: func() {}, server: core,
-		mcp:     mcpResource{close: func() error { order = append(order, "mcp"); return nil }},
-		plugins: pluginResource{close: func() error { order = append(order, "plugins"); return nil }},
-		store:   storeResource{close: func() error { order = append(order, "store"); return nil }},
+		scopes: scopeResource{close: func(context.Context) error { order = append(order, "scopes"); return nil }},
+		store:  storeResource{close: func() error { order = append(order, "store"); return nil }},
 	}
 	if err := a.Close(context.Background()); !errors.Is(err, deadline) {
 		t.Fatalf("first Close() error = %v", err)
@@ -112,7 +146,7 @@ func TestCloseWaitsForServerBeforeDependenciesAndCanRetry(t *testing.T) {
 	if err := a.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"mcp", "plugins", "store"}; !reflect.DeepEqual(order, want) {
+	if want := []string{"scopes", "store"}; !reflect.DeepEqual(order, want) {
 		t.Fatalf("close order = %v, want %v", order, want)
 	}
 	if err := a.Close(context.Background()); err != nil || core.closed != 2 {
@@ -136,6 +170,40 @@ func TestNewEphemeralApplication(t *testing.T) {
 	}
 	if err := a.Close(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestApplicationsUseIsolatedProviderGenerations(t *testing.T) {
+	configured, err := New(context.Background(), Config{
+		Ephemeral: true, DisablePlugins: true,
+		Providers: map[string]provider.ProviderConfig{
+			"custom": {
+				Name: "Custom", Options: provider.ProviderOptions{BaseURL: "https://example.test/v1"},
+				Models: map[string]models.ModelInfo{"chat": {API: models.APIOpenAICompatible}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	configured.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/provider/custom/models", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("configured status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if err := configured.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	clean, err := New(context.Background(), Config{Ephemeral: true, DisablePlugins: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clean.Close(context.Background())
+	response = httptest.NewRecorder()
+	clean.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/provider/custom/models", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("clean status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 

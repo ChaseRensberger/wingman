@@ -2,7 +2,6 @@ package deepseek
 
 import (
 	"github.com/chaserensberger/wingman/models"
-	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
 )
 
@@ -20,5 +19,4 @@ func init() {
 		Name:      "DeepSeek",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
 	})
-	catalog.RegisterProviderOverlay(ID, "https://api.deepseek.com/v1", nil)
 }

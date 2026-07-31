@@ -105,7 +105,10 @@ func (c Config) Validate() error {
 	if err := validateMapKeys("provider", c.Provider); err != nil {
 		return err
 	}
-	return validateMapKeys("mcp", c.MCP)
+	if err := validateMapKeys("mcp", c.MCP); err != nil {
+		return err
+	}
+	return (wingmcp.Config{Servers: c.MCP}).Validate()
 }
 
 // Normalize returns a copy of c with DB and plugin paths expanded relative to home.
@@ -130,6 +133,15 @@ func (c Config) Normalize(home string) (Config, error) {
 	out.AgentPermissions = cloneAgentPermissions(c.AgentPermissions)
 	out.Provider = cloneProviders(c.Provider)
 	out.MCP = cloneMCP(c.MCP)
+	for name, server := range out.MCP {
+		if server.CWD != "" {
+			server.CWD, err = expandHome(server.CWD, home)
+			if err != nil {
+				return Config{}, fmt.Errorf("normalize mcp.%s.cwd: %w", name, err)
+			}
+			out.MCP[name] = server
+		}
+	}
 	return out, nil
 }
 

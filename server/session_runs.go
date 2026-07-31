@@ -183,7 +183,7 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	}
 	if err == nil {
 		var runSession *session.Session
-		runSession, err = m.server.buildSessionForRun(&queued.Agent, sess, queued.ID)
+		runSession, err = m.server.buildSessionForRun(runCtx, &queued.Agent, sess, queued.ID)
 		if runSession != nil {
 			defer func() {
 				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)

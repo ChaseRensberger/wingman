@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/tool"
 )
 
@@ -28,7 +29,13 @@ type toolCatalogItem struct {
 }
 
 func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
-	_, items, err := s.toolCatalog()
+	scope, release, err := s.executionScope(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	_, items, err := s.toolCatalog(scope)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -36,7 +43,7 @@ func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toolCatalogResponse{Tools: items})
 }
 
-func (s *Server) toolCatalog() (*tool.Registry, []toolCatalogItem, error) {
+func (s *Server) toolCatalog(scope *execution.Scope) (*tool.Registry, []toolCatalogItem, error) {
 	var tools []tool.Tool
 	items := make(map[string]toolCatalogItem)
 	add := func(t tool.Tool, item toolCatalogItem) {
@@ -46,19 +53,13 @@ func (s *Server) toolCatalog() (*tool.Registry, []toolCatalogItem, error) {
 		}
 	}
 
-	native := nativeTools()
-	names := make([]string, 0, len(native))
-	for name := range native {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		add(native[name], catalogItem(native[name], "native"))
+	for _, native := range execution.BuiltinTools() {
+		add(native, catalogItem(native, "native"))
 	}
 
-	if s.plugins != nil {
+	if scope != nil && scope.Plugins() != nil {
 		owners := map[string]string{}
-		plugins, _ := s.plugins.Status()
+		plugins, _ := scope.Plugins().Status()
 		for _, plugin := range plugins {
 			if !plugin.Running {
 				continue
@@ -67,7 +68,7 @@ func (s *Server) toolCatalog() (*tool.Registry, []toolCatalogItem, error) {
 				owners[name] = plugin.ID
 			}
 		}
-		pluginTools := s.plugins.Tools()
+		pluginTools := scope.Plugins().Tools()
 		sort.Slice(pluginTools, func(i, j int) bool { return pluginTools[i].Name() < pluginTools[j].Name() })
 		for _, t := range pluginTools {
 			item := catalogItem(t, "plugin")
@@ -76,9 +77,9 @@ func (s *Server) toolCatalog() (*tool.Registry, []toolCatalogItem, error) {
 		}
 	}
 
-	if s.mcp != nil {
+	if scope != nil && scope.MCP() != nil {
 		infos := make(map[string]toolCatalogItem)
-		for _, info := range s.mcp.ToolInfos() {
+		for _, info := range scope.MCP().ToolInfos() {
 			if info.Status != "connected" {
 				continue
 			}
@@ -88,7 +89,7 @@ func (s *Server) toolCatalog() (*tool.Registry, []toolCatalogItem, error) {
 				RemoteName: info.RemoteName, Status: info.Status,
 			}
 		}
-		for _, t := range s.mcp.Tools() {
+		for _, t := range scope.MCP().Tools() {
 			item, ok := infos[t.Name()]
 			if !ok {
 				item = catalogItem(t, "mcp")
