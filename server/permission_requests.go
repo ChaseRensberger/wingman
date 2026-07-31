@@ -100,6 +100,14 @@ func (p permissionPrompter) Request(ctx context.Context, info run.PermissionRequ
 			return "", err
 		}
 		return permissionOutcome(request)
+	case <-p.manager.server.ShutdownCtx().Done():
+		resolveCtx, resolveCancel := context.WithTimeout(context.Background(), p.manager.resolutionTimeout)
+		request, err := p.manager.resolve(resolveCtx, p.sessionID, requestID, store.PermissionRequestStatusInterrupted, "", "permission_interrupted", "permission request interrupted")
+		resolveCancel()
+		if err != nil {
+			return "", err
+		}
+		return permissionOutcome(request)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
@@ -38,7 +39,7 @@ func TestOAuthCompleteDoesNotPersistCancelledAttempt(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	manager := newOAuthManager(data)
+	manager := newOAuthManager(context.Background(), data)
 	manager.attempts["attempt"] = &oauthAttempt{id: "attempt", provider: "openai", status: "pending", cancel: cancel}
 	if err := manager.cancel("attempt"); err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestOAuthCompletePersistsPendingAttempt(t *testing.T) {
 	data := memory.NewStore()
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	manager := newOAuthManager(data)
+	manager := newOAuthManager(context.Background(), data)
 	manager.attempts["attempt"] = &oauthAttempt{id: "attempt", provider: "openai", status: "pending", cancel: cancel}
 	credential := store.AuthCredential{Type: "oauth", Access: "access", Refresh: "refresh", AccountID: "account"}
 	if err := manager.complete("attempt", credential); err != nil {
@@ -101,5 +102,26 @@ func TestCodexAuthorizeURL(t *testing.T) {
 	}
 	if query.Get("originator") != "codex_cli_rs" || query.Get("code_challenge_method") != "S256" {
 		t.Fatalf("query = %v", query)
+	}
+}
+
+func TestOAuthCloseRejectsStartsAndWaitsForWorkers(t *testing.T) {
+	manager := newOAuthManager(context.Background(), memory.NewStore())
+	finished := make(chan struct{})
+	if !manager.startWorker(func() { <-finished }) {
+		t.Fatal("start worker")
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if err := manager.Close(timeoutCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("close error = %v, want deadline exceeded", err)
+	}
+	if _, err := manager.start("openai", "device"); err == nil {
+		t.Fatal("start after close succeeded")
+	}
+	close(finished)
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

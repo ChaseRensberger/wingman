@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -19,15 +20,6 @@ import (
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
-
-	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/deepseek"
-	_ "github.com/chaserensberger/wingman/models/providers/google"
-	_ "github.com/chaserensberger/wingman/models/providers/openai"
-	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
-	_ "github.com/chaserensberger/wingman/models/providers/opencode"
-	_ "github.com/chaserensberger/wingman/models/providers/opencodego"
-	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 )
 
 type CreateSessionRequest struct {
@@ -444,8 +436,16 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	effectiveAgent := s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
-	if _, err := s.buildSession(effectiveAgent, sess); err != nil {
+	validationSession, err := s.buildSession(effectiveAgent, sess)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	validationCtx, validationCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer validationCancel()
+	if err := validationSession.Close(validationCtx); err != nil {
+		s.logger.Error("close admission validation session", "session_id", sess.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "close admission validation session")
 		return
 	}
 	var outputSchemaJSON []byte
@@ -649,6 +649,13 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		if err := runSession.Close(cleanupCtx); err != nil {
+			s.logger.Error("close ephemeral run session", "session_id", sess.ID, "error", err)
+		}
+	}()
 
 	if req.OutputSchema != nil {
 		runSession.SetOutputSchema(&models.OutputSchema{

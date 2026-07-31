@@ -2,34 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"os/user"
-	"path/filepath"
-	"strings"
 	"syscall"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/chaserensberger/wingman/internal/observability"
-	wingmcp "github.com/chaserensberger/wingman/mcp"
-	provider "github.com/chaserensberger/wingman/models/providers"
-	_ "github.com/chaserensberger/wingman/models/providers/anthropic"
-	_ "github.com/chaserensberger/wingman/models/providers/deepseek"
-	_ "github.com/chaserensberger/wingman/models/providers/google"
-	_ "github.com/chaserensberger/wingman/models/providers/openai"
-	_ "github.com/chaserensberger/wingman/models/providers/openaicompat"
-	_ "github.com/chaserensberger/wingman/models/providers/opencode"
-	_ "github.com/chaserensberger/wingman/models/providers/opencodego"
-	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
-	"github.com/chaserensberger/wingman/permission"
-	"github.com/chaserensberger/wingman/pluginhost"
-	"github.com/chaserensberger/wingman/server"
-	"github.com/chaserensberger/wingman/store"
+	"github.com/chaserensberger/wingman/app"
+	daemonconfig "github.com/chaserensberger/wingman/internal/config"
 )
 
 var (
@@ -38,125 +22,20 @@ var (
 	date    = "unknown"
 )
 
-type fileConfig struct {
-	Server struct {
-		Host      string `json:"host"`
-		Port      int    `json:"port"`
-		DB        string `json:"db"`
-		LogLevel  string `json:"log_level"`
-		LogFormat string `json:"log_format"`
-	} `json:"server"`
-	Plugins struct {
-		Dirs []string `json:"dirs"`
-	} `json:"plugins"`
-	Models struct {
-		Default string `json:"default"`
-	} `json:"models"`
-	Permissions      permission.Ruleset                 `json:"permissions"`
-	AgentPermissions map[string]permission.Ruleset      `json:"agent_permissions"`
-	Provider         map[string]provider.ProviderConfig `json:"provider"`
-	MCP              map[string]wingmcp.ServerConfig    `json:"mcp"`
-}
-
-func loadConfig() (fileConfig, error) {
-	var cfg fileConfig
-	configDir, err := configDir()
+func loadConfig() (daemonconfig.Config, error) {
+	path, err := daemonconfig.DefaultPath()
 	if err != nil {
-		return cfg, fmt.Errorf("resolve config directory: %w", err)
+		return daemonconfig.Config{}, err
 	}
-	path := filepath.Join(configDir, "wingman", "wingman.json")
-	data, err := os.ReadFile(path)
+	cfg, err := daemonconfig.Load(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil
-		}
-		return cfg, fmt.Errorf("read config %s: %w", path, err)
+		return daemonconfig.Config{}, err
 	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return cfg, fmt.Errorf("parse config %s: %w", path, err)
-	}
-	return cfg, nil
-}
-
-func configDir() (string, error) {
-	if os.Geteuid() != 0 || os.Getenv("SUDO_USER") == "" {
-		if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-			return dir, nil
-		}
-	}
-	home, err := effectiveHomeDir()
+	home, err := daemonconfig.HomeDir()
 	if err != nil {
-		return "", err
+		return daemonconfig.Config{}, err
 	}
-	return filepath.Join(home, ".config"), nil
-}
-
-func (c fileConfig) host() string {
-	if c.Server.Host != "" {
-		return c.Server.Host
-	}
-	return "127.0.0.1"
-}
-
-func (c fileConfig) port() int {
-	if c.Server.Port != 0 {
-		return c.Server.Port
-	}
-	return 2323
-}
-
-func (c fileConfig) db() string {
-	return expandHome(c.Server.DB)
-}
-
-func (c fileConfig) logLevel() string {
-	if c.Server.LogLevel != "" {
-		return c.Server.LogLevel
-	}
-	return "info"
-}
-
-func (c fileConfig) logFormat() string {
-	if c.Server.LogFormat != "" {
-		return c.Server.LogFormat
-	}
-	return "json"
-}
-
-func (c fileConfig) pluginDirs() []string {
-	if len(c.Plugins.Dirs) == 0 {
-		return nil
-	}
-	dirs := make([]string, len(c.Plugins.Dirs))
-	for i, dir := range c.Plugins.Dirs {
-		dirs[i] = expandHome(dir)
-	}
-	return dirs
-}
-
-func expandHome(path string) string {
-	if path == "~" {
-		if home, err := effectiveHomeDir(); err == nil {
-			return home
-		}
-	}
-	if strings.HasPrefix(path, "~/") {
-		if home, err := effectiveHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
-		}
-	}
-	return path
-}
-
-func effectiveHomeDir() (string, error) {
-	if os.Geteuid() == 0 && os.Getenv("SUDO_USER") != "" {
-		u, err := user.Lookup(os.Getenv("SUDO_USER"))
-		if err != nil {
-			return "", err
-		}
-		return u.HomeDir, nil
-	}
-	return os.UserHomeDir()
+	return cfg.Normalize(home)
 }
 
 func main() {
@@ -220,31 +99,31 @@ func main() {
 	}
 }
 
-func serveFlags(cfg fileConfig) []cli.Flag {
+func serveFlags(cfg daemonconfig.Config) []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:  "log-format",
-			Value: cfg.logFormat(),
+			Value: cfg.Server.LogFormat,
 			Usage: "Log format: json or text",
 		},
 		&cli.StringFlag{
 			Name:  "log-level",
-			Value: cfg.logLevel(),
+			Value: cfg.Server.LogLevel,
 			Usage: "Log level: debug, info, warn, or error",
 		},
 		&cli.IntFlag{
 			Name:  "port",
-			Value: cfg.port(),
+			Value: cfg.Server.Port,
 			Usage: "Port to listen on",
 		},
 		&cli.StringFlag{
 			Name:  "host",
-			Value: cfg.host(),
+			Value: cfg.Server.Host,
 			Usage: "Host to bind to",
 		},
 		&cli.StringFlag{
 			Name:  "db",
-			Value: cfg.db(),
+			Value: cfg.Server.DB,
 			Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 		},
 		&cli.StringFlag{
@@ -257,7 +136,7 @@ func serveFlags(cfg fileConfig) []cli.Flag {
 		},
 		&cli.StringSliceFlag{
 			Name:  "plugin-dir",
-			Value: cfg.pluginDirs(),
+			Value: cfg.Plugins.Dirs,
 			Usage: "Additional global plugin directory (can be repeated)",
 		},
 		&cli.BoolFlag{
@@ -267,96 +146,44 @@ func serveFlags(cfg fileConfig) []cli.Flag {
 	}
 }
 
-func runServe(cfg fileConfig) cli.ActionFunc {
+func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 	return func(ctx context.Context, cmd *cli.Command) error {
-		logs := observability.NewLogBuffer(500)
-		logger, err := observability.ConfigureDefaultWithBuffer(cmd.String("log-format"), cmd.String("log-level"), logs)
+		effective := cfg
+		effective.Server.Host = cmd.String("host")
+		effective.Server.Port = cmd.Int("port")
+		effective.Server.DB = cmd.String("db")
+		effective.Server.LogLevel = cmd.String("log-level")
+		effective.Server.LogFormat = cmd.String("log-format")
+		effective.Plugins.Dirs = append([]string(nil), cmd.StringSlice("plugin-dir")...)
+		if err := effective.Validate(); err != nil {
+			return fmt.Errorf("validate effective config: %w", err)
+		}
+		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stopSig()
+		addr := fmt.Sprintf("%s:%d", effective.Server.Host, effective.Server.Port)
+		listener, err := net.Listen("tcp", addr)
 		if err != nil {
 			return err
 		}
-
-		var st store.Store
-		if cmd.Bool("ephemeral") {
-			logger.Info("persistence disabled", "mode", "ephemeral")
-		} else {
-			dbPath := cmd.String("db")
-			if dbPath == "" {
-				dbPath, err = store.DefaultDBPath()
-				if err != nil {
-					return fmt.Errorf("failed to get default database path: %w", err)
-				}
-			}
-			sqliteStore, err := store.NewSQLiteStore(dbPath)
-			if err != nil {
-				return fmt.Errorf("failed to initialize storage: %w", err)
-			}
-			defer sqliteStore.Close()
-			st = sqliteStore
-			logger.Info("storage initialized", "db_path", dbPath)
-		}
-
-		var plugins *pluginhost.Manager
-		if !cmd.Bool("no-plugins") {
-			dirs := []string{}
-			defaultPluginDir, err := pluginhost.DefaultGlobalDir()
-			if err != nil {
-				return fmt.Errorf("failed to get default plugin directory: %w", err)
-			}
-			dirs = append(dirs, defaultPluginDir)
-			dirs = append(dirs, cmd.StringSlice("plugin-dir")...)
-			plugins, err = pluginhost.New(ctx, dirs)
-			if err != nil {
-				return fmt.Errorf("failed to initialize plugins: %w", err)
-			}
-			defer plugins.Close()
-			logger.Info("plugins initialized", "dirs", dirs)
-		}
-
-		mcpManager := wingmcp.New(ctx, wingmcp.Config{Servers: cfg.MCP})
-		defer mcpManager.Close()
-
-		srv := server.New(server.Config{
-			Store:            st,
-			WebDevURL:        cmd.String("ui-dev"),
-			Logger:           logger,
-			Logs:             logs,
-			Plugins:          plugins,
-			MCP:              mcpManager,
-			Providers:        cfg.Provider,
-			Permissions:      cfg.Permissions,
-			AgentPermissions: cfg.AgentPermissions,
+		application, err := app.New(sigCtx, app.Config{
+			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
+			WebDevURL: cmd.String("ui-dev"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
+			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
+			MCP: effective.MCP, Providers: effective.Provider,
+			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
 		})
-
-		host := cmd.String("host")
-		port := cmd.Int("port")
-		addr := fmt.Sprintf("%s:%d", host, port)
-
-		httpSrv := &http.Server{Addr: addr}
-
-		// SIGINT/SIGTERM → graceful shutdown. Drain has a 30s budget;
-		// after that we return with the deadline error and let the
-		// process exit (defers still run).
-		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-		defer stopSig()
-
-		serveErr := make(chan error, 1)
-		go func() { serveErr <- srv.Serve(httpSrv) }()
-
-		select {
-		case err := <-serveErr:
+		if err != nil {
+			_ = listener.Close()
 			return err
-		case <-sigCtx.Done():
-			logger.Info("shutdown signal received", "budget", "30s")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			if err := srv.Shutdown(shutdownCtx, httpSrv); err != nil {
-				return fmt.Errorf("shutdown: %w", err)
-			}
-			// Wait for Serve to return so we don't race the defer-store-Close.
-			<-serveErr
-			logger.Info("shutdown complete")
-			return nil
 		}
+		logger := application.Logger()
+		slog.SetDefault(logger)
+		logger.Info("server starting", "addr", addr)
+		if err := application.Serve(sigCtx, listener); err != nil {
+			return fmt.Errorf("serve application: %w", err)
+		}
+		logger.Info("shutdown complete")
+		return nil
 	}
 }
 

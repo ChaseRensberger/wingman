@@ -74,6 +74,7 @@ export default defineConfig({
               label: "Plugin Capabilities",
               slug: "extend/plugin-capabilities",
             },
+            { label: "Embed the Daemon", slug: "extend/embed-wingman" },
           ],
         },
         {

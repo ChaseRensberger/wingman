@@ -41,7 +41,8 @@ The global config file is:
 ~/.config/wingman/wingman.json
 ```
 
-It is strict JSON: comments and trailing commas are not allowed.
+It is strict JSON. Comments, trailing commas, trailing JSON values, and unknown
+keys cause startup to fail. The error identifies the config file.
 
 Example:
 

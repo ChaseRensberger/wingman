@@ -35,7 +35,7 @@ The file is parsed as strict JSON:
 
 - Comments are not allowed.
 - Trailing commas are not allowed.
-- Unknown keys are ignored.
+- Unknown keys cause startup to fail. The error identifies the config file and key.
 
 ## Example
 
@@ -84,7 +84,6 @@ The file is parsed as strict JSON:
 | `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
 | `mcp` | object | no | Configured Model Context Protocol servers. |
 | `plugins` | object | no | External plugin discovery defaults. |
-| `models` | object | no | Reserved model-related defaults. |
 | `permissions` | string, object, or rule array | no | Daemon-wide tool permission rules. |
 | `agent_permissions` | object | no | Daemon-local permission overlays keyed by agent ID or name. |
 

@@ -21,7 +21,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/internal/observability"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
-	"github.com/chaserensberger/wingman/models/providers"
+	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/store"
@@ -44,21 +44,24 @@ type Server struct {
 	agentPermissions   map[string]permission.Ruleset
 	oauth              *oauthManager
 
-	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
-	// (and any other long-lived in-flight request) should select on its
-	// Done channel so they can return promptly during a drain instead
-	// of blocking http.Server.Shutdown.
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
-	// inflight tracks SSE handlers explicitly. http.Server.Shutdown
-	// already waits for unary handlers to return (they'll all be done
-	// in <60s thanks to the timeout middleware), but streaming handlers
-	// can run for minutes. We use this to wait on them after cancelling
-	// shutdownCtx.
-	inflight sync.WaitGroup
+
+	startMu   sync.Mutex
+	started   bool
+	startDone chan struct{}
+	startErr  error
+	closeOnce sync.Once
+
+	inflightMu     sync.Mutex
+	inflightClosed bool
+	inflight       sync.WaitGroup
 }
 
 type Config struct {
+	// RootContext owns the server's background work. A nil context uses
+	// context.Background.
+	RootContext      context.Context
 	Store            store.Store
 	WebDevURL        string
 	Logger           *slog.Logger
@@ -74,12 +77,16 @@ type Config struct {
 }
 
 func New(cfg Config) *Server {
-	ctx, cancel := context.WithCancel(context.Background())
+	root := cfg.RootContext
+	rootProvided := root != nil
+	if root == nil {
+		root = context.Background()
+	}
+	ctx, cancel := context.WithCancel(root)
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	provider.RegisterConfig(cfg.Providers)
 	s := &Server{
 		store:            cfg.Store,
 		router:           chi.NewRouter(),
@@ -92,7 +99,7 @@ func New(cfg Config) *Server {
 		providers:        cfg.Providers,
 		permissions:      cfg.Permissions,
 		agentPermissions: cfg.AgentPermissions,
-		oauth:            newOAuthManager(cfg.Store),
+		oauth:            newOAuthManager(ctx, cfg.Store),
 		shutdownCtx:      ctx,
 		shutdownCancel:   cancel,
 	}
@@ -101,6 +108,12 @@ func New(cfg Config) *Server {
 
 	s.setupMiddleware()
 	s.setupRoutes()
+	if rootProvided {
+		go func() {
+			<-ctx.Done()
+			_ = s.Close(context.Background())
+		}()
+	}
 
 	return s
 }
@@ -329,35 +342,45 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
-// ListenAndServe starts the HTTP server on addr and blocks until the
-// server is shut down. Returns nil on a clean shutdown, or the listener
-// error otherwise. Shutdown is initiated via Shutdown.
-//
-// Kept for backward compatibility. New callers should prefer Serve,
-// which lets them own the listener / TLS config / etc.
-func (s *Server) ListenAndServe(addr string) error {
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: s.router,
-	}
-	return s.Serve(srv)
-}
-
-// Serve runs srv (caller-owned) until it terminates. The server's
-// Handler is overwritten with our router. Returns nil on a graceful
-// shutdown, the underlying error otherwise.
-func (s *Server) Serve(srv *http.Server) error {
-	if s.store != nil {
-		if err := s.recoverStartup(context.Background()); err != nil {
+// Start recovers durable state and starts local queue reconciliation. It does
+// not own an HTTP listener; callers serve the Server directly as an
+// http.Handler.
+func (s *Server) Start(ctx context.Context) error {
+	s.startMu.Lock()
+	if s.started {
+		done, err := s.startDone, s.startErr
+		s.startMu.Unlock()
+		if done == nil {
 			return err
 		}
+		select {
+		case <-done:
+			s.startMu.Lock()
+			err = s.startErr
+			s.startMu.Unlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	srv.Handler = s.router
-	s.logger.Info("server starting", "addr", srv.Addr)
-	err := srv.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
+	if s.shutdownCtx.Err() != nil {
+		s.startMu.Unlock()
+		return context.Canceled
 	}
+	s.started = true
+	s.startDone = make(chan struct{})
+	done := s.startDone
+	s.startMu.Unlock()
+
+	var err error
+	if s.store != nil {
+		err = s.recoverStartup(ctx)
+	}
+
+	s.startMu.Lock()
+	s.startErr = err
+	close(done)
+	s.startMu.Unlock()
 	return err
 }
 
@@ -400,35 +423,41 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown initiates a graceful drain. It:
-//  1. cancels the server's shutdownCtx so SSE / long-lived handlers
-//     can return promptly;
-//  2. calls srv.Shutdown(ctx), which stops accepting new connections
-//     and waits for active handlers to return;
-//  3. waits for any tracked streaming handlers to finish via the
-//     inflight WaitGroup (with the same ctx as a deadline).
-//
-// Returns the first non-nil error encountered. Pass a deadlined ctx to
-// bound shutdown time; passing context.Background means "wait forever".
-//
-// It is safe to call Shutdown multiple times; the second call is a
-// no-op for the cancellation step but will still call srv.Shutdown
-// (which is itself idempotent).
-func (s *Server) Shutdown(ctx context.Context, srv *http.Server) error {
-	s.shutdownCancel()
-	var firstErr error
-	if s.runs != nil {
-		s.runs.stop()
-		if err := s.runs.wait(ctx); err != nil {
-			firstErr = err
+// Close cancels server-owned work and waits for it to finish. A timed-out
+// close may be retried with a new context.
+func (s *Server) Close(ctx context.Context) error {
+	s.closeOnce.Do(func() {
+		s.shutdownCancel()
+		if s.runs != nil {
+			s.runs.stop()
 		}
-	}
+		s.inflightMu.Lock()
+		s.inflightClosed = true
+		s.inflightMu.Unlock()
+	})
 
-	if err := srv.Shutdown(ctx); err != nil {
-		firstErr = err
+	var errs []error
+	if s.runs != nil {
+		errs = append(errs, s.runs.wait(ctx))
 	}
+	if s.oauth != nil {
+		errs = append(errs, s.oauth.Close(ctx))
+	}
+	errs = append(errs, s.waitInflight(ctx))
+	return errors.Join(errs...)
+}
 
-	// Wait for streaming handlers, but don't exceed ctx's deadline.
+func (s *Server) trackInflight() func() {
+	s.inflightMu.Lock()
+	defer s.inflightMu.Unlock()
+	if s.inflightClosed {
+		return func() {}
+	}
+	s.inflight.Add(1)
+	return s.inflight.Done
+}
+
+func (s *Server) waitInflight(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		s.inflight.Wait()
@@ -436,26 +465,13 @@ func (s *Server) Shutdown(ctx context.Context, srv *http.Server) error {
 	}()
 	select {
 	case <-done:
+		return nil
 	case <-ctx.Done():
-		if firstErr == nil {
-			firstErr = ctx.Err()
-		}
+		return ctx.Err()
 	}
-	return firstErr
 }
 
-// trackInflight is called by streaming handlers (SSE) to register
-// themselves with the WaitGroup so Shutdown can wait for them. The
-// returned func MUST be deferred. ShutdownCtx returns the server's
-// drain-signal context for the same handlers to monitor.
-func (s *Server) trackInflight() func() {
-	s.inflight.Add(1)
-	return s.inflight.Done
-}
-
-// ShutdownCtx returns a context that is cancelled when Shutdown is
-// called. Streaming handlers select on its Done channel to abort
-// promptly during a drain.
+// ShutdownCtx is cancelled when the server begins closing.
 func (s *Server) ShutdownCtx() context.Context { return s.shutdownCtx }
 
 type ErrorResponse struct {

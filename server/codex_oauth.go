@@ -32,9 +32,15 @@ const (
 var errOAuthAttemptInactive = errors.New("OAuth attempt is no longer active")
 
 type oauthManager struct {
-	store    store.Store
-	mu       sync.Mutex
-	attempts map[string]*oauthAttempt
+	store      store.Store
+	root       context.Context
+	rootCancel context.CancelFunc
+	mu         sync.Mutex
+	attempts   map[string]*oauthAttempt
+
+	lifecycleMu sync.Mutex
+	closing     bool
+	workers     sync.WaitGroup
 }
 
 type oauthAttempt struct {
@@ -59,11 +65,26 @@ type oauthAttemptDTO struct {
 	Error        string `json:"error,omitempty"`
 }
 
-func newOAuthManager(data store.Store) *oauthManager {
-	return &oauthManager{store: data, attempts: map[string]*oauthAttempt{}}
+func newOAuthManager(root context.Context, data store.Store) *oauthManager {
+	if root == nil {
+		root = context.Background()
+	}
+	ctx, cancel := context.WithCancel(root)
+	return &oauthManager{store: data, root: ctx, rootCancel: cancel, attempts: map[string]*oauthAttempt{}}
 }
 
 func (m *oauthManager) start(providerID, method string) (oauthAttemptDTO, error) {
+	m.lifecycleMu.Lock()
+	closing := m.closing
+	m.lifecycleMu.Unlock()
+	if closing {
+		return oauthAttemptDTO{}, fmt.Errorf("OAuth manager is closing")
+	}
+	select {
+	case <-m.root.Done():
+		return oauthAttemptDTO{}, fmt.Errorf("OAuth manager is closing")
+	default:
+	}
 	if providerID != "openai" {
 		return oauthAttemptDTO{}, fmt.Errorf("OAuth is not supported for provider: %s", providerID)
 	}
@@ -71,7 +92,7 @@ func (m *oauthManager) start(providerID, method string) (oauthAttemptDTO, error)
 		return oauthAttemptDTO{}, fmt.Errorf("unsupported OAuth method: %s", method)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(m.root, 5*time.Minute)
 	attempt := &oauthAttempt{id: randomValue(18), provider: providerID, method: method, status: "pending", cancel: cancel}
 	m.mu.Lock()
 	for _, existing := range m.attempts {
@@ -158,16 +179,26 @@ func (m *oauthManager) startBrowser(ctx context.Context, attempt *oauthAttempt) 
 		writeOAuthPage(w, http.StatusOK, "OpenAI connected", "You can close this window and return to Wingman.")
 	})
 	server := &http.Server{Handler: h}
-	go func() { _ = server.Serve(listener) }()
-	go func() {
+	if !m.startWorker(func() {
+		serveDone := make(chan struct{})
+		go func() {
+			_ = server.Serve(listener)
+			close(serveDone)
+		}()
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+		}
+		cancel()
+		<-serveDone
 		if ctx.Err() == context.DeadlineExceeded {
 			m.finish(attempt.id, "failed", fmt.Errorf("OAuth authorization timed out"))
 		}
-	}()
+	}) {
+		_ = listener.Close()
+		return errOAuthAttemptInactive
+	}
 	return nil
 }
 
@@ -204,8 +235,52 @@ func (m *oauthManager) startDevice(ctx context.Context, attempt *oauthAttempt) e
 	attempt.url = codexIssuer + "/codex/device"
 	attempt.instructions = "Enter code: " + device.UserCode
 	m.mu.Unlock()
-	go m.pollDevice(ctx, attempt.id, device.DeviceAuthID, device.UserCode, interval)
+	if !m.startWorker(func() {
+		m.pollDevice(ctx, attempt.id, device.DeviceAuthID, device.UserCode, interval)
+	}) {
+		return errOAuthAttemptInactive
+	}
 	return nil
+}
+
+func (m *oauthManager) startWorker(fn func()) bool {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+	if m.closing {
+		return false
+	}
+	m.workers.Add(1)
+	go func() {
+		defer m.workers.Done()
+		fn()
+	}()
+	return true
+}
+
+// Close cancels every OAuth attempt and waits for its callback and polling
+// workers. It may be retried after a caller context expires.
+func (m *oauthManager) Close(ctx context.Context) error {
+	m.rootCancel()
+	m.lifecycleMu.Lock()
+	m.closing = true
+	m.mu.Lock()
+	for _, attempt := range m.attempts {
+		attempt.cancel()
+	}
+	m.mu.Unlock()
+	m.lifecycleMu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		m.workers.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *oauthManager) pollDevice(ctx context.Context, attemptID, deviceAuthID, userCode string, interval time.Duration) {
