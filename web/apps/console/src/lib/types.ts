@@ -3,11 +3,22 @@ export interface Agent {
   name: string;
   instructions?: string;
   tools?: string[];
+  permissions?: Array<{
+    action: string;
+    resource: string;
+    effect: "allow" | "ask" | "deny";
+  }>;
   model_ref?: string;
   options?: Record<string, unknown>;
   output_schema?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export interface Provider {
@@ -94,17 +105,20 @@ export interface PluginsResponse {
   errors?: Array<{ path: string; error: string }>;
 }
 
-export interface Session {
+export interface SessionSummary {
   id: string;
   version: number;
   title?: string;
   work_dir?: string;
   workspace_id?: string;
   client_id?: string;
-  history: Message[];
-  latest_model_call?: ModelCall;
   created_at: string;
   updated_at: string;
+}
+
+export interface Session extends SessionSummary {
+  history: Message[];
+  latest_model_call?: ModelCall;
 }
 
 export interface SessionRun {

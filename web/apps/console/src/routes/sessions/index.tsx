@@ -54,7 +54,7 @@ import {
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { moveSession, purgeSession, renameSession, wfetch } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type { Session, Workspace } from "@/lib/types";
+import type { SessionSummary, Workspace } from "@/lib/types";
 import type { DirectoryListing } from "@/lib/types";
 import { cn, timeAgo, workspaceColor } from "@/lib/utils";
 
@@ -89,7 +89,7 @@ function SessionsPage() {
 	const navigate = useNavigate();
 	const { workspace: workspaceFilter } = Route.useSearch();
 	const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-	const [sessions, setSessions] = useState<Session[]>([]);
+	const [sessions, setSessions] = useState<SessionSummary[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [search, setSearch] = useState("");
 
@@ -106,9 +106,9 @@ function SessionsPage() {
 	const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
 	const [deletingWorkspaceId, setDeletingWorkspaceId] = useState("");
 
-	const [editingSession, setEditingSession] = useState<Session | null>(null);
+	const [editingSession, setEditingSession] = useState<SessionSummary | null>(null);
 	const [savingSession, setSavingSession] = useState(false);
-	const [deleteSession, setDeleteSession] = useState<Session | null>(null);
+	const [deleteSession, setDeleteSession] = useState<SessionSummary | null>(null);
 	const [deletingSessionId, setDeletingSessionId] = useState("");
 
 	const workspaceForm = useForm({
@@ -200,7 +200,7 @@ function SessionsPage() {
 	async function loadData() {
 		const [workspaceData, sessionData] = await Promise.all([
 			wfetch("/workspaces") as Promise<Workspace[]>,
-			wfetch("/sessions") as Promise<Session[]>,
+			wfetch("/sessions") as Promise<SessionSummary[]>,
 		]);
 		setWorkspaces(workspaceData);
 		setSessions(sessionData);
@@ -248,7 +248,7 @@ function SessionsPage() {
 		setWorkspaceDialogOpen(true);
 	}
 
-	function openEditSession(session: Session) {
+	function openEditSession(session: SessionSummary) {
 		setEditingSession(session);
 		sessionForm.reset({ title: session.title || "", workDir: session.work_dir || "" });
 	}

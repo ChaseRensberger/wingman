@@ -166,6 +166,11 @@ Session responses include `version`, beginning at `1`. Rename and move commands
 require that value as `expected_version`. A stale command returns `409 Conflict`;
 reload the session before deciding whether to retry.
 
+`POST /sessions`, `GET /sessions`, and successful rename or move commands return
+session summaries. Summaries contain metadata and `version`; they do not contain
+`history` or `latest_model_call`. `GET /sessions/{id}` returns the session detail
+shape with both fields. An empty detail history is `[]`, not `null`.
+
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
 
 The response includes the canonical run ID, current run status, and aggregate

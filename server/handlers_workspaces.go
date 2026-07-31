@@ -12,13 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/store"
 )
-
-type CreateWorkspaceRequest struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
 
 type directoryListing struct {
 	Path    string           `json:"path"`
@@ -74,7 +70,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var req CreateWorkspaceRequest
+	var req api.CreateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -109,7 +105,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, workspace)
+	writeJSON(w, http.StatusCreated, apiWorkspace(workspace))
 }
 
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
@@ -129,10 +125,7 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if workspaces == nil {
-		workspaces = []*store.Workspace{}
-	}
-	writeJSON(w, http.StatusOK, workspaces)
+	writeJSON(w, http.StatusOK, apiWorkspaces(workspaces))
 }
 
 func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -145,12 +138,7 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, workspace)
-}
-
-type UpdateWorkspaceRequest struct {
-	Name *string `json:"name,omitempty"`
-	Path *string `json:"path,omitempty"`
+	writeJSON(w, http.StatusOK, apiWorkspace(workspace))
 }
 
 func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +152,7 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req UpdateWorkspaceRequest
+	var req api.UpdateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -193,7 +181,7 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, workspace)
+	writeJSON(w, http.StatusOK, apiWorkspace(workspace))
 }
 
 func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +193,7 @@ func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, api.StatusResponse{Status: "deleted"})
 }
 
 func (s *Server) handleListWorkspaceSessions(w http.ResponseWriter, r *http.Request) {
@@ -223,8 +211,5 @@ func (s *Server) handleListWorkspaceSessions(w http.ResponseWriter, r *http.Requ
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if sessions == nil {
-		sessions = []*store.Session{}
-	}
-	writeJSON(w, http.StatusOK, sessions)
+	writeJSON(w, http.StatusOK, apiSessions(sessions))
 }

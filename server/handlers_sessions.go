@@ -24,12 +24,6 @@ import (
 	"github.com/chaserensberger/wingman/tool"
 )
 
-type CreateSessionRequest struct {
-	Title            string `json:"title,omitempty"`
-	WorkingDirectory string `json:"working_directory,omitempty"`
-	WorkspaceID      string `json:"workspace_id,omitempty"`
-}
-
 const defaultSessionTitle = "New session"
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +31,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var req CreateSessionRequest
+	var req api.CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -72,7 +66,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, sess)
+	writeJSON(w, http.StatusCreated, apiSession(sess))
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -93,10 +87,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if sessions == nil {
-		sessions = []*store.Session{}
-	}
-	writeJSON(w, http.StatusOK, sessions)
+	writeJSON(w, http.StatusOK, apiSessions(sessions))
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
@@ -123,11 +114,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, SessionDetailResponse{
-		Session:         sess,
-		History:         history,
-		LatestModelCall: latestCall,
-	})
+	writeJSON(w, http.StatusOK, apiSessionDetail(sess, history, latestCall))
 }
 
 func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +132,7 @@ func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Requ
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, calls)
+	writeJSON(w, http.StatusOK, apiModelCalls(calls))
 }
 
 func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Request) {
@@ -164,12 +151,6 @@ func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, uses)
-}
-
-type SessionDetailResponse struct {
-	*store.Session
-	History         []models.Message `json:"history"`
-	LatestModelCall *store.ModelCall `json:"latest_model_call,omitempty"`
 }
 
 func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models.Message, error) {
@@ -212,11 +193,6 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 	return models.NormalizeMessages(history), nil
 }
 
-type RenameSessionRequest struct {
-	Title           string `json:"title"`
-	ExpectedVersion int64  `json:"expected_version"`
-}
-
 func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
@@ -227,7 +203,7 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req RenameSessionRequest
+	var req api.RenameSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -244,13 +220,7 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 	if s.writeSessionCommandError(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, sess)
-}
-
-type MoveSessionRequest struct {
-	WorkingDirectory *string `json:"working_directory,omitempty"`
-	WorkspaceID      *string `json:"workspace_id,omitempty"`
-	ExpectedVersion  int64   `json:"expected_version"`
+	writeJSON(w, http.StatusOK, apiSession(sess))
 }
 
 func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +232,7 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
 		return
 	}
-	var req MoveSessionRequest
+	var req api.MoveSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -291,7 +261,7 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 	if s.writeSessionCommandError(w, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, sess)
+	writeJSON(w, http.StatusOK, apiSession(sess))
 }
 
 func (s *Server) writeSessionCommandError(w http.ResponseWriter, err error) bool {
@@ -348,7 +318,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("wait for purged session worker", "session_id", id, "error", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, api.StatusResponse{Status: "deleted"})
 }
 
 type messageOutputSchema struct {

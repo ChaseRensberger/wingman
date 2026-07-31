@@ -6,7 +6,7 @@ import { isProviderSelectable } from "@/lib/providers";
 import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
 import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
-import type { Session, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
+import type { Session, SessionSummary, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
 import { toolActivityKey } from "@/lib/tool-activity-state";
 import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
@@ -282,7 +282,7 @@ function SessionDetailPage() {
 			});
 		}
 
-		const persistGeneratedTitle = (target: Pick<Session, "id" | "version">) => {
+		const persistGeneratedTitle = (target: Pick<SessionSummary, "id" | "version">) => {
 			if (!titlePromise) return;
 			void titlePromise.then(async (title) => {
 				if (!title || titleSessionIdRef.current !== target.id) return;
@@ -300,7 +300,7 @@ function SessionDetailPage() {
 				const created = (await wfetch("/sessions", {
 					method: "POST",
 					body: JSON.stringify(draftWorkspaceId ? { workspace_id: draftWorkspaceId } : {}),
-				})) as Session;
+				})) as SessionSummary;
 				activeSessionId = created.id;
 				activeSessionIdRef.current = created.id;
 				if (titlePromise) titleSessionIdRef.current = created.id;
@@ -381,7 +381,7 @@ function SessionDetailPage() {
 		setSavingSession(true);
 		try {
 			const workingDirectoryChanged = workDir.trim() !== (session.work_dir ?? "");
-			let updated = session;
+			let updated: SessionSummary = session;
 			if (title.trim() !== (updated.title ?? "")) updated = await renameSession(updated, title.trim());
 			if (workingDirectoryChanged) updated = await moveSession(updated, workDir.trim());
 			setSession((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);

@@ -7,30 +7,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
-	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 )
 
 const agentOptionModelRoute = "model_route"
-
-type CreateAgentRequest struct {
-	Name         string             `json:"name"`
-	Instructions string             `json:"instructions,omitempty"`
-	Tools        []string           `json:"tools,omitempty"`
-	Permissions  permission.Ruleset `json:"permissions,omitempty"`
-	ModelRef     string             `json:"model_ref,omitempty"`
-	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`
-	Options      map[string]any     `json:"options,omitempty"`
-	OutputSchema map[string]any     `json:"output_schema,omitempty"`
-}
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var req CreateAgentRequest
+	var req api.CreateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -61,7 +50,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, a)
+	writeJSON(w, http.StatusCreated, apiAgent(a))
 }
 
 func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
@@ -74,10 +63,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if agents == nil {
-		agents = []*store.Agent{}
-	}
-	writeJSON(w, http.StatusOK, agents)
+	writeJSON(w, http.StatusOK, apiAgents(agents))
 }
 
 func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
@@ -93,18 +79,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, a)
-}
-
-type UpdateAgentRequest struct {
-	Name         *string            `json:"name,omitempty"`
-	Instructions *string            `json:"instructions,omitempty"`
-	Tools        []string           `json:"tools,omitempty"`
-	Permissions  permission.Ruleset `json:"permissions,omitempty"`
-	ModelRef     *string            `json:"model_ref,omitempty"`
-	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`
-	Options      map[string]any     `json:"options,omitempty"`
-	OutputSchema map[string]any     `json:"output_schema,omitempty"`
+	writeJSON(w, http.StatusOK, apiAgent(a))
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +95,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req UpdateAgentRequest
+	var req api.UpdateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -158,7 +133,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, a)
+	writeJSON(w, http.StatusOK, apiAgent(a))
 }
 
 func (s *Server) validateAgentTools(ctx context.Context, names []string) error {
@@ -193,5 +168,5 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, api.StatusResponse{Status: "deleted"})
 }

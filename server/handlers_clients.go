@@ -8,12 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/store"
 )
-
-type CreateClientRequest struct {
-	Name string `json:"name"`
-}
 
 // handleCreateClient registers an application or integration consuming the
 // Wingman HTTP API. It is attribution/organization, not auth.
@@ -22,7 +19,7 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	var req CreateClientRequest
+	var req api.CreateClientRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -48,7 +45,7 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, client)
+	writeJSON(w, http.StatusCreated, apiClient(client))
 }
 
 func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
@@ -65,10 +62,7 @@ func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if clients == nil {
-		clients = []*store.Client{}
-	}
-	writeJSON(w, http.StatusOK, clients)
+	writeJSON(w, http.StatusOK, apiClients(clients))
 }
 
 func (s *Server) handleGetClient(w http.ResponseWriter, r *http.Request) {
@@ -84,5 +78,5 @@ func (s *Server) handleGetClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, client)
+	writeJSON(w, http.StatusOK, apiClient(client))
 }

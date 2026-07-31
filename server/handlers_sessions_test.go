@@ -12,10 +12,50 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
 )
+
+func TestSessionSummaryAndDetailUsePublicDTOs(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := &store.Session{ID: "ses_public_dto", Title: "Contract", ClientID: client.ID}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{Store: data})
+
+	listResponse := httptest.NewRecorder()
+	s.router.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/sessions", nil))
+	listBody := append([]byte(nil), listResponse.Body.Bytes()...)
+	var summaries []api.Session
+	if err := json.Unmarshal(listBody, &summaries); err != nil {
+		t.Fatal(err)
+	}
+	if listResponse.Code != http.StatusOK || len(summaries) != 1 || summaries[0].Version != 1 {
+		t.Fatalf("status = %d, sessions = %#v", listResponse.Code, summaries)
+	}
+	if strings.Contains(string(listBody), `"history"`) {
+		t.Fatalf("summary response contains history: %s", listBody)
+	}
+
+	detailResponse := httptest.NewRecorder()
+	s.router.ServeHTTP(detailResponse, httptest.NewRequest(http.MethodGet, "/sessions/ses_public_dto", nil))
+	var detail api.SessionDetail
+	if err := json.NewDecoder(detailResponse.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detailResponse.Code != http.StatusOK || detail.ID != stored.ID || detail.History == nil || len(detail.History) != 0 {
+		t.Fatalf("status = %d, detail = %#v", detailResponse.Code, detail)
+	}
+}
 
 func TestCreateSessionCommitsAggregateEvent(t *testing.T) {
 	t.Parallel()
@@ -314,7 +354,7 @@ func TestListSessionModelCalls(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	var calls []store.ModelCall
+	var calls []api.ModelCall
 	if err := json.NewDecoder(response.Body).Decode(&calls); err != nil {
 		t.Fatal(err)
 	}
