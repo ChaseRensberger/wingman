@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -32,6 +33,7 @@ import (
 type Server struct {
 	store              store.Store
 	router             *chi.Mux
+	protocol           huma.API
 	runs               *sessionRunManager
 	permissionRequests *permissionRequestManager
 	events             *sessionEventBroker
@@ -111,6 +113,7 @@ func New(cfg Config) *Server {
 	s.permissionRequests = newPermissionRequestManager(s, cfg.PermissionTimeout)
 
 	s.setupMiddleware()
+	s.setupOpenAPI()
 	s.setupRoutes()
 	if rootProvided {
 		go func() {
@@ -225,83 +228,69 @@ func shouldBypassTimeout(r *http.Request) bool {
 }
 
 func (s *Server) setupRoutes() {
-	s.router.Get("/", s.handleRoot)
-	s.router.Get("/health", s.handleHealth)
-	s.router.Get("/logs", s.handleLogs)
-	s.router.Route("/plugins", func(r chi.Router) {
-		r.Get("/", s.handleListPlugins)
-		r.Post("/reload", s.handleReloadPlugins)
-	})
-	s.router.Route("/mcp", func(r chi.Router) {
-		r.Get("/", s.handleListMCP)
-		r.Post("/{name}/connect", s.handleConnectMCP)
-		r.Post("/{name}/disconnect", s.handleDisconnectMCP)
-		r.Post("/{name}/auth", s.handleAuthMCP)
-		r.Delete("/{name}/auth", s.handleLogoutMCP)
-	})
-	s.router.Get("/tools", s.handleListTools)
-	s.router.Get("/catalog", s.handleCatalog)
-	s.router.Get("/catalog/labs/{id}/logo", s.handleCatalogLabLogo)
+	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
+	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
+	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
+	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List plugin status", nil, http.StatusOK, pluginsResponse{}, s.handleListPlugins)
+	s.registerJSON(http.MethodPost, "/plugins/reload", "reloadPlugins", "Reload plugins", nil, http.StatusOK, pluginsResponse{}, s.handleReloadPlugins)
+	s.registerJSON(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, s.handleListMCP)
+	s.registerJSON(http.MethodPost, "/mcp/{name}/connect", "connectMCPServer", "Connect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleConnectMCP)
+	s.registerJSON(http.MethodPost, "/mcp/{name}/disconnect", "disconnectMCPServer", "Disconnect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleDisconnectMCP)
+	s.registerErrorOnly(http.MethodPost, "/mcp/{name}/auth", "authorizeMCPServer", "Authorize an MCP server", s.handleAuthMCP)
+	s.registerErrorOnly(http.MethodDelete, "/mcp/{name}/auth", "logoutMCPServer", "Remove MCP authorization", s.handleLogoutMCP)
+	s.registerJSON(http.MethodGet, "/tools", "listTools", "List available tools", nil, http.StatusOK, toolCatalogResponse{}, s.handleListTools)
+	s.registerJSON(http.MethodGet, "/catalog", "getModelCatalog", "Get the model catalog", nil, http.StatusOK, CatalogDTO{}, s.handleCatalog)
+	s.registerBinary(http.MethodGet, "/catalog/labs/{id}/logo", "getCatalogLabLogo", "Get a catalog lab logo", "image/svg+xml", s.handleCatalogLabLogo)
 
-	s.router.Route("/provider", func(r chi.Router) {
-		r.Get("/", s.handleListProviders)
-		r.Get("/auth", s.handleGetProvidersAuth)
-		r.Put("/auth", s.handleSetProvidersAuth)
-		r.Delete("/auth/{provider}", s.handleDeleteProviderAuth)
-		r.Post("/{name}/oauth/authorize", s.handleProviderOAuthAuthorize)
-		r.Get("/{name}/oauth/{attempt}", s.handleProviderOAuthStatus)
-		r.Delete("/{name}/oauth/{attempt}", s.handleProviderOAuthCancel)
-		r.Get("/{name}", s.handleGetProvider)
-		r.Get("/{name}/models", s.handleListProviderModels)
-		r.Get("/{name}/models/{model}", s.handleGetProviderModel)
-	})
+	s.registerJSON(http.MethodGet, "/provider", "listProviders", "List model providers", nil, http.StatusOK, []ProviderDTO{}, s.handleListProviders)
+	s.registerJSON(http.MethodGet, "/provider/auth", "getProviderAuth", "Get provider credential status", nil, http.StatusOK, ProvidersAuthResponse{}, s.handleGetProvidersAuth)
+	s.registerJSON(http.MethodPut, "/provider/auth", "setProviderAuth", "Set provider credentials", SetProvidersAuthRequest{}, http.StatusOK, api.StatusResponse{}, s.handleSetProvidersAuth)
+	s.registerJSON(http.MethodDelete, "/provider/auth/{provider}", "deleteProviderAuth", "Delete provider credentials", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteProviderAuth)
+	s.registerJSON(http.MethodPost, "/provider/{name}/oauth/authorize", "authorizeProviderOAuth", "Start provider OAuth", providerOAuthRequest{}, http.StatusAccepted, oauthAttemptDTO{}, s.handleProviderOAuthAuthorize)
+	s.registerJSON(http.MethodGet, "/provider/{name}/oauth/{attempt}", "getProviderOAuthAttempt", "Get provider OAuth status", nil, http.StatusOK, oauthAttemptDTO{}, s.handleProviderOAuthStatus)
+	s.registerJSON(http.MethodDelete, "/provider/{name}/oauth/{attempt}", "cancelProviderOAuthAttempt", "Cancel provider OAuth", nil, http.StatusOK, api.StatusResponse{}, s.handleProviderOAuthCancel)
+	s.registerJSON(http.MethodGet, "/provider/{name}", "getProvider", "Get a model provider", nil, http.StatusOK, ProviderDTO{}, s.handleGetProvider)
+	s.registerJSON(http.MethodGet, "/provider/{name}/models", "listProviderModels", "List provider models", nil, http.StatusOK, map[string]ModelDTO{}, s.handleListProviderModels)
+	s.registerJSON(http.MethodGet, "/provider/{name}/models/{model}", "getProviderModel", "Get a provider model", nil, http.StatusOK, ModelDTO{}, s.handleGetProviderModel)
 
-	s.router.Route("/agents", func(r chi.Router) {
-		r.Get("/", s.handleListAgents)
-		r.Post("/", s.handleCreateAgent)
-		r.Get("/{id}", s.handleGetAgent)
-		r.Put("/{id}", s.handleUpdateAgent)
-		r.Delete("/{id}", s.handleDeleteAgent)
-	})
+	s.registerJSON(http.MethodGet, "/agents", "listAgents", "List agents", nil, http.StatusOK, []api.Agent{}, s.handleListAgents)
+	s.registerJSON(http.MethodPost, "/agents", "createAgent", "Create an agent", api.CreateAgentRequest{}, http.StatusCreated, api.Agent{}, s.handleCreateAgent)
+	s.registerJSON(http.MethodGet, "/agents/{id}", "getAgent", "Get an agent", nil, http.StatusOK, api.Agent{}, s.handleGetAgent)
+	s.registerJSON(http.MethodPut, "/agents/{id}", "updateAgent", "Update an agent", api.UpdateAgentRequest{}, http.StatusOK, api.Agent{}, s.handleUpdateAgent)
+	s.registerJSON(http.MethodDelete, "/agents/{id}", "deleteAgent", "Delete an agent", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteAgent)
 
-	s.router.Route("/clients", func(r chi.Router) {
-		r.Get("/", s.handleListClients)
-		r.Post("/", s.handleCreateClient)
-		r.Get("/{id}", s.handleGetClient)
-	})
+	s.registerJSON(http.MethodGet, "/clients", "listClients", "List API clients", nil, http.StatusOK, []api.Client{}, s.handleListClients)
+	s.registerJSON(http.MethodPost, "/clients", "createClient", "Create an API client", api.CreateClientRequest{}, http.StatusCreated, api.Client{}, s.handleCreateClient)
+	s.registerJSON(http.MethodGet, "/clients/{id}", "getClient", "Get an API client", nil, http.StatusOK, api.Client{}, s.handleGetClient)
 
-	s.router.Route("/workspaces", func(r chi.Router) {
-		r.Get("/", s.handleListWorkspaces)
-		r.Post("/", s.handleCreateWorkspace)
-		r.Get("/{id}", s.handleGetWorkspace)
-		r.Put("/{id}", s.handleUpdateWorkspace)
-		r.Delete("/{id}", s.handleDeleteWorkspace)
-		r.Get("/{id}/sessions", s.handleListWorkspaceSessions)
-	})
-	s.router.Get("/filesystem/directories", s.handleListDirectories)
+	s.registerJSON(http.MethodGet, "/workspaces", "listWorkspaces", "List Workspaces", nil, http.StatusOK, []api.Workspace{}, s.handleListWorkspaces)
+	s.registerJSON(http.MethodPost, "/workspaces", "createWorkspace", "Create a Workspace", api.CreateWorkspaceRequest{}, http.StatusCreated, api.Workspace{}, s.handleCreateWorkspace)
+	s.registerJSON(http.MethodGet, "/workspaces/{id}", "getWorkspace", "Get a Workspace", nil, http.StatusOK, api.Workspace{}, s.handleGetWorkspace)
+	s.registerJSON(http.MethodPut, "/workspaces/{id}", "updateWorkspace", "Update a Workspace", api.UpdateWorkspaceRequest{}, http.StatusOK, api.Workspace{}, s.handleUpdateWorkspace)
+	s.registerJSON(http.MethodDelete, "/workspaces/{id}", "deleteWorkspace", "Delete a Workspace", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteWorkspace)
+	s.registerJSON(http.MethodGet, "/workspaces/{id}/sessions", "listWorkspaceSessions", "List Workspace sessions", nil, http.StatusOK, []api.Session{}, s.handleListWorkspaceSessions)
+	s.registerJSONWithParameters(http.MethodGet, "/filesystem/directories", "listDirectories", "List filesystem directories", nil, http.StatusOK, directoryListing{}, []*huma.Param{queryParameter("path", huma.TypeString, "Directory to list")}, s.handleListDirectories)
 
-	s.router.Route("/sessions", func(r chi.Router) {
-		r.Post("/", s.handleCreateSession)
-		r.Get("/", s.handleListSessions)
-		r.Get("/{id}", s.handleGetSession)
-		r.Get("/{id}/model-calls", s.handleListSessionModelCalls)
-		r.Get("/{id}/tool-uses", s.handleListSessionToolUses)
-		r.Get("/{id}/permission-requests", s.handleListPermissionRequests)
-		r.Get("/{id}/permission-grants", s.handleListPermissionGrants)
-		r.Post("/{id}/permission-requests/{requestID}/reply", s.handleReplyPermissionRequest)
-		r.Post("/{id}/rename", s.handleRenameSession)
-		r.Post("/{id}/move", s.handleMoveSession)
-		r.Delete("/{id}", s.handleDeleteSession)
-		r.Get("/{id}/events", s.handleSessionEvents)
-		r.Get("/{id}/events/history", s.handleSessionEventsHistory)
-		r.Post("/{id}/message", s.handleMessageSession)
-		r.Post("/{id}/abort", s.handleAbortSession)
-		r.Get("/{id}/runs", s.handleListSessionRuns)
-		r.Get("/{id}/runs/{runID}", s.handleGetSessionRun)
-		r.Post("/{id}/runs/{runID}/abort", s.handleAbortSessionRun)
-	})
+	s.registerJSON(http.MethodPost, "/sessions", "createSession", "Create a session", api.CreateSessionRequest{}, http.StatusCreated, api.Session{}, s.handleCreateSession)
+	s.registerJSON(http.MethodGet, "/sessions", "listSessions", "List sessions", nil, http.StatusOK, []api.Session{}, s.handleListSessions)
+	s.registerJSON(http.MethodGet, "/sessions/{id}", "getSession", "Get a session", nil, http.StatusOK, api.SessionDetail{}, s.handleGetSession)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/model-calls", "listSessionModelCalls", "List session model calls", nil, http.StatusOK, []api.ModelCall{}, s.handleListSessionModelCalls)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/tool-uses", "listSessionToolUses", "List session tool uses", nil, http.StatusOK, []api.ToolUse{}, s.handleListSessionToolUses)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/permission-requests", "listPermissionRequests", "List session permission requests", nil, http.StatusOK, []api.PermissionRequest{}, s.handleListPermissionRequests)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/permission-grants", "listPermissionGrants", "List session permission grants", nil, http.StatusOK, []api.PermissionGrant{}, s.handleListPermissionGrants)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/permission-requests/{requestID}/reply", "replyPermissionRequest", "Reply to a permission request", api.PermissionReplyRequest{}, http.StatusOK, api.PermissionRequest{}, s.handleReplyPermissionRequest)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/rename", "renameSession", "Rename a session", api.RenameSessionRequest{}, http.StatusOK, api.Session{}, s.handleRenameSession)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/move", "moveSession", "Move a session", api.MoveSessionRequest{}, http.StatusOK, api.Session{}, s.handleMoveSession)
+	s.registerJSONWithParameters(http.MethodDelete, "/sessions/{id}", "deleteSession", "Delete a session", nil, http.StatusOK, api.StatusResponse{}, []*huma.Param{{Name: "expected_version", In: "query", Required: true, Schema: &huma.Schema{Type: huma.TypeInteger, Format: "int64"}}}, s.handleDeleteSession)
+	s.registerSessionEvents()
+	s.registerJSONWithParameters(http.MethodGet, "/sessions/{id}/events/history", "listSessionEvents", "List durable session events", nil, http.StatusOK, api.SessionEventPage{}, []*huma.Param{queryParameter("after", huma.TypeInteger, "Exclusive durable event cursor"), queryParameter("limit", huma.TypeInteger, "Maximum page size")}, s.handleSessionEventsHistory)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/message", "messageSession", "Admit a session message", api.MessageSessionRequest{}, http.StatusAccepted, api.MessageSessionResponse{}, s.handleMessageSession)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/abort", "abortSession", "Abort active session runs", nil, http.StatusOK, api.AbortSessionResponse{}, s.handleAbortSession)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/runs", "listSessionRuns", "List session runs", nil, http.StatusOK, []api.SessionRun{}, s.handleListSessionRuns)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/runs/{runID}", "getSessionRun", "Get a session run", nil, http.StatusOK, api.SessionRun{}, s.handleGetSessionRun)
+	s.registerJSONStatuses(http.MethodPost, "/sessions/{id}/runs/{runID}/abort", "abortSessionRun", "Abort a session run", nil, map[int]any{http.StatusOK: api.SessionRun{}, http.StatusAccepted: api.SessionRun{}}, s.handleAbortSessionRun)
 
-	s.router.Post("/run", s.handleRun)
+	s.registerRunStream()
 	s.router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		s.writeError(w, http.StatusNotFound, "route not found")
 	})

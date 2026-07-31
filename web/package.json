@@ -13,6 +13,7 @@
     "build:console": "bun --filter @wingman/console build",
     "build:desktop": "bun run build:console && bun --filter @wingman/desktop build",
     "build:core": "bun --filter @wingman/core build",
-    "lint": "bun run --sequential --workspaces --if-present lint"
+    "lint": "bun run --sequential --workspaces --if-present lint",
+    "generate:client": "bun --filter @wingman/client generate"
   }
 }

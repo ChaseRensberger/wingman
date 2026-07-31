@@ -1,0 +1,19 @@
+{
+  "name": "@wingman/client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "generate": "openapi-typescript ../../../openapi.json -o src/schema.d.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.14.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.9.1",
+    "typescript": "~6.0.2"
+  }
+}

@@ -26,6 +26,13 @@ jobs:
         working-directory: web
         run: bun run build
 
+      - name: Check API contract drift
+        run: ./scripts/check-api-contract.sh
+
+      - name: Check browser client boundaries
+        working-directory: web
+        run: bun --filter @wingman/client test
+
       - name: Vet
         run: go vet ./...
 
