@@ -87,7 +87,8 @@ Wingman discovers project-local plugins when it first builds a session with that
 project as its working directory. The external-plugin manager is shared by the
 daemon, so a discovered project-local plugin remains available to later
 sessions, including sessions without a working directory, until a plugin reload
-or daemon restart. Avoid tool-name collisions between projects.
+or daemon restart. Tool names must be globally unique across native, RPC, and MCP
+sources; a collision makes catalog composition fail instead of replacing a tool.
 
 An external plugin is declared by a `wingman-plugin.json` file. Files ending in `.plugin.json` are also loaded.
 
@@ -131,7 +132,8 @@ Plugin tools are selected like built-in tools: include the tool name in an agent
 }
 ```
 
-If a plugin tool has the same name as a built-in tool, the plugin tool wins during session tool resolution. Avoid collisions unless you intentionally want to replace behavior.
+Plugin tool names must not collide with built-in, MCP, or other plugin tools.
+Wingman rejects duplicate names rather than choosing an implicit winner.
 
 ## Inspect Plugins
 

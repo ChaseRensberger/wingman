@@ -235,6 +235,14 @@ function SessionDetailPage() {
 		await run.abort(activeSessionIdRef.current);
 	}
 
+	async function handleReplyPermission(requestID: string, response: "once" | "always" | "reject") {
+		try {
+			await run.replyPermission(requestID, response);
+		} catch (err) {
+			showErrorToast(err, "Could not reply to permission request");
+		}
+	}
+
 	async function handleSend(e?: React.FormEvent, retry?: Omit<FailedRun, "error">) {
 		if (e) e.preventDefault();
 		const outboundText = retry?.message ?? messageText.trim();
@@ -459,7 +467,7 @@ function SessionDetailPage() {
 	return (
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
-			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} modelCallsByMessageId={modelCallsByMessageId} agentNames={agentNames} failedRun={run.failedRun} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
+			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} modelCallsByMessageId={modelCallsByMessageId} agentNames={agentNames} failedRun={run.failedRun} permissionRequests={run.permissionRequests} permissionRepliesInFlight={run.permissionRepliesInFlight} onReplyPermission={(requestID, response) => void handleReplyPermission(requestID, response)} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
 			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
 			<SessionDialogs session={session} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onSave={(title, workDir) => void handleSaveSession(title, workDir)} onDelete={() => void handleDeleteSession()} />
 		</div>

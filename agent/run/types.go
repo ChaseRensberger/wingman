@@ -85,6 +85,10 @@ type Config struct {
 	// Empty means preserve the historical behavior and allow every tool call.
 	Permissions permission.Ruleset
 
+	// PermissionPrompter resolves tool calls matched by an authored ask rule.
+	// Nil declines those calls without executing them.
+	PermissionPrompter PermissionPrompter
+
 	// ToolChoice controls how the model selects tools on every turn.
 	// Zero value is treated as ToolChoiceAuto by all providers.
 	// Typical use: force ToolChoiceRequired when structured output is needed,
@@ -143,6 +147,30 @@ type Config struct {
 	// pre-side-effect started fence and terminal accounting; it does not make
 	// tool execution exactly-once.
 	ToolUseLifecycle ToolUseLifecycle
+}
+
+// PermissionResponse is a user's response to an authored ask permission rule.
+type PermissionResponse string
+
+const (
+	PermissionResponseOnce   PermissionResponse = "once"
+	PermissionResponseAlways PermissionResponse = "always"
+	PermissionResponseReject PermissionResponse = "reject"
+)
+
+// PermissionRequestInfo identifies an authored ask permission request.
+type PermissionRequestInfo struct {
+	Step, Ordinal                  int
+	ToolUseID, CallID, Name        string
+	Args                           map[string]any
+	MessageID, PartID, ModelCallID string
+	Action                         string
+	Resources                      []string
+}
+
+// PermissionPrompter resolves an authored ask permission request.
+type PermissionPrompter interface {
+	Request(ctx context.Context, info PermissionRequestInfo) (PermissionResponse, error)
 }
 
 // ToolUseStatus is a terminal durable tool-use status.
@@ -520,15 +548,17 @@ type ToolCall struct {
 
 // ToolResult is the outcome of a single tool execution.
 type ToolResult struct {
-	CallID    string         `json:"call_id"`
-	ToolUseID string         `json:"tool_use_id,omitempty"`
-	Status    ToolUseStatus  `json:"status,omitempty"`
-	Name      string         `json:"name"`
-	Args      map[string]any `json:"args"`
-	Output    string         `json:"output,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	IsError   bool           `json:"is_error"`
+	CallID     string         `json:"call_id"`
+	ToolUseID  string         `json:"tool_use_id,omitempty"`
+	Status     ToolUseStatus  `json:"status,omitempty"`
+	Name       string         `json:"name"`
+	Args       map[string]any `json:"args"`
+	Output     string         `json:"output,omitempty"`
+	Structured any            `json:"structured,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	ErrorType  string         `json:"error_type,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	IsError    bool           `json:"is_error"`
 	// Duration is the wall-clock time spent in Tool.Execute (excluding
 	// hook overhead). Zero for skipped or unknown-tool calls.
 	Duration time.Duration `json:"duration,omitempty"`

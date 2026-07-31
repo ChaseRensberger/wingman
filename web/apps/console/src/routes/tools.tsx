@@ -148,7 +148,9 @@ function ToolsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Source</TableHead>
-                    <TableHead>Schema</TableHead>
+                    <TableHead>Input</TableHead>
+                    <TableHead>Output</TableHead>
+                    <TableHead>Traits</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -160,6 +162,8 @@ function ToolsPage() {
                         <Badge variant="outline">{tool.source}</Badge>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{schemaSummary(tool.input_schema)}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{schemaSummary(tool.output_schema)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{traitSummary(tool)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -180,9 +184,19 @@ function groupLabel(group: string) {
 }
 
 function schemaSummary(schema?: Record<string, unknown>) {
+	if (!schema) return "-";
   const props = schema?.properties;
-  if (!props || typeof props !== "object" || Array.isArray(props)) return "0 fields";
+  if (!props || typeof props !== "object" || Array.isArray(props)) return String(schema.type ?? "schema");
   const names = Object.keys(props);
   if (names.length === 0) return "0 fields";
   return names.slice(0, 4).join(", ") + (names.length > 4 ? ` +${names.length - 4}` : "");
+}
+
+function traitSummary(tool: ToolCatalogItem) {
+  const traits = [
+    tool.directory_scoped ? "directory" : null,
+    tool.sequential ? "sequential" : "parallel",
+    tool.permission?.action ? `permission:${tool.permission.action}` : null,
+  ].filter(Boolean);
+  return traits.join(", ");
 }

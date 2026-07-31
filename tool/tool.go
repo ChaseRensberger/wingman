@@ -18,10 +18,14 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Tool is the executor contract every agent tool implements. The loop
@@ -40,10 +44,11 @@ type Tool interface {
 }
 
 // Result is the structured outcome a tool returns. Text is model-facing output;
-// Metadata is optional client-facing data for richer renderers.
+// Structured and Metadata are optional client-facing data for richer renderers.
 type Result struct {
-	Text     string         `json:"text"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Text       string         `json:"text"`
+	Structured any            `json:"structured,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 // Progress is the callback a tool may use to stream intermediate output
@@ -121,6 +126,13 @@ type DirectoryScopedTool interface {
 	DirectoryScoped()
 }
 
+// PermissionTarget declares the permission action and input fields that
+// identify resources for a tool invocation.
+type PermissionTarget struct {
+	Action         string   `json:"action"`
+	ResourceFields []string `json:"resource_fields,omitempty"`
+}
+
 // Definition is the JSON-Schema shaped declaration the loop sends to the
 // model. It mirrors models.ToolDef but uses a typed schema struct so
 // builtin tools can write definitions without wrestling with map[string]any.
@@ -135,6 +147,74 @@ type Definition struct {
 	// exceed Wingman's small typed schema subset. If set, it takes precedence
 	// when building the model-facing tool definition.
 	RawInputSchema map[string]any `json:"-"`
+	// OutputSchema validates Result.Structured after a successful execution.
+	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	// Sequential requests sequential execution when the tool does not implement
+	// SequentialTool.
+	Sequential bool `json:"sequential,omitempty"`
+	// DirectoryScoped requires a working directory when the tool does not
+	// implement DirectoryScopedTool.
+	DirectoryScoped bool `json:"directory_scoped,omitempty"`
+	// Permission declares a permission target when the tool does not implement
+	// PermissionedTool.
+	Permission *PermissionTarget `json:"permission,omitempty"`
+}
+
+// IsSequential reports whether t requires sequential execution. SequentialTool
+// takes precedence over Definition.Sequential.
+func IsSequential(t Tool) bool {
+	if sequential, ok := t.(SequentialTool); ok {
+		return sequential.Sequential()
+	}
+	return t.Definition().Sequential
+}
+
+// IsDirectoryScoped reports whether t requires a working directory.
+// DirectoryScopedTool takes precedence over Definition.DirectoryScoped.
+func IsDirectoryScoped(t Tool) bool {
+	if _, ok := t.(DirectoryScopedTool); ok {
+		return true
+	}
+	return t.Definition().DirectoryScoped
+}
+
+// PermissionFor derives a permission check from t and inv. It reports false
+// when neither the optional interface nor Definition declares a target.
+// PermissionedTool takes precedence over Definition.Permission.
+func PermissionFor(t Tool, inv Invocation) (PermissionCheck, bool, error) {
+	if permissioned, ok := t.(PermissionedTool); ok {
+		check, err := permissioned.Permission(inv)
+		return check, true, err
+	}
+	target := t.Definition().Permission
+	if target == nil {
+		return PermissionCheck{}, false, nil
+	}
+	resources := make([]string, 0, len(target.ResourceFields))
+	for _, field := range target.ResourceFields {
+		switch value := inv.Input[field].(type) {
+		case string:
+			if value != "" {
+				resources = append(resources, value)
+			}
+		case []string:
+			for _, resource := range value {
+				if resource != "" {
+					resources = append(resources, resource)
+				}
+			}
+		case []any:
+			for _, resource := range value {
+				if resource, ok := resource.(string); ok && resource != "" {
+					resources = append(resources, resource)
+				}
+			}
+		}
+	}
+	if len(resources) == 0 {
+		resources = []string{"*"}
+	}
+	return PermissionCheck{Action: target.Action, Resources: resources}, true, nil
 }
 
 // InputSchema is the JSON Schema for a tool's input. Wingman v0.1 only
@@ -204,11 +284,18 @@ func NewRegistry() *Registry {
 	return &Registry{tools: make(map[string]Tool)}
 }
 
-// Register adds (or replaces) a tool by Name. Last write wins.
-func (r *Registry) Register(t Tool) {
+// Register adds t to the registry. It rejects invalid and duplicate tools.
+func (r *Registry) Register(t Tool) error {
+	if err := Validate(t); err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, exists := r.tools[t.Name()]; exists {
+		return &ValidationError{Kind: "duplicate", Name: t.Name(), Err: ErrDuplicateTool}
+	}
 	r.tools[t.Name()] = t
+	return nil
 }
 
 // Get returns the named tool or an error wrapping ErrToolNotFound.
@@ -222,7 +309,7 @@ func (r *Registry) Get(name string) (Tool, error) {
 	return t, nil
 }
 
-// List returns a snapshot of all registered tools in unspecified order.
+// List returns a snapshot of all registered tools ordered by name.
 func (r *Registry) List() []Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -230,6 +317,7 @@ func (r *Registry) List() []Tool {
 	for _, t := range r.tools {
 		tools = append(tools, t)
 	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
 	return tools
 }
 
@@ -237,17 +325,140 @@ func (r *Registry) List() []Tool {
 func (r *Registry) Definitions() []Definition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	defs := make([]Definition, 0, len(r.tools))
-	for _, t := range r.tools {
+	tools := r.listLocked()
+	defs := make([]Definition, 0, len(tools))
+	for _, t := range tools {
 		defs = append(defs, t.Definition())
 	}
 	return defs
+}
+
+func (r *Registry) listLocked() []Tool {
+	tools := make([]Tool, 0, len(r.tools))
+	for _, t := range r.tools {
+		tools = append(tools, t)
+	}
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
+	return tools
 }
 
 // ErrToolNotFound is wrapped by Registry.Get when a tool name has no
 // matching registration. The loop converts this into an immediate tool
 // result with isError=true rather than failing the whole turn.
 var ErrToolNotFound = fmt.Errorf("tool not found")
+
+// ErrInvalidTool identifies a nil, unnamed, or inconsistently declared tool.
+var ErrInvalidTool = errors.New("invalid tool")
+
+// ErrDuplicateTool identifies an attempt to register the same name twice.
+var ErrDuplicateTool = errors.New("duplicate tool")
+
+// ErrResultValidation identifies structured output that violates a tool's
+// declared output schema.
+var ErrResultValidation = errors.New("tool result validation")
+
+// ValidationError describes a tool registration failure.
+type ValidationError struct {
+	Kind string
+	Name string
+	Err  error
+}
+
+func (e *ValidationError) Error() string {
+	if e.Name == "" {
+		return fmt.Sprintf("tool %s: %v", e.Kind, e.Err)
+	}
+	return fmt.Sprintf("tool %s %q: %v", e.Kind, e.Name, e.Err)
+}
+
+func (e *ValidationError) Unwrap() error { return e.Err }
+
+// ResultValidationError describes a successful execution whose structured
+// result is missing or invalid for the tool's output schema.
+type ResultValidationError struct {
+	Tool string
+	Err  error
+}
+
+func (e *ResultValidationError) Error() string {
+	return fmt.Sprintf("tool %q result validation error: %v", e.Tool, e.Err)
+}
+
+func (e *ResultValidationError) Unwrap() error { return errors.Join(ErrResultValidation, e.Err) }
+
+// Validate checks that t has a non-empty, consistent runtime and declared name.
+func Validate(t Tool) error {
+	if t == nil || isNilTool(t) {
+		return &ValidationError{Kind: "nil", Err: ErrInvalidTool}
+	}
+	name := t.Name()
+	if name == "" {
+		return &ValidationError{Kind: "empty name", Err: ErrInvalidTool}
+	}
+	definition := t.Definition()
+	if definition.Name != name {
+		return &ValidationError{Kind: "name mismatch", Name: name, Err: ErrInvalidTool}
+	}
+	if definition.Permission != nil {
+		if definition.Permission.Action == "" {
+			return &ValidationError{Kind: "permission action", Name: name, Err: ErrInvalidTool}
+		}
+		for _, field := range definition.Permission.ResourceFields {
+			if field == "" {
+				return &ValidationError{Kind: "permission resource field", Name: name, Err: ErrInvalidTool}
+			}
+		}
+	}
+	if schema := definition.AsModelToolDef().InputSchema; definition.RawInputSchema != nil || definition.InputSchema.Type != "" {
+		if err := compileSchema(name+"-input.json", schema); err != nil {
+			return &ValidationError{Kind: "input schema", Name: name, Err: errors.Join(ErrInvalidTool, err)}
+		}
+	}
+	if len(definition.OutputSchema) > 0 {
+		if err := compileSchema(name+"-output.json", definition.OutputSchema); err != nil {
+			return &ValidationError{Kind: "output schema", Name: name, Err: errors.Join(ErrInvalidTool, err)}
+		}
+	}
+	return nil
+}
+
+func compileSchema(resource string, schema map[string]any) error {
+	b, err := json.Marshal(schema)
+	if err != nil {
+		return err
+	}
+	var normalized map[string]any
+	if err := json.Unmarshal(b, &normalized); err != nil {
+		return err
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource(resource, normalized); err != nil {
+		return err
+	}
+	_, err = c.Compile(resource)
+	return err
+}
+
+func isNilTool(t Tool) bool {
+	v := reflect.ValueOf(t)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
+// Compose validates and registers tools as one deterministic catalog.
+func Compose(tools []Tool) (*Registry, error) {
+	registry := NewRegistry()
+	for _, t := range tools {
+		if err := registry.Register(t); err != nil {
+			return nil, err
+		}
+	}
+	return registry, nil
+}
 
 // BaseTool is an embeddable struct that satisfies the descriptive part
 // of Tool (Name/Description/Definition). Custom tools embed BaseTool and

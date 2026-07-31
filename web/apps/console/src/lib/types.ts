@@ -96,6 +96,23 @@ export interface SessionRun {
   updated_at: string;
 }
 
+export interface PermissionRequest {
+  id: string;
+  session_id: string;
+  run_id?: string;
+  tool_use_id?: string;
+  call_id?: string;
+  action: string;
+  resources: string[];
+  status: "pending" | "approved" | "rejected" | "timed_out" | "interrupted";
+  response?: "once" | "always" | "reject";
+  error_type?: string;
+  error_message?: string;
+  created_at: string;
+  resolved_at?: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -288,6 +305,13 @@ export interface ToolCatalogItem {
   name: string;
   description?: string;
   input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  sequential?: boolean;
+  directory_scoped?: boolean;
+  permission?: {
+    action: string;
+    resource_fields?: string[];
+  };
   source: "native" | "plugin" | "mcp" | string;
   plugin?: string;
   server?: string;

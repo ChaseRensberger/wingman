@@ -55,6 +55,10 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 		info := cfg.ModelInfo
 		return nil, fmt.Errorf("loop: model %s/%s does not support structured output", info.Provider, info.ID)
 	}
+	registry, err := tool.Compose(cfg.Tools)
+	if err != nil {
+		return nil, fmt.Errorf("run.Run: tool catalog: %w", err)
+	}
 
 	initial := append([]models.Message{}, cfg.Messages...)
 	if cfg.Hooks.BeforeRun != nil {
@@ -70,8 +74,8 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 	r := &runner{
 		cfg:      cfg,
 		messages: initial,
-		registry: buildRegistry(cfg.Tools),
-		toolDefs: buildToolDefs(cfg.Tools),
+		registry: registry,
+		toolDefs: definitionsFor(registry),
 	}
 
 	// Serialize sink emission through a single drain goroutine. Tool
@@ -872,6 +876,7 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 			toolPart.ToolUseID = result.ToolUseID
 		}
 		toolPart.Output = result.Output
+		toolPart.Structured = result.Structured
 		toolPart.Metadata = result.Metadata
 		toolPart.Error = result.Error
 		toolPart.StartedAt = startedAt
@@ -940,15 +945,59 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		}
 		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "input_validation", nil)
 	}
-	if res, ok := r.checkPermission(call); !ok {
+	decision := r.checkPermission(call)
+	if decision.err != nil {
+		res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: decision.err.Error(), IsError: true}
+		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_check", decision.err)
+	}
+	if decision.denyResource != "" {
+		res := permissionToolResult(call, permission.EffectDeny, decision.action, decision.denyResource)
 		res.ToolUseID = call.ToolUseID
-		errorType := "permission_denied"
-		if permissionInfo, ok := res.Metadata["permission"].(map[string]any); ok {
-			if effect, _ := permissionInfo["effect"].(string); effect == string(permission.EffectAsk) {
-				errorType = "permission_ask"
-			}
+		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_denied", nil)
+	}
+	if len(decision.askResources) > 0 {
+		if r.cfg.PermissionPrompter == nil {
+			res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
+			res.ToolUseID = call.ToolUseID
+			return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_unavailable", nil)
 		}
-		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, errorType, nil)
+		response, err := r.cfg.PermissionPrompter.Request(ctx, PermissionRequestInfo{
+			Step: call.Step, Ordinal: call.Ordinal, ToolUseID: call.ToolUseID, CallID: call.ID, Name: call.Name, Args: call.Args,
+			MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, Action: decision.action, Resources: decision.askResources,
+		})
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+				cause := ctx.Err()
+				if cause == nil {
+					cause = err
+				}
+				errorType := "permission_interrupted"
+				if errors.Is(cause, context.DeadlineExceeded) {
+					errorType = "permission_timeout"
+				}
+				res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
+				res.ToolUseID, res.Error = call.ToolUseID, cause.Error()
+				settled, settleErr := r.settleToolUse(context.WithoutCancel(ctx), call, res, ToolUseStatusInterrupted, errorType, cause)
+				return settled, errors.Join(cause, settleErr)
+			}
+			res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
+			res.ToolUseID, res.Error = call.ToolUseID, err.Error()
+			settled, settleErr := r.settleToolUse(ctx, call, res, ToolUseStatusFailed, "permission_prompt", err)
+			return settled, errors.Join(fmt.Errorf("permission prompt: %w", err), settleErr)
+		}
+		switch response {
+		case PermissionResponseOnce, PermissionResponseAlways:
+		case PermissionResponseReject:
+			res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
+			res.ToolUseID = call.ToolUseID
+			res.Metadata["error_type"] = "permission_denied"
+			res.Metadata["permission"].(map[string]any)["response"] = "reject"
+			return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_denied", nil)
+		default:
+			res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
+			res.ToolUseID = call.ToolUseID
+			return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_invalid_response", nil)
+		}
 	}
 	if r.cfg.ToolUseLifecycle != nil {
 		authorizeInfo := toolUseAuthorizeInfo(call, time.Now())
@@ -987,12 +1036,13 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 
 	res := ToolResult{
 		CallID: call.ID, ToolUseID: call.ToolUseID,
-		Name:     call.Name,
-		Args:     call.Args,
-		Output:   toolResult.Text,
-		Metadata: toolResult.Metadata,
-		IsError:  execErr != nil,
-		Duration: duration,
+		Name:       call.Name,
+		Args:       call.Args,
+		Output:     toolResult.Text,
+		Structured: toolResult.Structured,
+		Metadata:   toolResult.Metadata,
+		IsError:    execErr != nil,
+		Duration:   duration,
 	}
 	if execErr != nil {
 		res.Error = execErr.Error()
@@ -1003,6 +1053,18 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		status, errorType = ToolUseStatusFailed, "execution"
 		if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
 			status, errorType = ToolUseStatusInterrupted, "interrupted"
+		}
+	} else if schema := call.Tool.Definition().OutputSchema; schema != nil {
+		if toolResult.Structured == nil {
+			execErr = &tool.ResultValidationError{Tool: call.Name, Err: errors.New("structured result is required")}
+		} else if err := validateAgainstSchema(schema, toolResult.Structured); err != nil {
+			execErr = &tool.ResultValidationError{Tool: call.Name, Err: err}
+		}
+		if execErr != nil {
+			res.Error = execErr.Error()
+			res.ErrorType = "result_validation"
+			res.IsError = true
+			status, errorType = ToolUseStatusFailed, "result_validation"
 		}
 	}
 	return r.settleToolUse(ctx, call, res, status, errorType, execErr)
@@ -1075,37 +1137,36 @@ func applyToolUseIDs(content models.Content, calls []ToolCall) models.Content {
 	return out
 }
 
-func (r *runner) checkPermission(call ToolCall) (ToolResult, bool) {
+type permissionDecision struct {
+	action       string
+	askResources []string
+	denyResource string
+	err          error
+}
+
+func (r *runner) checkPermission(call ToolCall) permissionDecision {
 	if len(r.cfg.Permissions) == 0 {
-		return ToolResult{}, true
+		return permissionDecision{}
 	}
 	action, resources, err := permissionTarget(call, r.cfg.WorkDir)
 	if err != nil {
-		return ToolResult{
-			CallID:  call.ID,
-			Name:    call.Name,
-			Args:    call.Args,
-			Error:   err.Error(),
-			IsError: true,
-		}, false
+		return permissionDecision{err: err}
 	}
 	if len(resources) == 0 {
 		resources = []string{"*"}
 	}
-	var askResource string
+	decision := permissionDecision{action: action}
 	for _, resource := range resources {
-		decision := permission.Evaluate(action, resource, r.cfg.Permissions, permission.EffectAllow)
-		switch decision.Effect {
+		evaluated := permission.Evaluate(action, resource, r.cfg.Permissions, permission.EffectAllow)
+		switch evaluated.Effect {
 		case permission.EffectDeny:
-			return permissionToolResult(call, permission.EffectDeny, action, resource), false
+			decision.denyResource = resource
+			return decision
 		case permission.EffectAsk:
-			askResource = resource
+			decision.askResources = append(decision.askResources, resource)
 		}
 	}
-	if askResource != "" {
-		return permissionToolResult(call, permission.EffectAsk, action, askResource), false
-	}
-	return ToolResult{}, true
+	return decision
 }
 
 func permissionToolResult(call ToolCall, effect permission.Effect, action, resource string) ToolResult {
@@ -1130,12 +1191,14 @@ func permissionToolResult(call ToolCall, effect permission.Effect, action, resou
 }
 
 func permissionTarget(call ToolCall, workDir string) (string, []string, error) {
-	if permissioned, ok := call.Tool.(tool.PermissionedTool); ok {
-		check, err := permissioned.Permission(tool.Invocation{Input: call.Args, WorkDir: workDir})
+	if call.Tool != nil {
+		check, declared, err := tool.PermissionFor(call.Tool, tool.Invocation{Input: call.Args, WorkDir: workDir})
 		if err != nil {
 			return "", nil, err
 		}
-		return check.Action, check.Resources, nil
+		if declared {
+			return check.Action, check.Resources, nil
+		}
 	}
 	switch call.Name {
 	case "write", "edit":
@@ -1345,26 +1408,15 @@ func (r *runner) finalize(step int, reason StopReason) *Result {
 	}
 }
 
-// buildRegistry produces a Registry seeded with every tool. Loop callers
-// could pass a pre-built Registry, but the per-Run cost is negligible
-// (small map of pointers) and freshness avoids stale registrations.
-func buildRegistry(ts []tool.Tool) *tool.Registry {
-	reg := tool.NewRegistry()
-	for _, t := range ts {
-		reg.Register(t)
-	}
-	return reg
-}
-
-// buildToolDefs converts the configured tools' typed Definitions to the
-// open-ended ToolDef shape providers expect.
-func buildToolDefs(ts []tool.Tool) []models.ToolDef {
-	if len(ts) == 0 {
+// definitionsFor converts one composed tool catalog to model definitions.
+func definitionsFor(registry *tool.Registry) []models.ToolDef {
+	definitions := registry.Definitions()
+	if len(definitions) == 0 {
 		return nil
 	}
-	out := make([]models.ToolDef, len(ts))
-	for i, t := range ts {
-		out[i] = t.Definition().AsModelToolDef()
+	out := make([]models.ToolDef, len(definitions))
+	for i, definition := range definitions {
+		out[i] = definition.AsModelToolDef()
 	}
 	return out
 }
@@ -1384,15 +1436,15 @@ func extractToolCalls(msg models.Message) []models.ToolCallPart {
 	return calls
 }
 
-// anySequential reports whether any tool in calls implements
-// SequentialTool and returns true. nil tools (unknown) are treated as
-// parallel-safe (they don't actually execute anyway).
+// anySequential reports whether any tool in calls requires sequential
+// execution. nil tools (unknown) are treated as parallel-safe because they do
+// not execute.
 func anySequential(calls []ToolCall) bool {
 	for _, c := range calls {
 		if c.Tool == nil {
 			continue
 		}
-		if seq, ok := c.Tool.(tool.SequentialTool); ok && seq.Sequential() {
+		if tool.IsSequential(c.Tool) {
 			return true
 		}
 	}

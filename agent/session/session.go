@@ -53,6 +53,7 @@ type Session struct {
 	system      string
 	tools       []tool.Tool
 	permissions permission.Ruleset
+	prompter    run.PermissionPrompter
 	logger      *slog.Logger
 	agentID     string
 	runID       string
@@ -204,6 +205,12 @@ func WithTools(tools ...tool.Tool) Option {
 // WithPermissions sets runtime tool permission rules for this session.
 func WithPermissions(rules permission.Ruleset) Option {
 	return func(s *Session) { s.permissions = append(permission.Ruleset(nil), rules...) }
+}
+
+// WithPermissionPrompter resolves authored ask permission rules during runs.
+// A nil prompter explicitly declines those calls without executing them.
+func WithPermissionPrompter(prompter run.PermissionPrompter) Option {
+	return func(s *Session) { s.prompter = prompter }
 }
 
 // WithLogger enables structured runtime logs for this session. The logger is
@@ -409,11 +416,12 @@ type Result struct {
 // Wire format: handlers JSON-encode this into HTTP responses, so the
 // field names matter.
 type ToolCallResult struct {
-	ToolName string         `json:"tool_name"`
-	Input    any            `json:"input,omitempty"`
-	Output   string         `json:"output,omitempty"`
-	Error    string         `json:"error,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ToolName   string         `json:"tool_name"`
+	Input      any            `json:"input,omitempty"`
+	Output     string         `json:"output,omitempty"`
+	Structured any            `json:"structured,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 // Sentinel errors. ErrNoModel is returned when Run is called before a
@@ -455,6 +463,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	}
 	tools := append([]tool.Tool(nil), s.tools...)
 	permissions := append(permission.Ruleset(nil), s.permissions...)
+	prompter := s.prompter
 	workDir := s.workDir
 	logger := s.logger
 	rawTransformHistory := s.transformHistory
@@ -467,15 +476,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	outputSchema := s.outputSchema
 	agentID := s.agentID
 	runID := s.runID
-
-	// If any allowed tool is directory-scoped, the session must have a
-	// working directory. Fail early before mutating history.
-	for _, t := range tools {
-		if _, ok := t.(tool.DirectoryScopedTool); ok && workDir == "" {
-			s.mu.Unlock()
-			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
-		}
-	}
 
 	// Hydrate prior history from the store on first run.
 	if err := s.hydrate(ctx); err != nil {
@@ -541,6 +541,14 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	// Tool composition: session tools first, then plugin tools (later
 	// wins on name collision via the loop's registry).
 	tools = append(tools, built.Tools...)
+	if _, err := tool.Compose(tools); err != nil {
+		return nil, fmt.Errorf("session tool catalog: %w", err)
+	}
+	for _, t := range tools {
+		if tool.IsDirectoryScoped(t) && workDir == "" {
+			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
+		}
+	}
 
 	// Sink fan-out: persist MessageEvents, then forward to the
 	// messageSink, plugin sinks, and extraSink. Tool results are
@@ -584,16 +592,17 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
-		Client:       client,
-		Model:        model,
-		ModelInfo:    modelInfo,
-		Capabilities: models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
-		System:       system,
-		Tools:        tools,
-		WorkDir:      workDir,
-		Permissions:  permissions,
-		Sink:         internal,
-		OutputSchema: outputSchema,
+		Client:             client,
+		Model:              model,
+		ModelInfo:          modelInfo,
+		Capabilities:       models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
+		System:             system,
+		Tools:              tools,
+		WorkDir:            workDir,
+		Permissions:        permissions,
+		PermissionPrompter: prompter,
+		Sink:               internal,
+		OutputSchema:       outputSchema,
 		Hooks: run.Hooks{
 			BeforeRun:         built.Hooks.BeforeRun,
 			TransformHistory:  transformHistory,
@@ -647,11 +656,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		for _, t := range res.Turns {
 			for _, tr := range t.Results {
 				toolCalls = append(toolCalls, ToolCallResult{
-					ToolName: tr.Name,
-					Input:    tr.Args,
-					Output:   tr.Output,
-					Error:    errStringIf(tr.IsError, tr.Error),
-					Metadata: tr.Metadata,
+					ToolName:   tr.Name,
+					Input:      tr.Args,
+					Output:     tr.Output,
+					Structured: tr.Structured,
+					Error:      errStringIf(tr.IsError, tr.Error),
+					Metadata:   tr.Metadata,
 				})
 			}
 		}

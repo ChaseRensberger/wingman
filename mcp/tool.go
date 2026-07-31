@@ -28,6 +28,7 @@ func (t *mcpTool) Definition() tool.Definition {
 		Description:    t.Description(),
 		InputSchema:    tool.InputSchema{Type: "object"},
 		RawInputSchema: schemaMap(t.def.InputSchema),
+		OutputSchema:   schemaMap(t.def.OutputSchema),
 	}
 }
 
@@ -48,7 +49,7 @@ func (t *mcpTool) Execute(ctx context.Context, inv tool.Invocation) (tool.Result
 			text = string(b)
 		}
 	}
-	return tool.Result{Text: text, Metadata: resultMetadata(t.server, t.remoteName, res)}, nil
+	return tool.Result{Text: text, Structured: res.StructuredContent, Metadata: resultMetadata(t.server, t.remoteName, res)}, nil
 }
 
 func resultText(res *mcpsdk.CallToolResult) string {

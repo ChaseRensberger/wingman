@@ -39,6 +39,10 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if err := s.validateAgentTools(req.Tools); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	a := &store.Agent{
 		Name:         req.Name,
@@ -128,6 +132,10 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 		a.Instructions = *req.Instructions
 	}
 	if req.Tools != nil {
+		if err := s.validateAgentTools(req.Tools); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		a.Tools = req.Tools
 	}
 	if req.Permissions != nil {
@@ -150,6 +158,11 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) validateAgentTools(names []string) error {
+	_, err := s.resolveTools(names)
+	return err
 }
 
 func setAgentModelRoute(a *store.Agent, route *models.ModelInfo) {

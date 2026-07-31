@@ -303,6 +303,38 @@ func TestSQLiteToolUseLifecycleAndInterruption(t *testing.T) {
 	}
 }
 
+func TestSQLiteToolUsePersistsStructuredResultSeparately(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_tool_result"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_tool_result", SessionID: "ses_tool_result"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := ToolUse{ID: "tlu_result", SessionID: "ses_tool_result", RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_1", Name: "search", Status: ToolUseStatusProposed}
+	for _, status := range []string{ToolUseStatusProposed, ToolUseStatusAuthorized, ToolUseStatusStarted, ToolUseStatusCompleted} {
+		use.Status = status
+		if status == ToolUseStatusCompleted {
+			use.Output = "one result"
+			use.StructuredJSON = []byte(`{"count":1}`)
+			use.MetadataJSON = []byte(`{"source":"test"}`)
+		}
+		if err := data.SaveToolUse(ctx, use); err != nil {
+			t.Fatal(err)
+		}
+	}
+	uses, err := data.ListToolUses(ctx, use.SessionID)
+	if err != nil || len(uses) != 1 || string(uses[0].StructuredJSON) != `{"count":1}` || string(uses[0].MetadataJSON) != `{"source":"test"}` {
+		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+}
+
 func TestSQLiteSeedsFridayAgent(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {

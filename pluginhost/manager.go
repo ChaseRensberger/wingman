@@ -141,18 +141,18 @@ func (m *Manager) Tools() []tool.Tool {
 	return tools
 }
 
-func (m *Manager) executeToolResult(ctx context.Context, pluginID string, toolName string, params map[string]any, workDir string) (string, map[string]any, error) {
+func (m *Manager) executeToolResult(ctx context.Context, pluginID string, toolName string, params map[string]any, workDir string) (tool.Result, error) {
 	m.mu.RLock()
 	p := m.plugins[pluginID]
 	m.mu.RUnlock()
 	if p == nil || p.client == nil || p.err != nil {
-		return "", nil, fmt.Errorf("plugin %q is not running", pluginID)
+		return tool.Result{}, fmt.Errorf("plugin %q is not running", pluginID)
 	}
 	var res toolExecuteResult
 	if err := p.client.call(ctx, "tool.execute", toolExecuteParams{Tool: toolName, Params: params, WorkDir: workDir}, &res); err != nil {
-		return "", nil, err
+		return tool.Result{}, err
 	}
-	return res.Text, res.Metadata, nil
+	return tool.Result{Text: res.Text, Structured: res.Structured, Metadata: res.Metadata}, nil
 }
 
 func (m *Manager) loadDirsLocked(ctx context.Context, dirs []string) {
@@ -225,6 +225,7 @@ type toolExecuteParams struct {
 }
 
 type toolExecuteResult struct {
-	Text     string         `json:"text"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Text       string         `json:"text"`
+	Structured any            `json:"structured,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }

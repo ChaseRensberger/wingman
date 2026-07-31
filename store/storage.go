@@ -16,6 +16,26 @@ var ErrToolUseIdentityConflict = errors.New("tool use identity conflict")
 var ErrToolUseInvalidTransition = errors.New("tool use invalid transition")
 var ErrMessageRevisionStale = errors.New("message revision stale")
 var ErrMessageRevisionConflict = errors.New("message revision conflict")
+var ErrPermissionRequestNotFound = errors.New("permission request not found")
+var ErrPermissionRequestTransitionConflict = errors.New("permission request transition conflict")
+
+// PermissionRequestNotFound identifies a request absent from a session.
+type PermissionRequestNotFound struct{ SessionID, RequestID string }
+
+func (e *PermissionRequestNotFound) Error() string {
+	return "session " + e.SessionID + ": " + ErrPermissionRequestNotFound.Error() + ": " + e.RequestID
+}
+func (e *PermissionRequestNotFound) Unwrap() error { return ErrPermissionRequestNotFound }
+
+// PermissionRequestTransitionConflict reports an invalid or competing resolution.
+type PermissionRequestTransitionConflict struct{ SessionID, RequestID string }
+
+func (e *PermissionRequestTransitionConflict) Error() string {
+	return "session " + e.SessionID + ": " + ErrPermissionRequestTransitionConflict.Error() + ": " + e.RequestID
+}
+func (e *PermissionRequestTransitionConflict) Unwrap() error {
+	return ErrPermissionRequestTransitionConflict
+}
 
 // SessionRunAdmissionConflict reports conflicting reuse of a request identity.
 type SessionRunAdmissionConflict struct {
@@ -50,6 +70,12 @@ type Store interface {
 	SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error)
 	ListRunningSessionRuns(ctx context.Context) ([]SessionRun, error)
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
+	CreatePermissionRequest(ctx context.Context, request PermissionRequest) (PermissionRequestTransition, error)
+	GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*PermissionRequest, error)
+	ListPermissionRequests(ctx context.Context, sessionID string) ([]PermissionRequest, error)
+	ResolvePermissionRequest(ctx context.Context, resolution PermissionRequestResolution) (PermissionRequestTransition, error)
+	ListPermissionGrants(ctx context.Context, sessionID string) ([]PermissionGrant, error)
+	InterruptPendingPermissionRequests(ctx context.Context) ([]PermissionRequestTransition, error)
 
 	// SaveMessage atomically stores a complete authoritative message revision.
 	SaveMessage(ctx context.Context, msg StoredMessage) error

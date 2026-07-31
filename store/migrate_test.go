@@ -29,13 +29,15 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	}
 
 	for table, columns := range map[string][]string{
-		"agents":           {"permissions_json"},
-		"sessions":         {"aggregate_version"},
-		"messages":         {"run_id"},
-		"session_runs":     {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
-		"model_calls":      {"run_id", "provider_request_id"},
-		"tool_uses":        {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "proposed_at"},
-		"aggregate_events": {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
+		"agents":              {"permissions_json"},
+		"sessions":            {"aggregate_version"},
+		"messages":            {"run_id"},
+		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
+		"model_calls":         {"run_id", "provider_request_id"},
+		"tool_uses":           {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "structured_json", "proposed_at"},
+		"permission_requests": {"session_id", "run_id", "tool_use_id", "resources_json", "resolved_at"},
+		"permission_grants":   {"session_id", "action", "resource"},
+		"aggregate_events":    {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
 	} {
 		for _, column := range columns {
 			if !schemaHasColumn(t, db, table, column) {
@@ -43,7 +45,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "session_events", "aggregate_events", "auth"} {
+	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "permission_requests", "permission_grants", "session_events", "aggregate_events", "auth"} {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("table %s count=%d error=%v", table, count, err)
 		}
@@ -59,11 +61,46 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"idx_session_runs_one_running_per_session",
 		"idx_model_calls_session_started_at",
 		"idx_tool_uses_run_step_ordinal",
+		"idx_permission_requests_session_created",
+		"idx_permission_grants_session",
 		"idx_aggregate_events_stream",
 		"idx_session_events_session_seq",
 	} {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, index).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("index %s count=%d error=%v", index, count, err)
+		}
+	}
+}
+
+func TestPermissionRequestSchemaRejectsInvalidValues(t *testing.T) {
+	db := testMigrationDB(t)
+	if err := runMigrations(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO sessions (id, created_at, updated_at) VALUES ('ses_permissions', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(id, status, response, resources string) error {
+		_, err := db.Exec(`INSERT INTO permission_requests (id, session_id, action, resources_json, status, response, created_at, updated_at) VALUES (?, 'ses_permissions', 'shell.exec', ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`, id, resources, status, response)
+		return err
+	}
+	if err := insert("prq_valid", "pending", "", `["pwd"]`); err != nil {
+		t.Fatalf("valid permission request: %v", err)
+	}
+	for _, test := range []struct {
+		id, status, response, resources string
+	}{
+		{"prq_bad_status", "unknown", "", `["pwd"]`},
+		{"prq_bad_response", "pending", "unknown", `["pwd"]`},
+		{"prq_pending_once", "pending", "once", `["pwd"]`},
+		{"prq_approved_empty", "approved", "", `["pwd"]`},
+		{"prq_rejected_once", "rejected", "once", `["pwd"]`},
+		{"prq_timeout_reject", "timed_out", "reject", `["pwd"]`},
+		{"prq_object_resources", "pending", "", `{}`},
+		{"prq_empty_resources", "pending", "", `[]`},
+	} {
+		if err := insert(test.id, test.status, test.response, test.resources); err == nil {
+			t.Fatalf("invalid permission request %#v was accepted", test)
 		}
 	}
 }

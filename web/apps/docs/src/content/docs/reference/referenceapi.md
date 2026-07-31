@@ -54,6 +54,10 @@ All endpoints accept and return JSON unless noted. Error responses use the shape
 }
 ```
 
+`tools` must contain unique names from the currently available `GET /tools`
+catalog. Create and update return `400 Bad Request` for unknown or duplicate
+names.
+
 ### Auth response
 
 `GET /provider/auth` returns a `configured` flag per provider without leaking the secret:
@@ -116,7 +120,7 @@ returned by these endpoints.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/tools` | List native, plugin, and MCP tools with their advertised input schemas and availability. |
+| `GET` | `/tools` | List the unique effective native, plugin, and connected MCP catalog with input/output schemas, execution traits, source, and availability. Returns an error if sources collide. |
 | `GET` | `/plugins` | List loaded external plugins and non-fatal load errors. |
 | `POST` | `/plugins/reload` | Reload configured external plugins, then return plugin status. |
 | `GET` | `/mcp` | List configured MCP servers and their status. |
@@ -141,6 +145,9 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `GET` | `/sessions/{id}` | Get session including history |
 | `GET` | `/sessions/{id}/model-calls` | List physical upstream model attempts in start-time order |
 | `GET` | `/sessions/{id}/tool-uses` | List durable tool invocations in proposal/source order |
+| `GET` | `/sessions/{id}/permission-requests` | List durable permission requests in creation order |
+| `GET` | `/sessions/{id}/permission-grants` | List exact remembered grants for the session |
+| `POST` | `/sessions/{id}/permission-requests/{requestID}/reply` | Reply `once`, `always`, or `reject` to a pending request |
 | `GET` | `/sessions/{id}/runs` | List authoritative runs in admission order |
 | `GET` | `/sessions/{id}/runs/{runID}` | Get one authoritative run |
 | `POST` | `/sessions/{id}/runs/{runID}/abort` | Abort one queued or locally running run |
@@ -361,6 +368,44 @@ data and may repeat across runs.
 Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
 `interrupted`, or `declined`. On server startup, unfinished records become
 `interrupted`; Wingman does not automatically replay them.
+
+### Permission requests
+
+An authored `ask` rule creates a pending request after tool proposal and input
+validation but before tool authorization. The tool remains suspended until a
+reply, timeout, run cancellation, or shutdown recovery resolves it.
+
+```json
+{
+  "id": "prq_...",
+  "session_id": "ses_...",
+  "run_id": "run_...",
+  "tool_use_id": "tlu_...",
+  "call_id": "call_...",
+  "action": "edit",
+  "resources": ["/home/me/project/src/main.go"],
+  "status": "pending",
+  "created_at": "2026-07-30T12:00:00Z",
+  "updated_at": "2026-07-30T12:00:00Z"
+}
+```
+
+Reply with:
+
+```json
+{ "response": "once" }
+```
+
+`once` and `always` resolve the request as `approved`; `reject` resolves it as
+`rejected`. `always` also atomically stores exact session-scoped grants for the
+request's action/resources. Identical reply retries return `200` with the
+existing request and no duplicate event. A conflicting terminal reply returns
+`409`; unknown requests return `404`.
+
+Other terminal statuses are `timed_out` and `interrupted`. Pending requests use
+a five-minute server timeout and become interrupted when their run is canceled
+or during startup recovery. Durable events are `session.permission.requested`
+and `session.permission.resolved`.
 
 ### Streaming
 

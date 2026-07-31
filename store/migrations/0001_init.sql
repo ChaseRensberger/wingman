@@ -168,6 +168,7 @@ CREATE TABLE tool_uses (
     status               TEXT NOT NULL,
     input_json           TEXT,
     output               TEXT,
+	structured_json      TEXT,
     metadata_json        TEXT,
     error_type           TEXT,
     error_message        TEXT,
@@ -185,6 +186,43 @@ WHERE run_id IS NOT NULL AND run_id <> '';
 CREATE INDEX idx_tool_uses_status ON tool_uses(status);
 CREATE INDEX idx_tool_uses_assistant_message ON tool_uses(assistant_message_id);
 CREATE INDEX idx_tool_uses_part ON tool_uses(part_id);
+
+CREATE TABLE permission_requests (
+    id            TEXT PRIMARY KEY,
+    session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    run_id        TEXT REFERENCES session_runs(id) ON DELETE CASCADE,
+    tool_use_id   TEXT REFERENCES tool_uses(id) ON DELETE CASCADE,
+    call_id       TEXT NOT NULL DEFAULT '',
+    action        TEXT NOT NULL,
+    resources_json TEXT NOT NULL CHECK (json_valid(resources_json) AND json_type(resources_json) = 'array' AND json_array_length(resources_json) > 0),
+    status        TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'timed_out', 'interrupted')),
+    response      TEXT NOT NULL DEFAULT '' CHECK (response IN ('', 'once', 'always', 'reject')),
+    error_type    TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
+    resolved_at   TEXT,
+    updated_at    TEXT NOT NULL,
+    CHECK (
+        (status = 'pending' AND response = '') OR
+        (status = 'approved' AND response IN ('once', 'always')) OR
+        (status = 'rejected' AND response = 'reject') OR
+        (status IN ('timed_out', 'interrupted') AND response = '')
+    )
+);
+
+CREATE INDEX idx_permission_requests_session_created ON permission_requests(session_id, created_at, id);
+CREATE INDEX idx_permission_requests_status ON permission_requests(status);
+
+CREATE TABLE permission_grants (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    action     TEXT NOT NULL,
+    resource   TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(session_id, action, resource)
+);
+
+CREATE INDEX idx_permission_grants_session ON permission_grants(session_id, action, resource);
 
 CREATE TABLE session_events (
     id         TEXT PRIMARY KEY,

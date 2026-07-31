@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 
 import {
 	isTerminalSessionRunEvent,
+	addPermissionReplyInFlight,
 	latestActiveSessionRun,
+	pendingPermissionRequests,
+	reducePermissionRequestRecords,
 	sessionRunEventError,
 	sessionRunRetryDelay,
 	sessionStreamControl,
 	terminalSessionRunError,
 } from "./use-session-run";
-import type { SessionRun } from "@/lib/types";
+import type { PermissionRequest, SessionRun } from "@/lib/types";
 
 function run(id: string, sequence: number, status: SessionRun["status"]): SessionRun {
 	return {
@@ -22,6 +25,10 @@ function run(id: string, sequence: number, status: SessionRun["status"]): Sessio
 		created_at: "2026-01-01T00:00:00Z",
 		updated_at: "2026-01-01T00:00:00Z",
 	};
+}
+
+function permission(id: string, createdAt: string, runID = "run-1"): PermissionRequest {
+	return { id, session_id: "ses-1", run_id: runID, action: "file.write", resources: ["/tmp/file"], status: "pending", created_at: createdAt, updated_at: createdAt };
 }
 
 describe("session run recovery", () => {
@@ -63,5 +70,44 @@ describe("session stream reconnection", () => {
 		expect(sessionStreamControl("session.events.synchronized")).toBe("synchronized");
 		expect(sessionStreamControl("session.events.resync_required")).toBe("resync_required");
 		expect(sessionStreamControl("session.text.delta")).toBeUndefined();
+	});
+});
+
+describe("pending permission requests", () => {
+	test("upserts requested events idempotently and orders pending requests deterministically", () => {
+		let records = reducePermissionRequestRecords(new Map(), { type: "requested", request: permission("second", "2026-01-02T00:00:00Z") });
+		records = reducePermissionRequestRecords(records, { type: "requested", request: permission("first", "2026-01-01T00:00:00Z") });
+		records = reducePermissionRequestRecords(records, { type: "requested", request: { ...permission("first", "2026-01-01T00:00:00Z"), action: "file.delete", updated_at: "2026-01-03T00:00:00Z" } });
+		expect(pendingPermissionRequests(records).map((request) => request.id)).toEqual(["first", "second"]);
+		expect(records.get("first")?.action).toBe("file.delete");
+	});
+
+	test("keeps a resolved SSE request hidden when a stale pending snapshot arrives", () => {
+		const pending = permission("per-1", "2026-01-01T00:00:00Z");
+		let records = reducePermissionRequestRecords(new Map(), { type: "resolved", request: { ...pending, status: "approved", response: "once", updated_at: "2026-01-02T00:00:00Z" } });
+		records = reducePermissionRequestRecords(records, { type: "loaded", requests: [pending] });
+		expect(records.get("per-1")?.status).toBe("approved");
+		expect(pendingPermissionRequests(records)).toEqual([]);
+	});
+
+	test("does not let a stale requested replay replace a resolved record", () => {
+		const pending = permission("per-1", "2026-01-01T00:00:00Z");
+		let records = reducePermissionRequestRecords(new Map(), { type: "resolved", request: { ...pending, status: "rejected", response: "reject", updated_at: "2026-01-02T00:00:00Z" } });
+		records = reducePermissionRequestRecords(records, { type: "requested", request: pending });
+		expect(records.get("per-1")?.status).toBe("rejected");
+	});
+
+	test("uses newer records and prefers terminal records on matching versions", () => {
+		const initial = permission("per-1", "2026-01-01T00:00:00Z");
+		let records = reducePermissionRequestRecords(new Map(), { type: "requested", request: initial });
+		records = reducePermissionRequestRecords(records, { type: "requested", request: { ...initial, action: "file.delete", updated_at: "2026-01-02T00:00:00Z" } });
+		records = reducePermissionRequestRecords(records, { type: "resolved", request: { ...initial, status: "approved", response: "always", updated_at: "2026-01-02T00:00:00Z" } });
+		expect(records.get("per-1")).toMatchObject({ status: "approved", response: "always" });
+	});
+
+	test("tracks response-in-flight requests without duplicate entries", () => {
+		const once = addPermissionReplyInFlight(new Set(), "per-1");
+		const twice = addPermissionReplyInFlight(once, "per-1");
+		expect([...twice]).toEqual(["per-1"]);
 	});
 });

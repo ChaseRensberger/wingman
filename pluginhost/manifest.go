@@ -2,6 +2,7 @@
 package pluginhost
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,9 +30,13 @@ type Manifest struct {
 
 // ToolSpec is the manifest shape for a plugin-contributed LLM tool.
 type ToolSpec struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	InputSchema tool.InputSchema `json:"input_schema"`
+	Name            string                 `json:"name"`
+	Description     string                 `json:"description"`
+	InputSchema     tool.InputSchema       `json:"input_schema"`
+	OutputSchema    map[string]any         `json:"output_schema,omitempty"`
+	Sequential      bool                   `json:"sequential,omitempty"`
+	DirectoryScoped bool                   `json:"directory_scoped,omitempty"`
+	Permission      *tool.PermissionTarget `json:"permission,omitempty"`
 }
 
 func discoverManifests(dirs []string) ([]Manifest, []LoadError) {
@@ -114,6 +119,7 @@ func validateManifest(m Manifest) error {
 	if len(m.Command) == 0 || m.Command[0] == "" {
 		return fmt.Errorf("plugin command is required")
 	}
+	seen := make(map[string]struct{}, len(m.Tools))
 	for _, spec := range m.Tools {
 		if spec.Name == "" {
 			return fmt.Errorf("tool name is required")
@@ -124,8 +130,30 @@ func validateManifest(m Manifest) error {
 		if spec.InputSchema.Type == "" {
 			return fmt.Errorf("tool %q input_schema.type is required", spec.Name)
 		}
+		if _, exists := seen[spec.Name]; exists {
+			return fmt.Errorf("duplicate tool name %q", spec.Name)
+		}
+		seen[spec.Name] = struct{}{}
+		if err := tool.Validate(&manifestTool{spec: spec}); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+type manifestTool struct{ spec ToolSpec }
+
+func (t *manifestTool) Name() string        { return t.spec.Name }
+func (t *manifestTool) Description() string { return t.spec.Description }
+func (t *manifestTool) Definition() tool.Definition {
+	return tool.Definition{
+		Name: t.spec.Name, Description: t.spec.Description, InputSchema: t.spec.InputSchema,
+		OutputSchema: t.spec.OutputSchema, Sequential: t.spec.Sequential,
+		DirectoryScoped: t.spec.DirectoryScoped, Permission: t.spec.Permission,
+	}
+}
+func (*manifestTool) Execute(context.Context, tool.Invocation) (tool.Result, error) {
+	return tool.Result{}, nil
 }
 
 // LocalPluginDir returns the project-local plugin directory for workDir.

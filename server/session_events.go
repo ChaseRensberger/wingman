@@ -428,6 +428,7 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 		data["tool"] = v.Result.Name
 		data["status"] = v.Result.Status
 		data["output"] = v.Result.Output
+		data["structured"] = v.Result.Structured
 		data["error"] = v.Result.Error
 		data["metadata"] = v.Result.Metadata
 		if v.Result.IsError {
@@ -450,6 +451,7 @@ func (s *Server) forwardRunEvent(ctx context.Context, sessionID, runID string, e
 			"status":       status,
 			"input":        v.Result.Args,
 			"output":       v.Result.Output,
+			"structured":   v.Result.Structured,
 			"metadata":     v.Result.Metadata,
 			"error":        v.Result.Error,
 			"completed_at": time.Now().UTC(),

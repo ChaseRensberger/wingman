@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -981,6 +982,220 @@ func (s *SQLiteStore) PurgeSession(ctx context.Context, id string, expectedVersi
 		return fmt.Errorf("delete session projection: %w", err)
 	}
 	return tx.Commit(ctx)
+}
+
+// CreatePermissionRequest durably records a pending authorization request and
+// its corresponding public session event in one transaction.
+func (s *SQLiteStore) CreatePermissionRequest(ctx context.Context, request PermissionRequest) (PermissionRequestTransition, error) {
+	if request.Status == "" {
+		request.Status = PermissionRequestStatusPending
+	}
+	if request.Status != PermissionRequestStatusPending || request.Action == "" || len(request.Resources) == 0 {
+		return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+	}
+	for _, resource := range request.Resources {
+		if resource == "" {
+			return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+		}
+	}
+	if request.ID == "" {
+		request.ID = NewID(PrefixPermissionRequest)
+	}
+	resources, err := json.Marshal(request.Resources)
+	if err != nil {
+		return PermissionRequestTransition{}, fmt.Errorf("marshal permission resources: %w", err)
+	}
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	defer tx.Rollback()
+	if _, err := getSessionTx(ctx, tx, request.SessionID); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if existing, err := scanPermissionRequest(tx.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE id = ?`, request.ID)); err == nil {
+		if samePendingPermissionRequest(existing, request) {
+			if err := tx.Commit(ctx); err != nil {
+				return PermissionRequestTransition{}, err
+			}
+			return PermissionRequestTransition{Request: existing}, nil
+		}
+		return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return PermissionRequestTransition{}, err
+	}
+	if err := validatePermissionRequestOwnershipTx(ctx, tx, request); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	now := time.Now().UTC()
+	request.CreatedAt, request.UpdatedAt = now, now
+	if _, err := tx.ExecContext(ctx, `INSERT INTO permission_requests (id, session_id, run_id, tool_use_id, call_id, action, resources_json, status, response, error_type, error_message, created_at, updated_at) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, '', '', '', ?, ?)`, request.ID, request.SessionID, request.RunID, request.ToolUseID, request.CallID, request.Action, string(resources), request.Status, formatTime(now), formatTime(now)); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: permission_requests.id") {
+			return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+		}
+		return PermissionRequestTransition{}, fmt.Errorf("insert permission request: %w", err)
+	}
+	event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.requested", now)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	return PermissionRequestTransition{Request: request, Event: event, Changed: true}, nil
+}
+
+func (s *SQLiteStore) GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*PermissionRequest, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	request, err := scanPermissionRequest(s.db.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE id = ? AND session_id = ?`, requestID, sessionID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, &PermissionRequestNotFound{SessionID: sessionID, RequestID: requestID}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
+func (s *SQLiteStore) ListPermissionRequests(ctx context.Context, sessionID string) ([]PermissionRequest, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE session_id = ? ORDER BY created_at, id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PermissionRequest{}
+	for rows.Next() {
+		request, err := scanPermissionRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, request)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStore) ResolvePermissionRequest(ctx context.Context, resolution PermissionRequestResolution) (PermissionRequestTransition, error) {
+	if resolution.ExpectedStatus == "" {
+		resolution.ExpectedStatus = PermissionRequestStatusPending
+	}
+	if resolution.ExpectedStatus != PermissionRequestStatusPending || !legalPermissionResolution(resolution.Status, resolution.Response) {
+		return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	defer tx.Rollback()
+	if _, err := getSessionTx(ctx, tx, resolution.SessionID); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	request, err := scanPermissionRequest(tx.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE id = ? AND session_id = ?`, resolution.RequestID, resolution.SessionID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return PermissionRequestTransition{}, &PermissionRequestNotFound{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if request.Status != PermissionRequestStatusPending {
+		if samePermissionResolution(request, resolution) {
+			return PermissionRequestTransition{Request: request}, tx.Commit(ctx)
+		}
+		return PermissionRequestTransition{}, &PermissionRequestTransitionConflict{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	now := time.Now().UTC()
+	request.Status, request.Response, request.ErrorType, request.ErrorMessage = resolution.Status, resolution.Response, resolution.ErrorType, resolution.ErrorMessage
+	request.ResolvedAt, request.UpdatedAt = now, now
+	if _, err := tx.ExecContext(ctx, `UPDATE permission_requests SET status = ?, response = ?, error_type = ?, error_message = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND session_id = ? AND status = ?`, request.Status, request.Response, request.ErrorType, request.ErrorMessage, formatTime(now), formatTime(now), request.ID, request.SessionID, PermissionRequestStatusPending); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if resolution.Response == PermissionResponseAlways {
+		for _, resource := range request.Resources {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO permission_grants (id, session_id, action, resource, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id, action, resource) DO NOTHING`, NewID(PrefixPermissionGrant), request.SessionID, request.Action, resource, formatTime(now)); err != nil {
+				return PermissionRequestTransition{}, fmt.Errorf("insert permission grant: %w", err)
+			}
+		}
+	}
+	event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.resolved", now)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	return PermissionRequestTransition{Request: request, Event: event, Changed: true}, nil
+}
+
+func (s *SQLiteStore) ListPermissionGrants(ctx context.Context, sessionID string) ([]PermissionGrant, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, session_id, action, resource, created_at FROM permission_grants WHERE session_id = ? ORDER BY created_at, id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PermissionGrant{}
+	for rows.Next() {
+		var grant PermissionGrant
+		var created string
+		if err := rows.Scan(&grant.ID, &grant.SessionID, &grant.Action, &grant.Resource, &created); err != nil {
+			return nil, err
+		}
+		grant.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		out = append(out, grant)
+	}
+	return out, rows.Err()
+}
+
+// InterruptPendingPermissionRequests resolves requests left pending at startup.
+func (s *SQLiteStore) InterruptPendingPermissionRequests(ctx context.Context) ([]PermissionRequestTransition, error) {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE status = ? ORDER BY created_at, id`, PermissionRequestStatusPending)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	requests := []PermissionRequest{}
+	for rows.Next() {
+		request, err := scanPermissionRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, request)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	transitions := make([]PermissionRequestTransition, 0, len(requests))
+	for _, request := range requests {
+		request.Status, request.ErrorType, request.ErrorMessage = PermissionRequestStatusInterrupted, "process_interrupted", "permission request interrupted because the process stopped"
+		request.ResolvedAt, request.UpdatedAt = now, now
+		if _, err := tx.ExecContext(ctx, `UPDATE permission_requests SET status = ?, error_type = ?, error_message = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND status = ?`, request.Status, request.ErrorType, request.ErrorMessage, formatTime(now), formatTime(now), request.ID, PermissionRequestStatusPending); err != nil {
+			return nil, err
+		}
+		event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.resolved", now)
+		if err != nil {
+			return nil, err
+		}
+		transitions = append(transitions, PermissionRequestTransition{Request: request, Event: event, Changed: true})
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return transitions, nil
 }
 
 // SaveMessage atomically stores a complete authoritative message revision.
@@ -2005,6 +2220,68 @@ func (s *SQLiteStore) SessionEventWatermark(ctx context.Context, sessionID strin
 	return watermark, nil
 }
 
+func validatePermissionRequestOwnershipTx(ctx context.Context, tx *immediateTx, request PermissionRequest) error {
+	if request.RunID != "" {
+		var sessionID string
+		if err := tx.QueryRowContext(ctx, `SELECT session_id FROM session_runs WHERE id = ?`, request.RunID).Scan(&sessionID); err != nil || sessionID != request.SessionID {
+			return fmt.Errorf("session run %s does not belong to session %s", request.RunID, request.SessionID)
+		}
+	}
+	if request.ToolUseID != "" {
+		var sessionID, runID, callID string
+		if err := tx.QueryRowContext(ctx, `SELECT session_id, COALESCE(run_id, ''), call_id FROM tool_uses WHERE id = ?`, request.ToolUseID).Scan(&sessionID, &runID, &callID); err != nil || sessionID != request.SessionID {
+			return fmt.Errorf("tool use %s does not belong to session %s", request.ToolUseID, request.SessionID)
+		}
+		if request.RunID != "" && runID != request.RunID {
+			return fmt.Errorf("tool use %s does not belong to run %s", request.ToolUseID, request.RunID)
+		}
+		if request.CallID != "" && callID != "" && callID != request.CallID {
+			return fmt.Errorf("tool use %s does not belong to call %s", request.ToolUseID, request.CallID)
+		}
+	}
+	return nil
+}
+
+func legalPermissionResolution(status, response string) bool {
+	switch response {
+	case PermissionResponseOnce, PermissionResponseAlways:
+		return status == PermissionRequestStatusApproved
+	case PermissionResponseReject:
+		return status == PermissionRequestStatusRejected
+	case "":
+		return status == PermissionRequestStatusTimedOut || status == PermissionRequestStatusInterrupted
+	}
+	return false
+}
+
+func samePermissionResolution(request PermissionRequest, resolution PermissionRequestResolution) bool {
+	return request.Status == resolution.Status && request.Response == resolution.Response && request.ErrorType == resolution.ErrorType && request.ErrorMessage == resolution.ErrorMessage
+}
+
+func samePendingPermissionRequest(existing, request PermissionRequest) bool {
+	return existing.SessionID == request.SessionID && existing.RunID == request.RunID && existing.ToolUseID == request.ToolUseID && existing.CallID == request.CallID && existing.Action == request.Action && existing.Status == PermissionRequestStatusPending && request.Status == PermissionRequestStatusPending && slices.Equal(existing.Resources, request.Resources)
+}
+
+func appendPermissionEventTx(ctx context.Context, tx *immediateTx, request PermissionRequest, typ string, now time.Time) (SessionEvent, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return SessionEvent{}, fmt.Errorf("marshal permission event: %w", err)
+	}
+	var max sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(seq) FROM session_events WHERE session_id = ?`, request.SessionID).Scan(&max); err != nil {
+		return SessionEvent{}, err
+	}
+	seq := int64(1)
+	if max.Valid {
+		seq = max.Int64 + 1
+	}
+	event := SessionEvent{ID: NewID(PrefixEvent), Type: typ, Time: now, SessionID: request.SessionID, Seq: seq, DataJSON: payload, Data: payload}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, event.ID, event.SessionID, event.Seq, event.Type, string(payload), now.UTC().Format(time.RFC3339Nano)); err != nil {
+		return SessionEvent{}, fmt.Errorf("insert permission session event: %w", err)
+	}
+	return event, nil
+}
+
 // ---- auth ----------------------------------------------------------------
 
 // GetAuth returns the singleton auth row, or an empty Auth if unset.
@@ -2052,7 +2329,7 @@ const modelCallColumns = `
 
 const toolUseColumns = `
 	id, session_id, COALESCE(run_id, ''), COALESCE(model_call_id, ''), COALESCE(assistant_message_id, ''), COALESCE(part_id, ''),
-	step, ordinal, call_id, name, status, input_json, output, metadata_json, error_type, error_message,
+	step, ordinal, call_id, name, status, input_json, output, structured_json, metadata_json, error_type, error_message,
 	proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
 
 const sessionRunColumns = `
@@ -2102,6 +2379,26 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+func scanPermissionRequest(r rowScanner) (PermissionRequest, error) {
+	var request PermissionRequest
+	var resources, resolvedAt sql.NullString
+	var createdAt, updatedAt string
+	if err := r.Scan(&request.ID, &request.SessionID, &request.RunID, &request.ToolUseID, &request.CallID, &request.Action, &resources, &request.Status, &request.Response, &request.ErrorType, &request.ErrorMessage, &createdAt, &resolvedAt, &updatedAt); err != nil {
+		return PermissionRequest{}, err
+	}
+	if err := json.Unmarshal([]byte(resources.String), &request.Resources); err != nil {
+		return PermissionRequest{}, fmt.Errorf("unmarshal permission resources: %w", err)
+	}
+	request.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	request.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	if resolvedAt.Valid {
+		request.ResolvedAt, _ = time.Parse(time.RFC3339Nano, resolvedAt.String)
+	}
+	return request, nil
+}
+
 func scanModelCall(r rowScanner) (ModelCall, error) {
 	var call ModelCall
 	var assistantMessageID, completedAt, structuredOutputJSON, metadataJSON sql.NullString
@@ -2148,10 +2445,10 @@ func toolUseSessionExists(ctx context.Context, tx *immediateTx, sessionID string
 
 func scanToolUse(r rowScanner) (ToolUse, error) {
 	var use ToolUse
-	var input, output, metadata, errorType, errorMessage, authorizedAt, startedAt, completedAt sql.NullString
+	var input, output, structured, metadata, errorType, errorMessage, authorizedAt, startedAt, completedAt sql.NullString
 	var proposedAt, createdAt, updatedAt string
 	err := r.Scan(&use.ID, &use.SessionID, &use.RunID, &use.ModelCallID, &use.AssistantMessageID, &use.PartID,
-		&use.Step, &use.Ordinal, &use.CallID, &use.Name, &use.Status, &input, &output, &metadata, &errorType, &errorMessage,
+		&use.Step, &use.Ordinal, &use.CallID, &use.Name, &use.Status, &input, &output, &structured, &metadata, &errorType, &errorMessage,
 		&proposedAt, &authorizedAt, &startedAt, &completedAt, &createdAt, &updatedAt)
 	if err != nil {
 		return ToolUse{}, err
@@ -2161,6 +2458,9 @@ func scanToolUse(r rowScanner) (ToolUse, error) {
 	}
 	if output.Valid {
 		use.Output = output.String
+	}
+	if structured.Valid {
+		use.StructuredJSON = []byte(structured.String)
 	}
 	if metadata.Valid {
 		use.MetadataJSON = []byte(metadata.String)
@@ -2187,20 +2487,20 @@ func scanToolUse(r rowScanner) (ToolUse, error) {
 }
 
 func insertToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO tool_uses (`+toolUseColumnsInsert+`) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, toolUseArgs(use)...)
+	_, err := tx.ExecContext(ctx, `INSERT INTO tool_uses (`+toolUseColumnsInsert+`) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, toolUseArgs(use)...)
 	return err
 }
 
 func updateToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
-	_, err := tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, input_json = ?, output = ?, metadata_json = ?, error_type = ?, error_message = ?, authorized_at = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
-		use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.UpdatedAt), use.ID)
+	_, err := tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, input_json = ?, output = ?, structured_json = ?, metadata_json = ?, error_type = ?, error_message = ?, authorized_at = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
+		use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.UpdatedAt), use.ID)
 	return err
 }
 
-const toolUseColumnsInsert = `id, session_id, run_id, model_call_id, assistant_message_id, part_id, step, ordinal, call_id, name, status, input_json, output, metadata_json, error_type, error_message, proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
+const toolUseColumnsInsert = `id, session_id, run_id, model_call_id, assistant_message_id, part_id, step, ordinal, call_id, name, status, input_json, output, structured_json, metadata_json, error_type, error_message, proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
 
 func toolUseArgs(use ToolUse) []any {
-	return []any{use.ID, use.SessionID, use.RunID, use.ModelCallID, use.AssistantMessageID, use.PartID, use.Step, use.Ordinal, use.CallID, use.Name, use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.ProposedAt), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.CreatedAt), nullableTime(use.UpdatedAt)}
+	return []any{use.ID, use.SessionID, use.RunID, use.ModelCallID, use.AssistantMessageID, use.PartID, use.Step, use.Ordinal, use.CallID, use.Name, use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.ProposedAt), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.CreatedAt), nullableTime(use.UpdatedAt)}
 }
 
 func nullableString(v string) *string {
@@ -2223,7 +2523,7 @@ func sameToolUseIdentity(a, b ToolUse) bool {
 }
 
 func sameToolUse(a, b ToolUse) bool {
-	return sameToolUseIdentity(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+	return sameToolUseIdentity(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.StructuredJSON, b.StructuredJSON) && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
 }
 
 func legalToolUseTransition(from, to string) bool {

@@ -29,19 +29,20 @@ import (
 )
 
 type Server struct {
-	store            store.Store
-	router           *chi.Mux
-	runs             *sessionRunManager
-	events           *sessionEventBroker
-	webDevURL        string
-	logger           *slog.Logger
-	logs             *observability.LogBuffer
-	plugins          *pluginhost.Manager
-	mcp              *wingmcp.Manager
-	providers        map[string]provider.ProviderConfig
-	permissions      permission.Ruleset
-	agentPermissions map[string]permission.Ruleset
-	oauth            *oauthManager
+	store              store.Store
+	router             *chi.Mux
+	runs               *sessionRunManager
+	permissionRequests *permissionRequestManager
+	events             *sessionEventBroker
+	webDevURL          string
+	logger             *slog.Logger
+	logs               *observability.LogBuffer
+	plugins            *pluginhost.Manager
+	mcp                *wingmcp.Manager
+	providers          map[string]provider.ProviderConfig
+	permissions        permission.Ruleset
+	agentPermissions   map[string]permission.Ruleset
+	oauth              *oauthManager
 
 	// shutdownCtx is cancelled when Shutdown is called. SSE handlers
 	// (and any other long-lived in-flight request) should select on its
@@ -67,6 +68,9 @@ type Config struct {
 	Providers        map[string]provider.ProviderConfig
 	Permissions      permission.Ruleset
 	AgentPermissions map[string]permission.Ruleset
+	// PermissionTimeout bounds interactive permission requests. Values less
+	// than or equal to zero use the five-minute default.
+	PermissionTimeout time.Duration
 }
 
 func New(cfg Config) *Server {
@@ -93,6 +97,7 @@ func New(cfg Config) *Server {
 		shutdownCancel:   cancel,
 	}
 	s.runs = newSessionRunManager(s)
+	s.permissionRequests = newPermissionRequestManager(s, cfg.PermissionTimeout)
 
 	s.setupMiddleware()
 	s.setupRoutes()
@@ -260,6 +265,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}", s.handleGetSession)
 		r.Get("/{id}/model-calls", s.handleListSessionModelCalls)
 		r.Get("/{id}/tool-uses", s.handleListSessionToolUses)
+		r.Get("/{id}/permission-requests", s.handleListPermissionRequests)
+		r.Get("/{id}/permission-grants", s.handleListPermissionGrants)
+		r.Post("/{id}/permission-requests/{requestID}/reply", s.handleReplyPermissionRequest)
 		r.Post("/{id}/rename", s.handleRenameSession)
 		r.Post("/{id}/move", s.handleMoveSession)
 		r.Delete("/{id}", s.handleDeleteSession)
@@ -354,6 +362,15 @@ func (s *Server) Serve(srv *http.Server) error {
 }
 
 func (s *Server) recoverStartup(ctx context.Context) error {
+	transitions, err := s.store.InterruptPendingPermissionRequests(ctx)
+	if err != nil {
+		return fmt.Errorf("interrupt pending permission requests: %w", err)
+	}
+	for _, transition := range transitions {
+		if transition.Changed {
+			s.events.publish(transition.Event)
+		}
+	}
 	if err := s.store.InterruptActiveToolUses(ctx); err != nil {
 		return fmt.Errorf("interrupt active tool uses: %w", err)
 	}

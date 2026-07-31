@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -19,36 +20,40 @@ import (
 // Store is an in-memory implementation of store.Store protected by a
 // single sync.RWMutex.
 type Store struct {
-	mu         sync.RWMutex
-	agents     map[string]*store.Agent
-	sessions   map[string]*store.Session
-	clients    map[string]*store.Client
-	workspaces map[string]*store.Workspace
-	messages   map[string]*store.StoredMessage
-	parts      map[string]*store.StoredPart
-	modelCalls map[string]*store.ModelCall
-	toolUses   map[string]*store.ToolUse
-	events     map[string]*store.SessionEvent
-	aggregates map[store.AggregateRef][]store.AggregateEvent
-	globalSeq  int64
-	runs       map[string]*store.SessionRun
-	auth       *store.Auth
+	mu                 sync.RWMutex
+	agents             map[string]*store.Agent
+	sessions           map[string]*store.Session
+	clients            map[string]*store.Client
+	workspaces         map[string]*store.Workspace
+	messages           map[string]*store.StoredMessage
+	parts              map[string]*store.StoredPart
+	modelCalls         map[string]*store.ModelCall
+	toolUses           map[string]*store.ToolUse
+	permissionRequests map[string]*store.PermissionRequest
+	permissionGrants   map[string]*store.PermissionGrant
+	events             map[string]*store.SessionEvent
+	aggregates         map[store.AggregateRef][]store.AggregateEvent
+	globalSeq          int64
+	runs               map[string]*store.SessionRun
+	auth               *store.Auth
 }
 
 // NewStore returns a fresh empty in-memory store.
 func NewStore() *Store {
 	return &Store{
-		agents:     make(map[string]*store.Agent),
-		sessions:   make(map[string]*store.Session),
-		clients:    make(map[string]*store.Client),
-		workspaces: make(map[string]*store.Workspace),
-		messages:   make(map[string]*store.StoredMessage),
-		parts:      make(map[string]*store.StoredPart),
-		modelCalls: make(map[string]*store.ModelCall),
-		toolUses:   make(map[string]*store.ToolUse),
-		events:     make(map[string]*store.SessionEvent),
-		aggregates: make(map[store.AggregateRef][]store.AggregateEvent),
-		runs:       make(map[string]*store.SessionRun),
+		agents:             make(map[string]*store.Agent),
+		sessions:           make(map[string]*store.Session),
+		clients:            make(map[string]*store.Client),
+		workspaces:         make(map[string]*store.Workspace),
+		messages:           make(map[string]*store.StoredMessage),
+		parts:              make(map[string]*store.StoredPart),
+		modelCalls:         make(map[string]*store.ModelCall),
+		toolUses:           make(map[string]*store.ToolUse),
+		permissionRequests: make(map[string]*store.PermissionRequest),
+		permissionGrants:   make(map[string]*store.PermissionGrant),
+		events:             make(map[string]*store.SessionEvent),
+		aggregates:         make(map[store.AggregateRef][]store.AggregateEvent),
+		runs:               make(map[string]*store.SessionRun),
 	}
 }
 
@@ -392,9 +397,18 @@ func copyModelCall(c *store.ModelCall) store.ModelCall {
 func copyToolUse(use *store.ToolUse) store.ToolUse {
 	cp := *use
 	cp.InputJSON = append([]byte(nil), use.InputJSON...)
+	cp.StructuredJSON = append([]byte(nil), use.StructuredJSON...)
 	cp.MetadataJSON = append([]byte(nil), use.MetadataJSON...)
 	return cp
 }
+
+func copyPermissionRequest(request *store.PermissionRequest) store.PermissionRequest {
+	cp := *request
+	cp.Resources = append([]string(nil), request.Resources...)
+	return cp
+}
+
+func copyPermissionGrant(grant *store.PermissionGrant) store.PermissionGrant { return *grant }
 
 func copySessionEvent(e *store.SessionEvent) store.SessionEvent {
 	cp := *e
@@ -891,6 +905,16 @@ func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64
 			delete(s.toolUses, useID)
 		}
 	}
+	for requestID, request := range s.permissionRequests {
+		if request.SessionID == id {
+			delete(s.permissionRequests, requestID)
+		}
+	}
+	for grantID, grant := range s.permissionGrants {
+		if grant.SessionID == id {
+			delete(s.permissionGrants, grantID)
+		}
+	}
 	for eventID, event := range s.events {
 		if event.SessionID == id {
 			delete(s.events, eventID)
@@ -1219,6 +1243,223 @@ func (s *Store) InterruptActiveModelCalls(ctx context.Context, runID, errorType,
 	return nil
 }
 
+func (s *Store) CreatePermissionRequest(ctx context.Context, request store.PermissionRequest) (store.PermissionRequestTransition, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if request.Status == "" {
+		request.Status = store.PermissionRequestStatusPending
+	}
+	if request.Status != store.PermissionRequestStatusPending || request.Action == "" || len(request.Resources) == 0 {
+		return store.PermissionRequestTransition{}, &store.PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+	}
+	if _, ok := s.sessions[request.SessionID]; !ok {
+		return store.PermissionRequestTransition{}, store.ErrSessionNotFound
+	}
+	if request.RunID != "" {
+		run, ok := s.runs[request.RunID]
+		if !ok || run.SessionID != request.SessionID {
+			return store.PermissionRequestTransition{}, fmt.Errorf("session run %s does not belong to session %s", request.RunID, request.SessionID)
+		}
+	}
+	if request.ToolUseID != "" {
+		use, ok := s.toolUses[request.ToolUseID]
+		if !ok || use.SessionID != request.SessionID {
+			return store.PermissionRequestTransition{}, fmt.Errorf("tool use %s does not belong to session %s", request.ToolUseID, request.SessionID)
+		}
+		if request.RunID != "" && use.RunID != request.RunID {
+			return store.PermissionRequestTransition{}, fmt.Errorf("tool use %s does not belong to run %s", request.ToolUseID, request.RunID)
+		}
+		if request.CallID != "" && use.CallID != "" && use.CallID != request.CallID {
+			return store.PermissionRequestTransition{}, fmt.Errorf("tool use %s does not belong to call %s", request.ToolUseID, request.CallID)
+		}
+	}
+	for _, resource := range request.Resources {
+		if resource == "" {
+			return store.PermissionRequestTransition{}, &store.PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+		}
+	}
+	if request.ID == "" {
+		request.ID = store.NewID(store.PrefixPermissionRequest)
+	}
+	if existing, exists := s.permissionRequests[request.ID]; exists {
+		if samePendingPermissionRequestMemory(*existing, request) {
+			return store.PermissionRequestTransition{Request: copyPermissionRequest(existing)}, nil
+		}
+		return store.PermissionRequestTransition{}, &store.PermissionRequestTransitionConflict{SessionID: request.SessionID, RequestID: request.ID}
+	}
+	now := time.Now().UTC()
+	request.CreatedAt, request.UpdatedAt = now, now
+	event, err := s.appendPermissionEventLocked(&request, "session.permission.requested", now)
+	if err != nil {
+		return store.PermissionRequestTransition{}, err
+	}
+	cp := copyPermissionRequest(&request)
+	s.permissionRequests[request.ID] = &cp
+	return store.PermissionRequestTransition{Request: cp, Event: event, Changed: true}, nil
+}
+
+func (s *Store) GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*store.PermissionRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	request, ok := s.permissionRequests[requestID]
+	if !ok || request.SessionID != sessionID {
+		return nil, &store.PermissionRequestNotFound{SessionID: sessionID, RequestID: requestID}
+	}
+	cp := copyPermissionRequest(request)
+	return &cp, nil
+}
+
+func (s *Store) ListPermissionRequests(ctx context.Context, sessionID string) ([]store.PermissionRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	out := []store.PermissionRequest{}
+	for _, request := range s.permissionRequests {
+		if request.SessionID == sessionID {
+			out = append(out, copyPermissionRequest(request))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) ResolvePermissionRequest(ctx context.Context, resolution store.PermissionRequestResolution) (store.PermissionRequestTransition, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if resolution.ExpectedStatus == "" {
+		resolution.ExpectedStatus = store.PermissionRequestStatusPending
+	}
+	if resolution.ExpectedStatus != store.PermissionRequestStatusPending || !legalPermissionResolutionMemory(resolution.Status, resolution.Response) {
+		return store.PermissionRequestTransition{}, &store.PermissionRequestTransitionConflict{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	if _, ok := s.sessions[resolution.SessionID]; !ok {
+		return store.PermissionRequestTransition{}, store.ErrSessionNotFound
+	}
+	request, ok := s.permissionRequests[resolution.RequestID]
+	if !ok || request.SessionID != resolution.SessionID {
+		return store.PermissionRequestTransition{}, &store.PermissionRequestNotFound{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	if request.Status != store.PermissionRequestStatusPending {
+		if request.Status == resolution.Status && request.Response == resolution.Response && request.ErrorType == resolution.ErrorType && request.ErrorMessage == resolution.ErrorMessage {
+			return store.PermissionRequestTransition{Request: copyPermissionRequest(request)}, nil
+		}
+		return store.PermissionRequestTransition{}, &store.PermissionRequestTransitionConflict{SessionID: resolution.SessionID, RequestID: resolution.RequestID}
+	}
+	now := time.Now().UTC()
+	updated := copyPermissionRequest(request)
+	updated.Status, updated.Response, updated.ErrorType, updated.ErrorMessage = resolution.Status, resolution.Response, resolution.ErrorType, resolution.ErrorMessage
+	updated.ResolvedAt, updated.UpdatedAt = now, now
+	if updated.Response == store.PermissionResponseAlways {
+		for _, resource := range updated.Resources {
+			found := false
+			for _, grant := range s.permissionGrants {
+				if grant.SessionID == updated.SessionID && grant.Action == updated.Action && grant.Resource == resource {
+					found = true
+					break
+				}
+			}
+			if !found {
+				grant := store.PermissionGrant{ID: store.NewID(store.PrefixPermissionGrant), SessionID: updated.SessionID, Action: updated.Action, Resource: resource, CreatedAt: now}
+				cp := copyPermissionGrant(&grant)
+				s.permissionGrants[grant.ID] = &cp
+			}
+		}
+	}
+	event, err := s.appendPermissionEventLocked(&updated, "session.permission.resolved", now)
+	if err != nil {
+		return store.PermissionRequestTransition{}, err
+	}
+	*request = updated
+	return store.PermissionRequestTransition{Request: copyPermissionRequest(request), Event: event, Changed: true}, nil
+}
+
+func (s *Store) ListPermissionGrants(ctx context.Context, sessionID string) ([]store.PermissionGrant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	out := []store.PermissionGrant{}
+	for _, grant := range s.permissionGrants {
+		if grant.SessionID == sessionID {
+			out = append(out, copyPermissionGrant(grant))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) InterruptPendingPermissionRequests(ctx context.Context) ([]store.PermissionRequestTransition, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	out := []store.PermissionRequestTransition{}
+	requests := make([]*store.PermissionRequest, 0)
+	for _, request := range s.permissionRequests {
+		if request.Status == store.PermissionRequestStatusPending {
+			requests = append(requests, request)
+		}
+	}
+	sort.Slice(requests, func(i, j int) bool {
+		if requests[i].CreatedAt.Equal(requests[j].CreatedAt) {
+			return requests[i].ID < requests[j].ID
+		}
+		return requests[i].CreatedAt.Before(requests[j].CreatedAt)
+	})
+	for _, request := range requests {
+		updated := copyPermissionRequest(request)
+		updated.Status, updated.ErrorType, updated.ErrorMessage = store.PermissionRequestStatusInterrupted, "process_interrupted", "permission request interrupted because the process stopped"
+		updated.ResolvedAt, updated.UpdatedAt = now, now
+		event, err := s.appendPermissionEventLocked(&updated, "session.permission.resolved", now)
+		if err != nil {
+			return nil, err
+		}
+		*request = updated
+		out = append(out, store.PermissionRequestTransition{Request: copyPermissionRequest(request), Event: event, Changed: true})
+	}
+	return out, nil
+}
+
+func legalPermissionResolutionMemory(status, response string) bool {
+	return (response == store.PermissionResponseOnce || response == store.PermissionResponseAlways) && status == store.PermissionRequestStatusApproved || response == store.PermissionResponseReject && status == store.PermissionRequestStatusRejected || response == "" && (status == store.PermissionRequestStatusTimedOut || status == store.PermissionRequestStatusInterrupted)
+}
+
+func samePendingPermissionRequestMemory(existing, request store.PermissionRequest) bool {
+	return existing.SessionID == request.SessionID && existing.RunID == request.RunID && existing.ToolUseID == request.ToolUseID && existing.CallID == request.CallID && existing.Action == request.Action && existing.Status == store.PermissionRequestStatusPending && request.Status == store.PermissionRequestStatusPending && slices.Equal(existing.Resources, request.Resources)
+}
+
+func (s *Store) appendPermissionEventLocked(request *store.PermissionRequest, typ string, now time.Time) (store.SessionEvent, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return store.SessionEvent{}, err
+	}
+	var max int64
+	for _, event := range s.events {
+		if event.SessionID == request.SessionID && event.Seq > max {
+			max = event.Seq
+		}
+	}
+	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: typ, Time: now, SessionID: request.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
+	cp := copySessionEvent(&event)
+	s.events[event.ID] = &cp
+	return cp, nil
+}
+
 func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1353,7 +1594,7 @@ func sameToolUseIdentityMemory(a, b store.ToolUse) bool {
 }
 
 func sameToolUseMemory(a, b store.ToolUse) bool {
-	return sameToolUseIdentityMemory(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+	return sameToolUseIdentityMemory(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.StructuredJSON, b.StructuredJSON) && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
 }
 
 func legalToolUseTransitionMemory(from, to string) bool {

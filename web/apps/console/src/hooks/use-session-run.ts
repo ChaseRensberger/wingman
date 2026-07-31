@@ -4,7 +4,7 @@ import { wfetch } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
 import { readSSE, type SessionEvent } from "@/lib/session-stream";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
-import type { Message, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
+import type { Message, PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 export type SessionRunRequest = Omit<FailedRun, "error">;
@@ -45,6 +45,53 @@ export function terminalSessionRunError(run: SessionRun): string | undefined {
 	return run.error_message ?? run.error_type ?? `Run ${run.status}`;
 }
 
+type PermissionRequestAction = { type: "loaded"; requests: readonly PermissionRequest[] } | { type: "requested"; request: PermissionRequest } | { type: "resolved"; request: PermissionRequest };
+
+function isTerminalPermissionRequest(request: PermissionRequest): boolean {
+	return request.status !== "pending";
+}
+
+function newerPermissionRequest(previous: PermissionRequest, next: PermissionRequest): PermissionRequest {
+	const comparison = next.updated_at.localeCompare(previous.updated_at);
+	if (comparison > 0) return next;
+	if (comparison < 0) return previous;
+	return isTerminalPermissionRequest(next) && !isTerminalPermissionRequest(previous) ? next : previous;
+}
+
+export function reducePermissionRequestRecords(previous: ReadonlyMap<string, PermissionRequest>, action: PermissionRequestAction): Map<string, PermissionRequest> {
+	const records = new Map(previous);
+	const requests = action.type === "loaded" ? action.requests : [action.request];
+	for (const request of requests) {
+		const current = records.get(request.id);
+		records.set(request.id, current ? newerPermissionRequest(current, request) : request);
+	}
+	return records;
+}
+
+export function pendingPermissionRequests(records: ReadonlyMap<string, PermissionRequest>): PermissionRequest[] {
+	return [...records.values()]
+		.filter((request) => request.status === "pending")
+		.toSorted((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+}
+
+export function addPermissionReplyInFlight(previous: ReadonlySet<string>, requestID: string): Set<string> {
+	if (previous.has(requestID)) return new Set(previous);
+	return new Set(previous).add(requestID);
+}
+
+function isPermissionRequest(data: unknown): data is PermissionRequest {
+	if (!data || typeof data !== "object") return false;
+	const request = data as Record<string, unknown>;
+	return typeof request.id === "string"
+		&& typeof request.session_id === "string"
+		&& typeof request.action === "string"
+		&& Array.isArray(request.resources)
+		&& request.resources.every((resource) => typeof resource === "string")
+		&& (request.status === "pending" || request.status === "approved" || request.status === "rejected" || request.status === "timed_out" || request.status === "interrupted")
+		&& typeof request.created_at === "string"
+		&& typeof request.updated_at === "string";
+}
+
 type Options = {
 	sessionId: string;
 	loadSession: (id?: string) => Promise<void>;
@@ -75,6 +122,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
 	const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
 	const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
+	const [permissionRequestRecords, setPermissionRequestRecords] = useState<Map<string, PermissionRequest>>(() => new Map());
+	const [permissionRepliesInFlight, setPermissionRepliesInFlight] = useState<Set<string>>(() => new Set());
+	const permissionRepliesInFlightRef = useRef(new Set<string>());
 
 	function reset() {
 		eventControllerRef.current?.abort();
@@ -98,8 +148,26 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		lastEventSeqRef.current = 0;
 		setFailedRun(null);
 		setToolActivities(new Map());
+		setPermissionRequestRecords(new Map());
+		permissionRepliesInFlightRef.current = new Set();
+		setPermissionRepliesInFlight(new Set());
 		reset();
 		return () => eventControllerRef.current?.abort();
+	}, [sessionId]);
+
+	async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
+		const requests = await wfetch(`/sessions/${id}/permission-requests`, { signal }) as PermissionRequest[];
+		if (signal?.aborted) return;
+		setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "loaded", requests }));
+	}
+
+	useEffect(() => {
+		if (sessionId === "new") return;
+		const controller = new AbortController();
+		void reloadPermissionRequests(sessionId, controller.signal).catch((err) => {
+			if ((err as Error).name !== "AbortError") console.error("Failed to load permission requests", err);
+		});
+		return () => controller.abort();
 	}, [sessionId]);
 
 	useEffect(() => {
@@ -129,6 +197,11 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	function applySessionEvent(ev: SessionEvent): string | undefined {
 		if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) lastEventSeqRef.current = ev.cursor.seq;
 		const data = ev.data ?? {};
+		if ((ev.type === "session.permission.requested" || ev.type === "session.permission.resolved") && isPermissionRequest(data)) {
+			const request = data;
+			setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, ev.type === "session.permission.requested" ? { type: "requested", request } : { type: "resolved", request }));
+			return;
+		}
 		if (activeRunRef.current?.runId && typeof data.run_id === "string" && data.run_id !== activeRunRef.current.runId) return;
 		if (ev.type === "session.tool.input.delta") {
 			const callID = typeof data.call_id === "string" ? data.call_id : "";
@@ -217,7 +290,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	}
 
 	async function reloadRun(id: string, runID: string, controller: AbortController): Promise<SessionRun | undefined> {
-		await load(id);
+		await Promise.all([load(id), reloadPermissionRequests(id, controller.signal)]);
 		if (!isCurrentSubscription(id, controller)) return;
 		const run = await wfetch(`/sessions/${id}/runs/${runID}`, { signal: controller.signal }) as SessionRun;
 		return isCurrentSubscription(id, controller) ? run : undefined;
@@ -302,7 +375,29 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		const controller = new AbortController();
 		eventControllerRef.current?.abort();
 		eventControllerRef.current = controller;
+		void reloadPermissionRequests(id, controller.signal).catch((err) => {
+			if ((err as Error).name !== "AbortError") console.error("Failed to load permission requests", err);
+		});
 		void subscribeAndFinish(id, controller);
+	}
+
+	async function replyPermission(requestID: string, response: "once" | "always" | "reject") {
+		if (permissionRepliesInFlightRef.current.has(requestID)) return;
+		permissionRepliesInFlightRef.current = addPermissionReplyInFlight(permissionRepliesInFlightRef.current, requestID);
+		setPermissionRepliesInFlight(permissionRepliesInFlightRef.current);
+		try {
+			const targetSessionID = activeRunRef.current?.sessionId ?? sessionId;
+			const request = await wfetch(`/sessions/${targetSessionID}/permission-requests/${requestID}/reply`, {
+				method: "POST",
+				body: JSON.stringify({ response }),
+			}) as PermissionRequest;
+			setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "resolved", request }));
+		} finally {
+			const next = new Set(permissionRepliesInFlightRef.current);
+			next.delete(requestID);
+			permissionRepliesInFlightRef.current = next;
+			setPermissionRepliesInFlight(next);
+		}
 	}
 
 	async function fail(err: unknown, id: string) {
@@ -330,5 +425,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		submissionControllerRef.current = null;
 	}
 
-	return { isStreaming, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, begin, captureCursor, start, fail, abort, finishSubmission };
+	const permissionRequests = pendingPermissionRequests(permissionRequestRecords);
+	return { isStreaming: isStreaming || permissionRequests.length > 0, streamingText, streamingReasoning, latestRunUsage, failedRun, toolActivities, permissionRequests, permissionRepliesInFlight, replyPermission, begin, captureCursor, start, fail, abort, finishSubmission };
 }

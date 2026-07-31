@@ -49,6 +49,66 @@ const (
 	ToolUseStatusDeclined    = "declined"
 )
 
+const (
+	PermissionRequestStatusPending     = "pending"
+	PermissionRequestStatusApproved    = "approved"
+	PermissionRequestStatusRejected    = "rejected"
+	PermissionRequestStatusTimedOut    = "timed_out"
+	PermissionRequestStatusInterrupted = "interrupted"
+)
+
+const (
+	PermissionResponseOnce   = "once"
+	PermissionResponseAlways = "always"
+	PermissionResponseReject = "reject"
+)
+
+// PermissionRequest records one interactive authorization decision.
+type PermissionRequest struct {
+	ID           string    `json:"id"`
+	SessionID    string    `json:"session_id"`
+	RunID        string    `json:"run_id,omitempty"`
+	ToolUseID    string    `json:"tool_use_id,omitempty"`
+	CallID       string    `json:"call_id,omitempty"`
+	Action       string    `json:"action"`
+	Resources    []string  `json:"resources"`
+	Status       string    `json:"status"`
+	Response     string    `json:"response,omitempty"`
+	ErrorType    string    `json:"error_type,omitempty"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	ResolvedAt   time.Time `json:"resolved_at,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// PermissionGrant is a session-scoped authorization remembered by an
+// approved "always" response.
+type PermissionGrant struct {
+	ID        string    `json:"id"`
+	SessionID string    `json:"session_id"`
+	Action    string    `json:"action"`
+	Resource  string    `json:"resource"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// PermissionRequestTransition is an atomic request state change and event.
+type PermissionRequestTransition struct {
+	Request PermissionRequest
+	Event   SessionEvent
+	Changed bool
+}
+
+// PermissionRequestResolution describes an expected-pending terminal update.
+type PermissionRequestResolution struct {
+	SessionID      string
+	RequestID      string
+	ExpectedStatus string
+	Status         string
+	Response       string
+	ErrorType      string
+	ErrorMessage   string
+}
+
 // ToolUse records one durable tool invocation lifecycle.
 type ToolUse struct {
 	ID                 string    `json:"id"`
@@ -64,6 +124,7 @@ type ToolUse struct {
 	Status             string    `json:"status"`
 	InputJSON          []byte    `json:"-"`
 	Output             string    `json:"output,omitempty"`
+	StructuredJSON     []byte    `json:"-"`
 	MetadataJSON       []byte    `json:"-"`
 	ErrorType          string    `json:"error_type,omitempty"`
 	ErrorMessage       string    `json:"error_message,omitempty"`
@@ -80,12 +141,14 @@ func (u ToolUse) MarshalJSON() ([]byte, error) {
 	type alias ToolUse
 	return json.Marshal(struct {
 		*alias
-		Input    json.RawMessage `json:"input,omitempty"`
-		Metadata json.RawMessage `json:"metadata,omitempty"`
+		Input      json.RawMessage `json:"input,omitempty"`
+		Structured json.RawMessage `json:"structured,omitempty"`
+		Metadata   json.RawMessage `json:"metadata,omitempty"`
 	}{
-		alias:    (*alias)(&u),
-		Input:    u.InputJSON,
-		Metadata: u.MetadataJSON,
+		alias:      (*alias)(&u),
+		Input:      u.InputJSON,
+		Structured: u.StructuredJSON,
+		Metadata:   u.MetadataJSON,
 	})
 }
 

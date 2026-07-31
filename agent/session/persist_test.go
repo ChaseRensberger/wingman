@@ -589,11 +589,11 @@ func TestRunPersistsToolUseLifecycleAndHydratesToolUseID(t *testing.T) {
 	sess := New(
 		WithID(stored.ID), WithRunID("run_tool_lifecycle"), WithStore(data), WithClient(client),
 		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
-		WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(_ context.Context, inv tool.Invocation) (tool.Result, error) {
+		WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}, OutputSchema: map[string]any{"type": "object", "required": []any{"count"}}}, func(_ context.Context, inv tool.Invocation) (tool.Result, error) {
 			if inv.Input["rewritten"] != true {
 				t.Fatalf("tool input = %#v", inv.Input)
 			}
-			return tool.Result{Text: "model-visible output", Metadata: map[string]any{"source": "tool"}}, nil
+			return tool.Result{Text: "model-visible output", Structured: map[string]any{"count": float64(1)}, Metadata: map[string]any{"source": "tool"}}, nil
 		})),
 		WithPlugin(beforeToolRewritePlugin{}),
 	)
@@ -611,22 +611,25 @@ func TestRunPersistsToolUseLifecycleAndHydratesToolUseID(t *testing.T) {
 	if use.ID == "" || use.RunID != "run_tool_lifecycle" || use.ModelCallID == "" || use.AssistantMessageID == "" || use.PartID == "" || use.CallID != "call_1" || use.Step != 1 || use.Ordinal != 1 || use.Status != store.ToolUseStatusCompleted || use.ProposedAt.IsZero() || use.AuthorizedAt.IsZero() || use.StartedAt.IsZero() || use.CompletedAt.IsZero() {
 		t.Fatalf("tool use = %#v", use)
 	}
-	var input, metadata map[string]any
+	var input, structured, metadata map[string]any
 	if err := json.Unmarshal(use.InputJSON, &input); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(use.MetadataJSON, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if input["rewritten"] != true || use.Output != "model-visible output" || metadata["source"] != "tool" {
-		t.Fatalf("tool use payload = %#v, input=%#v, metadata=%#v", use, input, metadata)
+	if err := json.Unmarshal(use.StructuredJSON, &structured); err != nil {
+		t.Fatal(err)
+	}
+	if input["rewritten"] != true || use.Output != "model-visible output" || structured["count"] != float64(1) || metadata["source"] != "tool" {
+		t.Fatalf("tool use payload = %#v, input=%#v, structured=%#v, metadata=%#v", use, input, structured, metadata)
 	}
 	hydrated := New(WithID(stored.ID), WithStore(data))
 	if err := hydrated.hydrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	part := hydrated.History()[1].Content[0].(models.ToolPart)
-	if part.ToolUseID != use.ID || models.PartID(part) != use.PartID {
+	if part.ToolUseID != use.ID || models.PartID(part) != use.PartID || part.Structured.(map[string]any)["count"] != float64(1) {
 		t.Fatalf("hydrated tool part = %#v, use = %#v", part, use)
 	}
 }

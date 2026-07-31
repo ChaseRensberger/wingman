@@ -536,10 +536,19 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 
 type startupRecoveryStore struct {
 	store.Store
-	order        []string
-	interruptErr error
-	listErr      error
-	resumeErr    error
+	order         []string
+	permissionErr error
+	interruptErr  error
+	listErr       error
+	resumeErr     error
+}
+
+func (s *startupRecoveryStore) InterruptPendingPermissionRequests(context.Context) ([]store.PermissionRequestTransition, error) {
+	s.order = append(s.order, "permissions")
+	if s.permissionErr != nil {
+		return nil, s.permissionErr
+	}
+	return s.Store.InterruptPendingPermissionRequests(context.Background())
 }
 
 func (s *startupRecoveryStore) InterruptActiveToolUses(context.Context) error {
@@ -574,17 +583,24 @@ func TestRecoverStartupInterruptsToolsBeforeRuns(t *testing.T) {
 	if err := data.SaveToolUse(context.Background(), store.ToolUse{ID: "tlu_recovery", SessionID: "ses_recovery", Name: "bash", Status: store.ToolUseStatusProposed}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := data.CreatePermissionRequest(context.Background(), store.PermissionRequest{ID: "prq_recovery", SessionID: "ses_recovery", Action: "edit", Resources: []string{"a.go"}}); err != nil {
+		t.Fatal(err)
+	}
 	recoveryStore := &startupRecoveryStore{Store: data}
 	server := New(Config{Store: recoveryStore})
 	if err := server.recoverStartup(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(recoveryStore.order, ","), "interrupt,list,resume"; got != want {
+	if got, want := strings.Join(recoveryStore.order, ","), "permissions,interrupt,list,resume"; got != want {
 		t.Fatalf("recovery order = %q, want %q", got, want)
 	}
 	uses, err := data.ListToolUses(context.Background(), "ses_recovery")
 	if err != nil || len(uses) != 1 || uses[0].Status != store.ToolUseStatusInterrupted {
 		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+	requests, err := data.ListPermissionRequests(context.Background(), "ses_recovery")
+	if err != nil || len(requests) != 1 || requests[0].Status != store.PermissionRequestStatusInterrupted {
+		t.Fatalf("permission requests = %#v, error = %v", requests, err)
 	}
 	if err := server.recoverStartup(context.Background()); err != nil {
 		t.Fatal(err)
@@ -597,27 +613,136 @@ func TestRecoverStartupInterruptsToolsBeforeRuns(t *testing.T) {
 
 func TestRecoverStartupStopsOnFailure(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		interrupt error
-		list      error
-		resume    error
-		wantOrder string
+		name       string
+		permission error
+		interrupt  error
+		list       error
+		resume     error
+		wantOrder  string
 	}{
-		{"interrupt", errors.New("interrupt failed"), nil, nil, "interrupt"},
-		{"list", nil, errors.New("list failed"), nil, "interrupt,list"},
-		{"resume", nil, nil, errors.New("resume failed"), "interrupt,list,resume"},
+		{"permissions", errors.New("permissions failed"), nil, nil, nil, "permissions"},
+		{"interrupt", nil, errors.New("interrupt failed"), nil, nil, "permissions,interrupt"},
+		{"list", nil, nil, errors.New("list failed"), nil, "permissions,interrupt,list"},
+		{"resume", nil, nil, nil, errors.New("resume failed"), "permissions,interrupt,list,resume"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			recoveryStore := &startupRecoveryStore{Store: memory.NewStore(), interruptErr: test.interrupt, listErr: test.list, resumeErr: test.resume}
+			recoveryStore := &startupRecoveryStore{Store: memory.NewStore(), permissionErr: test.permission, interruptErr: test.interrupt, listErr: test.list, resumeErr: test.resume}
 			server := New(Config{Store: recoveryStore})
 			err := server.recoverStartup(context.Background())
-			if !errors.Is(err, test.interrupt) && !errors.Is(err, test.list) && !errors.Is(err, test.resume) {
+			if !errors.Is(err, test.permission) && !errors.Is(err, test.interrupt) && !errors.Is(err, test.list) && !errors.Is(err, test.resume) {
 				t.Fatalf("error = %v, want wrapped recovery failure", err)
 			}
 			if got := strings.Join(recoveryStore.order, ","); got != test.wantOrder {
 				t.Fatalf("recovery order = %q, want %q", got, test.wantOrder)
 			}
 		})
+	}
+}
+
+func TestPermissionRequestEndpointsAuthorizeReplyAndPublishOnce(t *testing.T) {
+	data := memory.NewStore()
+	owner, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := data.CreateClient("permission other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_permission_http", ClientID: owner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_permission_http_empty", ClientID: owner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+	request, err := data.CreatePermissionRequest(context.Background(), store.PermissionRequest{SessionID: "ses_permission_http", Action: "edit", Resources: []string{"a.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(method, path, body, client string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("X-Wingman-Client", client)
+		w := httptest.NewRecorder()
+		server.router.ServeHTTP(w, r)
+		return w
+	}
+	if response := call(http.MethodGet, "/sessions/ses_permission_http/permission-requests", "", other.ID); response.Code != http.StatusForbidden {
+		t.Fatalf("other client status = %d", response.Code)
+	}
+	if response := call(http.MethodGet, "/sessions/ses_permission_http_empty/permission-requests", "", owner.ID); response.Code != http.StatusOK || response.Body.String() != "[]\n" {
+		t.Fatalf("empty list response = %d %s", response.Code, response.Body.String())
+	}
+	response := call(http.MethodGet, "/sessions/ses_permission_http/permission-requests", "", owner.ID)
+	if response.Code != http.StatusOK || response.Body.String() == "null\n" {
+		t.Fatalf("list response = %d %s", response.Code, response.Body.String())
+	}
+	var requests []store.PermissionRequest
+	if err := json.NewDecoder(response.Body).Decode(&requests); err != nil || len(requests) != 1 || requests[0].ID != request.Request.ID {
+		t.Fatalf("requests = %#v, %v", requests, err)
+	}
+	if response := call(http.MethodGet, "/sessions/ses_permission_http/permission-grants", "", owner.ID); response.Code != http.StatusOK || response.Body.String() != "[]\n" {
+		t.Fatalf("grants response = %d %s", response.Code, response.Body.String())
+	}
+	if response := call(http.MethodPost, "/sessions/ses_permission_http/permission-requests/"+request.Request.ID+"/reply", `{"response":"bad"}`, owner.ID); response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid reply status = %d", response.Code)
+	}
+	if response := call(http.MethodPost, "/sessions/ses_permission_http/permission-requests/missing/reply", `{"response":"once"}`, owner.ID); response.Code != http.StatusNotFound {
+		t.Fatalf("missing reply status = %d", response.Code)
+	}
+	response = call(http.MethodPost, "/sessions/ses_permission_http/permission-requests/"+request.Request.ID+"/reply", `{"response":"always"}`, owner.ID)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reply status = %d: %s", response.Code, response.Body.String())
+	}
+	var resolved store.PermissionRequest
+	if err := json.NewDecoder(response.Body).Decode(&resolved); err != nil || resolved.Status != store.PermissionRequestStatusApproved || resolved.Response != store.PermissionResponseAlways {
+		t.Fatalf("resolved = %#v, %v", resolved, err)
+	}
+	if response := call(http.MethodPost, "/sessions/ses_permission_http/permission-requests/"+request.Request.ID+"/reply", `{"response":"always"}`, owner.ID); response.Code != http.StatusOK {
+		t.Fatalf("identical retry status = %d", response.Code)
+	}
+	if response := call(http.MethodPost, "/sessions/ses_permission_http/permission-requests/"+request.Request.ID+"/reply", `{"response":"reject"}`, owner.ID); response.Code != http.StatusConflict {
+		t.Fatalf("conflicting retry status = %d", response.Code)
+	}
+	grants := call(http.MethodGet, "/sessions/ses_permission_http/permission-grants", "", owner.ID)
+	var listedGrants []store.PermissionGrant
+	if err := json.NewDecoder(grants.Body).Decode(&listedGrants); err != nil || len(listedGrants) != 1 || listedGrants[0].Action != "edit" || listedGrants[0].Resource != "a.go" {
+		t.Fatalf("grants = %#v, %v", listedGrants, err)
+	}
+	events, err := data.ListSessionEvents(context.Background(), "ses_permission_http", 0, 10)
+	if err != nil || len(events) != 2 || events[0].Type != "session.permission.requested" || events[1].Type != "session.permission.resolved" {
+		t.Fatalf("events = %#v, %v", events, err)
+	}
+	var eventRequest store.PermissionRequest
+	if err := json.Unmarshal(events[0].DataJSON, &eventRequest); err != nil || eventRequest.ID != request.Request.ID || eventRequest.Action != "edit" || len(eventRequest.Resources) != 1 || eventRequest.Resources[0] != "a.go" {
+		t.Fatalf("requested event = %#v, %v", eventRequest, err)
+	}
+
+	if err := data.CreateSession(&store.Session{ID: "ses_permission_retry_notify", ClientID: owner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan struct {
+		response run.PermissionResponse
+		err      error
+	}, 1)
+	go func() {
+		response, err := server.permissionRequests.prompter("ses_permission_retry_notify", "").Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"b.go"}})
+		result <- struct {
+			response run.PermissionResponse
+			err      error
+		}{response, err}
+	}()
+	lostNotification := waitForPermissionRequest(t, data, "ses_permission_retry_notify")
+	if _, err := data.ResolvePermissionRequest(context.Background(), store.PermissionRequestResolution{SessionID: lostNotification.SessionID, RequestID: lostNotification.ID, Status: store.PermissionRequestStatusApproved, Response: store.PermissionResponseOnce}); err != nil {
+		t.Fatal(err)
+	}
+	if response := call(http.MethodPost, "/sessions/ses_permission_retry_notify/permission-requests/"+lostNotification.ID+"/reply", `{"response":"once"}`, owner.ID); response.Code != http.StatusOK {
+		t.Fatalf("retry notification status = %d", response.Code)
+	}
+	got := <-result
+	if got.err != nil || got.response != run.PermissionResponseOnce {
+		t.Fatalf("retry notification result = %#v", got)
 	}
 }
 

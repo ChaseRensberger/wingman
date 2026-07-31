@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
 )
@@ -14,6 +15,267 @@ type transientClaimStore struct {
 	store.Store
 	failures int
 	attempts int
+}
+
+func TestPermissionRequestManagerResolvesAndRemembersGrant(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_permission"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data, PermissionTimeout: time.Second})
+	prompter := server.permissionRequests.prompter("ses_permission", "")
+	responses := make(chan struct {
+		response run.PermissionResponse
+		err      error
+	}, 1)
+	go func() {
+		response, err := prompter.Request(context.Background(), run.PermissionRequestInfo{CallID: "call_one", Action: "edit", Resources: []string{"a.go"}})
+		responses <- struct {
+			response run.PermissionResponse
+			err      error
+		}{response, err}
+	}()
+	request := waitForPermissionRequest(t, data, "ses_permission")
+	if request.CallID != "call_one" {
+		t.Fatalf("request = %#v", request)
+	}
+	resolved, err := server.permissionRequests.resolve(context.Background(), request.SessionID, request.ID, store.PermissionRequestStatusApproved, store.PermissionResponseAlways, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Status != store.PermissionRequestStatusApproved {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+	result := <-responses
+	if result.err != nil || result.response != run.PermissionResponseAlways {
+		t.Fatalf("response = %#v", result)
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d, want 0", waiters)
+	}
+	response, err := prompter.Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+	if err != nil || response != run.PermissionResponseAlways {
+		t.Fatalf("remembered response = %q, %v", response, err)
+	}
+	requests, err := data.ListPermissionRequests(context.Background(), "ses_permission")
+	if err != nil || len(requests) != 1 {
+		t.Fatalf("requests = %#v, %v", requests, err)
+	}
+	events, err := data.ListSessionEvents(context.Background(), "ses_permission", 0, 10)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("events = %#v, %v", events, err)
+	}
+}
+
+func TestPermissionRequestManagerTimeoutCleansWaiter(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_permission_timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data, PermissionTimeout: time.Millisecond})
+	_, err := server.permissionRequests.prompter("ses_permission_timeout", "").Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v", err)
+	}
+	requests, err := data.ListPermissionRequests(context.Background(), "ses_permission_timeout")
+	if err != nil || len(requests) != 1 || requests[0].Status != store.PermissionRequestStatusTimedOut {
+		t.Fatalf("requests = %#v, %v", requests, err)
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d, want 0", waiters)
+	}
+}
+
+type blockingPermissionResolutionStore struct{ store.Store }
+
+func (s blockingPermissionResolutionStore) ResolvePermissionRequest(ctx context.Context, resolution store.PermissionRequestResolution) (store.PermissionRequestTransition, error) {
+	<-ctx.Done()
+	return store.PermissionRequestTransition{}, ctx.Err()
+}
+
+func TestPermissionRequestManagerBoundsResolutionPersistence(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_resolution_timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: blockingPermissionResolutionStore{Store: data}, PermissionTimeout: time.Millisecond})
+	server.permissionRequests.resolutionTimeout = 10 * time.Millisecond
+	result := make(chan error, 1)
+	go func() {
+		_, err := server.permissionRequests.prompter("ses_resolution_timeout", "").Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+		result <- err
+	}()
+	_ = waitForPermissionRequest(t, data, "ses_resolution_timeout")
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request did not return after resolution timeout")
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d, want 0", waiters)
+	}
+}
+
+func TestPermissionRequestManagerOnceRejectAndCancellation(t *testing.T) {
+	for _, test := range []struct {
+		name, response string
+		status         string
+		want           run.PermissionResponse
+	}{
+		{"once", store.PermissionResponseOnce, store.PermissionRequestStatusApproved, run.PermissionResponseOnce},
+		{"reject", store.PermissionResponseReject, store.PermissionRequestStatusRejected, run.PermissionResponseReject},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data := memory.NewStore()
+			if err := data.CreateSession(&store.Session{ID: "ses_" + test.name}); err != nil {
+				t.Fatal(err)
+			}
+			server := New(Config{Store: data, PermissionTimeout: time.Second})
+			result := make(chan struct {
+				response run.PermissionResponse
+				err      error
+			}, 1)
+			go func() {
+				response, err := server.permissionRequests.prompter("ses_"+test.name, "").Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+				result <- struct {
+					response run.PermissionResponse
+					err      error
+				}{response, err}
+			}()
+			request := waitForPermissionRequest(t, data, "ses_"+test.name)
+			if _, err := server.permissionRequests.resolve(context.Background(), request.SessionID, request.ID, test.status, test.response, "", ""); err != nil {
+				t.Fatal(err)
+			}
+			got := <-result
+			if got.err != nil || got.response != test.want {
+				t.Fatalf("result = %#v", got)
+			}
+			grants, err := data.ListPermissionGrants(context.Background(), request.SessionID)
+			if err != nil || len(grants) != 0 {
+				t.Fatalf("grants = %#v, %v", grants, err)
+			}
+			if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+				t.Fatalf("waiters = %d", waiters)
+			}
+		})
+	}
+
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_cancel"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data, PermissionTimeout: time.Second})
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := server.permissionRequests.prompter("ses_cancel", "").Request(ctx, run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+		result <- err
+	}()
+	_ = waitForPermissionRequest(t, data, "ses_cancel")
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
+	}
+	requests, err := data.ListPermissionRequests(context.Background(), "ses_cancel")
+	if err != nil || len(requests) != 1 || requests[0].Status != store.PermissionRequestStatusInterrupted {
+		t.Fatalf("requests = %#v, %v", requests, err)
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d", waiters)
+	}
+}
+
+func TestPermissionRequestManagerReplyRaceHasOneTerminalEvent(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_race"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data, PermissionTimeout: time.Millisecond})
+	result := make(chan error, 1)
+	go func() {
+		_, err := server.permissionRequests.prompter("ses_race", "").Request(context.Background(), run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+		result <- err
+	}()
+	request := waitForPermissionRequest(t, data, "ses_race")
+	replied := make(chan struct{})
+	go func() {
+		_, _ = server.permissionRequests.resolve(context.Background(), request.SessionID, request.ID, store.PermissionRequestStatusApproved, store.PermissionResponseOnce, "", "")
+		close(replied)
+	}()
+	<-replied
+	<-result
+	events, err := data.ListSessionEvents(context.Background(), "ses_race", 0, 10)
+	if err != nil || len(events) != 2 || events[0].Type != "session.permission.requested" || events[1].Type != "session.permission.resolved" {
+		t.Fatalf("events = %#v, %v", events, err)
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d", waiters)
+	}
+}
+
+func TestPermissionRequestManagerReplyCancellationRaceHasOneTerminalEvent(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_cancel_race"}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data, PermissionTimeout: time.Second})
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan struct {
+		response run.PermissionResponse
+		err      error
+	}, 1)
+	go func() {
+		response, err := server.permissionRequests.prompter("ses_cancel_race", "").Request(ctx, run.PermissionRequestInfo{Action: "edit", Resources: []string{"a.go"}})
+		result <- struct {
+			response run.PermissionResponse
+			err      error
+		}{response, err}
+	}()
+	request := waitForPermissionRequest(t, data, "ses_cancel_race")
+	done := make(chan struct{})
+	go func() {
+		_, _ = server.permissionRequests.resolve(context.Background(), request.SessionID, request.ID, store.PermissionRequestStatusApproved, store.PermissionResponseOnce, "", "")
+		close(done)
+	}()
+	cancel()
+	<-done
+	got := <-result
+	if got.response != run.PermissionResponseOnce && !errors.Is(got.err, context.Canceled) {
+		t.Fatalf("result = %#v", got)
+	}
+	events, err := data.ListSessionEvents(context.Background(), "ses_cancel_race", 0, 10)
+	if err != nil || len(events) != 2 || events[1].Type != "session.permission.resolved" {
+		t.Fatalf("events = %#v, %v", events, err)
+	}
+	if waiters := permissionWaiterCount(server.permissionRequests); waiters != 0 {
+		t.Fatalf("waiters = %d", waiters)
+	}
+}
+
+func permissionWaiterCount(manager *permissionRequestManager) int {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return len(manager.waiters)
+}
+
+func waitForPermissionRequest(t *testing.T, data store.Store, sessionID string) store.PermissionRequest {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		requests, err := data.ListPermissionRequests(context.Background(), sessionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(requests) == 1 {
+			return requests[0]
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("permission request was not created")
+	return store.PermissionRequest{}
 }
 
 func (s *transientClaimStore) ClaimNextSessionRun(ctx context.Context, sessionID string) (store.SessionRunTransition, error) {

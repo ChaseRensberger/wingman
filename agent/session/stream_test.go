@@ -1,10 +1,25 @@
 package session
 
 import (
+	"context"
 	"testing"
 
 	"github.com/chaserensberger/wingman/agent/run"
 )
+
+type testPermissionPrompter struct{}
+
+func (testPermissionPrompter) Request(context.Context, run.PermissionRequestInfo) (run.PermissionResponse, error) {
+	return run.PermissionResponseOnce, nil
+}
+
+func TestWithPermissionPrompter(t *testing.T) {
+	prompter := testPermissionPrompter{}
+	sess := New(WithPermissionPrompter(prompter))
+	if sess.prompter != prompter {
+		t.Fatal("permission prompter was not configured")
+	}
+}
 
 func TestClassifyToolProgress(t *testing.T) {
 	event := run.ToolExecutionProgressEvent{

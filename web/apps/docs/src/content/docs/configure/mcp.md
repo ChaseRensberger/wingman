@@ -83,6 +83,12 @@ Add that name to an agent's `tools` allow-list:
 
 Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2323/console/tools` to inspect configured servers, tool names, and connection errors.
 
+Agent writes reject disconnected or unknown MCP tool names. If two sanitized MCP
+names collide with each other or another tool source, catalog composition fails
+explicitly. MCP input and output schemas are preserved; successful
+`structuredContent` is validated against the advertised output schema and stored
+separately from model-facing text and client metadata.
+
 To inspect the daemon directly:
 
 ```bash

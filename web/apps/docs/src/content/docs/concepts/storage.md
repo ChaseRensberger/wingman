@@ -47,7 +47,9 @@ The SQLite schema stores:
 | `aggregate_events` | Internal append-only session creation, metadata, and run-admission facts used to rebuild critical projections. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness. |
-| `tool_uses` | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, result, error, and timing. |
+| `tool_uses` | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, model-facing text, structured content, client metadata, error, and timing. |
+| `permission_requests` | Pending and terminal interactive decisions linked to session runs and tool uses. |
+| `permission_grants` | Exact action/resource approvals remembered for one session. |
 | `parts` | Ordered typed content parts for each message. |
 | `auth` | Local provider credentials, stored as JSON. |
 | `schema_migrations` | Applied migration versions, names, and SQL checksums. |
@@ -104,8 +106,10 @@ proposed -> authorized -> started -> completed | failed | interrupted
 
 Wingman stores rewritten input at authorization and commits `started` before
 calling the tool implementation. Unknown tools, invalid input, skipped hooks,
-permission denial, and approval-needed calls become `declined` without running.
-Startup changes unfinished rows to `interrupted` before queued work resumes.
+permission denial, rejected approval, and unavailable non-interactive approval
+become `declined` without running. Interactive `ask` requests remain proposed
+while they wait and can proceed only after approval. Startup interrupts pending
+permission requests and unfinished tool rows before queued work resumes.
 
 The started record is a durability fence, not an exactly-once guarantee. A hard
 crash can leave it ambiguous whether an external side effect completed, so

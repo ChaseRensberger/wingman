@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
@@ -722,18 +723,18 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
 func (s *Server) buildSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, s.store, "")
+	return s.buildSessionWithStore(stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""))
 }
 
 func (s *Server) buildSessionForRun(stored *store.Agent, sess *store.Session, runID string) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, s.store, runID)
+	return s.buildSessionWithStore(stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID))
 }
 
 func (s *Server) buildEphemeralSession(stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(stored, sess, nil, "")
+	return s.buildSessionWithStore(stored, sess, nil, "", nil)
 }
 
-func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session, st store.Store, runID string) (*session.Session, error) {
+func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter) (*session.Session, error) {
 	if stored.ModelRef == "" {
 		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
@@ -750,6 +751,7 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 		session.WithSystem(stored.Instructions),
 		session.WithWorkDir(sess.WorkDir),
 		session.WithPermissions(s.effectivePermissions(stored)),
+		session.WithPermissionPrompter(prompter),
 		session.WithLogger(s.logger.With("agent_id", stored.ID)),
 		session.WithAgentID(stored.ID),
 	}
@@ -762,7 +764,11 @@ func (s *Server) buildSessionWithStore(stored *store.Agent, sess *store.Session,
 	if s.plugins != nil {
 		s.plugins.EnsureWorkDir(context.Background(), sess.WorkDir)
 	}
-	if tools := s.resolveTools(stored.Tools); len(tools) > 0 {
+	tools, err := s.resolveTools(stored.Tools)
+	if err != nil {
+		return nil, err
+	}
+	if len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
 	if len(stored.OutputSchema) > 0 {
@@ -889,29 +895,27 @@ func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, rou
 	return &cp
 }
 
-// resolveTools maps stored tool name strings to live tool.Tool
-// implementations. Unknown names are silently dropped; callers that
-// need strict validation should validate at agent-creation time.
-func (s *Server) resolveTools(toolNames []string) []tool.Tool {
-	builtins := nativeTools()
-	if s.plugins != nil {
-		for _, t := range s.plugins.Tools() {
-			builtins[t.Name()] = t
-		}
+// resolveTools maps stored names to one validated live catalog. A configured
+// tool becoming unavailable is an explicit session construction error.
+func (s *Server) resolveTools(toolNames []string) ([]tool.Tool, error) {
+	registry, _, err := s.toolCatalog()
+	if err != nil {
+		return nil, err
 	}
-	if s.mcp != nil {
-		for _, t := range s.mcp.Tools() {
-			builtins[t.Name()] = t
-		}
-	}
-
-	var tools []tool.Tool
+	tools := make([]tool.Tool, 0, len(toolNames))
+	seen := make(map[string]struct{}, len(toolNames))
 	for _, name := range toolNames {
-		if t, ok := builtins[name]; ok {
-			tools = append(tools, t)
+		if _, exists := seen[name]; exists {
+			return nil, fmt.Errorf("agent tool %q is configured more than once", name)
 		}
+		seen[name] = struct{}{}
+		t, err := registry.Get(name)
+		if err != nil {
+			return nil, fmt.Errorf("agent tool %q is unavailable: %w", name, err)
+		}
+		tools = append(tools, t)
 	}
-	return tools
+	return tools, nil
 }
 
 func nativeTools() map[string]tool.Tool {

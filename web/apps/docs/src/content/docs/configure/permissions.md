@@ -22,7 +22,7 @@ Each matching rule resolves to one effect:
 |---|---|
 | `allow` | Run the tool call. |
 | `deny` | Block the tool call and return a model-visible permission error. |
-| `ask` | Require approval. In the current v1 implementation this blocks execution with a model-visible permission-required error and structured metadata; the interactive ask/reply API is planned next. |
+| `ask` | Create a durable approval request and suspend before tool authorization. |
 
 ## Actions
 
@@ -130,9 +130,32 @@ This lets you put a catch-all first and exceptions after it:
 
 The command `git status --short` is allowed. The command `git push origin main` is denied.
 
+## Interactive Approval
+
+When `ask` wins, Wingman persists a request before the tool is authorized or
+started. The bundled console shows the action and every resource with three
+choices:
+
+- **Allow once** permits only the waiting call.
+- **Always allow** permits the waiting call and remembers each exact
+  action/resource pair for this session.
+- **Reject** declines the tool call and returns a model-visible permission
+  error.
+
+Remembered grants are stored separately from authored Agent and daemon rules.
+They satisfy later `ask` decisions in the same session, but cannot override an
+authored `deny`. Pending requests time out after five minutes. Canceling the run
+or stopping the daemon interrupts them without executing the tool.
+
+API clients can list and answer requests through the session permission
+endpoints. A non-interactive Go `run.Config` without a `PermissionPrompter`
+declines `ask` immediately; it never waits indefinitely.
+
 ## Client Behavior
 
-Denied and approval-required tool calls are returned as failed tool results. The model-facing output remains plain text, but clients should use the structured metadata instead of parsing that text.
+Denied and rejected tool calls are returned as failed tool results. The
+model-facing output remains plain text, but clients should use structured
+metadata and durable permission records instead of parsing that text.
 
 Denied example:
 
@@ -150,7 +173,7 @@ Denied example:
 }
 ```
 
-Approval-required example:
+Rejected approval example:
 
 ```json
 {
@@ -166,7 +189,10 @@ Approval-required example:
 }
 ```
 
-Future interactive approvals should use dedicated events such as `session.permission.asked` and `session.permission.replied`. Current v1 streams do not emit those events.
+Persistent session streams emit durable `session.permission.requested` and
+`session.permission.resolved` events containing the complete permission request.
+Reload pending state from `GET /sessions/{id}/permission-requests`; do not depend
+on having observed the original request event.
 
 ## Precedence
 

@@ -142,9 +142,11 @@ Durable events are stored and replayed. They reconstruct the transcript and fina
 | `session.text.completed` | A text block reached its final value. |
 | `session.reasoning.completed` | A reasoning block reached its final value. |
 | `session.tool.called` | The model requested a tool. |
-| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`, including its latest durable input, output, metadata, error, and timing. |
+| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`, including its latest durable input, text output, structured content, metadata, error, and timing. |
 | `session.tool.completed` | A tool finished successfully. |
 | `session.tool.failed` | A tool failed. |
+| `session.permission.requested` | A tool is waiting for an interactive permission reply. |
+| `session.permission.resolved` | A permission request was approved, rejected, timed out, or interrupted. |
 | `session.message.created` | A message was appended to history. |
 | `session.structured_output.completed` | Output schema parsing succeeded. |
 | `session.run.completed` | The run finished successfully. |

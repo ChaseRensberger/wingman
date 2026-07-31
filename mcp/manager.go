@@ -36,13 +36,14 @@ type Status struct {
 
 // ToolInfo describes one MCP-backed Wingman tool.
 type ToolInfo struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	InputSchema map[string]any `json:"input_schema,omitempty"`
-	Source      string         `json:"source"`
-	Server      string         `json:"server"`
-	RemoteName  string         `json:"remote_name"`
-	Status      string         `json:"status"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"input_schema,omitempty"`
+	OutputSchema map[string]any `json:"output_schema,omitempty"`
+	Source       string         `json:"source"`
+	Server       string         `json:"server"`
+	RemoteName   string         `json:"remote_name"`
+	Status       string         `json:"status"`
 }
 
 // Manager owns configured MCP client sessions and exposes their tools.
@@ -154,13 +155,14 @@ func (m *Manager) ToolInfos() []ToolInfo {
 	for _, state := range m.servers {
 		for _, def := range state.tools {
 			out = append(out, ToolInfo{
-				Name:        toolName(state.name, def.Name),
-				Description: def.Description,
-				InputSchema: schemaMap(def.InputSchema),
-				Source:      "mcp",
-				Server:      state.name,
-				RemoteName:  def.Name,
-				Status:      state.status,
+				Name:         toolName(state.name, def.Name),
+				Description:  def.Description,
+				InputSchema:  schemaMap(def.InputSchema),
+				OutputSchema: schemaMap(def.OutputSchema),
+				Source:       "mcp",
+				Server:       state.name,
+				RemoteName:   def.Name,
+				Status:       state.status,
 			})
 		}
 	}

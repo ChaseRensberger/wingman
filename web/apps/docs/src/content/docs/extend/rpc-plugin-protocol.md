@@ -84,6 +84,18 @@ Tool input schemas use Wingman's JSON Schema subset:
 - Optional property `enum`.
 - Optional top-level `required`.
 
+Each tool may also declare:
+
+| Field | Type | Description |
+|---|---:|---|
+| `output_schema` | JSON Schema object | Required shape of a successful result's `structured` value. |
+| `sequential` | boolean | Run a batch sequentially when it contains this tool. |
+| `directory_scoped` | boolean | Require the session to have a working directory. |
+| `permission` | object | Permission `action` and optional input `resource_fields`. |
+
+Manifest tool names must be unique and cannot collide with any other effective
+daemon tool. Input and output schemas are compiled during catalog construction.
+
 ## `tool.execute`
 
 Wingman calls `tool.execute` when the model invokes a plugin tool.
@@ -111,6 +123,7 @@ Response:
   "id": 1,
   "result": {
     "text": "Hello, Chase",
+    "structured": { "greeting": "Hello, Chase" },
     "metadata": {
       "source": "greet-plugin"
     }
@@ -121,6 +134,7 @@ Response:
 | Result field | Type | Required | Description |
 |---|---:|---:|---|
 | `text` | string | yes | Model-facing tool output. This is sent back to the provider in the next tool-result message. |
+| `structured` | any JSON value | when `output_schema` is declared | Client-neutral structured content. Wingman validates it before completing the tool use. |
 | `metadata` | object | no | Client-facing data persisted with the tool result part. Use it for render hints, identifiers, counts, and similar structured data. |
 
 Do not put model instructions in `metadata`; providers do not receive it as tool output.

@@ -305,7 +305,7 @@ func TestToolUseLifecycleDeclinesBeforeAuthorization(t *testing.T) {
 		{name: "unknown", toolName: "unknown", errorType: "unknown_tool", input: map[string]any{}},
 		{name: "invalid", toolName: "test", errorType: "input_validation", input: map[string]any{}},
 		{name: "deny", toolName: "test", errorType: "permission_denied", input: map[string]any{"required": true}, permissions: permission.Ruleset{{Action: "test", Resource: "*", Effect: permission.EffectDeny}}},
-		{name: "ask", toolName: "test", errorType: "permission_ask", input: map[string]any{"required": true}, permissions: permission.Ruleset{{Action: "test", Resource: "*", Effect: permission.EffectAsk}}},
+		{name: "ask", toolName: "test", errorType: "permission_unavailable", input: map[string]any{"required": true}, permissions: permission.Ruleset{{Action: "test", Resource: "*", Effect: permission.EffectAsk}}},
 		{name: "skip", toolName: "test", errorType: "tool_skipped", input: map[string]any{"required": true}, skip: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

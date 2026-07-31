@@ -335,11 +335,16 @@ func (r *toolUseRecorder) Finish(ctx context.Context, info run.ToolUseFinishInfo
 	if err != nil {
 		return fmt.Errorf("marshal tool use metadata: %w", err)
 	}
+	structured, err := json.Marshal(info.ToolResult.Structured)
+	if err != nil {
+		return fmt.Errorf("marshal tool use structured result: %w", err)
+	}
 	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
 	use.ID = info.ToolUseID
 	use.Status = storeToolUseStatus(info.Status)
 	use.InputJSON = input
 	use.Output = info.ToolResult.Output
+	use.StructuredJSON = structured
 	use.MetadataJSON = metadata
 	use.ErrorType = info.ErrorType
 	use.ErrorMessage = info.ErrorMessage

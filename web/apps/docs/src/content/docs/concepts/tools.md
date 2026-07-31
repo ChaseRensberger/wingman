@@ -55,7 +55,10 @@ curl -sS -X POST http://localhost:2323/agents \
       }'
 ```
 
-The model only sees tools that survive resolution. Unknown names are dropped when the session is built.
+Agent creation and tool-list updates reject unknown or duplicate names. Dynamic
+plugin and MCP tools must be connected and present in `GET /tools` when the Agent
+is written. If one later becomes unavailable, session construction fails
+explicitly instead of silently removing it.
 
 ## Web Search Configuration
 
@@ -96,17 +99,30 @@ type Invocation struct {
 }
 
 type Result struct {
-    Text     string
-    Metadata map[string]any
+	Text       string
+	Structured any
+	Metadata   map[string]any
 }
 ```
 
-`Definition()` returns the JSON-Schema-shaped declaration sent to the model. `Execute` runs after the model emits a matching tool call. A tool may call `invocation.Progress.Report(outputDelta, metadata)` to publish live progress; tools without incremental work ignore it. `Result.Text` is returned to the model as the final tool result. `Result.Metadata` is persisted for clients that want richer rendering, such as file diff cards in the web UI.
+`Definition()` returns the JSON-Schema-shaped declaration sent to the model plus
+optional execution traits and an `output_schema`. Wingman validates definitions
+when composing the catalog and rejects duplicate names. `Execute` runs after the
+model emits a matching tool call. A tool may call
+`invocation.Progress.Report(outputDelta, metadata)` to publish live progress;
+tools without incremental work ignore it. `Result.Text` is returned to the model.
+`Result.Structured` is optional client-neutral structured content and
+`Result.Metadata` carries client rendering hints. Both are durable but are not
+sent as model-visible output.
 
 Progress events are live-only. The final result, metadata, error, and timing are
 stored on the assistant-owned tool part, so reconnecting clients recover the
 completed state without replaying every output chunk. If execution fails after
 producing output, Wingman retains that partial output separately from the error.
+When a definition declares `output_schema`, a successful execution must return
+matching `Structured` content. Missing or invalid content settles the tool use as
+failed with `error_type: result_validation`, while preserving returned text,
+structured content, and metadata for diagnosis.
 
 ## Durable Execution Lifecycle
 
@@ -125,6 +141,13 @@ allowed input is stored as `authorized`; and `started` must commit before
 `Execute` is called. Unknown tools, invalid input, skipped calls, denied calls,
 and calls that require unavailable approval settle as `declined` without
 execution.
+
+An `ask` permission suspends between proposal and authorization. Wingman stores
+the pending request and emits `session.permission.requested`; no tool side effect
+can occur while it waits. `once` or `always` allows authorization to continue,
+while reject, timeout, cancellation, and recovery settle the request and tool
+without execution. An `always` reply remembers only the exact requested
+action/resources for that session.
 
 On restart, unfinished tool uses become `interrupted` and are not replayed
 automatically. This prevents blind repetition, but it is not an exactly-once
@@ -145,6 +168,9 @@ type DirectoryScopedTool interface {
 
 This marker causes Wingman to reject a session without a working directory before it starts; it does not provide sandboxing or path-based access control.
 
+External tools declare the equivalent with `directory_scoped: true` in their
+definition.
+
 Tools that should not run in parallel with other tool calls implement `SequentialTool`:
 
 ```go
@@ -155,6 +181,9 @@ type SequentialTool interface {
 ```
 
 If any tool in a batch is sequential, Wingman runs the whole batch sequentially.
+External definitions declare the equivalent with `sequential: true`. They may
+also declare a permission action and `resource_fields`; Wingman reads those
+fields from validated input and falls back to `*` when none contain resources.
 
 ## Custom Tools
 
@@ -169,10 +198,10 @@ See [Plugins](/concepts/plugins) for plugin installation and manifest details.
 
 ## Tool Results
 
-Tool outputs are returned to the model as text. Session history keeps each
+Tool text is returned to the model. Session history keeps each
 invocation on its assistant message as a tool part with pending, running,
-completed, or error state. Optional metadata is retained on that part but is
-not sent as model-visible output. If a pre-tool hook stops a run, Wingman keeps
+completed, or error state. Optional structured content and metadata are retained
+on that part but are not sent as model-visible output. If a pre-tool hook stops a run, Wingman keeps
 the pending tool part in history rather than discarding the model action. Tool
 errors become error-shaped results for the model to react to; they do not
 automatically fail the whole session turn unless the surrounding loop or

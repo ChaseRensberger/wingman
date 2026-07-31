@@ -154,6 +154,7 @@ type ToolPart struct {
 	Input            map[string]any `json:"input"`
 	InputRaw         string         `json:"input_raw,omitempty"`
 	Output           string         `json:"output,omitempty"`
+	Structured       any            `json:"structured,omitempty"`
 	Metadata         Meta           `json:"metadata,omitempty"`
 	ProviderExecuted bool           `json:"provider_executed,omitempty"`
 	ProviderMetadata Meta           `json:"provider_metadata,omitempty"`
