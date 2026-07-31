@@ -335,46 +335,65 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
-	turn := Turn{Step: step, Attempt: 1}
 	assistantMsg := models.Message{Role: models.RoleAssistant, State: models.MessageStateInProgress, Revision: 1}
 	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
 		return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, err)
 	}
-	turn.Trace = models.NewCallTrace(req, models.LoweredOptions{})
+	trace := models.NewCallTrace(req, models.LoweredOptions{})
 	if lop, ok := r.cfg.Client.(interface {
 		LoweredOptions(context.Context, models.Request) models.LoweredOptions
 	}); ok {
-		turn.Trace.Lowered = lop.LoweredOptions(ctx, req)
+		trace.Lowered = lop.LoweredOptions(ctx, req)
 	}
-	turn.StartedAt = time.Now()
-	if r.cfg.ModelCallLifecycle != nil {
-		callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
-			Step:      turn.Step,
-			Attempt:   turn.Attempt,
-			MessageID: assistantMsg.ID,
-			StartedAt: turn.StartedAt,
-			Trace:     turn.Trace,
-		})
-		if err != nil {
-			return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, fmt.Errorf("model call start: %w", err))
+	policy := normalizedRetryPolicy(r.cfg.Retry)
+	var turn Turn
+	var stream *models.EventStream[models.StreamPart, *models.Message]
+	var streamCtx context.Context
+	var cancelStream context.CancelFunc
+	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
+		turn = Turn{Step: step, Attempt: attempt, Trace: trace, StartedAt: time.Now()}
+		if r.cfg.ModelCallLifecycle != nil {
+			callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
+				Step: turn.Step, Attempt: turn.Attempt, MessageID: assistantMsg.ID,
+				StartedAt: turn.StartedAt, Trace: turn.Trace,
+			})
+			if err != nil {
+				return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, fmt.Errorf("model call start: %w", err))
+			}
+			turn.ModelCallID = callID
 		}
-		turn.ModelCallID = callID
-	}
 
-	streamCtx, cancelStream := context.WithCancel(ctx)
-	defer cancelStream()
-	stream, err := r.cfg.Client.Stream(streamCtx, req)
-	if err != nil {
-		turn.CompletedAt = time.Now()
-		if withRequestID, ok := err.(interface{ ProviderRequestID() string }); ok {
-			turn.ProviderRequestID = withRequestID.ProviderRequestID()
+		streamCtx, cancelStream = context.WithCancel(ctx)
+		var err error
+		stream, err = r.cfg.Client.Stream(streamCtx, req)
+		if err == nil {
+			break
 		}
+		cancelStream()
+		turn.CompletedAt = time.Now()
+		turn.ProviderRequestID = providerRequestID(err)
 		failure := fmt.Errorf("model stream: %w", err)
 		turn.Failure = failure
+		if attempt < policy.MaxAttempts && retryableProviderError(err) {
+			if settleErr := r.settleModelCall(ctx, turn, nil, models.Usage{}, failure); settleErr != nil {
+				failure = errors.Join(failure, settleErr)
+				failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
+				turn.Assistant, turn.Failure = assistantMsg, failure
+				return turn, failure
+			}
+			if err := waitRetry(ctx, retryDelay(policy, attempt, err)); err != nil {
+				failure = errors.Join(failure, err)
+				failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
+				turn.Assistant, turn.Failure = assistantMsg, failure
+				return turn, failure
+			}
+			continue
+		}
 		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
-		turn.Assistant = assistantMsg
+		turn.Assistant, turn.Failure = assistantMsg, failure
 		return turn, r.finishModelCall(ctx, turn, &assistantMsg, models.Usage{}, failure, failure)
 	}
+	defer cancelStream()
 
 	// Drain the stream, forwarding raw parts to the sink. The stream's
 	// terminal FinishPart carries the assembled assistant message via
@@ -784,10 +803,14 @@ func mergeFinalAssistant(current *models.Message, final models.Message) {
 // finishModelCall records terminal physical-call state exactly once. The
 // caller's cancellation must not prevent durable settlement of that state.
 func (r *runner) finishModelCall(ctx context.Context, turn Turn, assistant *models.Message, usage models.Usage, failure, runErr error) error {
+	return errors.Join(runErr, r.settleModelCall(ctx, turn, assistant, usage, failure))
+}
+
+func (r *runner) settleModelCall(ctx context.Context, turn Turn, assistant *models.Message, usage models.Usage, failure error) error {
 	if r.cfg.ModelCallLifecycle == nil {
-		return runErr
+		return nil
 	}
-	hookErr := r.cfg.ModelCallLifecycle.Finish(context.WithoutCancel(ctx), ModelCallFinishInfo{
+	return r.cfg.ModelCallLifecycle.Finish(context.WithoutCancel(ctx), ModelCallFinishInfo{
 		Step:              turn.Step,
 		Attempt:           turn.Attempt,
 		CallID:            turn.ModelCallID,
@@ -799,7 +822,73 @@ func (r *runner) finishModelCall(ctx context.Context, turn Turn, assistant *mode
 		ProviderRequestID: turn.ProviderRequestID,
 		Failure:           failure,
 	})
-	return errors.Join(runErr, hookErr)
+}
+
+func normalizedRetryPolicy(policy RetryPolicy) RetryPolicy {
+	defaults := DefaultRetryPolicy()
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = defaults.MaxAttempts
+	}
+	if policy.InitialDelay <= 0 {
+		policy.InitialDelay = defaults.InitialDelay
+	}
+	if policy.MaxDelay <= 0 {
+		policy.MaxDelay = defaults.MaxDelay
+	}
+	if policy.MaxDelay < policy.InitialDelay {
+		policy.MaxDelay = policy.InitialDelay
+	}
+	return policy
+}
+
+func retryableProviderError(err error) bool {
+	var providerErr *models.ProviderError
+	return errors.As(err, &providerErr) && providerErr.Retryable
+}
+
+func providerRequestID(err error) string {
+	var withRequestID interface{ ProviderRequestID() string }
+	if errors.As(err, &withRequestID) {
+		return withRequestID.ProviderRequestID()
+	}
+	return ""
+}
+
+func retryDelay(policy RetryPolicy, attempt int, err error) time.Duration {
+	var providerErr *models.ProviderError
+	if errors.As(err, &providerErr) && providerErr.RetryAfter != nil {
+		return *providerErr.RetryAfter
+	}
+	delay := policy.InitialDelay
+	for n := 1; n < attempt && delay < policy.MaxDelay; n++ {
+		if delay > policy.MaxDelay/2 {
+			return policy.MaxDelay
+		}
+		delay *= 2
+	}
+	if delay > policy.MaxDelay {
+		return policy.MaxDelay
+	}
+	return delay
+}
+
+func waitRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (r *runner) finalizeToolTurn(ctx context.Context, turn *Turn, assistantMsg *models.Message, results []ToolResult, state models.MessageState, runErr error) error {

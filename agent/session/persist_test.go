@@ -208,6 +208,39 @@ func TestRunPersistsStartedModelCallBeforeDispatch(t *testing.T) {
 	}
 }
 
+func TestRunPersistsEachProviderRetryAttempt(t *testing.T) {
+	data := memory.NewStore()
+	stored := &store.Session{ID: "ses_retry"}
+	if err := data.CreateSession(stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_retry", SessionID: stored.ID, Message: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	client := &retryRequestClient{}
+	sess := New(
+		WithID(stored.ID), WithRunID("run_retry"), WithStore(data), WithClient(client),
+		WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+		WithRetryPolicy(run.RetryPolicy{MaxAttempts: 2, InitialDelay: time.Nanosecond, MaxDelay: time.Nanosecond}),
+	)
+	if _, err := sess.Run(context.Background(), "hello"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := data.ListModelCalls(context.Background(), stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0].Attempt != 1 || calls[1].Attempt != 2 {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if calls[0].Status != store.ModelCallStatusFailed || calls[0].ErrorType != string(models.ErrorUnavailable) || calls[1].Status != store.ModelCallStatusCompleted {
+		t.Fatalf("calls = %#v", calls)
+	}
+	if calls[0].ID == calls[1].ID || client.calls != 2 {
+		t.Fatalf("calls = %#v, provider calls = %d", calls, client.calls)
+	}
+}
+
 func TestRunPersistsFailedModelCall(t *testing.T) {
 	data := memory.NewStore()
 	stored := &store.Session{ID: "ses_test"}
@@ -817,6 +850,26 @@ func (c *dispatchSpyClient) Stream(context.Context, models.Request) (*models.Eve
 }
 
 type failingRequestClient struct{}
+
+type retryRequestClient struct{ calls int }
+
+func (c *retryRequestClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (c *retryRequestClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c *retryRequestClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	c.calls++
+	if c.calls == 1 {
+		return nil, &models.ProviderError{Category: models.ErrorUnavailable, Provider: "test", Retryable: true, Message: "unavailable"}
+	}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+	stream.Close(&models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "done"}}}, nil)
+	return stream, nil
+}
 
 type metadataRequestClient struct{}
 

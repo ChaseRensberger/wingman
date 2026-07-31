@@ -89,6 +89,48 @@ FinishPart
 
 `FinishPart` carries usage, finish reason, and the final assembled assistant message. Consumers can also call `EventStream.Final()` after draining the stream.
 
+Provider-backed streams bind their producer to the request context. Cancellation
+unblocks a producer even when the consumer stopped draining a full stream.
+Malformed tool arguments fail with a decoding error instead of becoming an empty
+object. Parallel OpenAI-compatible tool calls retain provider index order.
+
+## Provider Errors And Retries
+
+WingModels returns `models.ProviderError` for provider and transport failures.
+The error preserves its underlying cause and classifies the failure as one of:
+
+```text
+authentication
+authorization
+rate_limit
+invalid_request
+unavailable
+timeout
+transport
+provider
+decoding
+cancellation
+```
+
+It also carries safe status, provider request ID, retryability, and optional
+`Retry-After` data. Provider response bodies are not included in public error
+messages.
+
+The agent loop retries retryable dispatch failures up to three physical attempts
+by default. It uses cancellation-aware exponential backoff and honors
+`Retry-After`. Every attempt receives a separate durable model-call record.
+Failures after a stream is established are never retried.
+
+Embedded Go callers can configure this behavior with
+`session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
+
+## Request Options
+
+`Request.ProviderOptions` supplies top-level provider-native body fields keyed by
+the active provider ID. `Request.HTTP.Body` is the final override for advanced
+callers. Per-request HTTP query values override configured route query values
+without mutating process configuration.
+
 ## Catalog
 
 The embedded catalog provides model identity, lab metadata, provider defaults, and executable route metadata. Catalog membership is not an execution gate: callers can still provide explicit route metadata for custom models.

@@ -841,15 +841,6 @@ type OutputSchema struct {
 }
 
 // ------------------------------------------------------------------
-// ProviderOptions (unused but reserved)
-// ------------------------------------------------------------------
-
-type ProviderOptions struct {
-	APIKey  string `json:"api_key,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-}
-
-// ------------------------------------------------------------------
 // CallTrace
 // ------------------------------------------------------------------
 

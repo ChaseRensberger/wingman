@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"sync"
 )
 
@@ -11,7 +12,16 @@ type EventStream[T any, F any] struct {
 	final  F
 	err    error
 	closed bool
+	done   <-chan struct{}
 	mu     sync.Mutex
+}
+
+// BindContext makes Push return without blocking after ctx is cancelled.
+// It must be called before producers start pushing values.
+func (es *EventStream[T, F]) BindContext(ctx context.Context) {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	es.done = ctx.Done()
 }
 
 // NewEventStream creates an EventStream with a buffer of size buf.
@@ -21,7 +31,17 @@ func NewEventStream[T any, F any](buf int) *EventStream[T, F] {
 
 // Push sends a value into the stream. It panics if called after Close.
 func (es *EventStream[T, F]) Push(v T) {
-	es.ch <- v
+	es.mu.Lock()
+	done := es.done
+	es.mu.Unlock()
+	if done == nil {
+		es.ch <- v
+		return
+	}
+	select {
+	case es.ch <- v:
+	case <-done:
+	}
 }
 
 // Close signals the end of the stream, setting the final value and error.

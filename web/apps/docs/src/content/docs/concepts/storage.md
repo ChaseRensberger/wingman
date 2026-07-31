@@ -86,7 +86,10 @@ message after that message is persisted.
 
 Each durable attempt is unique within its `run_id`, step, and attempt number.
 Steps restart at one for each run without overwriting earlier history. Wingman
-does not currently retry provider requests, so `attempt` is presently `1`.
+retries explicitly retryable failures only when dispatch fails before a stream
+is established. Each failed physical request settles before backoff and before
+the next attempt starts. Once a stream exists, Wingman does not retry because
+output may already have reached the caller or caused provider-side work.
 
 The latest model call with usage for a session lets clients show token count and
 context-window fullness after a page reload without estimating from transcript

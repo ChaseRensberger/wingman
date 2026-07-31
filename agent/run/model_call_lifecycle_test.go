@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -172,6 +173,130 @@ func TestModelCallLifecycleJoinsFinishErrorWithPhysicalFailure(t *testing.T) {
 	})
 	if !errors.Is(err, providerErr) || !errors.Is(err, finishErr) {
 		t.Fatalf("error = %v, want both physical and finish errors", err)
+	}
+}
+
+func TestModelCallRetriesDispatchFailuresAsDistinctPhysicalAttempts(t *testing.T) {
+	providerErr := &models.ProviderError{Category: models.ErrorRateLimit, Provider: "test", RequestID: "req_1", Retryable: true, Message: "rate limited"}
+	var calls int
+	client := &modelCallTestClient{stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+		calls++
+		if calls == 1 {
+			return nil, providerErr
+		}
+		return completedStream(models.Message{Role: models.RoleAssistant}), nil
+	}}
+	var starts []ModelCallStartInfo
+	var finishes []ModelCallFinishInfo
+	result, err := Run(context.Background(), Config{
+		Client: client, Model: testModel,
+		Retry: RetryPolicy{MaxAttempts: 2, InitialDelay: time.Nanosecond, MaxDelay: time.Nanosecond},
+		ModelCallLifecycle: modelCallLifecycleFuncs{
+			start: func(_ context.Context, info ModelCallStartInfo) (string, error) {
+				starts = append(starts, info)
+				return fmt.Sprintf("call_%d", info.Attempt), nil
+			},
+			finish: func(_ context.Context, info ModelCallFinishInfo) error {
+				finishes = append(finishes, info)
+				return nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || len(starts) != 2 || len(finishes) != 2 {
+		t.Fatalf("calls = %d, starts = %#v, finishes = %#v", calls, starts, finishes)
+	}
+	if starts[0].Attempt != 1 || starts[1].Attempt != 2 || finishes[0].Attempt != 1 || finishes[1].Attempt != 2 {
+		t.Fatalf("starts = %#v, finishes = %#v", starts, finishes)
+	}
+	if finishes[0].ProviderRequestID != "req_1" || !errors.Is(finishes[0].Failure, providerErr) || finishes[0].Assistant != nil {
+		t.Fatalf("first finish = %#v", finishes[0])
+	}
+	if len(result.Turns) != 1 || result.Turns[0].Attempt != 2 || result.Turns[0].ModelCallID != "call_2" {
+		t.Fatalf("turns = %#v", result.Turns)
+	}
+}
+
+func TestModelCallRetryRequiresSettlementAndHonorsCancellation(t *testing.T) {
+	providerErr := &models.ProviderError{Category: models.ErrorUnavailable, Retryable: true, Message: "unavailable"}
+	for _, test := range []struct {
+		name       string
+		finishErr  error
+		cancelWait bool
+		wantErr    error
+	}{
+		{name: "settlement failure", finishErr: errors.New("settlement failed")},
+		{name: "cancel backoff", cancelWait: true, wantErr: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			calls := 0
+			client := &modelCallTestClient{stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+				calls++
+				if test.cancelWait {
+					cancel()
+				}
+				return nil, providerErr
+			}}
+			_, err := Run(ctx, Config{
+				Client: client, Model: testModel,
+				Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Hour, MaxDelay: time.Hour},
+				ModelCallLifecycle: modelCallLifecycleFuncs{
+					start:  func(context.Context, ModelCallStartInfo) (string, error) { return "call_1", nil },
+					finish: func(context.Context, ModelCallFinishInfo) error { return test.finishErr },
+				},
+			})
+			if calls != 1 {
+				t.Fatalf("Stream calls = %d, want 1", calls)
+			}
+			if test.finishErr != nil && !errors.Is(err, test.finishErr) {
+				t.Fatalf("error = %v, want settlement failure", err)
+			}
+			if test.wantErr != nil && !errors.Is(err, test.wantErr) {
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestModelCallDoesNotRetryNonRetryableOrEstablishedStreamFailures(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		stream func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error)
+	}{
+		{name: "non-retryable dispatch", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+			return nil, &models.ProviderError{Category: models.ErrorInvalidRequest, Message: "invalid"}
+		}},
+		{name: "established stream", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+			stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+			stream.Close(nil, &models.ProviderError{Category: models.ErrorTransport, Retryable: true, Message: "reset"})
+			return stream, nil
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &modelCallTestClient{stream: test.stream}
+			_, err := Run(context.Background(), Config{Client: client, Model: testModel, Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Nanosecond}})
+			if err == nil {
+				t.Fatal("Run succeeded")
+			}
+			if client.calls != 1 {
+				t.Fatalf("Stream calls = %d, want 1", client.calls)
+			}
+		})
+	}
+}
+
+func TestRetryDelayHonorsProviderRecommendationAndCapsBackoff(t *testing.T) {
+	recommended := 7 * time.Second
+	policy := RetryPolicy{InitialDelay: time.Second, MaxDelay: 2 * time.Second}
+	if got := retryDelay(policy, 1, &models.ProviderError{RetryAfter: &recommended}); got != recommended {
+		t.Fatalf("recommended delay = %v, want %v", got, recommended)
+	}
+	if got := retryDelay(policy, 3, errors.New("transport")); got != 2*time.Second {
+		t.Fatalf("backoff = %v, want 2s", got)
 	}
 }
 

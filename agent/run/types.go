@@ -144,6 +144,12 @@ type Config struct {
 	// and before any tool execution. nil disables model-call lifecycle hooks.
 	ModelCallLifecycle ModelCallLifecycle
 
+	// Retry controls retries for provider failures returned before a stream is
+	// established. Zero values use DefaultRetryPolicy. Set MaxAttempts to 1 to
+	// disable retries. Stream failures are never retried because output may have
+	// reached the caller or caused provider-side work.
+	Retry RetryPolicy
+
 	// MessageCheckpoint synchronously persists the authoritative assistant
 	// message snapshot as it is assembled. It may assign message and part IDs.
 	// Unlike Sink, checkpoint failures stop the run.
@@ -153,6 +159,18 @@ type Config struct {
 	// pre-side-effect started fence and terminal accounting; it does not make
 	// tool execution exactly-once.
 	ToolUseLifecycle ToolUseLifecycle
+}
+
+// RetryPolicy controls retryable provider dispatch failures.
+type RetryPolicy struct {
+	MaxAttempts  int
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+}
+
+// DefaultRetryPolicy retries a physical provider dispatch up to three times.
+func DefaultRetryPolicy() RetryPolicy {
+	return RetryPolicy{MaxAttempts: 3, InitialDelay: 250 * time.Millisecond, MaxDelay: 2 * time.Second}
 }
 
 // PermissionResponse is a user's response to an authored ask permission rule.
@@ -250,7 +268,7 @@ type MessageCheckpointInfo struct {
 }
 
 // ModelCallLifecycle persists or observes the lifecycle of a physical model
-// request. A future provider retry loop invokes these methods once per attempt.
+// request. The provider retry loop invokes these methods once per attempt.
 type ModelCallLifecycle interface {
 	Start(ctx context.Context, info ModelCallStartInfo) (callID string, err error)
 	Finish(ctx context.Context, info ModelCallFinishInfo) error
@@ -577,8 +595,7 @@ type Turn struct {
 	// ModelCallID is the stable opaque ID returned by ModelCallLifecycle.Start.
 	// It is empty when no lifecycle is configured.
 	ModelCallID string
-	// Attempt is the physical provider attempt within this step. It is currently
-	// always 1 because the loop has no provider retry policy.
+	// Attempt is the final physical provider attempt within this logical step.
 	Attempt int
 	// ProviderRequestID is the provider request ID observed in response metadata.
 	ProviderRequestID string

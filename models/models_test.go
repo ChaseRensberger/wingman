@@ -1,10 +1,41 @@
 package models
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestEventStreamPushStopsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := NewEventStream[int, struct{}](1)
+	stream.BindContext(ctx)
+	stream.Push(1)
+	done := make(chan struct{})
+	go func() { stream.Push(2); close(done) }()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Push remained blocked after cancellation")
+	}
+}
+
+func TestProviderErrorContract(t *testing.T) {
+	cause := errors.New("wire failure")
+	retryAfter := time.Second
+	err := &ProviderError{Category: ErrorRateLimit, Provider: "openai", Status: 429, RequestID: "req_1", Retryable: true, RetryAfter: &retryAfter, Message: "provider request failed", Metadata: map[string]string{"region": "us"}, Cause: cause}
+	if !errors.Is(err, cause) {
+		t.Fatal("ProviderError does not unwrap its cause")
+	}
+	var got *ProviderError
+	if !errors.As(err, &got) || got.ProviderRequestID() != "req_1" || got.Category != ErrorRateLimit || got.RetryAfter == nil {
+		t.Fatalf("ProviderError = %#v", got)
+	}
+}
 
 func TestPartDecoderGenerationIsScoped(t *testing.T) {
 	registry := NewPartRegistry()

@@ -1,12 +1,9 @@
 package httpmodel
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -45,38 +42,17 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 	if err != nil {
 		return nil, fmt.Errorf("marshal %s request: %w", m.Info_.Provider, err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, route.URL(), bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("content-type", "application/json")
-	for k, v := range req.HTTP.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	if err := route.Apply(httpReq); err != nil {
-		return nil, err
-	}
-
 	client := m.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
-	resp, err := client.Do(httpReq)
+	resp, err := (streamTransport{client: client}).open(ctx, m.Info_.Provider, route, req.HTTP.Headers, bodyBytes)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return nil, &streamResponseError{
-			provider:  m.Info_.Provider,
-			status:    resp.StatusCode,
-			body:      strings.TrimSpace(string(b)),
-			requestID: responseRequestID(resp.Header),
-		}
-	}
 
 	stream := models.NewEventStream[models.StreamPart, *models.Message](64)
+	stream.BindContext(ctx)
 	requestID := responseRequestID(resp.Header)
 	go func() {
 		defer resp.Body.Close()
@@ -84,7 +60,7 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 		if requestID != "" {
 			stream.Push(models.ResponseMetadataPart{Meta: map[string]any{"request_id": requestID}})
 		}
-		msg, usage, reason, err := m.readSSE(resp.Body, stream)
+		msg, usage, reason, err := m.readSSE(ctx, resp.Body, stream)
 		if msg != nil && !usage.Empty() {
 			msg.Usage = &usage
 		}
@@ -98,19 +74,6 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 	}()
 	return stream, nil
 }
-
-type streamResponseError struct {
-	provider  string
-	status    int
-	body      string
-	requestID string
-}
-
-func (e *streamResponseError) Error() string {
-	return fmt.Sprintf("%s stream: HTTP %d: %s", e.provider, e.status, e.body)
-}
-
-func (e *streamResponseError) ProviderRequestID() string { return e.requestID }
 
 // responseRequestID checks x-request-id, request-id, openai-request-id, then
 // x-goog-request-id, in priority order.
@@ -201,9 +164,7 @@ func (m *Model) url() string {
 func (m *Model) route(req models.Request) Route {
 	if m.Route != nil {
 		route := *m.Route
-		if route.Endpoint.Query == nil {
-			route.Endpoint.Query = defaultQuery(m.Protocol, req.HTTP.Query)
-		}
+		route.Endpoint.Query = mergeQuery(m.Protocol, route.Endpoint.Query, req.HTTP.Query)
 		return route
 	}
 	return Route{
@@ -216,11 +177,18 @@ func (m *Model) route(req models.Request) Route {
 }
 
 func defaultQuery(protocol Protocol, query map[string]string) map[string]string {
-	if protocol != GeminiGenerate {
-		return query
+	return mergeQuery(protocol, nil, query)
+}
+
+func mergeQuery(protocol Protocol, configured, request map[string]string) map[string]string {
+	out := make(map[string]string, len(configured)+len(request)+1)
+	if protocol == GeminiGenerate {
+		out["alt"] = "sse"
 	}
-	out := map[string]string{"alt": "sse"}
-	for k, v := range query {
+	for k, v := range configured {
+		out[k] = v
+	}
+	for k, v := range request {
 		out[k] = v
 	}
 	return out
@@ -279,7 +247,7 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 	addOpenAIToolChoice(body, req.ToolChoice, "responses")
 	addOpenAIResponseFormat(body, req.OutputSchema, req.ResponseFormat, "responses")
 	addCommonOptions(body, req)
-	body = overlay(body, req.HTTP.Body)
+	body = m.applyRequestOptions(body, req)
 	if m.ForceStoreFalse {
 		body["store"] = false
 	}
@@ -316,7 +284,7 @@ func (m *Model) openAIChatBody(req models.Request) (map[string]any, error) {
 	addOpenAIToolChoice(body, req.ToolChoice, "chat")
 	addOpenAIResponseFormat(body, req.OutputSchema, req.ResponseFormat, "chat")
 	addCommonOptions(body, req)
-	return overlay(body, req.HTTP.Body), nil
+	return m.applyRequestOptions(body, req), nil
 }
 
 func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
@@ -359,7 +327,7 @@ func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
 		body["thinking"] = map[string]any{"type": "adaptive"}
 	}
 	addCommonOptions(body, req)
-	return overlay(body, req.HTTP.Body), nil
+	return m.applyRequestOptions(body, req), nil
 }
 
 func (m *Model) geminiBody(req models.Request) map[string]any {
@@ -416,58 +384,12 @@ func (m *Model) geminiBody(req models.Request) map[string]any {
 		}
 	}
 	addGeminiOptions(body, req)
+	return m.applyRequestOptions(body, req)
+}
+
+func (m *Model) applyRequestOptions(body map[string]any, req models.Request) map[string]any {
+	body = overlay(body, req.ProviderOptions[m.Info_.Provider])
 	return overlay(body, req.HTTP.Body)
-}
-
-func (m *Model) readSSE(r io.Reader, stream *models.EventStream[models.StreamPart, *models.Message]) (*models.Message, models.Usage, models.FinishReason, error) {
-	state := parseState{provider: m.Info_.Provider, api: m.Info_.API, model: m.Info_.ID, finish: models.FinishReasonStop}
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	var data strings.Builder
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			if err := m.handleSSEData(data.String(), &state, stream); err != nil {
-				return state.message(), state.usage, state.finish, err
-			}
-			data.Reset()
-			continue
-		}
-		if strings.HasPrefix(line, "data:") {
-			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-		}
-	}
-	if data.Len() > 0 {
-		if err := m.handleSSEData(data.String(), &state, stream); err != nil {
-			return state.message(), state.usage, state.finish, err
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return state.message(), state.usage, state.finish, err
-	}
-	closeOpenParts(&state, stream)
-	return state.message(), state.usage, state.finish, nil
-}
-
-func (m *Model) handleSSEData(data string, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-	if data == "" || data == "[DONE]" {
-		return nil
-	}
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return fmt.Errorf("parse %s SSE event: %w", m.Info_.Provider, err)
-	}
-	switch m.Protocol {
-	case OpenAIResponses:
-		parseOpenAIResponses(event, state, stream)
-	case OpenAIChat:
-		parseOpenAIChat(event, state, stream)
-	case AnthropicMessages:
-		parseAnthropic(event, state, stream)
-	case GeminiGenerate:
-		parseGemini(event, state, stream)
-	}
-	return nil
 }
 
 type parseState struct {
@@ -486,9 +408,10 @@ type parseState struct {
 }
 
 type toolAccum struct {
-	id   string
-	name string
-	args strings.Builder
+	id      string
+	name    string
+	args    strings.Builder
+	started bool
 }
 
 func (s *parseState) message() *models.Message {
@@ -509,7 +432,7 @@ func (s *parseState) message() *models.Message {
 	return &models.Message{Role: models.RoleAssistant, Content: content, FinishReason: s.finish, Origin: &models.MessageOrigin{Provider: s.provider, API: s.api, ModelID: s.model}}
 }
 
-func parseOpenAIResponses(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+func parseOpenAIResponses(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 	typeName, _ := event["type"].(string)
 	switch typeName {
 	case "response.output_text.delta":
@@ -542,13 +465,18 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 					arguments = acc.args.String()
 				}
 			}
-			call := models.ToolCallPart{CallID: stringValue(item["call_id"]), Name: stringValue(item["name"]), Input: decodeArgs(arguments)}
-			pushTool(state, stream, call)
+			input, err := decodeArgs(arguments)
+			if err != nil {
+				return decodingError(state.provider, "invalid tool arguments", err)
+			}
+			call := models.ToolCallPart{CallID: stringValue(item["call_id"]), Name: stringValue(item["name"]), Input: input}
+			pushToolRaw(state, stream, call, arguments)
+			delete(state.toolBuf, itemID)
 		}
 	case "response.function_call_arguments.delta":
 		itemID := stringValue(event["item_id"])
 		if itemID == "" {
-			return
+			return nil
 		}
 		if state.toolBuf == nil {
 			state.toolBuf = map[string]*toolAccum{}
@@ -563,9 +491,10 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 		state.finish = finishReason(stringValue(nested(event, "response", "incomplete_details", "reason")), len(state.tools) > 0)
 		state.usage = openAIResponsesUsage(nested(event, "response", "usage"))
 	}
+	return nil
 }
 
-func parseOpenAIChat(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+func parseOpenAIChat(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 	choices, _ := event["choices"].([]any)
 	var choiceUsage models.Usage
 	if len(choices) > 0 {
@@ -584,7 +513,11 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 			}
 			for _, raw := range calls {
 				call, _ := raw.(map[string]any)
-				idx := fmt.Sprint(intValue(call["index"]))
+				index, err := toolCallIndex(call["index"])
+				if err != nil {
+					return decodingError(state.provider, "invalid OpenAI Chat tool call index", err)
+				}
+				idx := fmt.Sprint(index)
 				acc := state.toolBuf[idx]
 				if acc == nil {
 					acc = &toolAccum{}
@@ -597,14 +530,35 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 				if name := stringValue(fn["name"]); name != "" {
 					acc.name = name
 				}
-				acc.args.WriteString(stringValue(fn["arguments"]))
+				fragment := stringValue(fn["arguments"])
+				if fragment != "" {
+					if !acc.started {
+						stream.Push(models.ToolInputStartPart{ID: acc.id, ToolName: acc.name})
+						acc.started = true
+					}
+					acc.args.WriteString(fragment)
+					stream.Push(models.ToolInputDeltaPart{ID: acc.id, Delta: fragment})
+				}
 			}
 		}
 		if reason := stringValue(choice["finish_reason"]); reason != "" {
-			for _, acc := range state.toolBuf {
-				pushTool(state, stream, models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: decodeArgs(acc.args.String())})
+			for index := 0; len(state.toolBuf) > 0; index++ {
+				acc, ok := state.toolBuf[fmt.Sprint(index)]
+				if !ok {
+					return decodingError(state.provider, "non-contiguous OpenAI Chat tool call indices", nil)
+				}
+				input, err := decodeArgs(acc.args.String())
+				if err != nil {
+					return decodingError(state.provider, "invalid tool arguments", err)
+				}
+				call := models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: input}
+				if acc.started {
+					completeTool(state, stream, call)
+				} else {
+					pushToolRaw(state, stream, call, acc.args.String())
+				}
+				delete(state.toolBuf, fmt.Sprint(index))
 			}
-			state.toolBuf = nil
 			state.finish = finishReason(reason, len(state.tools) > 0)
 		}
 	}
@@ -613,15 +567,16 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 	} else if !choiceUsage.Empty() {
 		state.usage = choiceUsage
 	}
+	return nil
 }
 
-func parseAnthropic(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+func parseAnthropic(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 	typeName := stringValue(event["type"])
 	switch typeName {
 	case "content_block_start":
 		block, _ := event["content_block"].(map[string]any)
 		if stringValue(block["type"]) != "tool_use" {
-			return
+			return nil
 		}
 		if state.toolBuf == nil {
 			state.toolBuf = map[string]*toolAccum{}
@@ -633,16 +588,16 @@ func parseAnthropic(event map[string]any, state *parseState, stream *models.Even
 		delta, _ := event["delta"].(map[string]any)
 		if text := stringValue(delta["text"]); text != "" {
 			pushText(state, stream, fmt.Sprintf("text-%d", intValue(event["index"])), text)
-			return
+			return nil
 		}
 		if thinking := stringValue(delta["thinking"]); thinking != "" {
 			pushReasoning(state, stream, fmt.Sprintf("reasoning-%d", intValue(event["index"])), thinking)
-			return
+			return nil
 		}
 		if stringValue(delta["type"]) == "input_json_delta" {
 			idx := fmt.Sprint(intValue(event["index"]))
 			if state.toolBuf == nil || state.toolBuf[idx] == nil {
-				return
+				return nil
 			}
 			fragment := stringValue(delta["partial_json"])
 			state.toolBuf[idx].args.WriteString(fragment)
@@ -651,11 +606,15 @@ func parseAnthropic(event map[string]any, state *parseState, stream *models.Even
 	case "content_block_stop":
 		idx := fmt.Sprint(intValue(event["index"]))
 		if state.toolBuf == nil || state.toolBuf[idx] == nil {
-			return
+			return nil
 		}
 		acc := state.toolBuf[idx]
 		stream.Push(models.ToolInputEndPart{ID: acc.id})
-		call := models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: decodeArgs(acc.args.String())}
+		input, err := decodeArgs(acc.args.String())
+		if err != nil {
+			return decodingError(state.provider, "invalid tool arguments", err)
+		}
+		call := models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: input}
 		state.tools = append(state.tools, call)
 		stream.Push(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input})
 		delete(state.toolBuf, idx)
@@ -664,15 +623,16 @@ func parseAnthropic(event map[string]any, state *parseState, stream *models.Even
 		state.finish = finishReason(stringValue(delta["stop_reason"]), len(state.tools) > 0)
 		state.usage = anthropicUsage(event["usage"])
 	}
+	return nil
 }
 
-func parseGemini(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) {
+func parseGemini(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 	if usage := geminiUsage(event["usageMetadata"]); !usage.Empty() {
 		state.usage = usage
 	}
 	choices, _ := event["candidates"].([]any)
 	if len(choices) == 0 {
-		return
+		return nil
 	}
 	choice, _ := choices[0].(map[string]any)
 	content, _ := choice["content"].(map[string]any)
@@ -690,10 +650,14 @@ func parseGemini(event map[string]any, state *parseState, stream *models.EventSt
 			pushText(state, stream, "text-0", text)
 		}
 		if rawCall, _ := part["functionCall"].(map[string]any); rawCall != nil {
+			args, ok := rawCall["args"].(map[string]any)
+			if !ok {
+				return decodingError(state.provider, "invalid Gemini function arguments", nil)
+			}
 			call := models.ToolCallPart{
 				CallID: fmt.Sprintf("call_%d", len(state.tools)+1),
 				Name:   stringValue(rawCall["name"]),
-				Input:  objectValue(rawCall["args"]),
+				Input:  args,
 			}
 			pushTool(state, stream, call)
 		}
@@ -701,6 +665,7 @@ func parseGemini(event map[string]any, state *parseState, stream *models.EventSt
 	if reason := stringValue(choice["finishReason"]); reason != "" {
 		state.finish = finishReason(reason, len(state.tools) > 0)
 	}
+	return nil
 }
 
 func pushText(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], id, delta string) {
@@ -735,9 +700,17 @@ func closeOpenParts(state *parseState, stream *models.EventStream[models.StreamP
 }
 
 func pushTool(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], call models.ToolCallPart) {
-	state.tools = append(state.tools, call)
+	pushToolRaw(state, stream, call, encodeJSON(call.Input))
+}
+
+func pushToolRaw(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], call models.ToolCallPart, raw string) {
 	stream.Push(models.ToolInputStartPart{ID: call.CallID, ToolName: call.Name})
-	stream.Push(models.ToolInputDeltaPart{ID: call.CallID, Delta: encodeJSON(call.Input)})
+	stream.Push(models.ToolInputDeltaPart{ID: call.CallID, Delta: raw})
+	completeTool(state, stream, call)
+}
+
+func completeTool(state *parseState, stream *models.EventStream[models.StreamPart, *models.Message], call models.ToolCallPart) {
+	state.tools = append(state.tools, call)
 	stream.Push(models.ToolInputEndPart{ID: call.CallID})
 	stream.Push(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input})
 }
@@ -1105,15 +1078,26 @@ func encodeJSON(v any) string {
 	return string(b)
 }
 
-func decodeArgs(raw string) map[string]any {
+func decodeArgs(raw string) (map[string]any, error) {
 	if raw == "" {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
 	var out map[string]any
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return map[string]any{}
+		return nil, err
 	}
-	return out
+	if out == nil {
+		return nil, fmt.Errorf("tool arguments must be a JSON object")
+	}
+	return out, nil
+}
+
+func toolCallIndex(v any) (int, error) {
+	n, ok := v.(float64)
+	if !ok || n < 0 || n != float64(int(n)) {
+		return 0, fmt.Errorf("index must be a non-negative integer")
+	}
+	return int(n), nil
 }
 
 func finishReason(raw string, hasTools bool) models.FinishReason {
@@ -1180,13 +1164,6 @@ func stringValue(v any) string {
 		return s
 	}
 	return ""
-}
-
-func objectValue(v any) map[string]any {
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{}
 }
 
 func intValue(v any) int {

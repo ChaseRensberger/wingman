@@ -2,10 +2,12 @@ package httpmodel
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chaserensberger/wingman/models"
 )
@@ -125,6 +127,122 @@ func TestStreamErrorCarriesProviderRequestID(t *testing.T) {
 	if !ok || withRequestID.ProviderRequestID() != "request-failed" {
 		t.Fatalf("error = %#v, want provider request ID", err)
 	}
+	var providerErr *models.ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorRateLimit || !providerErr.Retryable {
+		t.Fatalf("error = %#v, want retryable rate limit", err)
+	}
+}
+
+func TestResponseErrorClassification(t *testing.T) {
+	tests := []struct {
+		status   int
+		category models.ErrorCategory
+		retry    bool
+	}{
+		{401, models.ErrorAuthentication, false}, {403, models.ErrorAuthorization, false}, {408, models.ErrorTimeout, true}, {429, models.ErrorRateLimit, true}, {400, models.ErrorInvalidRequest, false}, {503, models.ErrorUnavailable, true},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			err := responseError("test", &http.Response{StatusCode: tt.status, Header: http.Header{"Retry-After": {"2"}}})
+			if err.Category != tt.category || err.Retryable != tt.retry || err.RequestID != "" {
+				t.Fatalf("error = %#v", err)
+			}
+		})
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	if d := retryAfter(http.Header{"Retry-After": {"2"}}); d == nil || *d != 2*time.Second {
+		t.Fatalf("seconds retry after = %v", d)
+	}
+	if d := retryAfter(http.Header{"Retry-After": {time.Now().Add(time.Second).Format(http.TimeFormat)}}); d == nil || *d < 0 {
+		t.Fatalf("date retry after = %v", d)
+	}
+}
+
+func TestRequestOptionsAndQueryMerge(t *testing.T) {
+	configured := map[string]string{"configured": "yes", "same": "old"}
+	model := &Model{Info_: models.ModelInfo{Provider: "openai", ID: "test"}, Protocol: OpenAIChat, Route: &Route{Protocol: OpenAIChat, Endpoint: Endpoint{BaseURL: "https://example.com", Query: configured}}}
+	req := models.Request{ProviderOptions: models.ProviderBag{"openai": {"temperature": 0.3, "model": "provider"}}, HTTP: models.HTTPOptions{Body: map[string]any{"model": "caller"}, Query: map[string]string{"same": "new", "request": "yes"}}}
+	body, err := model.body(req)
+	if err != nil || body["temperature"] != 0.3 || body["model"] != "caller" {
+		t.Fatalf("body = %#v, err = %v", body, err)
+	}
+	route := model.route(req)
+	if route.Endpoint.Query["same"] != "new" || route.Endpoint.Query["configured"] != "yes" || configured["same"] != "old" {
+		t.Fatalf("query = %#v, configured = %#v", route.Endpoint.Query, configured)
+	}
+	gemini := mergeQuery(GeminiGenerate, map[string]string{"alt": "json"}, map[string]string{"request": "yes"})
+	if gemini["alt"] != "json" || gemini["request"] != "yes" {
+		t.Fatalf("Gemini query = %#v", gemini)
+	}
+}
+
+func TestOpenAIChatToolCallsUseProviderIndexOrder(t *testing.T) {
+	state := parseState{provider: "openai"}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](16)
+	for _, event := range []map[string]any{
+		{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"index": float64(1), "id": "second", "function": map[string]any{"name": "b", "arguments": `{"b":`}}, map[string]any{"index": float64(0), "id": "first", "function": map[string]any{"name": "a", "arguments": `{"a":`}}}}}}},
+		{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"index": float64(1), "function": map[string]any{"arguments": `2}`}}, map[string]any{"index": float64(0), "function": map[string]any{"arguments": `1}`}}}}}}},
+		{"choices": []any{map[string]any{"finish_reason": "tool_calls"}}},
+	} {
+		if err := parseOpenAIChat(event, &state, stream); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(state.tools) != 2 || state.tools[0].CallID != "first" || state.tools[1].CallID != "second" {
+		t.Fatalf("tool calls = %#v", state.tools)
+	}
+}
+
+func TestToolArgumentFailuresAreDecodingErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		fn   func(*parseState, *models.EventStream[models.StreamPart, *models.Message]) error
+	}{
+		{"responses", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+			return parseOpenAIResponses(map[string]any{"type": "response.output_item.done", "item": map[string]any{"type": "function_call", "arguments": "{"}}, s, stream)
+		}},
+		{"chat missing index", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+			return parseOpenAIChat(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"function": map[string]any{}}}}}}}, s, stream)
+		}},
+		{"anthropic", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+			s.toolBuf = map[string]*toolAccum{"0": {args: *stringsBuilder("{")}}
+			return parseAnthropic(map[string]any{"type": "content_block_stop", "index": float64(0)}, s, stream)
+		}},
+		{"gemini", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+			return parseGemini(map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": []any{map[string]any{"functionCall": map[string]any{"args": "not-object"}}}}}}}, s, stream)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.fn(&parseState{provider: "test"}, models.NewEventStream[models.StreamPart, *models.Message](16))
+			var providerErr *models.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorDecoding {
+				t.Fatalf("error = %#v", err)
+			}
+		})
+	}
+}
+
+func TestSSEMultilineAndIncompleteToolFailure(t *testing.T) {
+	model := &Model{Info_: models.ModelInfo{Provider: "test"}, Protocol: OpenAIChat}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](16)
+	message, _, _, err := model.readSSE(context.Background(), strings.NewReader("data: {\"choices\":[{\"delta\":{\n"+"data: \"content\":\"hello\"}}]}\n\n"), stream)
+	if err != nil || len(message.Content) != 1 || message.Content[0].(models.TextPart).Text != "hello" {
+		t.Fatalf("message = %#v, error = %v", message, err)
+	}
+	_, _, _, err = model.readSSE(context.Background(), strings.NewReader("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\"}}]}}]}\n\n"), models.NewEventStream[models.StreamPart, *models.Message](16))
+	var providerErr *models.ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorDecoding {
+		t.Fatalf("error = %#v", err)
+	}
+}
+
+func stringsBuilder(value string) *strings.Builder {
+	var builder strings.Builder
+	builder.WriteString(value)
+	return &builder
 }
 
 func TestParseOpenAIChatUsesChoiceUsage(t *testing.T) {

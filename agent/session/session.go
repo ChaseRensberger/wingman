@@ -54,6 +54,7 @@ type Session struct {
 	tools       []tool.Tool
 	permissions permission.Ruleset
 	prompter    run.PermissionPrompter
+	retry       run.RetryPolicy
 	logger      *slog.Logger
 	agentID     string
 	runID       string
@@ -220,6 +221,11 @@ func WithPermissions(rules permission.Ruleset) Option {
 // A nil prompter explicitly declines those calls without executing them.
 func WithPermissionPrompter(prompter run.PermissionPrompter) Option {
 	return func(s *Session) { s.prompter = prompter }
+}
+
+// WithRetryPolicy configures provider dispatch retries for this session.
+func WithRetryPolicy(policy run.RetryPolicy) Option {
+	return func(s *Session) { s.retry = policy }
 }
 
 // WithLogger enables structured runtime logs for this session. The logger is
@@ -568,6 +574,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	tools := append([]tool.Tool(nil), s.tools...)
 	permissions := append(permission.Ruleset(nil), s.permissions...)
 	prompter := s.prompter
+	retry := s.retry
 	workDir := s.workDir
 	logger := s.logger
 	rawTransformHistory := s.transformHistory
@@ -722,6 +729,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		WorkDir:            workDir,
 		Permissions:        permissions,
 		PermissionPrompter: prompter,
+		Retry:              retry,
 		Sink:               internal,
 		OutputSchema:       outputSchema,
 		Hooks: run.Hooks{

@@ -490,7 +490,12 @@ func modelCallRecord(sessionID, runID, agentID string, model models.ModelRef, in
 			}
 		} else {
 			call.Status = store.ModelCallStatusFailed
-			call.ErrorType = "model_error"
+			var providerErr *models.ProviderError
+			if errors.As(turn.Failure, &providerErr) {
+				call.ErrorType = string(providerErr.Category)
+			} else {
+				call.ErrorType = "model_error"
+			}
 		}
 	}
 	if turn.Assistant.Origin != nil {
