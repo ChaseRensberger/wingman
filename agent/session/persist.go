@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/chaserensberger/wingman/agent/run"
@@ -77,50 +78,192 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 		msg.State = models.MessageStateCompleted
 	}
 	now := time.Now().UTC()
-	sm := store.StoredMessage{
+	msg, stored, err := storedMessageFromModel(msg, store.StoredMessage{
 		ID:        msg.ID,
 		SessionID: s.id,
+		RunID:     s.runID,
 		Idx:       idx,
 		Role:      string(msg.Role),
 		Revision:  msg.Revision,
 		State:     string(msg.State),
 		CreatedAt: now,
 		UpdatedAt: now,
+	})
+	if err != nil {
+		return models.Message{}, err
+	}
+	if err := s.store.SaveMessage(ctx, stored); err != nil {
+		return models.Message{}, fmt.Errorf("save message: %w", err)
+	}
+	return msg, nil
+}
+
+// storedMessageFromModel serializes a complete message snapshot. Existing
+// part timestamps and opaque payloads are retained when supplied by base.
+func storedMessageFromModel(msg models.Message, base store.StoredMessage) (models.Message, store.StoredMessage, error) {
+	originalParts := make(map[string]store.StoredPart, len(base.Parts))
+	for _, part := range base.Parts {
+		originalParts[part.ID] = part
 	}
 	metadata, err := marshalMessageMetadata(msg)
 	if err != nil {
-		return models.Message{}, err
+		return models.Message{}, store.StoredMessage{}, err
 	}
 	if len(metadata) > 0 {
 		b, err := json.Marshal(metadata)
 		if err != nil {
-			return models.Message{}, fmt.Errorf("marshal metadata: %w", err)
+			return models.Message{}, store.StoredMessage{}, fmt.Errorf("marshal metadata: %w", err)
 		}
-		sm.MetadataJSON = b
+		base.MetadataJSON = b
 	}
+	base.Parts = nil
 	for i, part := range msg.Content {
 		if models.PartID(part) == "" {
 			part = models.WithPartID(part, store.NewID(store.PrefixPart))
 			msg.Content[i] = part
 		}
-		payload, err := models.MarshalPart(part)
-		if err != nil {
-			return models.Message{}, fmt.Errorf("marshal part[%d]: %w", i, err)
+		prior, exists := originalParts[models.PartID(part)]
+		var payload []byte
+		if _, opaque := part.(models.OpaquePart); opaque && exists {
+			payload = prior.PayloadJSON
+		} else {
+			var err error
+			payload, err = models.MarshalPart(part)
+			if err != nil {
+				return models.Message{}, store.StoredMessage{}, fmt.Errorf("marshal part[%d]: %w", i, err)
+			}
 		}
-		sm.Parts = append(sm.Parts, store.StoredPart{
+		createdAt := base.CreatedAt
+		if exists {
+			createdAt = prior.CreatedAt
+		}
+		base.Parts = append(base.Parts, store.StoredPart{
 			ID:          models.PartID(part),
-			MessageID:   sm.ID,
+			MessageID:   base.ID,
 			Sequence:    i,
 			Kind:        part.Type(),
 			PayloadJSON: payload,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			CreatedAt:   createdAt,
+			UpdatedAt:   base.UpdatedAt,
 		})
 	}
-	if err := s.store.SaveMessage(ctx, sm); err != nil {
-		return models.Message{}, fmt.Errorf("save message: %w", err)
+	return msg, base, nil
+}
+
+// RecoverRunMessages reconciles persisted message snapshots after an
+// interrupted run. It only presents already-settled lifecycle state; it does
+// not execute tools or settle the run itself.
+func RecoverRunMessages(ctx context.Context, st store.Store, sessionID, runID string) error {
+	messages, err := st.ListMessages(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("list messages: %w", err)
 	}
-	return msg, nil
+	uses, err := st.ListToolUses(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("list tool uses: %w", err)
+	}
+	usesByPart := make(map[string]store.ToolUse)
+	usesByID := make(map[string]store.ToolUse)
+	for _, use := range uses {
+		if use.RunID != runID {
+			continue
+		}
+		if use.PartID != "" {
+			usesByPart[use.PartID] = use
+		}
+		if use.ID != "" {
+			usesByID[use.ID] = use
+		}
+	}
+	for _, stored := range messages {
+		if stored.RunID != runID {
+			continue
+		}
+		message, err := StoredMessageToModel(stored)
+		if err != nil {
+			return fmt.Errorf("decode message %s: %w", stored.ID, err)
+		}
+		changed := message.State == models.MessageStateInProgress
+		if changed {
+			message.State = models.MessageStateFailed
+		}
+		for i, part := range message.Content {
+			toolPart, ok := part.(models.ToolPart)
+			if !ok {
+				continue
+			}
+			use, found := usesByPart[models.PartID(toolPart)]
+			if !found && toolPart.ToolUseID != "" {
+				use, found = usesByID[toolPart.ToolUseID]
+			}
+			before := toolPart
+			if found {
+				reconcileToolPart(&toolPart, use)
+			} else if toolPart.State == models.ToolStatePending || toolPart.State == models.ToolStateRunning {
+				interruptToolPart(&toolPart)
+			}
+			if !reflect.DeepEqual(before, toolPart) {
+				message.Content[i] = toolPart
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		message.Revision++
+		stored.Revision = message.Revision
+		stored.State = string(message.State)
+		stored.UpdatedAt = time.Now().UTC()
+		_, snapshot, err := storedMessageFromModel(message, stored)
+		if err != nil {
+			return fmt.Errorf("serialize message %s: %w", stored.ID, err)
+		}
+		if err := st.SaveMessage(ctx, snapshot); err != nil {
+			return fmt.Errorf("save message %s: %w", stored.ID, err)
+		}
+	}
+	return nil
+}
+
+func reconcileToolPart(part *models.ToolPart, use store.ToolUse) {
+	if part.ToolUseID == "" {
+		part.ToolUseID = use.ID
+	}
+	switch use.Status {
+	case store.ToolUseStatusCompleted, store.ToolUseStatusFailed, store.ToolUseStatusDeclined, store.ToolUseStatusInterrupted:
+		var input map[string]any
+		if len(use.InputJSON) > 0 && json.Unmarshal(use.InputJSON, &input) == nil {
+			part.Input = input
+		}
+		var metadata models.Meta
+		if len(use.MetadataJSON) > 0 && json.Unmarshal(use.MetadataJSON, &metadata) == nil {
+			part.Metadata = metadata
+		}
+		part.Output = use.Output
+		part.Error = use.ErrorMessage
+		part.StartedAt = timeMillis(use.StartedAt)
+		part.CompletedAt = timeMillis(use.CompletedAt)
+		if use.Status == store.ToolUseStatusCompleted {
+			part.State = models.ToolStateCompleted
+		} else {
+			part.State = models.ToolStateError
+		}
+	case store.ToolUseStatusProposed, store.ToolUseStatusAuthorized, store.ToolUseStatusStarted:
+		interruptToolPart(part)
+	}
+}
+
+func interruptToolPart(part *models.ToolPart) {
+	part.State = models.ToolStateError
+	part.Error = "Tool execution interrupted"
+	part.CompletedAt = time.Now().UTC().UnixMilli()
+}
+
+func timeMillis(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UTC().UnixMilli()
 }
 
 type modelCallRecorder struct {

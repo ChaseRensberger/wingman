@@ -498,14 +498,96 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	// Verify the session exists so callers get a 404 for typos rather
-	// than a misleading 200/aborted=0. Cheap lookup vs. silent miss.
-	if _, err := s.store.GetSession(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
 		return
 	}
 	n := s.runs.abort(id)
 	writeJSON(w, http.StatusOK, AbortSessionResponse{SessionID: id, Aborted: n})
+}
+
+func (s *Server) handleListSessionRuns(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+	runs, err := s.store.ListSessionRuns(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if runs == nil {
+		runs = []store.SessionRun{}
+	}
+	writeJSON(w, http.StatusOK, runs)
+}
+
+func (s *Server) handleGetSessionRun(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id, runID := chi.URLParam(r, "id"), chi.URLParam(r, "runID")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+	run, err := s.store.GetSessionRun(r.Context(), id, runID)
+	if errors.Is(err, store.ErrSessionRunNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id, runID := chi.URLParam(r, "id"), chi.URLParam(r, "runID")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+	run, err := s.store.GetSessionRun(r.Context(), id, runID)
+	if errors.Is(err, store.ErrSessionRunNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	switch run.Status {
+	case store.SessionRunStatusQueued:
+		transition, err := s.store.SettleSessionRun(r.Context(), store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusQueued, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled", EventData: map[string]any{"error_type": "cancelled", "error_message": "run cancelled"}})
+		if errors.Is(err, store.ErrSessionRunTransitionConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if transition.Changed {
+			s.events.publish(transition.Event)
+		}
+		writeJSON(w, http.StatusOK, transition.Run)
+	case store.SessionRunStatusRunning:
+		if s.runs.abort(id) == 0 {
+			writeError(w, http.StatusConflict, "run is not active on this server")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, run)
+	default:
+		writeError(w, http.StatusConflict, "run is already terminal")
+	}
 }
 
 // handleRun is POST /run. It constructs an in-memory session from an

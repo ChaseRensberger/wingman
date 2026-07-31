@@ -125,9 +125,47 @@ func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (stor
 	return store.SessionRunAdmission{Run: copySessionRun(&cp), SessionVersion: run.AdmittedVersion, Created: true, QueuedEvent: queuedCopy}, nil
 }
 
-func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (*store.SessionRun, error) {
+func (s *Store) GetSessionRun(ctx context.Context, sessionID, runID string) (*store.SessionRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	run, ok := s.runs[runID]
+	if !ok || run.SessionID != sessionID {
+		return nil, store.ErrSessionRunNotFound
+	}
+	cp := copySessionRun(run)
+	return &cp, nil
+}
+
+func (s *Store) ListSessionRuns(ctx context.Context, sessionID string) ([]store.SessionRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	out := []store.SessionRun{}
+	for _, run := range s.runs {
+		if run.SessionID == sessionID {
+			out = append(out, copySessionRun(run))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Sequence < out[j].Sequence })
+	return out, nil
+}
+
+func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (store.SessionRunTransition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return store.SessionRunTransition{}, store.ErrSessionNotFound
+	}
+	for _, run := range s.runs {
+		if run.SessionID == sessionID && run.Status == store.SessionRunStatusRunning {
+			return store.SessionRunTransition{}, nil
+		}
+	}
 	var next *store.SessionRun
 	for _, run := range s.runs {
 		if run.SessionID == sessionID && run.Status == store.SessionRunStatusQueued && (next == nil || run.Sequence < next.Sequence) {
@@ -135,29 +173,48 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (*sto
 		}
 	}
 	if next == nil {
-		return nil, nil
+		return store.SessionRunTransition{}, nil
 	}
 	now := time.Now().UTC()
-	next.Status = store.SessionRunStatusRunning
-	next.StartedAt = now
-	next.UpdatedAt = now
-	cp := copySessionRun(next)
-	return &cp, nil
+	candidate := copySessionRun(next)
+	candidate.Status, candidate.StartedAt, candidate.UpdatedAt = store.SessionRunStatusRunning, now, now
+	event, err := s.appendRunEventLocked(&candidate, "session.run.started", nil, now)
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
+	*next = candidate
+	return store.SessionRunTransition{Run: copySessionRun(next), Event: event, Changed: true}, nil
 }
 
-func (s *Store) CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error {
+func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRunSettlement) (store.SessionRunTransition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	run, ok := s.runs[id]
+	if !sessionRunTerminal(settlement.Status) {
+		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
+	}
+	run, ok := s.runs[settlement.ID]
 	if !ok {
-		return store.ErrSessionNotFound
+		return store.SessionRunTransition{}, store.ErrSessionRunNotFound
+	}
+	if sessionRunTerminal(run.Status) {
+		if run.Status == settlement.Status && run.ErrorType == settlement.ErrorType && run.ErrorMessage == settlement.ErrorMessage {
+			return store.SessionRunTransition{Run: copySessionRun(run)}, nil
+		}
+		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
+	}
+	if run.Status != settlement.ExpectedStatus || !legalSessionRunSettlement(run.Status, settlement.Status) {
+		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
 	}
 	now := time.Now().UTC()
-	run.Status = status
-	run.ErrorMessage = errorMessage
-	run.CompletedAt = now
-	run.UpdatedAt = now
-	return nil
+	candidate := copySessionRun(run)
+	candidate.Status, candidate.ErrorType, candidate.ErrorMessage = settlement.Status, settlement.ErrorType, settlement.ErrorMessage
+	candidate.CompletedAt, candidate.UpdatedAt = now, now
+	event, err := s.appendRunEventLocked(&candidate, "session.run."+settlement.Status, settlement.EventData, now)
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
+	*run = candidate
+	return store.SessionRunTransition{Run: copySessionRun(run), Event: event, Changed: true}, nil
 }
 
 func (s *Store) ListQueuedSessionRunSessions(ctx context.Context) ([]string, error) {
@@ -177,19 +234,59 @@ func (s *Store) ListQueuedSessionRunSessions(ctx context.Context) ([]string, err
 	return out, nil
 }
 
-func (s *Store) AbortRunningSessionRuns(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now().UTC()
+func (s *Store) ListRunningSessionRuns(ctx context.Context) ([]store.SessionRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []store.SessionRun{}
 	for _, run := range s.runs {
 		if run.Status == store.SessionRunStatusRunning {
-			run.Status = store.SessionRunStatusAborted
-			run.ErrorMessage = "server shutdown"
-			run.CompletedAt = now
-			run.UpdatedAt = now
+			out = append(out, copySessionRun(run))
 		}
 	}
-	return nil
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SessionID == out[j].SessionID {
+			return out[i].Sequence < out[j].Sequence
+		}
+		return out[i].SessionID < out[j].SessionID
+	})
+	return out, nil
+}
+
+func sessionRunTerminal(status string) bool {
+	return status == store.SessionRunStatusCompleted || status == store.SessionRunStatusFailed || status == store.SessionRunStatusAborted
+}
+func legalSessionRunSettlement(from, to string) bool {
+	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || (from == store.SessionRunStatusQueued && to == store.SessionRunStatusAborted)
+}
+func (s *Store) appendRunEventLocked(run *store.SessionRun, typ string, extra map[string]any, now time.Time) (store.SessionEvent, error) {
+	data := make(map[string]any, len(extra)+7)
+	for k, v := range extra {
+		data[k] = v
+	}
+	data["run_id"], data["status"], data["error_type"], data["error_message"] = run.ID, run.Status, run.ErrorType, run.ErrorMessage
+	if !run.StartedAt.IsZero() {
+		data["started_at"] = run.StartedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !run.CompletedAt.IsZero() {
+		data["completed_at"] = run.CompletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !run.UpdatedAt.IsZero() {
+		data["updated_at"] = run.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return store.SessionEvent{}, err
+	}
+	var max int64
+	for _, event := range s.events {
+		if event.SessionID == run.SessionID && event.Seq > max {
+			max = event.Seq
+		}
+	}
+	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: typ, Time: now, SessionID: run.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
+	cp := copySessionEvent(&event)
+	s.events[event.ID] = &cp
+	return cp, nil
 }
 
 // ---- defensive copying helpers ------------------------------------------
@@ -207,6 +304,12 @@ func deepCopyMap(m map[string]any) map[string]any {
 func copyAgent(a *store.Agent) *store.Agent {
 	if a == nil {
 		return nil
+	}
+	if encoded, err := json.Marshal(a); err == nil {
+		var copied store.Agent
+		if json.Unmarshal(encoded, &copied) == nil {
+			return &copied
+		}
 	}
 	cp := *a
 	cp.Tools = make([]string, len(a.Tools))
@@ -822,7 +925,7 @@ func (s *Store) SaveMessage(ctx context.Context, msg store.StoredMessage) error 
 		return err
 	}
 	if existing, ok := s.messages[msg.ID]; ok {
-		if existing.SessionID != msg.SessionID || existing.Idx != msg.Idx || existing.Role != msg.Role {
+		if existing.SessionID != msg.SessionID || existing.RunID != msg.RunID || existing.Idx != msg.Idx || existing.Role != msg.Role {
 			return fmt.Errorf("message identity is immutable")
 		}
 		if msg.Revision < existing.Revision {
@@ -840,6 +943,12 @@ func (s *Store) SaveMessage(ctx context.Context, msg store.StoredMessage) error 
 	for _, existing := range s.messages {
 		if existing.SessionID == msg.SessionID && existing.Idx == msg.Idx {
 			return fmt.Errorf("message index belongs to %s", existing.ID)
+		}
+	}
+	if msg.RunID != "" {
+		run, ok := s.runs[msg.RunID]
+		if !ok || run.SessionID != msg.SessionID {
+			return fmt.Errorf("session run %s does not belong to session %s", msg.RunID, msg.SessionID)
 		}
 	}
 	for _, part := range msg.Parts {
@@ -1095,6 +1204,19 @@ func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.M
 		out = []store.ModelCall{}
 	}
 	return out, nil
+}
+
+func (s *Store) InterruptActiveModelCalls(ctx context.Context, runID, errorType, errorMessage string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for _, call := range s.modelCalls {
+		if call.RunID == runID && call.Status == store.ModelCallStatusStarted {
+			call.Status, call.ErrorType, call.ErrorMessage = store.ModelCallStatusAborted, errorType, errorMessage
+			call.CompletedAt, call.UpdatedAt = now, now
+		}
+	}
+	return nil
 }
 
 func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {

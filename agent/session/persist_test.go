@@ -247,7 +247,10 @@ func TestPersistMessageAtomicallyAssignsAndPreservesIdentities(t *testing.T) {
 	if err := data.CreateSession(stored); err != nil {
 		t.Fatal(err)
 	}
-	sess := New(WithID(stored.ID), WithStore(data))
+	sess := New(WithID(stored.ID), WithRunID("run_message"), WithStore(data))
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_message", SessionID: stored.ID}); err != nil {
+		t.Fatal(err)
+	}
 	message, err := sess.persistMessage(context.Background(), models.Message{
 		ID:       "msg_user",
 		Revision: 7,
@@ -268,8 +271,183 @@ func TestPersistMessageAtomicallyAssignsAndPreservesIdentities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 || messages[0].ID != message.ID || messages[0].Revision != message.Revision || messages[0].State != string(message.State) || len(messages[0].Parts) != 2 || messages[0].Parts[1].ID != models.PartID(message.Content[1]) {
+	if len(messages) != 1 || messages[0].ID != message.ID || messages[0].RunID != "run_message" || messages[0].Revision != message.Revision || messages[0].State != string(message.State) || len(messages[0].Parts) != 2 || messages[0].Parts[1].ID != models.PartID(message.Content[1]) {
 		t.Fatalf("stored messages = %#v", messages)
+	}
+}
+
+func TestRecoverRunMessagesReconcilesOnlyTargetRunIdempotently(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_recover"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"run_target", "run_other"} {
+		if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: id, SessionID: "ses_recover"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created := time.Now().Add(-time.Minute).UTC()
+	partial := store.StoredMessage{ID: "msg_partial", SessionID: "ses_recover", RunID: "run_target", Idx: 0, Role: "assistant", Revision: 3, State: "in_progress", CreatedAt: created, UpdatedAt: created, Parts: []store.StoredPart{{ID: "part_text", MessageID: "msg_partial", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"type":"text","id":"part_text","text":"partial"}`), CreatedAt: created, UpdatedAt: created}}}
+	pending := store.StoredMessage{ID: "msg_tool", SessionID: "ses_recover", RunID: "run_target", Idx: 1, Role: "assistant", Revision: 1, State: "completed", CreatedAt: created, UpdatedAt: created, Parts: []store.StoredPart{{ID: "part_tool", MessageID: "msg_tool", Sequence: 0, Kind: "tool", PayloadJSON: []byte(`{"type":"tool","id":"part_tool","call_id":"call","name":"bash","state":"pending","input_raw":"{bad"}`), CreatedAt: created, UpdatedAt: created}}}
+	other := store.StoredMessage{ID: "msg_other", SessionID: "ses_recover", RunID: "run_other", Idx: 2, Role: "assistant", Revision: 2, State: "in_progress", CreatedAt: created, UpdatedAt: created, Parts: []store.StoredPart{{ID: "part_opaque", MessageID: "msg_other", Sequence: 0, Kind: "plugin", PayloadJSON: []byte(`{"type":"plugin","value":{"x":1}}`), CreatedAt: created, UpdatedAt: created}}}
+	for _, message := range []store.StoredMessage{partial, pending, other} {
+		if err := data.SaveMessage(ctx, message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RecoverRunMessages(ctx, data, "ses_recover", "run_target"); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_recover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages[0].State != "failed" || messages[0].Revision != 4 || messages[0].CreatedAt != created {
+		t.Fatalf("partial = %#v", messages[0])
+	}
+	toolMessage, err := StoredMessageToModel(messages[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolPart := toolMessage.Content[0].(models.ToolPart)
+	if messages[1].Revision != 2 || toolPart.State != models.ToolStateError || toolPart.Error != "Tool execution interrupted" || toolPart.InputRaw != "{bad" || toolPart.CompletedAt == 0 {
+		t.Fatalf("pending tool = %#v", toolPart)
+	}
+	if messages[2].State != "in_progress" || messages[2].Revision != 2 || string(messages[2].Parts[0].PayloadJSON) != string(other.Parts[0].PayloadJSON) {
+		t.Fatalf("other run message = %#v", messages[2])
+	}
+	updated := messages[0].UpdatedAt
+	if err := RecoverRunMessages(ctx, data, "ses_recover", "run_target"); err != nil {
+		t.Fatal(err)
+	}
+	messages, err = data.ListMessages(ctx, "ses_recover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages[0].Revision != 4 || !messages[0].UpdatedAt.Equal(updated) || messages[1].Revision != 2 {
+		t.Fatalf("second recovery changed messages: %#v", messages)
+	}
+}
+
+func TestRecoverRunMessagesProjectsToolUse(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_tool_recover"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_tool_recover", SessionID: "ses_tool_recover"}); err != nil {
+		t.Fatal(err)
+	}
+	message := store.StoredMessage{ID: "msg_tool_recover", SessionID: "ses_tool_recover", RunID: "run_tool_recover", Idx: 0, Role: "assistant", Revision: 1, State: "completed", Parts: []store.StoredPart{{ID: "part_tool_recover", MessageID: "msg_tool_recover", Sequence: 0, Kind: "tool", PayloadJSON: []byte(`{"type":"tool","id":"part_tool_recover","call_id":"call","name":"bash","state":"running","input_raw":"raw","provider_metadata":{"keep":true}}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	started, completed := time.Now().Add(-time.Second).UTC(), time.Now().UTC()
+	use := store.ToolUse{ID: "tlu_recover", SessionID: "ses_tool_recover", RunID: "run_tool_recover", PartID: "part_tool_recover", Status: store.ToolUseStatusProposed, InputJSON: []byte(`{"command":"pwd"}`)}
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status = store.ToolUseStatusAuthorized
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status = store.ToolUseStatusStarted
+	use.StartedAt = started
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status = store.ToolUseStatusCompleted
+	use.Output = "/tmp"
+	use.MetadataJSON = []byte(`{"source":"store"}`)
+	use.CompletedAt = completed
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecoverRunMessages(ctx, data, "ses_tool_recover", "run_tool_recover"); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_tool_recover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := StoredMessageToModel(messages[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := recovered.Content[0].(models.ToolPart)
+	if messages[0].Revision != 2 || part.ToolUseID != "tlu_recover" || part.State != models.ToolStateCompleted || part.Input["command"] != "pwd" || part.Output != "/tmp" || part.Metadata["source"] != "store" || part.InputRaw != "raw" || part.ProviderMetadata["keep"] != true || part.StartedAt != started.UnixMilli() || part.CompletedAt != completed.UnixMilli() {
+		t.Fatalf("recovered part = %#v", part)
+	}
+}
+
+func TestRecoverRunMessagesProjectsFailedToolUse(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_failed_tool_recover"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_failed_tool_recover", SessionID: "ses_failed_tool_recover"}); err != nil {
+		t.Fatal(err)
+	}
+	message := store.StoredMessage{ID: "msg_failed_tool", SessionID: "ses_failed_tool_recover", RunID: "run_failed_tool_recover", Idx: 0, Role: "assistant", Revision: 1, State: "completed", Parts: []store.StoredPart{{ID: "part_failed_tool", MessageID: "msg_failed_tool", Sequence: 0, Kind: "tool", PayloadJSON: []byte(`{"type":"tool","id":"part_failed_tool","call_id":"call","name":"bash","state":"completed","output":"stale"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	use := store.ToolUse{ID: "tlu_failed", SessionID: "ses_failed_tool_recover", RunID: "run_failed_tool_recover", PartID: "part_failed_tool", Status: store.ToolUseStatusProposed}
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	use.Status, use.ErrorMessage, use.Output = store.ToolUseStatusFailed, "tool failed", "failure output"
+	if err := data.SaveToolUse(ctx, use); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecoverRunMessages(ctx, data, "ses_failed_tool_recover", "run_failed_tool_recover"); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_failed_tool_recover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part, err := StoredMessageToModel(messages[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolPart := part.Content[0].(models.ToolPart)
+	if toolPart.State != models.ToolStateError || toolPart.Error != "tool failed" || toolPart.Output != "failure output" {
+		t.Fatalf("failed tool = %#v", toolPart)
+	}
+}
+
+func TestRecoverRunMessagesSaveFailureLeavesOtherRunsUntouched(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_recover_failure"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, runID := range []string{"run_recover_failure", "run_recover_other"} {
+		if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: runID, SessionID: "ses_recover_failure"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, message := range []store.StoredMessage{
+		{ID: "msg_recover_failure", SessionID: "ses_recover_failure", RunID: "run_recover_failure", Idx: 0, Role: "assistant", State: "in_progress"},
+		{ID: "msg_recover_other", SessionID: "ses_recover_failure", RunID: "run_recover_other", Idx: 1, Role: "assistant", State: "in_progress"},
+	} {
+		if err := data.SaveMessage(ctx, message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	failing := &failingSaveStore{Store: data, failAfter: 0}
+	if err := RecoverRunMessages(ctx, failing, "ses_recover_failure", "run_recover_failure"); !errors.Is(err, errSaveMessage) {
+		t.Fatalf("err = %v, want save failure", err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_recover_failure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages[0].State != "in_progress" || messages[1].State != "in_progress" || messages[1].Revision != 1 {
+		t.Fatalf("messages after failed recovery = %#v", messages)
 	}
 }
 

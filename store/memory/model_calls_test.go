@@ -84,3 +84,25 @@ func TestToolUseLifecycleMatchesSQLiteContract(t *testing.T) {
 		t.Fatalf("tool use JSON was not deep copied: %#v, %v", again, err)
 	}
 }
+
+func TestInterruptActiveModelCalls(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_interrupt"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_interrupt", SessionID: "ses_interrupt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, store.ModelCall{ID: "mcl_interrupt", SessionID: "ses_interrupt", RunID: run.Run.ID, Step: 1, Status: store.ModelCallStatusStarted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveModelCalls(ctx, run.Run.ID, "shutdown", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := data.ListModelCalls(ctx, "ses_interrupt")
+	if err != nil || len(calls) != 1 || calls[0].Status != store.ModelCallStatusAborted || calls[0].ErrorType != "shutdown" || calls[0].CompletedAt.IsZero() {
+		t.Fatalf("calls = %#v, %v", calls, err)
+	}
+}

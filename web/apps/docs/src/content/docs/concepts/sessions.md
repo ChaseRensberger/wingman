@@ -149,7 +149,35 @@ The response is server-sent events. Each `data:` payload is a Wingman event enve
 The public SSE history is separate from the internal aggregate event log used
 to rebuild database projections.
 
-Each accepted message emits `session.run.queued`, then `session.run.started` when execution begins. Terminal events are `session.run.completed` and `session.run.failed`; all carry the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run and leaves later queued messages intact.
+Each accepted message emits `session.run.queued`, then `session.run.started` when execution begins. Terminal events are `session.run.completed`, `session.run.failed`, and `session.run.aborted`; all carry the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run and leaves later queued messages intact.
+
+## Run Status And Recovery
+
+The durable run record is authoritative after a reload or lost event stream:
+
+```bash
+curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs"
+curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..."
+```
+
+A run moves from `queued` to `running`, then to `completed`, `failed`, or
+`aborted`. A queued run can also be aborted before it starts. Wingman commits
+each claim or terminal settlement together with its matching durable event, so
+the status resource and event history do not disagree.
+
+Abort a specific queued or running run with:
+
+```bash
+curl -sS -X POST \
+  "http://localhost:2323/sessions/${SESSION_ID}/runs/run_.../abort"
+```
+
+Wingman does not automatically replay work that may have reached a provider or
+tool. During shutdown or restart, a running run becomes `aborted`, started model
+calls become `aborted`, unfinished tool uses become `interrupted`, and an
+in-progress message becomes `failed` while retaining its checkpointed content.
+Only runs that never started remain queued and resume automatically. If any
+recovery write fails, the server does not begin serving requests.
 
 ## Ephemeral Sessions
 

@@ -63,3 +63,27 @@ func TestSaveMessageRejectsInvalidOwnershipAndIndex(t *testing.T) {
 		t.Fatal("part ownership conflict succeeded")
 	}
 }
+
+func TestMessagesRunOwnershipAndDirectMessages(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_run_messages"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_messages", SessionID: "ses_run_messages"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, store.StoredMessage{ID: "msg_direct", SessionID: "ses_run_messages", Idx: 1, Role: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, store.StoredMessage{ID: "msg_run", SessionID: "ses_run_messages", RunID: run.Run.ID, Idx: 2, Role: "assistant"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, store.StoredMessage{ID: "msg_bad", SessionID: "ses_run_messages", RunID: "run_missing", Idx: 3, Role: "assistant"}); err == nil {
+		t.Fatal("unknown run accepted")
+	}
+	if err := data.SaveMessage(ctx, store.StoredMessage{ID: "msg_run", SessionID: "ses_run_messages", Idx: 2, Role: "assistant", Revision: 2}); err == nil {
+		t.Fatal("run identity rewrite succeeded")
+	}
+}

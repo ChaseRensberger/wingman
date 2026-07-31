@@ -141,6 +141,9 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `GET` | `/sessions/{id}` | Get session including history |
 | `GET` | `/sessions/{id}/model-calls` | List physical upstream model attempts in start-time order |
 | `GET` | `/sessions/{id}/tool-uses` | List durable tool invocations in proposal/source order |
+| `GET` | `/sessions/{id}/runs` | List authoritative runs in admission order |
+| `GET` | `/sessions/{id}/runs/{runID}` | Get one authoritative run |
+| `POST` | `/sessions/{id}/runs/{runID}/abort` | Abort one queued or locally running run |
 | `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
 | `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
@@ -157,8 +160,8 @@ reload the session before deciding whether to retry.
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
 
 The response includes the canonical run ID, current run status, and aggregate
-version after admission. Read `/sessions/{id}/events` for execution progress and
-the terminal result.
+version after admission. Read `/sessions/{id}/runs/{runID}` for authoritative
+status and `/sessions/{id}/events` for execution progress.
 
 ### Create request
 
@@ -259,6 +262,39 @@ Both a new admission and an identical retry return `202 Accepted`. On retry,
 `status` is the run's current status and `session_version` is the session's
 current aggregate version.
 
+### Run response
+
+Run statuses are `queued`, `running`, `completed`, `failed`, and `aborted`.
+`GET /sessions/{id}/runs` returns an array in admission order; the single-run
+endpoint returns `404` when the run does not belong to that session. Both
+endpoints enforce the session's client scope.
+
+```json
+{
+  "id": "run_...",
+  "session_id": "ses_...",
+  "request_id": "submit-123",
+  "admitted_version": 4,
+  "sequence": 2,
+  "status": "aborted",
+  "message": "Write a Python script",
+  "agent": { "id": "agt_...", "name": "Builder" },
+  "error_type": "process_interrupted",
+  "error_message": "process interrupted during run",
+  "created_at": "2026-07-30T12:00:00Z",
+  "started_at": "2026-07-30T12:00:01Z",
+  "completed_at": "2026-07-30T12:00:03Z",
+  "updated_at": "2026-07-30T12:00:03Z"
+}
+```
+
+Claim and settlement update the run and append the matching durable
+`session.run.started`, `session.run.completed`, `session.run.failed`, or
+`session.run.aborted` event in one transaction. On startup, Wingman interrupts
+unfinished tool uses and model calls, preserves failed partial messages, settles
+running runs as aborted, and only then resumes queued runs. It does not replay
+ambiguous provider calls or tool side effects.
+
 ### Model-call response
 
 `GET /sessions/{id}/model-calls` returns one record per physical upstream
@@ -349,10 +385,15 @@ See [Streaming Events](/build-clients/streaming-events) for event shapes and rec
 ### Abort response
 
 ```json
-{ "session_id": "ses_...", "aborted": 2 }
+{ "session_id": "ses_...", "aborted": 1 }
 ```
 
-`aborted` is the number of in-flight runs cancelled. Queued runs are not removed and remain scheduled. Aborts are idempotent — a 200 with `aborted: 0` is returned when no run is in flight. A 404 is returned only when the session id is unknown.
+`aborted` is `1` when the active run was asked to cancel and `0` when no run is
+active. Queued runs remain scheduled. The session-level endpoint is idempotent.
+To abort a specific run, use `POST /sessions/{id}/runs/{runID}/abort`: queued
+runs settle immediately and return `200`; a locally running run is signaled and
+returns `202`; terminal runs or a running run not owned by this server return
+`409`.
 
 ## Workspace endpoints
 

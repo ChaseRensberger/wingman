@@ -197,6 +197,31 @@ func TestSQLiteModelCallAllowsUnavailableCost(t *testing.T) {
 	}
 }
 
+func TestSQLiteInterruptActiveModelCalls(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_interrupt_calls"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_interrupt_calls", SessionID: "ses_interrupt_calls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, ModelCall{ID: "mcl_started", SessionID: "ses_interrupt_calls", RunID: run.Run.ID, Step: 1, Status: ModelCallStatusStarted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, ModelCall{ID: "mcl_terminal", SessionID: "ses_interrupt_calls", RunID: run.Run.ID, Step: 2, Status: ModelCallStatusCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveModelCalls(ctx, run.Run.ID, "shutdown", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := data.ListModelCalls(ctx, "ses_interrupt_calls")
+	if err != nil || calls[0].Status != ModelCallStatusAborted || calls[0].ErrorType != "shutdown" || calls[0].CompletedAt.IsZero() || calls[1].Status != ModelCallStatusCompleted {
+		t.Fatalf("calls = %#v, %v", calls, err)
+	}
+}
+
 func TestSQLiteModelCallPreservesTimestampPrecision(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {
@@ -377,6 +402,34 @@ func TestSQLiteSaveMessageRejectsInvalidOwnershipAndIndex(t *testing.T) {
 	}
 	if err := data.SaveMessage(ctx, StoredMessage{ID: "msg_two", SessionID: "ses_messages", Idx: 2, Role: "user", Parts: []StoredPart{{ID: "part_one", MessageID: "msg_two", Kind: "text", PayloadJSON: []byte(`{}`)}}}); err == nil {
 		t.Fatal("part ownership conflict succeeded")
+	}
+}
+
+func TestSQLiteMessagesMayBelongToRunOrSession(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_message_run"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_message", SessionID: "ses_message_run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, msg := range []StoredMessage{{ID: "msg_direct", SessionID: "ses_message_run", Idx: 1, Role: "user"}, {ID: "msg_run", SessionID: "ses_message_run", RunID: run.Run.ID, Idx: 2, Role: "assistant"}} {
+		if err := data.SaveMessage(ctx, msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	changed := StoredMessage{ID: "msg_run", SessionID: "ses_message_run", Idx: 2, Role: "assistant", Revision: 2}
+	if err := data.SaveMessage(ctx, changed); err == nil {
+		t.Fatal("run identity rewrite succeeded")
+	}
+	if _, err := data.db.Exec(`DELETE FROM session_runs WHERE id = ?`, run.Run.ID); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_message_run")
+	if err != nil || len(messages) != 1 || messages[0].ID != "msg_direct" || messages[0].RunID != "" {
+		t.Fatalf("messages = %#v, %v", messages, err)
 	}
 }
 

@@ -54,6 +54,7 @@ CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
 CREATE TABLE messages (
     id            TEXT PRIMARY KEY,
     session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+	    run_id        TEXT REFERENCES session_runs(id) ON DELETE CASCADE,
     idx           INTEGER NOT NULL,
     role          TEXT NOT NULL,
     revision      INTEGER NOT NULL DEFAULT 1,
@@ -94,6 +95,7 @@ CREATE TABLE session_runs (
     agent_json          TEXT NOT NULL,
     output_schema_json  TEXT,
     error_message       TEXT,
+	    error_type          TEXT,
     created_at          TEXT NOT NULL,
     started_at          TEXT,
     completed_at        TEXT,
@@ -103,6 +105,9 @@ CREATE TABLE session_runs (
 
 CREATE INDEX idx_session_runs_session_status_sequence
 ON session_runs(session_id, status, sequence);
+
+CREATE UNIQUE INDEX idx_session_runs_one_running_per_session
+ON session_runs(session_id) WHERE status = 'running';
 
 CREATE UNIQUE INDEX idx_session_runs_session_request_id
 ON session_runs(session_id, request_id)

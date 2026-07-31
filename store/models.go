@@ -95,7 +95,7 @@ type SessionRun struct {
 	ID               string    `json:"id"`
 	SessionID        string    `json:"session_id"`
 	RequestID        string    `json:"request_id,omitempty"`
-	RequestHash      string    `json:"request_hash,omitempty"`
+	RequestHash      string    `json:"-"`
 	AdmittedVersion  int64     `json:"admitted_version"`
 	WorkDir          string    `json:"work_dir,omitempty"`
 	WorkspaceID      string    `json:"workspace_id,omitempty"`
@@ -105,6 +105,7 @@ type SessionRun struct {
 	Message          string    `json:"message"`
 	Agent            Agent     `json:"agent"`
 	OutputSchemaJSON []byte    `json:"-"`
+	ErrorType        string    `json:"error_type,omitempty"`
 	ErrorMessage     string    `json:"error_message,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	StartedAt        time.Time `json:"started_at,omitempty"`
@@ -120,6 +121,23 @@ type SessionRunAdmission struct {
 	QueuedEvent    SessionEvent
 }
 
+// SessionRunTransition is an atomic run state transition and its durable event.
+type SessionRunTransition struct {
+	Run     SessionRun
+	Event   SessionEvent
+	Changed bool
+}
+
+// SessionRunSettlement authoritatively completes, fails, or aborts a run.
+type SessionRunSettlement struct {
+	ID             string
+	ExpectedStatus string
+	Status         string
+	ErrorType      string
+	ErrorMessage   string
+	EventData      map[string]any
+}
+
 type Workspace struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -133,6 +151,7 @@ type Workspace struct {
 type StoredMessage struct {
 	ID           string
 	SessionID    string
+	RunID        string
 	Idx          int
 	Role         string
 	Revision     int64

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -27,23 +28,133 @@ func TestSessionRunsClaimInSequence(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"first", "second"} {
-		run, err := data.ClaimNextSessionRun(context.Background(), "ses_test")
+		transition, err := data.ClaimNextSessionRun(context.Background(), "ses_test")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if run == nil || run.Message != want || run.Status != SessionRunStatusRunning {
-			t.Fatalf("claimed run = %#v, want running %q", run, want)
+		if !transition.Changed || transition.Run.Message != want || transition.Run.Status != SessionRunStatusRunning || transition.Event.Type != "session.run.started" {
+			t.Fatalf("claimed transition = %#v, want running %q", transition, want)
 		}
-		if err := data.CompleteSessionRun(context.Background(), run.ID, SessionRunStatusCompleted, ""); err != nil {
+		if _, err := data.SettleSessionRun(context.Background(), SessionRunSettlement{ID: transition.Run.ID, ExpectedStatus: SessionRunStatusRunning, Status: SessionRunStatusCompleted}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	run, err := data.ClaimNextSessionRun(context.Background(), "ses_test")
+	transition, err := data.ClaimNextSessionRun(context.Background(), "ses_test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run != nil {
-		t.Fatalf("claimed unexpected run: %#v", run)
+	if transition.Changed || transition.Run.ID != "" {
+		t.Fatalf("claimed unexpected run: %#v", transition)
+	}
+}
+
+func TestSessionRunSettlementContract(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_settle"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_settle", SessionID: "ses_settle", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.SettleSessionRun(ctx, SessionRunSettlement{ID: admission.Run.ID, ExpectedStatus: SessionRunStatusQueued, Status: SessionRunStatusCompleted}); !errors.Is(err, ErrSessionRunTransitionConflict) {
+		t.Fatalf("queued completion = %v", err)
+	}
+	aborted, err := data.SettleSessionRun(ctx, SessionRunSettlement{ID: admission.Run.ID, ExpectedStatus: SessionRunStatusQueued, Status: SessionRunStatusAborted, ErrorType: "cancelled", EventData: map[string]any{"status": "forged", "extra": "kept"}})
+	if err != nil || !aborted.Changed || aborted.Event.Type != "session.run.aborted" {
+		t.Fatalf("queued abort = %#v, %v", aborted, err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(aborted.Event.DataJSON, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["status"] != SessionRunStatusAborted || payload["run_id"] != admission.Run.ID || payload["extra"] != "kept" {
+		t.Fatalf("event data = %#v", payload)
+	}
+	if _, ok := payload["started_at"]; ok {
+		t.Fatalf("queued abort includes unset started_at: %#v", payload)
+	}
+	idempotent, err := data.SettleSessionRun(ctx, SessionRunSettlement{ID: admission.Run.ID, ExpectedStatus: SessionRunStatusQueued, Status: SessionRunStatusAborted, ErrorType: "cancelled"})
+	if err != nil || idempotent.Changed || idempotent.Event.ID != "" {
+		t.Fatalf("idempotent = %#v, %v", idempotent, err)
+	}
+	if _, err := data.SettleSessionRun(ctx, SessionRunSettlement{ID: admission.Run.ID, ExpectedStatus: SessionRunStatusQueued, Status: SessionRunStatusAborted, ErrorType: "different"}); !errors.Is(err, ErrSessionRunTransitionConflict) {
+		t.Fatalf("rewrite = %v", err)
+	}
+	if _, err := data.GetSessionRun(ctx, "ses_missing", admission.Run.ID); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing session = %v", err)
+	}
+	if _, err := data.GetSessionRun(ctx, "ses_settle", "missing"); !errors.Is(err, ErrSessionRunNotFound) {
+		t.Fatalf("missing run = %v", err)
+	}
+	runs, err := data.ListSessionRuns(ctx, "ses_settle")
+	if err != nil || len(runs) != 1 || runs[0].Status != SessionRunStatusAborted {
+		t.Fatalf("runs = %#v, %v", runs, err)
+	}
+}
+
+func TestSessionRunTransitionEventRollbackAndRace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	first, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	second, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+	ctx := context.Background()
+	if err := first.CreateSession(&Session{ID: "ses_race_runs"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := first.AdmitSessionRun(ctx, SessionRun{ID: "run_race", SessionID: "ses_race_runs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan SessionRunTransition, 2)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, data := range []*SQLiteStore{first, second} {
+		wg.Add(1)
+		go func(data *SQLiteStore) {
+			defer wg.Done()
+			<-start
+			r, err := data.ClaimNextSessionRun(ctx, "ses_race_runs")
+			results <- r
+			errs <- err
+		}(data)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	close(errs)
+	changed := 0
+	for r := range results {
+		if r.Changed {
+			changed++
+		}
+	}
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if changed != 1 {
+		t.Fatalf("claim winners = %d", changed)
+	}
+	if _, err := first.db.Exec(`CREATE TRIGGER fail_run_event BEFORE INSERT ON session_events WHEN NEW.type = 'session.run.completed' BEGIN SELECT RAISE(ABORT, 'reject'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.SettleSessionRun(ctx, SessionRunSettlement{ID: admission.Run.ID, ExpectedStatus: SessionRunStatusRunning, Status: SessionRunStatusCompleted}); err == nil {
+		t.Fatal("settlement unexpectedly succeeded")
+	}
+	run, err := first.GetSessionRun(ctx, "ses_race_runs", admission.Run.ID)
+	if err != nil || run.Status != SessionRunStatusRunning {
+		t.Fatalf("run after rollback = %#v, %v", run, err)
 	}
 }
 
@@ -193,7 +304,7 @@ func TestAdmitSessionRunSnapshotsPlacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed == nil || claimed.ID != first.Run.ID || claimed.WorkDir != "/before" {
+	if !claimed.Changed || claimed.Run.ID != first.Run.ID || claimed.Run.WorkDir != "/before" {
 		t.Fatalf("claimed run = %#v, want original placement", claimed)
 	}
 }

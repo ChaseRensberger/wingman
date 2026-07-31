@@ -9,6 +9,8 @@ var ErrSessionNotFound = errors.New("session not found")
 var ErrClientNameExists = errors.New("client name already exists")
 var ErrWorkspaceNameExists = errors.New("workspace name already exists")
 var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict")
+var ErrSessionRunNotFound = errors.New("session run not found")
+var ErrSessionRunTransitionConflict = errors.New("session run transition conflict")
 var ErrModelCallAttemptConflict = errors.New("model call attempt conflict")
 var ErrToolUseIdentityConflict = errors.New("tool use identity conflict")
 var ErrToolUseInvalidTransition = errors.New("tool use invalid transition")
@@ -42,10 +44,12 @@ type Store interface {
 	MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
 	PurgeSession(ctx context.Context, id string, expectedVersion int64) error
 	AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error)
-	ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
-	CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
+	GetSessionRun(ctx context.Context, sessionID, runID string) (*SessionRun, error)
+	ListSessionRuns(ctx context.Context, sessionID string) ([]SessionRun, error)
+	ClaimNextSessionRun(ctx context.Context, sessionID string) (SessionRunTransition, error)
+	SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error)
+	ListRunningSessionRuns(ctx context.Context) ([]SessionRun, error)
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
-	AbortRunningSessionRuns(ctx context.Context) error
 
 	// SaveMessage atomically stores a complete authoritative message revision.
 	SaveMessage(ctx context.Context, msg StoredMessage) error
@@ -60,6 +64,7 @@ type Store interface {
 	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
 	// ListModelCalls returns all model calls for the session in chronological order.
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
+	InterruptActiveModelCalls(ctx context.Context, runID, errorType, errorMessage string) error
 	SaveToolUse(ctx context.Context, use ToolUse) error
 	ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error)
 	InterruptActiveToolUses(ctx context.Context) error

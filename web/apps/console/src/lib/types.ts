@@ -76,6 +76,26 @@ export interface Session {
   updated_at: string;
 }
 
+export interface SessionRun {
+  id: string;
+  session_id: string;
+  request_id?: string;
+  admitted_version: number;
+  work_dir?: string;
+  workspace_id?: string;
+  client_id?: string;
+  sequence: number;
+  status: "queued" | "running" | "completed" | "failed" | "aborted";
+  message: string;
+  agent: Agent;
+  error_type?: string;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;

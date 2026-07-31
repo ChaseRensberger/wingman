@@ -4,10 +4,28 @@ import { wfetch } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
 import { readSSE, type SessionEvent } from "@/lib/session-stream";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
-import type { Message, Session, ToolActivity, Usage } from "@/lib/types";
+import type { Message, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 export type SessionRunRequest = Omit<FailedRun, "error">;
+
+const terminalRunEvents = new Set(["session.run.completed", "session.run.failed", "session.run.aborted"]);
+
+export function latestActiveSessionRun(runs: readonly SessionRun[]): SessionRun | undefined {
+	return runs.reduce<SessionRun | undefined>((latest, run) => {
+		if (run.status !== "queued" && run.status !== "running") return latest;
+		if (!latest || run.sequence > latest.sequence) return run;
+		return latest;
+	}, undefined);
+}
+
+export function isTerminalSessionRunEvent(type: string): boolean {
+	return terminalRunEvents.has(type);
+}
+
+export function sessionRunEventError(data: Record<string, unknown>): string {
+	return typeof data.error_message === "string" ? data.error_message : typeof data.error === "string" ? data.error : "Run failed";
+}
 
 type Options = {
 	sessionId: string;
@@ -58,6 +76,30 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		setToolActivities(new Map());
 		reset();
 		return () => eventControllerRef.current?.abort();
+	}, [sessionId]);
+
+	useEffect(() => {
+		if (sessionId === "new") return;
+		const controller = new AbortController();
+		let cancelled = false;
+
+		async function recover() {
+			try {
+				const runs = await wfetch(`/sessions/${sessionId}/runs`, { signal: controller.signal }) as SessionRun[];
+				const run = latestActiveSessionRun(runs);
+				if (cancelled || !run || activeRunRef.current || submissionControllerRef.current) return;
+				setIsStreaming(true);
+				start(sessionId, run.id);
+			} catch (err) {
+				if ((err as Error).name !== "AbortError" && !cancelled) console.error("Failed to recover session run", err);
+			}
+		}
+
+		void recover();
+		return () => {
+			cancelled = true;
+			controller.abort();
+		};
 	}, [sessionId]);
 
 	function applySessionEvent(ev: SessionEvent) {
@@ -112,17 +154,16 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			}
 			return;
 		}
-		if (ev.type === "session.run.completed") {
+		if (isTerminalSessionRunEvent(ev.type)) {
 			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
-			const usage = data.usage as Usage | undefined;
-			if (usage) setLatestRunUsage(usage);
+			if (ev.type === "session.run.completed") {
+				const usage = data.usage as Usage | undefined;
+				if (usage) setLatestRunUsage(usage);
+			}
 			if (activeRunRef.current) activeRunRef.current = { ...activeRunRef.current, completed: true };
+			setIsStreaming(false);
+			if (ev.type !== "session.run.completed") throw new Error(sessionRunEventError(data));
 			return;
-		}
-		if (ev.type === "session.run.failed") {
-			if (activeRunRef.current?.runId && data.run_id !== activeRunRef.current.runId) return;
-			if (activeRunRef.current) activeRunRef.current = { ...activeRunRef.current, completed: true };
-			throw new Error(typeof data.error === "string" ? data.error : "Run failed");
 		}
 	}
 
@@ -186,7 +227,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 	async function abort(id: string) {
 		try {
-			await wfetch(`/sessions/${id}/abort`, { method: "POST" });
+			const runID = activeRunRef.current?.runId;
+			const path = runID ? `/sessions/${id}/runs/${runID}/abort` : `/sessions/${id}/abort`;
+			await wfetch(path, { method: "POST" });
 		} catch (err) {
 			console.error("Abort failed", err);
 		}

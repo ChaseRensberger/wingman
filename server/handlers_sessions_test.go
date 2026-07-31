@@ -203,8 +203,8 @@ func (s *admissionTestStore) AdmitSessionRun(ctx context.Context, run store.Sess
 	return admission, err
 }
 
-func (s *admissionTestStore) ClaimNextSessionRun(context.Context, string) (*store.SessionRun, error) {
-	return nil, nil
+func (s *admissionTestStore) ClaimNextSessionRun(context.Context, string) (store.SessionRunTransition, error) {
+	return store.SessionRunTransition{}, nil
 }
 
 func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.T) {
@@ -541,7 +541,8 @@ type startupRecoveryStore struct {
 	store.Store
 	order        []string
 	interruptErr error
-	abortErr     error
+	listErr      error
+	resumeErr    error
 }
 
 func (s *startupRecoveryStore) InterruptActiveToolUses(context.Context) error {
@@ -552,16 +553,19 @@ func (s *startupRecoveryStore) InterruptActiveToolUses(context.Context) error {
 	return s.Store.InterruptActiveToolUses(context.Background())
 }
 
-func (s *startupRecoveryStore) AbortRunningSessionRuns(context.Context) error {
-	s.order = append(s.order, "abort")
-	if s.abortErr != nil {
-		return s.abortErr
+func (s *startupRecoveryStore) ListRunningSessionRuns(context.Context) ([]store.SessionRun, error) {
+	s.order = append(s.order, "list")
+	if s.listErr != nil {
+		return nil, s.listErr
 	}
-	return s.Store.AbortRunningSessionRuns(context.Background())
+	return s.Store.ListRunningSessionRuns(context.Background())
 }
 
 func (s *startupRecoveryStore) ListQueuedSessionRunSessions(context.Context) ([]string, error) {
 	s.order = append(s.order, "resume")
+	if s.resumeErr != nil {
+		return nil, s.resumeErr
+	}
 	return nil, nil
 }
 
@@ -578,7 +582,7 @@ func TestRecoverStartupInterruptsToolsBeforeRuns(t *testing.T) {
 	if err := server.recoverStartup(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(recoveryStore.order, ","), "interrupt,abort,resume"; got != want {
+	if got, want := strings.Join(recoveryStore.order, ","), "interrupt,list,resume"; got != want {
 		t.Fatalf("recovery order = %q, want %q", got, want)
 	}
 	uses, err := data.ListToolUses(context.Background(), "ses_recovery")
@@ -598,22 +602,187 @@ func TestRecoverStartupStopsOnFailure(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		interrupt error
-		abort     error
+		list      error
+		resume    error
 		wantOrder string
 	}{
-		{"interrupt", errors.New("interrupt failed"), nil, "interrupt"},
-		{"abort", nil, errors.New("abort failed"), "interrupt,abort"},
+		{"interrupt", errors.New("interrupt failed"), nil, nil, "interrupt"},
+		{"list", nil, errors.New("list failed"), nil, "interrupt,list"},
+		{"resume", nil, nil, errors.New("resume failed"), "interrupt,list,resume"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			recoveryStore := &startupRecoveryStore{Store: memory.NewStore(), interruptErr: test.interrupt, abortErr: test.abort}
+			recoveryStore := &startupRecoveryStore{Store: memory.NewStore(), interruptErr: test.interrupt, listErr: test.list, resumeErr: test.resume}
 			server := New(Config{Store: recoveryStore})
 			err := server.recoverStartup(context.Background())
-			if !errors.Is(err, test.interrupt) && !errors.Is(err, test.abort) {
+			if !errors.Is(err, test.interrupt) && !errors.Is(err, test.list) && !errors.Is(err, test.resume) {
 				t.Fatalf("error = %v, want wrapped recovery failure", err)
 			}
 			if got := strings.Join(recoveryStore.order, ","); got != test.wantOrder {
 				t.Fatalf("recovery order = %q, want %q", got, test.wantOrder)
 			}
 		})
+	}
+}
+
+func TestRecoverStartupSettlesRunningRunAfterChildState(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_running_recovery"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_running_recovery", SessionID: "ses_running_recovery", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(ctx, admission.Run.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.SaveMessage(ctx, store.StoredMessage{
+		ID: "msg_running_recovery", SessionID: admission.Run.SessionID, RunID: admission.Run.ID,
+		Role: "assistant", Revision: 1, State: "in_progress",
+		Parts: []store.StoredPart{{ID: "part_running_recovery", MessageID: "msg_running_recovery", Kind: "tool", PayloadJSON: []byte(`{"type":"tool","id":"part_running_recovery","tool_use_id":"tlu_running_recovery","call_id":"call","name":"bash","state":"running"}`)}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.UpsertModelCall(ctx, store.ModelCall{ID: "mcl_running_recovery", SessionID: admission.Run.SessionID, RunID: admission.Run.ID, Step: 1, Status: store.ModelCallStatusStarted, StartedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	use := store.ToolUse{ID: "tlu_running_recovery", SessionID: admission.Run.SessionID, RunID: admission.Run.ID, PartID: "part_running_recovery", Step: 1, Name: "bash", Status: store.ToolUseStatusProposed}
+	for _, status := range []string{store.ToolUseStatusProposed, store.ToolUseStatusAuthorized, store.ToolUseStatusStarted} {
+		use.Status = status
+		if err := data.SaveToolUse(ctx, use); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	server := New(Config{Store: data})
+	server.runs.reconcileInterval = time.Hour
+	t.Cleanup(func() {
+		server.shutdownCancel()
+		server.runs.stop()
+		waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.runs.wait(waitCtx)
+	})
+	if err := server.recoverStartup(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := data.GetSessionRun(ctx, admission.Run.SessionID, admission.Run.ID)
+	if err != nil || recovered.Status != store.SessionRunStatusAborted || recovered.ErrorType != "process_interrupted" {
+		t.Fatalf("run = %#v, error = %v", recovered, err)
+	}
+	calls, err := data.ListModelCalls(ctx, admission.Run.SessionID)
+	if err != nil || len(calls) != 1 || calls[0].Status != store.ModelCallStatusAborted || calls[0].ErrorType != "process_interrupted" {
+		t.Fatalf("model calls = %#v, error = %v", calls, err)
+	}
+	uses, err := data.ListToolUses(ctx, admission.Run.SessionID)
+	if err != nil || len(uses) != 1 || uses[0].Status != store.ToolUseStatusInterrupted {
+		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+	messages, err := data.ListMessages(ctx, admission.Run.SessionID)
+	if err != nil || len(messages) != 1 || messages[0].State != "failed" || messages[0].Revision != 2 {
+		t.Fatalf("messages = %#v, error = %v", messages, err)
+	}
+	events, err := data.ListSessionEvents(ctx, admission.Run.SessionID, 0, 10)
+	if err != nil || len(events) != 3 || events[2].Type != "session.run.aborted" {
+		t.Fatalf("events = %#v, error = %v", events, err)
+	}
+	if err := server.recoverStartup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	eventsAfterRetry, err := data.ListSessionEvents(ctx, admission.Run.SessionID, 0, 10)
+	if err != nil || len(eventsAfterRetry) != len(events) {
+		t.Fatalf("events after retry = %#v, error = %v", eventsAfterRetry, err)
+	}
+}
+
+func TestSessionRunEndpointsAuthorizeAndAbortQueuedRun(t *testing.T) {
+	data := memory.NewStore()
+	owner, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := data.CreateClient("Other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_runs_http", ClientID: owner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(context.Background(), store.SessionRun{SessionID: "ses_runs_http", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+
+	for _, test := range []struct {
+		method, path, client string
+		want                 int
+	}{
+		{http.MethodGet, "/sessions/ses_runs_http/runs", other.ID, http.StatusForbidden},
+		{http.MethodGet, "/sessions/ses_runs_http/runs/missing", owner.ID, http.StatusNotFound},
+		{http.MethodPost, "/sessions/ses_runs_http/runs/" + admission.Run.ID + "/abort", owner.ID, http.StatusOK},
+	} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		request.Header.Set("X-Wingman-Client", test.client)
+		response := httptest.NewRecorder()
+		server.router.ServeHTTP(response, request)
+		if response.Code != test.want {
+			t.Errorf("%s %s status = %d, want %d: %s", test.method, test.path, response.Code, test.want, response.Body.String())
+		}
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/sessions/ses_runs_http/runs", nil)
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if strings.Contains(response.Body.String(), "request_hash") {
+		t.Fatalf("request hash exposed: %s", response.Body.String())
+	}
+	var runs []store.SessionRun
+	if err := json.NewDecoder(response.Body).Decode(&runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].Status != store.SessionRunStatusAborted {
+		t.Fatalf("runs = %#v", runs)
+	}
+}
+
+func TestSessionRunWorkerPublishesOnlyCommittedTransitions(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_run_events"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(context.Background(), store.SessionRun{SessionID: "ses_run_events", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+	server.runs.wake("ses_run_events")
+	var events []store.SessionEvent
+	deadline := time.After(time.Second)
+	for {
+		events, err = data.ListSessionEvents(context.Background(), "ses_run_events", 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) == 3 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for worker events: %#v", events)
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if len(events) != 3 || events[0].Type != "session.run.queued" || events[1].Type != "session.run.started" || events[2].Type != "session.run.failed" {
+		t.Fatalf("events = %#v", events)
+	}
+	run, err := data.GetSessionRun(context.Background(), "ses_run_events", admission.Run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != store.SessionRunStatusFailed || run.ErrorType != "run_failed" || run.ErrorMessage == "" {
+		t.Fatalf("run = %#v", run)
 	}
 }

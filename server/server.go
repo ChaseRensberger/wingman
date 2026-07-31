@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/internal/observability"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
 	"github.com/chaserensberger/wingman/models/providers"
@@ -266,6 +267,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/{id}/events/history", s.handleSessionEventsHistory)
 		r.Post("/{id}/message", s.handleMessageSession)
 		r.Post("/{id}/abort", s.handleAbortSession)
+		r.Get("/{id}/runs", s.handleListSessionRuns)
+		r.Get("/{id}/runs/{runID}", s.handleGetSessionRun)
+		r.Post("/{id}/runs/{runID}/abort", s.handleAbortSessionRun)
 	})
 
 	s.router.Post("/run", s.handleRun)
@@ -353,10 +357,29 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 	if err := s.store.InterruptActiveToolUses(ctx); err != nil {
 		return fmt.Errorf("interrupt active tool uses: %w", err)
 	}
-	if err := s.store.AbortRunningSessionRuns(ctx); err != nil {
-		return fmt.Errorf("abort running session runs: %w", err)
+	runs, err := s.store.ListRunningSessionRuns(ctx)
+	if err != nil {
+		return fmt.Errorf("list running session runs: %w", err)
 	}
-	s.runs.resumeQueued(ctx)
+	for _, run := range runs {
+		if err := s.store.InterruptActiveModelCalls(ctx, run.ID, "process_interrupted", "process interrupted during run"); err != nil {
+			return fmt.Errorf("interrupt active model calls for run %s: %w", run.ID, err)
+		}
+		if err := session.RecoverRunMessages(ctx, s.store, run.SessionID, run.ID); err != nil {
+			return fmt.Errorf("recover messages for run %s: %w", run.ID, err)
+		}
+		transition, err := s.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusAborted, ErrorType: "process_interrupted", ErrorMessage: "process interrupted during run", EventData: map[string]any{"error_type": "process_interrupted", "error_message": "process interrupted during run"}})
+		if err != nil {
+			return fmt.Errorf("abort running session run %s: %w", run.ID, err)
+		}
+		if transition.Changed {
+			s.events.publish(transition.Event)
+		}
+	}
+	if err := s.runs.resumeQueued(ctx); err != nil {
+		return fmt.Errorf("resume queued session runs: %w", err)
+	}
+	s.runs.startReconciler()
 	return nil
 }
 
@@ -378,6 +401,7 @@ func (s *Server) Shutdown(ctx context.Context, srv *http.Server) error {
 	s.shutdownCancel()
 	var firstErr error
 	if s.runs != nil {
+		s.runs.stop()
 		if err := s.runs.wait(ctx); err != nil {
 			firstErr = err
 		}

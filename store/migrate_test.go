@@ -31,7 +31,8 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	for table, columns := range map[string][]string{
 		"agents":           {"permissions_json"},
 		"sessions":         {"aggregate_version"},
-		"session_runs":     {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id"},
+		"messages":         {"run_id"},
+		"session_runs":     {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
 		"model_calls":      {"run_id", "provider_request_id"},
 		"tool_uses":        {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "proposed_at"},
 		"aggregate_events": {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
@@ -55,6 +56,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	}
 	for _, index := range []string{
 		"idx_session_runs_session_request_id",
+		"idx_session_runs_one_running_per_session",
 		"idx_model_calls_session_started_at",
 		"idx_tool_uses_run_step_ordinal",
 		"idx_aggregate_events_stream",
