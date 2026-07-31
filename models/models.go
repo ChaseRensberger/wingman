@@ -6,9 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
-	"sync"
 )
 
 // ------------------------------------------------------------------
@@ -355,48 +355,114 @@ func WithPartID(p Part, id string) Part {
 // Part registry
 // ------------------------------------------------------------------
 
+// PartUnmarshaler decodes one part JSON payload.
 type PartUnmarshaler func(data []byte) (Part, error)
 
-var (
-	partRegistryMu sync.RWMutex
-	partRegistry   = map[string]PartUnmarshaler{
-		"text": func(data []byte) (Part, error) {
-			var p TextPart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-		"image": func(data []byte) (Part, error) {
-			var p ImagePart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-		"reasoning": func(data []byte) (Part, error) {
-			var p ReasoningPart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-		"tool": func(data []byte) (Part, error) {
-			var p ToolPart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-		"tool_call": func(data []byte) (Part, error) {
-			var p ToolCallPart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-		"tool_result": func(data []byte) (Part, error) {
-			var p ToolResultPart
-			err := json.Unmarshal(data, &p)
-			return p, err
-		},
-	}
-)
+var builtInPartDecoders = PartDecoders{decoders: map[string]PartUnmarshaler{
+	"text": func(data []byte) (Part, error) {
+		var p TextPart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+	"image": func(data []byte) (Part, error) {
+		var p ImagePart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+	"reasoning": func(data []byte) (Part, error) {
+		var p ReasoningPart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+	"tool": func(data []byte) (Part, error) {
+		var p ToolPart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+	"tool_call": func(data []byte) (Part, error) {
+		var p ToolCallPart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+	"tool_result": func(data []byte) (Part, error) {
+		var p ToolResultPart
+		err := json.Unmarshal(data, &p)
+		return p, err
+	},
+}}
 
-func RegisterPart(typeName string, fn PartUnmarshaler) {
-	partRegistryMu.Lock()
-	defer partRegistryMu.Unlock()
-	partRegistry[typeName] = fn
+// PartDecoders is an immutable generation of part decoders. Its built-in
+// base is used by UnmarshalPart; plugin generations derive from that base.
+type PartDecoders struct {
+	decoders map[string]PartUnmarshaler
+}
+
+// BuiltinPartDecoders returns the immutable decoder generation for built-in
+// parts only.
+func BuiltinPartDecoders() PartDecoders { return builtInPartDecoders }
+
+// NewPartRegistry starts a mutable registration set that builds on the
+// built-in part decoders.
+func NewPartRegistry() *PartRegistry { return &PartRegistry{} }
+
+// PartRegistry collects custom part decoders for one decoder generation.
+type PartRegistry struct {
+	registrations []partRegistration
+	registered    map[string]struct{}
+	built         bool
+}
+
+type partRegistration struct {
+	typeName string
+	decoder  PartUnmarshaler
+}
+
+// Register adds a custom decoder. Built-in discriminator names are reserved,
+// and a custom discriminator may appear only once in a registry.
+func (r *PartRegistry) Register(typeName string, decoder PartUnmarshaler) error {
+	if r == nil {
+		return errors.New("models: nil part registry")
+	}
+	if r.built {
+		return errors.New("models: part registry is already built")
+	}
+	if strings.TrimSpace(typeName) == "" {
+		return errors.New("models: part type is empty")
+	}
+	if decoder == nil {
+		return fmt.Errorf("models: part decoder %q is nil", typeName)
+	}
+	if _, reserved := builtInPartDecoders.decoders[typeName]; reserved {
+		return fmt.Errorf("models: part type %q is reserved", typeName)
+	}
+	if r.registered == nil {
+		r.registered = make(map[string]struct{})
+	}
+	if _, exists := r.registered[typeName]; exists {
+		return fmt.Errorf("models: part type %q is already registered", typeName)
+	}
+	r.registered[typeName] = struct{}{}
+	r.registrations = append(r.registrations, partRegistration{typeName: typeName, decoder: decoder})
+	return nil
+}
+
+// Build freezes the registry and returns its immutable decoder generation.
+func (r *PartRegistry) Build() (PartDecoders, error) {
+	if r == nil {
+		return PartDecoders{}, errors.New("models: nil part registry")
+	}
+	if r.built {
+		return PartDecoders{}, errors.New("models: part registry is already built")
+	}
+	r.built = true
+	decoders := make(map[string]PartUnmarshaler, len(builtInPartDecoders.decoders)+len(r.registrations))
+	for typeName, decoder := range builtInPartDecoders.decoders {
+		decoders[typeName] = decoder
+	}
+	for _, registration := range r.registrations {
+		decoders[registration.typeName] = registration.decoder
+	}
+	return PartDecoders{decoders: decoders}, nil
 }
 
 // NormalizeMessages folds legacy tool-role messages into the assistant tool
@@ -551,15 +617,19 @@ func MarshalPart(p Part) ([]byte, error) {
 }
 
 func UnmarshalPart(data []byte) (Part, error) {
+	return builtInPartDecoders.UnmarshalPart(data)
+}
+
+// UnmarshalPart decodes a part using this decoder generation. Unknown part
+// types remain OpaquePart values so newer payloads can round-trip safely.
+func (d PartDecoders) UnmarshalPart(data []byte) (Part, error) {
 	var wrapper struct {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return nil, err
 	}
-	partRegistryMu.RLock()
-	fn, ok := partRegistry[wrapper.Type]
-	partRegistryMu.RUnlock()
+	fn, ok := d.decoders[wrapper.Type]
 	if !ok {
 		var p OpaquePart
 		if err := json.Unmarshal(data, &p); err != nil {

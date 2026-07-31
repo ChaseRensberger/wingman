@@ -45,10 +45,20 @@ Go plugins register hooks with `plugin.Registry`.
 | `RegisterBeforeToolCall` | Mutate, deny, or skip a tool call. |
 | `RegisterAfterToolCall` | Observe or rewrite a tool result. |
 | `RegisterSink` | Receive every session event. |
+| `RegisterSinkTimeout` | Receive events with an explicit positive callback timeout. |
 | `RegisterTool` | Add a tool to the session. |
 | `RegisterPart` | Register a custom message-part decoder. |
 
-Hooks compose in install order. Transform hooks receive the previous hook's output. Sinks fan out independently.
+Hooks compose in activation order. Transform hooks receive the previous hook's
+output. Runtime hooks, tools, and sinks belong to one immutable session
+generation. Custom part decoders are rebuilt from the built-in decoder base and
+are scoped to that generation.
+
+`Activate` may return context-aware cleanup. `Session.SetPlugins` stages
+replacement, waits for active work before swapping, and cleans the previous
+generation in reverse order. `Session.Close` performs terminal cleanup. Sink
+dispatch waits one second by default, permits one callback in flight, and drops
+events while a timed-out callback remains blocked.
 
 ## RPC Plugin Support
 

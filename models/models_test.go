@@ -2,8 +2,59 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestPartDecoderGenerationIsScoped(t *testing.T) {
+	registry := NewPartRegistry()
+	if err := registry.Register("custom", opaqueDecoder("custom")); err != nil {
+		t.Fatal(err)
+	}
+	decoders, err := registry.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	part, err := decoders.UnmarshalPart([]byte(`{"type":"custom","value":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := part.(OpaquePart); !ok {
+		t.Fatalf("scoped part = %T", part)
+	}
+	part, err = UnmarshalPart([]byte(`{"type":"custom","value":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := part.(OpaquePart); !ok {
+		t.Fatalf("base part = %T", part)
+	}
+	if err := registry.Register("later", opaqueDecoder("later")); err == nil {
+		t.Fatal("Register after Build succeeded")
+	}
+}
+
+func TestPartRegistryRejectsInvalidRegistrations(t *testing.T) {
+	registry := NewPartRegistry()
+	for _, typeName := range []string{"", " ", "text"} {
+		if err := registry.Register(typeName, opaqueDecoder(typeName)); err == nil {
+			t.Fatalf("Register(%q) succeeded", typeName)
+		}
+	}
+	if err := registry.Register("custom", opaqueDecoder("custom")); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register("custom", opaqueDecoder("custom")); err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("duplicate error = %v", err)
+	}
+}
+
+func opaqueDecoder(typeName string) PartUnmarshaler {
+	return func(data []byte) (Part, error) {
+		return OpaquePart{TypeName: typeName, Raw: append([]byte(nil), data...)}, nil
+	}
+}
 
 func TestMessageJSONIdentityAndState(t *testing.T) {
 	message := Message{ID: "msg_1", Revision: 3, State: MessageStateCompleted, Role: RoleUser, Content: Content{TextPart{ID: "part_1", Text: "hello"}}}

@@ -17,63 +17,20 @@ Wingman is yet another agent harness, but this one is:
 - Independent of external dependencies, making it ideal for running in secure or airgapped environments.
 - Highly extensible: plugin support via in-process Go modules or out-of-process JSON-RPC. Plugins can register tools, attach to lifecycle events, rewrite history, and more.
 
-## Quick Start
+## Install
 
-Install the latest release:
-
-```bash
 curl -fsSL https://wingman.actor/install | bash
-```
 
-Install a specific prerelease:
+## Add to path
 
-```bash
-curl -fsSL https://wingman.actor/install | bash -s -- --version 0.2.0-beta.1
-```
+export PATH="~/.wingman/bin:$PATH"
 
-Restart your shell if the installer added `~/.wingman/bin` to your `PATH`, then verify the binary:
+## Enable
 
-```bash
-wingman version
-```
-
-Start Wingman in the foreground:
-
-```bash
-wingman serve
-```
-
-The server listens on `127.0.0.1:2323` by default and stores data in SQLite at `~/.local/share/wingman/wingman.db`.
-
-Open the bundled web UI:
-
-```text
-http://127.0.0.1:2323/console
-```
-
-Install and start Wingman in the background:
-
-```bash
 wingman up
-```
 
-On Linux, `wingman up` prompts for `sudo` if needed, installs a systemd service, and starts it. On macOS, it installs and starts a per-user LaunchAgent without `sudo`.
+## Docs
 
-Update a release installation:
+[Introduction](https://docs.wingman.actor/)
+[Quick Start](https://docs.wingman.actor/start-here/quickstart)
 
-```bash
-wingman update
-```
-
-The command downloads the matching release for your platform, verifies it against the published SHA-256 checksum, replaces a writable installed binary, and restarts a running managed service.
-
-## Features
-
-- **Client-agnostic runtime** - Run Wingman as the backend for any client that depends on LLM functionality.
-- **Extendable** - Strong plugin support so you can extend session behavior however you want.
-- **Provider-agnostic** - Wingman ships its own provider-agnostic model SDK, WingModels.
-- **Context handoff** - Swap between provider/model combinations with minimal, and often zero, data loss.
-- **SQLite-backed sessions** - Store agents, sessions, messages, parts, and provider auth in a local SQLite database.
-- **HTTP API** - Communicate with Wingman via HTTP from your own clients.
-
-**Want to learn more?** [Check out the site](https://wingman.actor) & [Read the docs](https://docs.wingman.actor)

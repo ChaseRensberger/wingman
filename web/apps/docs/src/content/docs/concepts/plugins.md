@@ -30,17 +30,25 @@ Go plugins are normal Go packages that implement Wingman's plugin interface:
 ```go
 type Plugin interface {
     Name() string
-    Install(*plugin.Registry) error
+    Activate(*plugin.Registry) (plugin.Cleanup, error)
 }
 ```
 
-`Install` receives a registry. Use it to register hooks, tools, event sinks, transforms, or custom message-part decoders.
+`Activate` receives a session-scoped registry. Use it to register hooks, tools,
+event sinks, transforms, or custom message-part decoders. Return cleanup for any
+resources acquired during activation.
 
 ```go
-func (p *Plugin) Install(r *plugin.Registry) error {
-    r.RegisterTransformContext(p.transformContext)
-    r.RegisterSink(run.SinkFunc(p.sink))
-    return nil
+func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
+    if err := r.RegisterTransformContext(p.transformContext); err != nil {
+        return nil, err
+    }
+    if err := r.RegisterSink(run.SinkFunc(p.sink)); err != nil {
+        return nil, err
+    }
+    return func(context.Context) error {
+        return p.close()
+    }, nil
 }
 ```
 
@@ -52,7 +60,18 @@ sess := session.New(
     session.WithModelRef(modelRef, modelInfo),
     session.WithPlugin(myplugin.New()),
 )
+defer sess.Close(context.Background())
 ```
+
+Plugins activate lazily before the first run. `SetPlugins` stages a complete
+replacement and swaps it only after successful activation; failure preserves the
+current generation. `Session.Close` waits for active work and releases plugins
+in reverse activation order. Custom part decoders are scoped to that generation
+and never mutate a process-global registry.
+
+`RegisterSink` uses a one-second dispatch timeout by default and permits at most
+one callback in flight per sink. Use `RegisterSinkTimeout` to choose another
+positive timeout. A blocked sink drops later events until its callback returns.
 
 Use Go plugins for embedded applications, custom binaries, performance-sensitive hooks, and code that needs typed access to hook inputs.
 

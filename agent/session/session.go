@@ -61,7 +61,13 @@ type Session struct {
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
 	// (model can change via SetModelRef between turns).
-	plugins []plugin.Plugin
+	plugins          []plugin.Plugin
+	generation       *plugin.Generation
+	partDecoders     models.PartDecoders
+	replacingPlugins bool
+	closed           bool
+	closeDone        chan struct{}
+	closeErr         error
 
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
@@ -90,6 +96,7 @@ type Session struct {
 
 	history []models.Message
 	mu      sync.RWMutex
+	runMu   sync.Mutex
 }
 
 // sessionMessagePersistence assigns one durable history index to every
@@ -142,8 +149,10 @@ type Option func(*Session)
 // behavior bundles such as compaction.New().
 func New(opts ...Option) *Session {
 	s := &Session{
-		id:      store.NewID(store.PrefixSession),
-		history: []models.Message{},
+		id:           store.NewID(store.PrefixSession),
+		history:      []models.Message{},
+		partDecoders: models.BuiltinPartDecoders(),
+		closeDone:    make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -268,16 +277,103 @@ func WithAfterRun(h run.AfterRunHook) Option {
 	return func(s *Session) { s.afterRun = h }
 }
 
-// WithPlugin installs one or more plugins. Plugins contribute hooks,
-// tools, sinks, and Part-type decoders. Hook composition order is
-// install order (the first plugin's hook sees the raw slice; later
-// plugins see the previous plugin's output). Tool name collisions
-// resolve last-wins; sinks fan out to all installed plugins.
+// WithPlugin declares one or more plugins for lazy activation before the first
+// run. Plugins contribute hooks, tools, bounded sinks, and scoped Part decoders.
+// Hook composition order is declaration order. Tool names must be unique.
 //
 // Nothing is installed by default; bare New() sessions run with an
 // empty plugin set.
 func WithPlugin(plugins ...plugin.Plugin) Option {
 	return func(s *Session) { s.plugins = append(s.plugins, plugins...) }
+}
+
+// SetPlugins stages and atomically replaces the active plugin generation.
+// Activation failure leaves the previous generation active. Cleanup for the
+// replaced generation runs after in-flight work has finished.
+func (s *Session) SetPlugins(ctx context.Context, plugins ...plugin.Plugin) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return ErrClosed
+	}
+	if s.replacingPlugins {
+		s.mu.Unlock()
+		return ErrPluginReplacementInProgress
+	}
+	s.replacingPlugins = true
+	s.mu.Unlock()
+
+	var next *plugin.Generation
+	var err error
+	if len(plugins) > 0 {
+		next, err = plugin.ActivateAll(plugins...)
+	}
+	if err != nil {
+		s.mu.Lock()
+		s.replacingPlugins = false
+		s.mu.Unlock()
+		return err
+	}
+
+	s.runMu.Lock()
+	s.mu.Lock()
+	if s.closed {
+		s.replacingPlugins = false
+		s.mu.Unlock()
+		s.runMu.Unlock()
+		_ = next.Close(ctx)
+		return ErrClosed
+	}
+	previous := s.generation
+	s.plugins = append([]plugin.Plugin(nil), plugins...)
+	s.generation = next
+	s.partDecoders = models.BuiltinPartDecoders()
+	if next != nil {
+		s.partDecoders = next.Parts()
+	}
+	s.replacingPlugins = false
+	s.mu.Unlock()
+	err = previous.Close(ctx)
+	s.runMu.Unlock()
+	return err
+}
+
+// Close waits for the active run and releases the current plugin generation.
+// It is idempotent.
+func (s *Session) Close(ctx context.Context) error {
+	s.mu.Lock()
+	if s.closed {
+		done := s.closeDone
+		s.mu.Unlock()
+		select {
+		case <-done:
+			s.mu.RLock()
+			err := s.closeErr
+			s.mu.RUnlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if s.replacingPlugins {
+		s.mu.Unlock()
+		return ErrPluginReplacementInProgress
+	}
+	s.closed = true
+	s.mu.Unlock()
+
+	s.runMu.Lock()
+	s.mu.Lock()
+	generation := s.generation
+	s.generation = nil
+	s.mu.Unlock()
+	err := generation.Close(ctx)
+	s.mu.Lock()
+	s.closeErr = err
+	close(s.closeDone)
+	s.mu.Unlock()
+	s.runMu.Unlock()
+	return err
 }
 
 // WithMessageSink installs a callback fired for every complete
@@ -427,7 +523,9 @@ type ToolCallResult struct {
 // Sentinel errors. ErrNoModel is returned when Run is called before a
 // model has been configured.
 var (
-	ErrNoModel = errors.New("session: no model configured")
+	ErrNoModel                     = errors.New("session: no model configured")
+	ErrClosed                      = errors.New("session: closed")
+	ErrPluginReplacementInProgress = errors.New("session: plugin replacement already in progress")
 )
 
 // Run drives one user message through the loop synchronously.
@@ -445,7 +543,13 @@ func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 // internal sink. The session's own sink collects ToolCallResults and
 // keeps the running history in sync.
 func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sink) (*Result, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil, ErrClosed
+	}
 	if s.client == nil || s.model.Provider == "" || s.model.ID == "" {
 		s.mu.Unlock()
 		return nil, ErrNoModel
@@ -471,7 +575,44 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	rawTransformToolDefs := s.transformToolDefs
 	rawTransformParams := s.transformParams
 	rawAfterRun := s.afterRun
-	plugins := append([]plugin.Plugin(nil), s.plugins...)
+	if s.generation == nil && len(s.plugins) > 0 {
+		if s.replacingPlugins {
+			s.mu.Unlock()
+			return nil, ErrPluginReplacementInProgress
+		}
+		s.replacingPlugins = true
+		plugins := append([]plugin.Plugin(nil), s.plugins...)
+		s.mu.Unlock()
+		generation, err := plugin.ActivateAll(plugins...)
+		s.mu.Lock()
+		s.replacingPlugins = false
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		if s.closed {
+			s.mu.Unlock()
+			_ = generation.Close(ctx)
+			return nil, ErrClosed
+		}
+		s.generation = generation
+		s.partDecoders = generation.Parts()
+	}
+	built := plugin.Built{}
+	if s.generation != nil {
+		built = s.generation.Runtime()
+	}
+	tools = append(tools, built.Tools...)
+	if _, err := tool.Compose(tools); err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("session tool catalog: %w", err)
+	}
+	for _, t := range tools {
+		if tool.IsDirectoryScoped(t) && workDir == "" {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
+		}
+	}
 	messageSink := s.messageSink
 	outputSchema := s.outputSchema
 	agentID := s.agentID
@@ -500,24 +641,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	historySnap := append([]models.Message(nil), s.history...)
 	s.mu.Unlock()
 
-	// Build the plugin registry. Done per-Run so plugins close over
-	// the *current* session state (model, etc.) and so plugin Install
-	// errors fail the call rather than the constructor. Plugin Name()
-	// must be unique within a session — duplicates almost always mean
-	// a misconfiguration (e.g. two storage plugins fighting over
-	// initial history) and should fail loudly.
-	reg := plugin.NewRegistry()
-	seen := make(map[string]bool, len(plugins))
-	for _, pl := range plugins {
-		name := pl.Name()
-		if seen[name] {
-			return nil, fmt.Errorf("plugin %q already installed in this session", name)
-		}
-		seen[name] = true
-		if err := pl.Install(reg); err != nil {
-			return nil, fmt.Errorf("plugin %q install: %w", name, err)
-		}
-	}
 	// Inject the session's own in-memory history as the final
 	// BeforeRun contribution. Plugin BeforeRun hooks run first;
 	// the session then appends its in-memory snapshot on top. This
@@ -525,10 +648,17 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	// history" invariant intact while preserving the existing
 	// AddMessage / SetHistory / Run-then-Run-again semantics for
 	// SDK consumers.
-	reg.RegisterBeforeRun(func(_ context.Context, current []models.Message) ([]models.Message, error) {
+	pluginBeforeRun := built.Hooks.BeforeRun
+	built.Hooks.BeforeRun = func(ctx context.Context, current []models.Message) ([]models.Message, error) {
+		if pluginBeforeRun != nil {
+			var err error
+			current, err = pluginBeforeRun(ctx, current)
+			if err != nil {
+				return nil, err
+			}
+		}
 		return append(current, historySnap...), nil
-	})
-	built := reg.Build()
+	}
 
 	// Hook composition: plugin-contributed hooks run first; user-
 	// supplied raw hooks run last and see the post-plugin slice.
@@ -537,18 +667,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	transformToolDefs := composeTransformToolDefs(built.Hooks.TransformToolDefs, rawTransformToolDefs)
 	transformParams := composeTransformParams(built.Hooks.TransformParams, rawTransformParams)
 	afterRun := composeAfterRun(built.Hooks.AfterRun, rawAfterRun)
-
-	// Tool composition: session tools first, then plugin tools (later
-	// wins on name collision via the loop's registry).
-	tools = append(tools, built.Tools...)
-	if _, err := tool.Compose(tools); err != nil {
-		return nil, fmt.Errorf("session tool catalog: %w", err)
-	}
-	for _, t := range tools {
-		if tool.IsDirectoryScoped(t) && workDir == "" {
-			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
-		}
-	}
 
 	// Sink fan-out: persist MessageEvents, then forward to the
 	// messageSink, plugin sinks, and extraSink. Tool results are

@@ -1,12 +1,12 @@
 // Package plugin defines the agent plugin model: a Plugin is a
 // bundle of hook installations, custom tools, and custom Part type
-// registrations, packaged behind a single Install call.
+// registrations, packaged behind a single activation call.
 //
 // The motivation is packaging related extension points together. A
 // single plugin can register tool gates, lifecycle observers, custom
 // tools, and compaction behavior. Without an aggregating
 // abstraction, equivalents in Go would each be wired separately into
-// loop config, tool slice, and the global part registry — easy to do
+// loop config, tool slice, and a scoped part registry — easy to do
 // once, painful to compose across many plugins, and impossible to
 // opt-in at the session boundary as one unit.
 //
@@ -14,15 +14,14 @@
 //
 // The loop's Hooks struct allows exactly one function per seam (single
 // call site, no surprise ordering). When multiple plugins want the same
-// seam, the registry composes them in install order:
+// seam, the registry composes them in activation order:
 //
 //   - Pipeline seams (TransformHistory, TransformContext, BeforeToolCall,
 //     AfterToolCall) chain: each hook receives the previous one's output.
 //   - Sink subscribers run independently: every registered sink sees
 //     every event.
 //   - Tool registrations merge into the session's tool slice.
-//   - Part registrations call models.RegisterPart directly (the
-//     part registry is process-global; idempotent across re-installs).
+//   - Part registrations build a decoder generation scoped to this activation.
 //
 // # Loading model
 //
@@ -39,10 +38,10 @@
 //
 //	func (p *MyPlugin) Name() string { return "my-plugin" }
 //
-//	func (p *MyPlugin) Install(r *plugin.Registry) error {
+//	func (p *MyPlugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 //	    r.RegisterTransformHistory(p.transformHistory)
 //	    r.RegisterTool(p.someTool)
-//	    return nil
+//	    return nil, nil
 //	}
 //
 // Plugins should keep their identity (Name) stable across versions so
@@ -53,6 +52,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
@@ -60,26 +64,26 @@ import (
 )
 
 // Plugin is the aggregating abstraction. Implementations bundle hook
-// installations, tools, and part registrations behind a single Install.
+// installations, tools, and part registrations behind a single activation.
 type Plugin interface {
 	// Name is a stable identifier for the plugin. Used in error
 	// messages and (later) observability. Must be unique among plugins
 	// installed into the same session.
 	Name() string
 
-	// Install registers the plugin's contributions with the registry.
-	// Called exactly once per session.New invocation. Errors fail
-	// session construction.
-	Install(*Registry) error
+	// Activate registers this plugin's contributions and optionally returns
+	// cleanup for resources acquired during activation.
+	Activate(*Registry) (Cleanup, error)
 }
 
-// Registry collects plugin contributions during the install phase.
+// Cleanup releases plugin activation resources.
+type Cleanup func(context.Context) error
+
+// Registry collects plugin contributions during activation.
 // Session uses Build to fold the registry into a run.Hooks value
 // (with composed pipelines), a sink, and a merged tool slice.
 //
-// Registry is single-use: once Build is called, further Register* calls
-// have undefined effect. Sessions construct a fresh Registry per
-// activation.
+// Registry is single-use: Build freezes it and subsequent registrations fail.
 type Registry struct {
 	beforeRun         []run.BeforeRunHook
 	transformHistory  []run.TransformHistoryHook
@@ -89,112 +93,184 @@ type Registry struct {
 	afterRun          []run.AfterRunHook
 	transformToolDefs []run.TransformToolDefsHook
 	transformParams   []run.TransformParamsHook
-	sinks             []run.Sink
+	sinks             []sinkRegistration
 	tools             []tool.Tool
+	parts             []partRegistration
+	built             bool
+	owner             string
+}
+
+type partRegistration struct {
+	owner    string
+	typeName string
+	decoder  models.PartUnmarshaler
+}
+
+type sinkRegistration struct {
+	owner    string
+	sink     run.Sink
+	timeout  time.Duration
+	inFlight *atomic.Bool
 }
 
 // NewRegistry returns an empty Registry.
 func NewRegistry() *Registry { return &Registry{} }
 
-// RegisterBeforeRun adds a BeforeRun hook. Hooks compose in install
+// RegisterBeforeRun adds a BeforeRun hook. Hooks compose in activation
 // order: each receives the accumulated history from prior hooks and
 // returns the new accumulated history. Returning nil is a no-op.
 //
 // The canonical user is the storage plugin (rehydrate from disk);
 // other plugins layer on top (resumption markers, header context).
-func (r *Registry) RegisterBeforeRun(h run.BeforeRunHook) {
+func (r *Registry) RegisterBeforeRun(h run.BeforeRunHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.beforeRun = append(r.beforeRun, h)
 	}
+	return nil
 }
 
 // RegisterTransformHistory adds a TransformHistory hook to the pipeline. Hooks run
-// in install order; each receives the previous hook's output as
+// in activation order; each receives the previous hook's output as
 // info.Messages.
-func (r *Registry) RegisterTransformHistory(h run.TransformHistoryHook) {
+func (r *Registry) RegisterTransformHistory(h run.TransformHistoryHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.transformHistory = append(r.transformHistory, h)
 	}
+	return nil
 }
 
 // RegisterTransformContext adds a TransformContext hook to the
-// per-turn ephemeral pipeline. Hooks run in install order.
-func (r *Registry) RegisterTransformContext(h run.TransformContextHook) {
+// per-turn ephemeral pipeline. Hooks run in activation order.
+func (r *Registry) RegisterTransformContext(h run.TransformContextHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.transformContext = append(r.transformContext, h)
 	}
+	return nil
 }
 
 // RegisterBeforeToolCall adds a BeforeToolCall hook. Hooks run in
-// install order; the first hook to return ErrSkipTool short-circuits
+// activation order; the first hook to return ErrSkipTool short-circuits
 // the chain.
-func (r *Registry) RegisterBeforeToolCall(h run.BeforeToolCallFunc) {
+func (r *Registry) RegisterBeforeToolCall(h run.BeforeToolCallFunc) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.beforeToolCall = append(r.beforeToolCall, h)
 	}
+	return nil
 }
 
 // RegisterAfterToolCall adds an AfterToolCall hook. Hooks run in
-// install order; each receives the previous hook's output.
-func (r *Registry) RegisterAfterToolCall(h run.AfterToolCallFunc) {
+// activation order; each receives the previous hook's output.
+func (r *Registry) RegisterAfterToolCall(h run.AfterToolCallFunc) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.afterToolCall = append(r.afterToolCall, h)
 	}
+	return nil
 }
 
-// RegisterAfterRun adds an AfterRun hook. Hooks run in install order;
+// RegisterAfterRun adds an AfterRun hook. Hooks run in activation order;
 // every registered hook sees the same Result and errors are joined.
-func (r *Registry) RegisterAfterRun(h run.AfterRunHook) {
+func (r *Registry) RegisterAfterRun(h run.AfterRunHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.afterRun = append(r.afterRun, h)
 	}
+	return nil
 }
 
 // RegisterTransformToolDefs adds a TransformToolDefs hook to the
-// per-turn pipeline. Hooks run in install order; each receives the
+// per-turn pipeline. Hooks run in activation order; each receives the
 // previous hook's output.
-func (r *Registry) RegisterTransformToolDefs(h run.TransformToolDefsHook) {
+func (r *Registry) RegisterTransformToolDefs(h run.TransformToolDefsHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.transformToolDefs = append(r.transformToolDefs, h)
 	}
+	return nil
 }
 
 // RegisterTransformParams adds a TransformParams hook to the per-turn
-// pipeline. Hooks run in install order; each receives the previous
+// pipeline. Hooks run in activation order; each receives the previous
 // hook's output.
-func (r *Registry) RegisterTransformParams(h run.TransformParamsHook) {
+func (r *Registry) RegisterTransformParams(h run.TransformParamsHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if h != nil {
 		r.transformParams = append(r.transformParams, h)
 	}
+	return nil
 }
 
 // RegisterSink adds an event observer. All registered sinks receive
-// every event, in install order.
-func (r *Registry) RegisterSink(s run.Sink) {
-	if s != nil {
-		r.sinks = append(r.sinks, s)
-	}
+// every event, in activation order.
+func (r *Registry) RegisterSink(s run.Sink) error {
+	return r.RegisterSinkTimeout(s, DefaultSinkTimeout)
 }
 
-// RegisterTool adds a tool to the session's tool list. Plugins may
-// override built-in tools by registering with the same name; the
-// session's tool slice already contains user-supplied tools when the
-// registry is built, so plugin tools are appended (later wins on
-// name clashes inside the loop's tool registry).
-func (r *Registry) RegisterTool(t tool.Tool) {
+// DefaultSinkTimeout bounds how long event dispatch waits for a plugin sink.
+const DefaultSinkTimeout = time.Second
+
+// RegisterSinkTimeout adds an event observer with an explicit dispatch timeout.
+func (r *Registry) RegisterSinkTimeout(s run.Sink, timeout time.Duration) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if s == nil {
+		return nil
+	}
+	if timeout <= 0 {
+		return errors.New("plugin: sink timeout must be positive")
+	}
+	r.sinks = append(r.sinks, sinkRegistration{owner: r.owner, sink: s, timeout: timeout, inFlight: new(atomic.Bool)})
+	return nil
+}
+
+// RegisterTool adds a tool to the session's tool list. The session's strict
+// catalog composition rejects collisions with session or other plugin tools.
+func (r *Registry) RegisterTool(t tool.Tool) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
 	if t != nil {
 		r.tools = append(r.tools, t)
 	}
+	return nil
 }
 
 // RegisterPart registers a Part discriminator + decoder with the
-// process-global models part registry. Plugins typically call this
-// from Install so loaded sessions decode their custom parts correctly.
-//
-// Re-registering an existing name overwrites; safe to call across
-// re-installs of the same plugin.
-func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) {
-	models.RegisterPart(typeName, fn)
+// scoped decoder generation. Duplicate custom discriminators are rejected
+// when the generation is built.
+func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(typeName) == "" {
+		return errors.New("plugin: part type is empty")
+	}
+	if fn == nil {
+		return fmt.Errorf("plugin: part decoder %q is nil", typeName)
+	}
+	r.parts = append(r.parts, partRegistration{owner: r.owner, typeName: typeName, decoder: fn})
+	return nil
 }
 
 // Built bundles the composed hooks, merged tool slice, and aggregated
@@ -207,10 +283,132 @@ type Built struct {
 	Sink run.Sink
 }
 
-// Build folds the registry's contributions into a Built value. The
-// returned Built is independent of the registry; further mutations to
-// the registry don't affect it.
-func (r *Registry) Build() Built {
+// Generation is one immutable plugin activation. Its runtime contributions
+// and PartDecoders are scoped to this generation.
+type Generation struct {
+	built        Built
+	partDecoders models.PartDecoders
+	cleanups     []Cleanup
+	closeOnce    sync.Once
+	closeErr     error
+}
+
+// Runtime returns a snapshot of this generation's runtime contributions.
+func (g *Generation) Runtime() Built {
+	if g == nil {
+		return Built{}
+	}
+	built := g.built
+	built.Tools = append([]tool.Tool(nil), built.Tools...)
+	return built
+}
+
+// Parts returns this generation's immutable part decoder set.
+func (g *Generation) Parts() models.PartDecoders {
+	if g == nil {
+		return models.BuiltinPartDecoders()
+	}
+	return g.partDecoders
+}
+
+// Close releases activated plugins in reverse activation order. It is safe to
+// call concurrently and returns the same joined error on every call.
+func (g *Generation) Close(ctx context.Context) error {
+	if g == nil {
+		return nil
+	}
+	g.closeOnce.Do(func() {
+		var errs []error
+		for i := len(g.cleanups) - 1; i >= 0; i-- {
+			if g.cleanups[i] != nil {
+				errs = append(errs, g.cleanups[i](ctx))
+			}
+		}
+		g.closeErr = errors.Join(errs...)
+	})
+	return g.closeErr
+}
+
+// ActivateAll stages the supplied plugins into one scoped generation. If an
+// activation or build fails, already-acquired resources are cleaned up in
+// reverse order and no process-global state is changed.
+func ActivateAll(plugins ...Plugin) (*Generation, error) {
+	if len(plugins) == 0 {
+		return nil, errors.New("plugin: no plugins")
+	}
+	r := NewRegistry()
+	seen := make(map[string]struct{}, len(plugins))
+	cleanups := make([]Cleanup, 0, len(plugins))
+	rollback := func() error {
+		var errs []error
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			if cleanups[i] != nil {
+				errs = append(errs, cleanups[i](context.Background()))
+			}
+		}
+		return errors.Join(errs...)
+	}
+	for i, p := range plugins {
+		if isNilPlugin(p) {
+			return nil, errors.Join(fmt.Errorf("plugin: plugin[%d] is nil", i), rollback())
+		}
+		name := strings.TrimSpace(p.Name())
+		if name == "" {
+			return nil, errors.Join(fmt.Errorf("plugin: plugin[%d] has an empty name", i), rollback())
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return nil, errors.Join(fmt.Errorf("plugin: duplicate plugin %q", name), rollback())
+		}
+		seen[name] = struct{}{}
+		r.owner = name
+		cleanup, err := p.Activate(r)
+		if cleanup != nil {
+			cleanups = append(cleanups, cleanup)
+		}
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("plugin %q: %w", name, err), rollback())
+		}
+	}
+	built, decoders, err := r.build()
+	if err != nil {
+		return nil, errors.Join(err, rollback())
+	}
+	return &Generation{built: built, partDecoders: decoders, cleanups: cleanups}, nil
+}
+
+func isNilPlugin(p Plugin) bool {
+	if p == nil {
+		return true
+	}
+	v := reflect.ValueOf(p)
+	return v.Kind() == reflect.Ptr && v.IsNil()
+}
+
+func (r *Registry) mutable() error {
+	if r == nil {
+		return errors.New("plugin: nil registry")
+	}
+	if r.built {
+		return errors.New("plugin: registry is already built")
+	}
+	return nil
+}
+
+func (r *Registry) build() (Built, models.PartDecoders, error) {
+	if err := r.mutable(); err != nil {
+		return Built{}, models.PartDecoders{}, err
+	}
+	r.built = true
+	partRegistry := models.NewPartRegistry()
+	for _, part := range r.parts {
+		if err := partRegistry.Register(part.typeName, part.decoder); err != nil {
+			return Built{}, models.PartDecoders{}, fmt.Errorf("plugin %q: %w", part.owner, err)
+		}
+	}
+	decoders, err := partRegistry.Build()
+	if err != nil {
+		return Built{}, models.PartDecoders{}, err
+	}
 	hooks := run.Hooks{}
 
 	switch len(r.beforeRun) {
@@ -281,12 +479,12 @@ func (r *Registry) Build() Built {
 
 	var sink run.Sink
 	if len(r.sinks) > 0 {
-		sink = multiSink(append([]run.Sink(nil), r.sinks...))
+		sink = multiSink(append([]sinkRegistration(nil), r.sinks...))
 	}
 
 	tools := append([]tool.Tool(nil), r.tools...)
 
-	return Built{Hooks: hooks, Tools: tools, Sink: sink}
+	return Built{Hooks: hooks, Tools: tools, Sink: sink}, decoders, nil
 }
 
 // composeBeforeRun chains BeforeRun hooks. Each receives the
@@ -436,13 +634,29 @@ func composeTransformParams(hooks []run.TransformParamsHook) run.TransformParams
 	}
 }
 
-// multiSink fans an event out to multiple sinks. Each sink runs
-// synchronously in install order; a slow sink slows the run. Sinks
-// that need concurrency should fire-and-forget into their own goroutines.
-type multiSink []run.Sink
+// multiSink fans events out in registration order. Each sink has at most one
+// callback in flight. A timed-out callback keeps its slot until it returns,
+// so later events are dropped rather than growing goroutines without bound.
+type multiSink []sinkRegistration
 
 func (m multiSink) OnEvent(e run.Event) {
-	for _, s := range m {
-		s.OnEvent(e)
+	for _, registration := range m {
+		registration.dispatch(e)
+	}
+}
+
+func (r sinkRegistration) dispatch(e run.Event) {
+	if !r.inFlight.CompareAndSwap(false, true) {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer r.inFlight.Store(false)
+		r.sink.OnEvent(e)
+	}()
+	select {
+	case <-done:
+	case <-time.After(r.timeout):
 	}
 }

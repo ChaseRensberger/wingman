@@ -222,23 +222,29 @@ func WithModelRef(client models.Client, ref models.ModelRef, info models.ModelIn
 // Name implements plugin.Plugin.
 func (p *Plugin) Name() string { return "compaction" }
 
-// Install implements plugin.Plugin. Registers the marker Part decoder,
+// Activate implements plugin.Plugin. Registers the marker Part decoder,
 // the TransformHistory write-side hook, and the TransformContext read-side
 // filter.
-func (p *Plugin) Install(r *plugin.Registry) error {
+func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 	// Part decoder: return an OpaquePart preserving the bytes. The
 	// payload is small and DecodeMarker re-parses on demand; storing
 	// raw bytes avoids needing a models.Part-satisfying typed
 	// wrapper (the Part union is sealed to models).
-	r.RegisterPart(PartType, func(data []byte) (models.Part, error) {
+	if err := r.RegisterPart(PartType, func(data []byte) (models.Part, error) {
 		raw := make([]byte, len(data))
 		copy(raw, data)
 		return models.OpaquePart{TypeName: PartType, Raw: raw}, nil
-	})
+	}); err != nil {
+		return nil, err
+	}
 
-	r.RegisterTransformHistory(p.transformHistory)
-	r.RegisterTransformContext(p.transformContext)
-	return nil
+	if err := r.RegisterTransformHistory(p.transformHistory); err != nil {
+		return nil, err
+	}
+	if err := r.RegisterTransformContext(p.transformContext); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 // transformHistory is the write-side seam. When token usage crosses the

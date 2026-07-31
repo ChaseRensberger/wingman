@@ -50,7 +50,7 @@ func (s *Session) hydrate(ctx context.Context) error {
 	}
 	msgs := make([]models.Message, len(storedMsgs))
 	for i, sm := range storedMsgs {
-		m, err := storedMessageToModel(sm)
+		m, err := storedMessageToModel(sm, s.partDecoders)
 		if err != nil {
 			return fmt.Errorf("hydrate message[%d]: %w", i, err)
 		}
@@ -518,12 +518,15 @@ func estimatedCost(usage models.Usage, info models.ModelInfo) *float64 {
 }
 
 func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {
-	msg := models.Message{
-		ID:       sm.ID,
-		Revision: sm.Revision,
-		State:    models.MessageState(sm.State),
-		Role:     models.Role(sm.Role),
-	}
+	return storedMessageToModelWithDecoders(sm, models.BuiltinPartDecoders())
+}
+
+func storedMessageToModel(sm store.StoredMessage, decoders models.PartDecoders) (models.Message, error) {
+	return storedMessageToModelWithDecoders(sm, decoders)
+}
+
+func storedMessageToModelWithDecoders(sm store.StoredMessage, decoders models.PartDecoders) (models.Message, error) {
+	msg := models.Message{ID: sm.ID, Revision: sm.Revision, State: models.MessageState(sm.State), Role: models.Role(sm.Role)}
 	if len(sm.MetadataJSON) > 0 {
 		var meta models.Meta
 		if err := json.Unmarshal(sm.MetadataJSON, &meta); err != nil {
@@ -535,7 +538,7 @@ func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {
 	}
 	content := make(models.Content, len(sm.Parts))
 	for i, sp := range sm.Parts {
-		part, err := models.UnmarshalPart(sp.PayloadJSON)
+		part, err := decoders.UnmarshalPart(sp.PayloadJSON)
 		if err != nil {
 			return models.Message{}, fmt.Errorf("unmarshal part[%d]: %w", i, err)
 		}
@@ -546,10 +549,6 @@ func StoredMessageToModel(sm store.StoredMessage) (models.Message, error) {
 	}
 	msg.Content = content
 	return msg, nil
-}
-
-func storedMessageToModel(sm store.StoredMessage) (models.Message, error) {
-	return StoredMessageToModel(sm)
 }
 
 func marshalMessageMetadata(msg models.Message) (models.Meta, error) {

@@ -184,6 +184,15 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	if err == nil {
 		var runSession *session.Session
 		runSession, err = m.server.buildSessionForRun(&queued.Agent, sess, queued.ID)
+		if runSession != nil {
+			defer func() {
+				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cleanupCancel()
+				if cleanupErr := runSession.Close(cleanupCtx); cleanupErr != nil {
+					m.server.logger.Error("close run session", "session_id", queued.SessionID, "run_id", queued.ID, "error", cleanupErr)
+				}
+			}()
+		}
 		if err == nil && schema != nil {
 			runSession.SetOutputSchema(&models.OutputSchema{Name: schema.Name, Schema: schema.Schema})
 		}

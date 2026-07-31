@@ -734,11 +734,13 @@ type beforeToolRewritePlugin struct{}
 
 func (beforeToolRewritePlugin) Name() string { return "before-tool-rewrite" }
 
-func (beforeToolRewritePlugin) Install(reg *plugin.Registry) error {
-	reg.RegisterBeforeToolCall(func(context.Context, run.ToolCall) (map[string]any, error) {
+func (beforeToolRewritePlugin) Activate(reg *plugin.Registry) (plugin.Cleanup, error) {
+	if err := reg.RegisterBeforeToolCall(func(context.Context, run.ToolCall) (map[string]any, error) {
 		return map[string]any{"rewritten": true}, nil
-	})
-	return nil
+	}); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 type sequencedToolClient struct {

@@ -17,6 +17,7 @@ This guide creates a plugin that observes session events through a sink.
 package traceplugin
 
 import (
+	"context"
     "fmt"
     "log/slog"
 
@@ -36,9 +37,11 @@ func (p *Plugin) Name() string {
     return "trace"
 }
 
-func (p *Plugin) Install(r *plugin.Registry) error {
-    r.RegisterSink(run.SinkFunc(p.sink))
-    return nil
+func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
+    if err := r.RegisterSink(run.SinkFunc(p.sink)); err != nil {
+        return nil, err
+    }
+    return nil, nil
 }
 
 func (p *Plugin) sink(event run.Event) {
@@ -58,27 +61,32 @@ sess := session.New(
     session.WithModelRef(modelRef, modelInfo),
     session.WithPlugin(traceplugin.New(logger)),
 )
+defer sess.Close(context.Background())
 ```
 
 Go plugins are linked into the Go process. The stock `wingman serve` binary does not discover Go plugins from disk.
 
 ## 3. Add More Capabilities
 
-Inside `Install`, register any capabilities your plugin contributes:
+Inside `Activate`, register any capabilities your plugin contributes and return
+cleanup for resources such as files, workers, or subscriptions:
 
 ```go
-func (p *Plugin) Install(r *plugin.Registry) error {
-    r.RegisterBeforeRun(p.beforeRun)
-    r.RegisterTransformContext(p.transformContext)
-    r.RegisterBeforeToolCall(p.beforeToolCall)
-    r.RegisterAfterToolCall(p.afterToolCall)
-    r.RegisterSink(p.sink)
-    r.RegisterTool(p.tool)
-    return nil
+func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
+    if err := r.RegisterBeforeRun(p.beforeRun); err != nil { return nil, err }
+    if err := r.RegisterTransformContext(p.transformContext); err != nil { return nil, err }
+    if err := r.RegisterBeforeToolCall(p.beforeToolCall); err != nil { return nil, err }
+    if err := r.RegisterAfterToolCall(p.afterToolCall); err != nil { return nil, err }
+    if err := r.RegisterSink(p.sink); err != nil { return nil, err }
+    if err := r.RegisterTool(p.tool); err != nil { return nil, err }
+    return func(ctx context.Context) error { return p.close(ctx) }, nil
 }
 ```
 
-Hooks compose in install order. Transform hooks receive the previous hook's output. Sinks fan out so every registered sink sees every event.
+Hooks compose in activation order. Transform hooks receive the previous hook's
+output. Sinks fan out with bounded callback time. If activation fails, Wingman
+rolls back already activated plugins and leaves the prior session generation
+unchanged.
 
 ## When To Use Go Plugins
 
