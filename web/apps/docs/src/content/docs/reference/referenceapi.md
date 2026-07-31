@@ -8,7 +8,9 @@ order: 1000
 
 Workspace URL: `http://localhost:2323` (configurable via `--host` and `--port`).
 
-All endpoints accept and return JSON unless noted. Error responses use the shape `{"error": "..."}`.
+All endpoints accept and return JSON unless noted. Non-success JSON responses
+contain `error.code`, `error.message`, and `error.request_id`. The same request
+ID is returned in the `X-Request-ID` header. See [HTTP API Basics](/build-clients/http-api-basics#handle-errors).
 
 > **Trusted-local control surface:** Wingman has no inbound authentication or tenant isolation. A caller that can reach the server can use its configured providers, inspect local directories, manage extensions, and start agents that may invoke enabled local tools. Keep it bound to trusted local access; `X-Wingman-Client` is attribution, not an access boundary. See [Global Config](/configure/config) and [Run the Server](/use-wingman/run-server).
 

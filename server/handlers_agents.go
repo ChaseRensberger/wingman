@@ -32,16 +32,16 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	var req CreateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+		s.writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 	if err := s.validateAgentTools(r.Context(), req.Tools); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -57,7 +57,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 	setAgentModelRoute(a, req.ModelRoute)
 
 	if err := s.store.CreateAgent(a); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -71,7 +71,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 	agents, err := s.store.ListAgents()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if agents == nil {
@@ -89,7 +89,7 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 
 	a, err := s.store.GetAgent(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -116,13 +116,13 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 	a, err := s.store.GetAgent(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	var req UpdateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -134,7 +134,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Tools != nil {
 		if err := s.validateAgentTools(r.Context(), req.Tools); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			s.writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		a.Tools = req.Tools
@@ -154,7 +154,7 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.UpdateAgent(a); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -189,7 +189,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if err := s.store.DeleteAgent(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

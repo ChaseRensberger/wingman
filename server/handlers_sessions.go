@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
@@ -38,7 +39,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -49,7 +50,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	workDir, workspaceID, err := s.resolveSessionLocation(req.WorkingDirectory, req.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -61,13 +62,13 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	sess.ClientID = clientID
 
 	if err := s.store.CreateSession(sess); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -84,12 +85,12 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	sessions, err = s.store.ListSessionsByClient(clientID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if sessions == nil {
@@ -107,18 +108,18 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 	sess, err := s.store.GetSession(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	history, err := s.sessionHistory(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	latestCall, err := s.store.LatestModelCall(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -141,7 +142,7 @@ func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Requ
 
 	calls, err := s.store.ListModelCalls(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, calls)
@@ -159,7 +160,7 @@ func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Reques
 
 	uses, err := s.store.ListToolUses(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, uses)
@@ -228,19 +229,19 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 
 	var req RenameSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Title == "" {
-		writeError(w, http.StatusBadRequest, "title is required")
+		s.writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
 	if req.ExpectedVersion <= 0 {
-		writeError(w, http.StatusBadRequest, "expected_version must be positive")
+		s.writeError(w, http.StatusBadRequest, "expected_version must be positive")
 		return
 	}
 	sess, err := s.store.RenameSession(r.Context(), id, req.Title, req.ExpectedVersion)
-	if writeSessionCommandError(w, err) {
+	if s.writeSessionCommandError(w, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sess)
@@ -263,15 +264,15 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var req MoveSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if (req.WorkingDirectory == nil) == (req.WorkspaceID == nil) {
-		writeError(w, http.StatusBadRequest, "exactly one of working_directory or workspace_id is required")
+		s.writeError(w, http.StatusBadRequest, "exactly one of working_directory or workspace_id is required")
 		return
 	}
 	if req.ExpectedVersion <= 0 {
-		writeError(w, http.StatusBadRequest, "expected_version must be positive")
+		s.writeError(w, http.StatusBadRequest, "expected_version must be positive")
 		return
 	}
 	workingDirectory, workspaceID := "", ""
@@ -283,29 +284,29 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 	}
 	workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(workingDirectory, workspaceID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	sess, err := s.store.MoveSession(r.Context(), id, workDir, resolvedWorkspaceID, req.ExpectedVersion)
-	if writeSessionCommandError(w, err) {
+	if s.writeSessionCommandError(w, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sess)
 }
 
-func writeSessionCommandError(w http.ResponseWriter, err error) bool {
+func (s *Server) writeSessionCommandError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false
 	}
 	if errors.Is(err, store.ErrAggregateVersionConflict) {
-		writeError(w, http.StatusConflict, err.Error())
+		s.writeError(w, http.StatusConflict, err.Error())
 		return true
 	}
 	if errors.Is(err, store.ErrSessionNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return true
 	}
-	writeError(w, http.StatusInternalServerError, err.Error())
+	s.writeError(w, http.StatusInternalServerError, err.Error())
 	return true
 }
 
@@ -335,11 +336,11 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	expectedVersion, err := strconv.ParseInt(r.URL.Query().Get("expected_version"), 10, 64)
 	if err != nil || expectedVersion <= 0 {
-		writeError(w, http.StatusBadRequest, "expected_version must be a positive integer")
+		s.writeError(w, http.StatusBadRequest, "expected_version must be a positive integer")
 		return
 	}
 	if err := s.store.PurgeSession(r.Context(), id, expectedVersion); err != nil {
-		writeSessionCommandError(w, err)
+		s.writeSessionCommandError(w, err)
 		return
 	}
 	s.events.closeSession(id)
@@ -385,75 +386,75 @@ type RunRequest struct {
 
 func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
-		writeError(w, http.StatusNotImplemented, "persistence is disabled; use POST /run for ephemeral runs")
+		s.writeError(w, http.StatusNotImplemented, "persistence is disabled; use POST /run for ephemeral runs")
 		return
 	}
 	id := chi.URLParam(r, "id")
 
 	sess, err := s.store.GetSession(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if sess.ClientID != clientID {
-		writeError(w, http.StatusForbidden, "session belongs to another client")
+		s.writeError(w, http.StatusForbidden, "session belongs to another client")
 		return
 	}
 
 	var req MessageSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Message == "" {
-		writeError(w, http.StatusBadRequest, "message is required")
+		s.writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 	if req.RequestID != "" {
 		if strings.TrimSpace(req.RequestID) == "" {
-			writeError(w, http.StatusBadRequest, "request_id cannot be blank")
+			s.writeError(w, http.StatusBadRequest, "request_id cannot be blank")
 			return
 		}
 		if len(req.RequestID) > 200 {
-			writeError(w, http.StatusBadRequest, "request_id must be 200 bytes or fewer")
+			s.writeError(w, http.StatusBadRequest, "request_id must be 200 bytes or fewer")
 			return
 		}
 	}
 	if req.AgentID == "" {
-		writeError(w, http.StatusBadRequest, "agent_id is required")
+		s.writeError(w, http.StatusBadRequest, "agent_id is required")
 		return
 	}
 
 	storedAgent, err := s.store.GetAgent(req.AgentID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
+		s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
 		return
 	}
 
 	effectiveAgent := s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
 	validationSession, err := s.buildSession(r.Context(), effectiveAgent, sess)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	validationCtx, validationCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer validationCancel()
 	if err := validationSession.Close(validationCtx); err != nil {
 		s.logger.Error("close admission validation session", "session_id", sess.ID, "error", err)
-		writeError(w, http.StatusInternalServerError, "close admission validation session")
+		s.writeError(w, http.StatusInternalServerError, "close admission validation session")
 		return
 	}
 	var outputSchemaJSON []byte
 	if req.OutputSchema != nil {
 		outputSchemaJSON, err = json.Marshal(req.OutputSchema)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid output schema")
+			s.writeError(w, http.StatusBadRequest, "invalid output schema")
 			return
 		}
 	}
@@ -466,14 +467,14 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrSessionRunAdmissionConflict) {
-			writeError(w, http.StatusConflict, err.Error())
+			s.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		if errors.Is(err, store.ErrSessionNotFound) {
-			writeError(w, http.StatusNotFound, err.Error())
+			s.writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if admission.Created {
@@ -518,7 +519,7 @@ func (s *Server) handleListSessionRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	runs, err := s.store.ListSessionRuns(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if runs == nil {
@@ -538,11 +539,11 @@ func (s *Server) handleGetSessionRun(w http.ResponseWriter, r *http.Request) {
 	}
 	run, err := s.store.GetSessionRun(r.Context(), id, runID)
 	if errors.Is(err, store.ErrSessionRunNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
@@ -559,22 +560,22 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 	}
 	run, err := s.store.GetSessionRun(r.Context(), id, runID)
 	if errors.Is(err, store.ErrSessionRunNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	switch run.Status {
 	case store.SessionRunStatusQueued:
 		transition, err := s.store.SettleSessionRun(r.Context(), store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusQueued, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled", EventData: map[string]any{"error_type": "cancelled", "error_message": "run cancelled"}})
 		if errors.Is(err, store.ErrSessionRunTransitionConflict) {
-			writeError(w, http.StatusConflict, err.Error())
+			s.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			s.writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if transition.Changed {
@@ -583,12 +584,12 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, transition.Run)
 	case store.SessionRunStatusRunning:
 		if s.runs.abort(id) == 0 {
-			writeError(w, http.StatusConflict, "run is not active on this server")
+			s.writeError(w, http.StatusConflict, "run is not active on this server")
 			return
 		}
 		writeJSON(w, http.StatusAccepted, run)
 	default:
-		writeError(w, http.StatusConflict, "run is already terminal")
+		s.writeError(w, http.StatusConflict, "run is already terminal")
 	}
 }
 
@@ -599,43 +600,43 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Message == "" {
-		writeError(w, http.StatusBadRequest, "message is required")
+		s.writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
 	var storedAgent *store.Agent
 	if req.AgentID != "" {
 		if s.Ephemeral() {
-			writeError(w, http.StatusBadRequest, "agent_id is not supported in ephemeral mode; provide an inline agent spec")
+			s.writeError(w, http.StatusBadRequest, "agent_id is not supported in ephemeral mode; provide an inline agent spec")
 			return
 		}
 		a, err := s.store.GetAgent(req.AgentID)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
+			s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
 			return
 		}
 		storedAgent = a
 	} else if req.Agent != nil {
 		storedAgent = req.Agent
 	} else {
-		writeError(w, http.StatusBadRequest, "agent or agent_id is required")
+		s.writeError(w, http.StatusBadRequest, "agent or agent_id is required")
 		return
 	}
 
 	storedAgent = s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
 	if storedAgent.ModelRef == "" {
-		writeError(w, http.StatusBadRequest, "model_ref is required when agent has no model_ref")
+		s.writeError(w, http.StatusBadRequest, "model_ref is required when agent has no model_ref")
 		return
 	}
 
 	workDir, err := session.ResolveWorkDir(req.WorkingDirectory)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -647,7 +648,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	runSession, err := s.buildEphemeralSession(r.Context(), storedAgent, sess)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	defer func() {
@@ -671,7 +672,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		s.writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
 
@@ -690,24 +691,25 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	stream, err := runSession.RunStream(ctx, req.Message)
 	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-		flusher.Flush()
+		writeRunStreamError(w, flusher, err)
 		return
 	}
 
 	for stream.Next() {
-		event := stream.Event()
+		event := canonicalRunStreamEvent(stream.Event(), w.Header().Get("X-Request-ID"))
 		data, err := json.Marshal(event)
 		if err != nil {
 			continue
 		}
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 		flusher.Flush()
+		if event.Type == "error" {
+			return
+		}
 	}
 
 	if err := stream.Err(); err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-		flusher.Flush()
+		writeRunStreamError(w, flusher, err)
 		return
 	}
 
@@ -723,6 +725,33 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	doneData, _ := json.Marshal(doneEnvelope)
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneData)
 	flusher.Flush()
+}
+
+func canonicalRunStreamEvent(event session.StreamEvent, requestID string) session.StreamEvent {
+	if event.Type != "error" {
+		return event
+	}
+	message := "run failed"
+	if data, ok := event.Data.(map[string]string); ok && data["error"] != "" {
+		message = data["error"]
+	}
+	event.Data = api.Error{Code: api.ErrorCodeRunFailed, Message: message, RequestID: requestID}
+	return event
+}
+
+func writeRunStreamError(w http.ResponseWriter, flusher http.Flusher, err error) {
+	event := session.StreamEvent{
+		Type:    "error",
+		Version: session.EnvelopeVersion,
+		Data: api.Error{
+			Code: api.ErrorCodeRunFailed, Message: err.Error(), RequestID: w.Header().Get("X-Request-ID"),
+		},
+	}
+	data, marshalErr := json.Marshal(event)
+	if marshalErr == nil {
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
 }
 
 // buildSession assembles a session.Session from a stored agent and the

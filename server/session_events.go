@@ -159,12 +159,12 @@ func (s *Server) handleSessionEventsHistory(w http.ResponseWriter, r *http.Reque
 	after, limit := parseEventQuery(r)
 	events, err := s.store.ListSessionEvents(r.Context(), sessionID, after, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	watermark, err := s.store.SessionEventWatermark(r.Context(), sessionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	lastSeq := after
@@ -190,7 +190,7 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		s.writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
 
@@ -212,7 +212,7 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 
 	watermark, err := s.store.SessionEventWatermark(ctx, sessionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if after > watermark {
@@ -357,16 +357,16 @@ func parseEventQuery(r *http.Request) (int64, int) {
 func (s *Server) authorizeSessionForRequest(w http.ResponseWriter, r *http.Request, sessionID string) (*store.Session, bool) {
 	sess, err := s.store.GetSession(sessionID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return nil, false
 	}
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return nil, false
 	}
 	if sess.ClientID != clientID {
-		writeError(w, http.StatusForbidden, "session belongs to another client")
+		s.writeError(w, http.StatusForbidden, "session belongs to another client")
 		return nil, false
 	}
 	return sess, true

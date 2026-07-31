@@ -24,27 +24,27 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	var req CreateClientRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+		s.writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 	if _, err := s.store.EnsureDefaultClient(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	client, err := s.store.CreateClient(req.Name)
 	if err != nil {
 		if errors.Is(err, store.ErrClientNameExists) {
-			writeError(w, http.StatusConflict, "client name already exists")
+			s.writeError(w, http.StatusConflict, "client name already exists")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -57,12 +57,12 @@ func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.store.EnsureDefaultClient(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	clients, err := s.store.ListClients()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if clients == nil {
@@ -80,7 +80,7 @@ func (s *Server) handleGetClient(w http.ResponseWriter, r *http.Request) {
 
 	client, err := s.store.GetClient(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/chaserensberger/wingman/agent/session"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/internal/observability"
 	provider "github.com/chaserensberger/wingman/models/providers"
@@ -122,11 +124,33 @@ func New(cfg Config) *Server {
 
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
+	s.router.Use(requestIDHeader)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(s.requestLogger)
-	s.router.Use(middleware.Recoverer)
-	s.router.Use(timeoutWithBypass(60*time.Second, shouldBypassTimeout))
-	s.router.Use(jsonContentType)
+	s.router.Use(s.recoverer)
+	s.router.Use(s.timeoutWithBypass(60*time.Second, shouldBypassTimeout))
+}
+
+func requestIDHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", middleware.GetReqID(r.Context()))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) recoverer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if recovered == http.ErrAbortHandler {
+					panic(recovered)
+				}
+				s.logger.Error("http handler panic", "request_id", middleware.GetReqID(r.Context()), "panic", recovered, "stack", string(debug.Stack()))
+				s.writeError(w, http.StatusInternalServerError, fmt.Sprint(recovered))
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {
@@ -170,16 +194,21 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 	})
 }
 
-func timeoutWithBypass(timeout time.Duration, bypass func(*http.Request) bool) func(http.Handler) http.Handler {
-	timed := middleware.Timeout(timeout)
+func (s *Server) timeoutWithBypass(timeout time.Duration, bypass func(*http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		timedNext := timed(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if bypass != nil && bypass(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			timedNext.ServeHTTP(w, r)
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer func() {
+				cancel()
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) && !responseCommitted(w) {
+					s.writeError(w, http.StatusGatewayTimeout, ctx.Err().Error())
+				}
+			}()
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -192,30 +221,7 @@ func shouldBypassTimeout(r *http.Request) bool {
 	if path == "/run" {
 		return true
 	}
-
 	return false
-}
-
-func jsonContentType(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/" ||
-			path == "/catalog" ||
-			strings.HasPrefix(path, "/health") ||
-			strings.HasPrefix(path, "/provider") ||
-			strings.HasPrefix(path, "/agents") ||
-			strings.HasPrefix(path, "/clients") ||
-			strings.HasPrefix(path, "/logs") ||
-			strings.HasPrefix(path, "/mcp") ||
-			strings.HasPrefix(path, "/plugins") ||
-			strings.HasPrefix(path, "/tools") ||
-			strings.HasPrefix(path, "/workspaces") ||
-			strings.HasPrefix(path, "/sessions") ||
-			strings.HasPrefix(path, "/run") {
-			w.Header().Set("Content-Type", "application/json")
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func (s *Server) setupRoutes() {
@@ -296,8 +302,29 @@ func (s *Server) setupRoutes() {
 	})
 
 	s.router.Post("/run", s.handleRun)
+	s.router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		s.writeError(w, http.StatusNotFound, "route not found")
+	})
+	s.router.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", strings.Join(s.allowedMethods(r.URL.Path), ", "))
+		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	})
 
 	s.mountWebUI()
+}
+
+func (s *Server) allowedMethods(routePath string) []string {
+	candidates := []string{
+		http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodOptions,
+	}
+	allowed := make([]string, 0, len(candidates))
+	for _, method := range candidates {
+		if s.router.Match(chi.NewRouteContext(), method, routePath) {
+			allowed = append(allowed, method)
+		}
+	}
+	return allowed
 }
 
 func (s *Server) mountWebUI() {
@@ -487,23 +514,87 @@ func (s *Server) executionScope(ctx context.Context, workDir string) (*execution
 	return lease.Scope(), func() { _ = lease.Close(context.Background()) }, nil
 }
 
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("failed to encode response", "error", err)
 	}
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, ErrorResponse{Error: msg})
+func (s *Server) writeError(w http.ResponseWriter, status int, msg string) {
+	requestID := w.Header().Get("X-Request-ID")
+	if responseCommitted(w) {
+		s.logger.Error("cannot write HTTP error after response committed", "request_id", requestID, "status", status, "error", msg)
+		return
+	}
+	if status >= http.StatusInternalServerError && status != http.StatusNotImplemented {
+		s.logger.Error("http request failed", "request_id", requestID, "status", status, "error", msg)
+		msg = publicServerErrorMessage(status)
+	}
+	writeJSON(w, status, api.ErrorResponse{Error: api.Error{
+		Code: codeForStatus(status), Message: msg, RequestID: requestID,
+	}})
+}
+
+func responseCommitted(w http.ResponseWriter) bool {
+	type statusWriter interface{ Status() int }
+	ww, ok := w.(statusWriter)
+	return ok && ww.Status() != 0
+}
+
+func codeForStatus(status int) api.ErrorCode {
+	switch status {
+	case http.StatusBadRequest:
+		return api.ErrorCodeInvalidRequest
+	case http.StatusUnauthorized:
+		return api.ErrorCodeUnauthorized
+	case http.StatusForbidden:
+		return api.ErrorCodeForbidden
+	case http.StatusNotFound:
+		return api.ErrorCodeNotFound
+	case http.StatusMethodNotAllowed:
+		return api.ErrorCodeMethodNotAllowed
+	case http.StatusConflict:
+		return api.ErrorCodeConflict
+	case http.StatusRequestEntityTooLarge:
+		return api.ErrorCodePayloadTooLarge
+	case http.StatusUnsupportedMediaType:
+		return api.ErrorCodeUnsupportedMedia
+	case http.StatusUnprocessableEntity:
+		return api.ErrorCodeValidationFailed
+	case http.StatusTooManyRequests:
+		return api.ErrorCodeRateLimited
+	case http.StatusInternalServerError:
+		return api.ErrorCodeInternal
+	case http.StatusNotImplemented:
+		return api.ErrorCodeNotImplemented
+	case http.StatusBadGateway:
+		return api.ErrorCodeUpstream
+	case http.StatusServiceUnavailable:
+		return api.ErrorCodeUnavailable
+	case http.StatusGatewayTimeout:
+		return api.ErrorCodeTimeout
+	default:
+		return api.ErrorCodeRequestFailed
+	}
+}
+
+func publicServerErrorMessage(status int) string {
+	switch status {
+	case http.StatusBadGateway:
+		return "upstream service error"
+	case http.StatusServiceUnavailable:
+		return "service unavailable"
+	case http.StatusGatewayTimeout:
+		return "request timed out"
+	default:
+		return "internal server error"
+	}
 }
 
 func (s *Server) ephemeralNotImplemented(w http.ResponseWriter) {
-	writeError(w, http.StatusNotImplemented, "persistence is disabled; this server is running in ephemeral mode")
+	s.writeError(w, http.StatusNotImplemented, "persistence is disabled; this server is running in ephemeral mode")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

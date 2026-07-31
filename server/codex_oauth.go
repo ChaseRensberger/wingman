@@ -439,12 +439,12 @@ func (s *Server) handleProviderOAuthAuthorize(w http.ResponseWriter, r *http.Req
 		Method string `json:"method"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	attempt, err := s.oauth.start(chi.URLParam(r, "name"), request.Method)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, attempt)
@@ -453,7 +453,7 @@ func (s *Server) handleProviderOAuthAuthorize(w http.ResponseWriter, r *http.Req
 func (s *Server) handleProviderOAuthStatus(w http.ResponseWriter, r *http.Request) {
 	attempt, err := s.oauth.status(chi.URLParam(r, "attempt"))
 	if err != nil || chi.URLParam(r, "name") != "openai" {
-		writeError(w, http.StatusNotFound, "OAuth attempt not found")
+		s.writeError(w, http.StatusNotFound, "OAuth attempt not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, attempt)
@@ -461,7 +461,7 @@ func (s *Server) handleProviderOAuthStatus(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleProviderOAuthCancel(w http.ResponseWriter, r *http.Request) {
 	if err := s.oauth.cancel(chi.URLParam(r, "attempt")); err != nil {
-		writeError(w, http.StatusNotFound, "OAuth attempt not found")
+		s.writeError(w, http.StatusNotFound, "OAuth attempt not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})

@@ -180,7 +180,7 @@ func (s *Server) handleListPermissionRequests(w http.ResponseWriter, r *http.Req
 	}
 	requests, err := s.store.ListPermissionRequests(r.Context(), sessionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if requests == nil {
@@ -200,7 +200,7 @@ func (s *Server) handleListPermissionGrants(w http.ResponseWriter, r *http.Reque
 	}
 	grants, err := s.store.ListPermissionGrants(r.Context(), sessionID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if grants == nil {
@@ -220,7 +220,7 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 	}
 	var reply permissionReplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&reply); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	status := store.PermissionRequestStatusApproved
@@ -228,20 +228,20 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 		status = store.PermissionRequestStatusRejected
 	}
 	if reply.Response != store.PermissionResponseOnce && reply.Response != store.PermissionResponseAlways && reply.Response != store.PermissionResponseReject {
-		writeError(w, http.StatusBadRequest, "response must be once, always, or reject")
+		s.writeError(w, http.StatusBadRequest, "response must be once, always, or reject")
 		return
 	}
 	transition, err := s.store.ResolvePermissionRequest(r.Context(), store.PermissionRequestResolution{SessionID: sessionID, RequestID: requestID, Status: status, Response: reply.Response})
 	if errors.Is(err, store.ErrPermissionRequestNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	if errors.Is(err, store.ErrPermissionRequestTransitionConflict) {
-		writeError(w, http.StatusConflict, err.Error())
+		s.writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !transition.Changed {
@@ -250,7 +250,7 @@ func (s *Server) handleReplyPermissionRequest(w http.ResponseWriter, r *http.Req
 			writeJSON(w, http.StatusOK, transition.Request)
 			return
 		}
-		writeError(w, http.StatusConflict, "permission request is already resolved")
+		s.writeError(w, http.StatusConflict, "permission request is already resolved")
 		return
 	}
 	s.events.publish(transition.Event)

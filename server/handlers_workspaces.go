@@ -36,20 +36,20 @@ func (s *Server) handleListDirectories(w http.ResponseWriter, r *http.Request) {
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "resolve home directory")
+			s.writeError(w, http.StatusInternalServerError, "resolve home directory")
 			return
 		}
 		dir = home
 	}
 	resolved, err := session.ResolveWorkDir(dir)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	entries, err := os.ReadDir(resolved)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	listing := directoryListing{Path: resolved, Entries: make([]directoryEntry, 0, len(entries))}
@@ -76,12 +76,12 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	var req CreateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	path, err := session.ResolveWorkDir(req.Path)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -90,23 +90,23 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		name = filepath.Base(path)
 	}
 	if name == "" {
-		writeError(w, http.StatusBadRequest, "name is required when no directory is set")
+		s.writeError(w, http.StatusBadRequest, "name is required when no directory is set")
 		return
 	}
 	workspace := &store.Workspace{Name: name, Path: path}
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	workspace.ClientID = clientID
 
 	if err := s.store.CreateWorkspace(workspace); err != nil {
 		if errors.Is(err, store.ErrWorkspaceNameExists) {
-			writeError(w, http.StatusConflict, err.Error())
+			s.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, workspace)
@@ -121,12 +121,12 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	var err error
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	workspaces, err = s.store.ListWorkspacesByClient(clientID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if workspaces == nil {
@@ -142,7 +142,7 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, workspace)
@@ -160,13 +160,13 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	var req UpdateWorkspaceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Name != nil {
@@ -175,22 +175,22 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if req.Path != nil {
 		path, err := session.ResolveWorkDir(*req.Path)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			s.writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		workspace.Path = path
 	}
 	if workspace.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+		s.writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 
 	if err := s.store.UpdateWorkspace(workspace); err != nil {
 		if errors.Is(err, store.ErrWorkspaceNameExists) {
-			writeError(w, http.StatusConflict, err.Error())
+			s.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, workspace)
@@ -202,7 +202,7 @@ func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteWorkspace(chi.URLParam(r, "id")); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
@@ -215,12 +215,12 @@ func (s *Server) handleListWorkspaceSessions(w http.ResponseWriter, r *http.Requ
 	}
 	workspaceID := chi.URLParam(r, "id")
 	if _, err := s.store.GetWorkspace(workspaceID); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 	sessions, err := s.store.ListSessionsByWorkspace(workspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if sessions == nil {

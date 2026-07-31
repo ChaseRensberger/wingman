@@ -71,6 +71,27 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 Use `working_directory` instead of `workspace_id` for ad hoc sessions. Do not send both fields.
 
+## Handle Errors
+
+Every non-success JSON response uses one envelope:
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "message is required",
+    "request_id": "6c4f5c41c4c1/abc-000001"
+  }
+}
+```
+
+Use `error.code` for program logic and `error.message` for display. The
+`X-Request-ID` response header contains the same identifier as
+`error.request_id`. Include that value when you report a server failure.
+
+Wingman does not return internal failure details for 5xx responses. It records
+those details in daemon logs with the request ID.
+
 ## Persistent and Ephemeral Runs
 
 Use persistent sessions when you want history:

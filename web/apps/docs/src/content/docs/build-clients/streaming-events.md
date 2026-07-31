@@ -264,7 +264,13 @@ later queued runs for the session.
 
 `POST /run` returns a separate, non-persistent SSE stream. It forwards the raw session stream event names, including `stream_part`; its JSON `data:` value is the raw stream envelope with `type`, `version`, and event-specific `data`. These events are not rewritten into `session.*` events and cannot be replayed.
 
-On success, `/run` sends a terminal `done` event containing usage and step information, then closes. If setup or streaming fails, it sends a terminal `error` event and closes; its `data:` is currently error text rather than a JSON event envelope. A raw `error` event can also be forwarded from the underlying run before the terminal outcome.
+On success, `/run` sends a terminal `done` event containing usage and step
+information, then closes. If setup or streaming fails, it sends a terminal
+`error` event and closes. Its `data:` is a stream envelope whose inner `data`
+uses the same `code`, `message`, and `request_id` fields as an HTTP API error.
+The code is `run_failed`. An `error` event forwarded from the underlying run
+uses the same shape. Treat EOF before either `done` or `error` as an interrupted
+run, not as successful completion.
 
 ## `stream_part`
 

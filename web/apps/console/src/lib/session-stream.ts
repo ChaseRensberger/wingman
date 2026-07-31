@@ -1,3 +1,5 @@
+import { APIError, apiErrorFromResponse } from "./client";
+
 export type SessionEvent = {
 	id: string;
 	type: string;
@@ -104,13 +106,19 @@ export async function generateSessionTitle(
 		}),
 		signal,
 	});
-	if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+	if (!res.ok) throw await apiErrorFromResponse(res);
 
 	let textBuffer = "";
+	let terminal = false;
 	for await (const ev of readSSE(res)) {
 		if (ev.event === "error") {
-			const error = typeof ev.data === "string" ? ev.data : eventField<{ error?: string }>(ev.data, "data", "Data")?.error;
-			throw new Error(error || "Title generation failed");
+			const failure = typeof ev.data === "string" ? undefined : eventField<{ code?: string; error?: string; message?: string; request_id?: string }>(ev.data, "data", "Data");
+			const error = typeof ev.data === "string" ? ev.data : failure?.message ?? failure?.error;
+			throw new APIError(0, failure?.code ?? "run_failed", error || "Title generation failed", failure?.request_id);
+		}
+		if (ev.event === "done") {
+			terminal = true;
+			continue;
 		}
 		if (ev.event !== "stream_part") continue;
 		const envelope = ev.data as { data?: unknown; Data?: unknown };
@@ -120,6 +128,9 @@ export async function generateSessionTitle(
 			const title = sanitizeGeneratedTitle(textBuffer);
 			if (title) onTitle(title);
 		}
+	}
+	if (!terminal) {
+		throw new APIError(0, "run_failed", "Run stream ended without a terminal event", res.headers.get("X-Request-ID") ?? undefined);
 	}
 	return sanitizeGeneratedTitle(textBuffer);
 }

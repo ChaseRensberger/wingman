@@ -18,7 +18,7 @@ type CatalogDTO struct {
 func (s *Server) handleCatalogLabLogo(w http.ResponseWriter, r *http.Request) {
 	logo, ok := s.providers.Catalog().LabLogo(chi.URLParam(r, "id"))
 	if !ok {
-		writeError(w, http.StatusNotFound, "lab logo not found")
+		s.writeError(w, http.StatusNotFound, "lab logo not found")
 		return
 	}
 	w.Header().Set("Content-Type", "image/svg+xml")

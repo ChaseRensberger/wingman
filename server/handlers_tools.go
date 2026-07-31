@@ -31,13 +31,13 @@ type toolCatalogItem struct {
 func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
 	scope, release, err := s.executionScope(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer release()
 	_, items, err := s.toolCatalog(scope)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, toolCatalogResponse{Tools: items})

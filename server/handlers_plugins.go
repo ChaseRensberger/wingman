@@ -10,7 +10,7 @@ type pluginsResponse struct {
 func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 	scope, release, err := s.executionScope(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer release()
@@ -25,7 +25,7 @@ func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleReloadPlugins(w http.ResponseWriter, r *http.Request) {
 	scope, release, err := s.executionScope(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer release()
@@ -34,7 +34,7 @@ func (s *Server) handleReloadPlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := scope.Plugins().Reload(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	plugins, errs := scope.Plugins().Status()

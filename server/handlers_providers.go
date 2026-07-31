@@ -26,7 +26,7 @@ func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 
 	meta, err := s.providers.Get(name)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -129,7 +129,7 @@ func (s *Server) handleGetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 	}
 	auth, err := s.store.GetAuth()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -163,26 +163,26 @@ func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 	}
 	var req SetProvidersAuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	auth, err := s.store.GetAuth()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	for name, cred := range req.Providers {
 		if !s.providers.IsValid(name) {
-			writeError(w, http.StatusBadRequest, "unknown provider: "+name)
+			s.writeError(w, http.StatusBadRequest, "unknown provider: "+name)
 			return
 		}
 		auth.Providers[name] = cred
 	}
 
 	if err := s.store.SetAuth(auth); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -197,25 +197,25 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 	providerName := chi.URLParam(r, "provider")
 
 	if !s.providers.IsValid(providerName) {
-		writeError(w, http.StatusBadRequest, "unknown provider: "+providerName)
+		s.writeError(w, http.StatusBadRequest, "unknown provider: "+providerName)
 		return
 	}
 
 	auth, err := s.store.GetAuth()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if _, exists := auth.Providers[providerName]; !exists {
-		writeError(w, http.StatusNotFound, "provider not configured: "+providerName)
+		s.writeError(w, http.StatusNotFound, "provider not configured: "+providerName)
 		return
 	}
 
 	delete(auth.Providers, providerName)
 
 	if err := s.store.SetAuth(auth); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -258,13 +258,13 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 	name := chi.URLParam(r, "name")
 
 	if !s.providers.IsValid(name) {
-		writeError(w, http.StatusNotFound, "unknown provider: "+name)
+		s.writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
 	rawModels, ok := s.providers.Catalog().GetModels(name)
 	if !ok {
-		writeError(w, http.StatusNotFound, "no models for provider: "+name)
+		s.writeError(w, http.StatusNotFound, "no models for provider: "+name)
 		return
 	}
 
@@ -283,13 +283,13 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 	modelID := chi.URLParam(r, "model")
 
 	if !s.providers.IsValid(name) {
-		writeError(w, http.StatusNotFound, "unknown provider: "+name)
+		s.writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
 	info, ok := s.providers.Catalog().Get(name, modelID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
+		s.writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
 		return
 	}
 
