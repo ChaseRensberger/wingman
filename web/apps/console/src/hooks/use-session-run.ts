@@ -10,6 +10,10 @@ export type FailedRun = { message: string; agentId: string; modelRef: string; er
 export type SessionRunRequest = Omit<FailedRun, "error">;
 
 const terminalRunEvents = new Set(["session.run.completed", "session.run.failed", "session.run.aborted"]);
+const initialRetryDelayMs = 250;
+const maxRetryDelayMs = 5_000;
+
+export type SessionStreamControl = "synchronized" | "resync_required";
 
 export function latestActiveSessionRun(runs: readonly SessionRun[]): SessionRun | undefined {
 	return runs.reduce<SessionRun | undefined>((latest, run) => {
@@ -24,7 +28,21 @@ export function isTerminalSessionRunEvent(type: string): boolean {
 }
 
 export function sessionRunEventError(data: Record<string, unknown>): string {
-	return typeof data.error_message === "string" ? data.error_message : typeof data.error === "string" ? data.error : "Run failed";
+	return typeof data.error_message === "string" ? data.error_message : typeof data.error === "string" ? data.error : typeof data.error_type === "string" ? data.error_type : "Run failed";
+}
+
+export function sessionStreamControl(type: string): SessionStreamControl | undefined {
+	if (type === "session.events.synchronized") return "synchronized";
+	if (type === "session.events.resync_required") return "resync_required";
+}
+
+export function sessionRunRetryDelay(attempt: number): number {
+	return Math.min(initialRetryDelayMs * 2 ** Math.max(0, attempt), maxRetryDelayMs);
+}
+
+export function terminalSessionRunError(run: SessionRun): string | undefined {
+	if (run.status === "completed" || run.status === "queued" || run.status === "running") return undefined;
+	return run.error_message ?? run.error_type ?? `Run ${run.status}`;
 }
 
 type Options = {
@@ -68,6 +86,12 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		setStreamingText("");
 	}
 
+	function clearVolatileStreamState() {
+		setStreamingReasoning("");
+		setStreamingText("");
+		setToolActivities(new Map());
+	}
+
 	useEffect(() => {
 		// Creating a draft session changes the route before its admission request finishes.
 		if (submissionControllerRef.current) return;
@@ -102,7 +126,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		};
 	}, [sessionId]);
 
-	function applySessionEvent(ev: SessionEvent) {
+	function applySessionEvent(ev: SessionEvent): string | undefined {
 		if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current) lastEventSeqRef.current = ev.cursor.seq;
 		const data = ev.data ?? {};
 		if (activeRunRef.current?.runId && typeof data.run_id === "string" && data.run_id !== activeRunRef.current.runId) return;
@@ -162,35 +186,98 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			}
 			if (activeRunRef.current) activeRunRef.current = { ...activeRunRef.current, completed: true };
 			setIsStreaming(false);
-			if (ev.type !== "session.run.completed") throw new Error(sessionRunEventError(data));
-			return;
+			return ev.type === "session.run.completed" ? undefined : sessionRunEventError(data);
 		}
 	}
 
-  async function subscribe(id: string, signal: AbortSignal) {
-    const response = await fetch(`/sessions/${id}/events?after=${lastEventSeqRef.current}`, { signal });
+	async function subscribe(id: string, signal: AbortSignal): Promise<{ resync: boolean; synchronized: boolean; terminalError?: string }> {
+		const after = lastEventSeqRef.current;
+		const headers = after > 0 ? { "Last-Event-ID": String(after) } : undefined;
+		const response = await fetch(`/sessions/${id}/events?after=${after}`, { signal, headers });
 		if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+		let synchronized = false;
 		for await (const event of readSSE(response)) {
+			if (signal.aborted || activeRunRef.current?.sessionId !== id) return { resync: false, synchronized };
 			if (!event.event || event.event.startsWith(":")) continue;
-			applySessionEvent(event.data as SessionEvent);
-			if (activeRunRef.current?.completed) return;
+			const envelope = event.data as SessionEvent;
+			const control = sessionStreamControl(event.event) ?? sessionStreamControl(envelope.type);
+			if (control === "synchronized") {
+				synchronized = true;
+				continue;
+			}
+			if (control === "resync_required") return { resync: true, synchronized };
+			const terminalError = applySessionEvent(envelope);
+			if (activeRunRef.current?.completed) return { resync: false, synchronized, terminalError };
 		}
+		return { resync: false, synchronized };
+	}
+
+	function isCurrentSubscription(id: string, controller: AbortController) {
+		return !controller.signal.aborted && activeRunRef.current?.sessionId === id && eventControllerRef.current === controller;
+	}
+
+	async function reloadRun(id: string, runID: string, controller: AbortController): Promise<SessionRun | undefined> {
+		await load(id);
+		if (!isCurrentSubscription(id, controller)) return;
+		const run = await wfetch(`/sessions/${id}/runs/${runID}`, { signal: controller.signal }) as SessionRun;
+		return isCurrentSubscription(id, controller) ? run : undefined;
+	}
+
+	async function finishRun(id: string, controller: AbortController, error?: string) {
+		if (!isCurrentSubscription(id, controller)) return;
+		const request = requestRef.current;
+		if (request && error) setFailedRun({ ...request, error });
+		reset();
+		await load(id);
+	}
+
+	function waitForRetry(delay: number, signal: AbortSignal): Promise<void> {
+		return new Promise((resolve) => {
+			const finish = () => {
+				window.clearTimeout(timer);
+				signal.removeEventListener("abort", finish);
+				resolve();
+			};
+			const timer = window.setTimeout(finish, delay);
+			signal.addEventListener("abort", finish, { once: true });
+		});
 	}
 
 	async function subscribeAndFinish(id: string, controller: AbortController) {
-		try {
-			await subscribe(id, controller.signal);
-		} catch (err) {
-			if ((err as Error).name !== "AbortError") {
+		let retryAttempt = 0;
+		while (isCurrentSubscription(id, controller)) {
+			let result: { resync: boolean; synchronized: boolean; terminalError?: string } | undefined;
+			try {
+				result = await subscribe(id, controller.signal);
+			} catch (err) {
+				if ((err as Error).name === "AbortError" || !isCurrentSubscription(id, controller)) return;
 				console.error("Event stream failed", err);
-				const request = requestRef.current;
-				if (request) setFailedRun({ ...request, error: formatSessionError(err) });
 			}
-		} finally {
-			if (activeRunRef.current?.sessionId === id && activeRunRef.current.completed) {
-				reset();
-				await load(id);
+			if (!isCurrentSubscription(id, controller)) return;
+			if (activeRunRef.current?.completed) {
+				await finishRun(id, controller, result?.terminalError);
+				return;
 			}
+			clearVolatileStreamState();
+
+			const runID = activeRunRef.current?.runId;
+			if (!runID) return;
+			let run: SessionRun | undefined;
+			try {
+				run = await reloadRun(id, runID, controller);
+			} catch (err) {
+				if ((err as Error).name === "AbortError" || !isCurrentSubscription(id, controller)) return;
+				console.error("Failed to reload session run", err);
+			}
+			if (!isCurrentSubscription(id, controller)) return;
+			if (run && run.status !== "queued" && run.status !== "running") {
+				await finishRun(id, controller, terminalSessionRunError(run));
+				return;
+			}
+			if (result?.synchronized) {
+				retryAttempt = 0;
+			}
+			await waitForRetry(sessionRunRetryDelay(retryAttempt++), controller.signal);
 		}
 	}
 
@@ -207,7 +294,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	}
 
 	async function captureCursor(id: string) {
-		lastEventSeqRef.current = await latestSessionEventSeq(id);
+		lastEventSeqRef.current = Math.max(lastEventSeqRef.current, await latestSessionEventSeq(id));
 	}
 
 	function start(id: string, runID: string) {

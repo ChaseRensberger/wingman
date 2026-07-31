@@ -148,7 +148,7 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 | `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
 | `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
-| `GET` | `/sessions/{id}/events` | Replay one bounded page of durable events after `after`, then stream new events |
+| `GET` | `/sessions/{id}/events` | Replay durable events after a cursor, synchronize, then stream new events |
 | `GET` | `/sessions/{id}/events/history` | Read one finite page of durable session events |
 | `POST` | `/sessions/{id}/abort` | Cancel the active run; queued messages remain scheduled |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
@@ -364,7 +364,18 @@ Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
 
 ### Streaming
 
-`GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. Its initial durable replay is bounded by `limit` (default `100`, maximum `500`), then the connection remains open for events created after subscription. To reconstruct a backlog larger than one page, first page through `/events/history`, advancing `after` to the last durable cursor; do not rely on the open stream to fill an older backlog beyond its initial page.
+`GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. `after` is
+an exclusive durable cursor. When `after` is absent, Wingman reads the
+`Last-Event-ID` header. The query parameter takes precedence when both are
+present.
+
+The server captures a durable watermark, replays every sequence through it in
+pages, emits `session.events.synchronized`, and then delivers live events. The
+`limit` parameter controls replay page size, not total replay length; its default
+is `100` and maximum is `500`. If delivery overflows or a cursor cannot be
+reconciled, the server emits `session.events.resync_required` and disconnects.
+Reload authoritative session and run state, then reconnect from the last durable
+cursor.
 
 Each event is:
 

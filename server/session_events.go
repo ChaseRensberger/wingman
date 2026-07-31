@@ -21,40 +21,60 @@ const defaultSessionEventLimit = 100
 
 type sessionEventBroker struct {
 	mu   sync.RWMutex
-	subs map[string]map[chan store.SessionEvent]struct{}
+	subs map[string]map[*sessionEventSubscription]struct{}
 }
+
+type sessionEventSubscription struct {
+	events   chan store.SessionEvent
+	done     chan struct{}
+	overflow chan struct{}
+	doneOnce sync.Once
+	overOnce sync.Once
+}
+
+func newSessionEventSubscription() *sessionEventSubscription {
+	return &sessionEventSubscription{
+		events:   make(chan store.SessionEvent, 256),
+		done:     make(chan struct{}),
+		overflow: make(chan struct{}),
+	}
+}
+
+func (s *sessionEventSubscription) close() { s.doneOnce.Do(func() { close(s.done) }) }
+
+func (s *sessionEventSubscription) signalOverflow() { s.overOnce.Do(func() { close(s.overflow) }) }
 
 func newSessionEventBroker() *sessionEventBroker {
-	return &sessionEventBroker{subs: make(map[string]map[chan store.SessionEvent]struct{})}
+	return &sessionEventBroker{subs: make(map[string]map[*sessionEventSubscription]struct{})}
 }
 
-func (b *sessionEventBroker) subscribe(sessionID string) (chan store.SessionEvent, func()) {
-	ch := make(chan store.SessionEvent, 256)
+func (b *sessionEventBroker) subscribe(sessionID string) (*sessionEventSubscription, func()) {
+	sub := newSessionEventSubscription()
 	b.mu.Lock()
 	if b.subs[sessionID] == nil {
-		b.subs[sessionID] = make(map[chan store.SessionEvent]struct{})
+		b.subs[sessionID] = make(map[*sessionEventSubscription]struct{})
 	}
-	b.subs[sessionID][ch] = struct{}{}
+	b.subs[sessionID][sub] = struct{}{}
 	b.mu.Unlock()
-	return ch, func() {
+	return sub, func() {
 		b.mu.Lock()
-		if _, ok := b.subs[sessionID][ch]; !ok {
-			b.mu.Unlock()
-			return
-		}
-		delete(b.subs[sessionID], ch)
-		if len(b.subs[sessionID]) == 0 {
-			delete(b.subs, sessionID)
+		if subs := b.subs[sessionID]; subs != nil {
+			if _, ok := subs[sub]; ok {
+				delete(subs, sub)
+				if len(subs) == 0 {
+					delete(b.subs, sessionID)
+				}
+			}
 		}
 		b.mu.Unlock()
-		close(ch)
+		sub.close()
 	}
 }
 
 func (b *sessionEventBroker) closeSession(sessionID string) {
 	b.mu.Lock()
-	for ch := range b.subs[sessionID] {
-		close(ch)
+	for sub := range b.subs[sessionID] {
+		sub.close()
 	}
 	delete(b.subs, sessionID)
 	b.mu.Unlock()
@@ -63,10 +83,11 @@ func (b *sessionEventBroker) closeSession(sessionID string) {
 func (b *sessionEventBroker) publish(event store.SessionEvent) {
 	b.mu.RLock()
 	subs := b.subs[event.SessionID]
-	for ch := range subs {
+	for sub := range subs {
 		select {
-		case ch <- event:
+		case sub.events <- event:
 		default:
+			sub.signalOverflow()
 		}
 	}
 	b.mu.RUnlock()
@@ -141,7 +162,16 @@ func (s *Server) handleSessionEventsHistory(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": events, "has_more": len(events) == limit})
+	watermark, err := s.store.SessionEventWatermark(r.Context(), sessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	lastSeq := after
+	if len(events) > 0 {
+		lastSeq = events[len(events)-1].Seq
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": events, "has_more": lastSeq < watermark})
 }
 
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
@@ -180,53 +210,137 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	live, unsubscribe := s.events.subscribe(sessionID)
 	defer unsubscribe()
 
-	stored, err := s.store.ListSessionEvents(ctx, sessionID, after, limit)
+	watermark, err := s.store.SessionEventWatermark(ctx, sessionID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	lastSeq := after
-	for _, ev := range stored {
-		if ev.Seq > lastSeq {
-			lastSeq = ev.Seq
-		}
-		if err := writeSSEEvent(w, ev); err != nil {
-			return
-		}
-		flusher.Flush()
+	if after > watermark {
+		s.writeSessionEventsResync(w, flusher, sessionID, watermark, "resume cursor is ahead of durable history")
+		return
 	}
+	lastSeq := after
+	if err := s.replaySessionEvents(ctx, w, flusher, sessionID, &lastSeq, watermark, limit); err != nil {
+		s.writeSessionEventsResync(w, flusher, sessionID, lastSeq, "unable to replay durable events")
+		return
+	}
+	if sessionEventSubscriptionOverflow(live) {
+		s.writeSessionEventsResync(w, flusher, sessionID, lastSeq, "subscriber overflow during replay")
+		return
+	}
+	// This boundary is live-only; its sequence is the durable cursor a client
+	// should use to resume, not a separately stored event.
+	synchronized, _ := newSessionEvent(sessionID, "session.events.synchronized", map[string]int64{"cursor": watermark, "watermark": watermark})
+	synchronized.Seq = watermark
+	synchronized.ID = strconv.FormatInt(watermark, 10)
+	if err := writeSSEEvent(w, synchronized); err != nil {
+		return
+	}
+	flusher.Flush()
+	lastSeq = watermark
 
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
+		if sessionEventSubscriptionOverflow(live) {
+			s.writeSessionEventsResync(w, flusher, sessionID, lastSeq, "subscriber overflow")
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-heartbeat.C:
 			fmt.Fprint(w, ": heartbeat\n\n")
 			flusher.Flush()
-		case ev, ok := <-live:
-			if !ok {
-				return
-			}
-			if ev.Seq > 0 && ev.Seq <= lastSeq {
+		case <-live.done:
+			return
+		case <-live.overflow:
+			s.writeSessionEventsResync(w, flusher, sessionID, lastSeq, "subscriber overflow")
+			return
+		case ev := <-live.events:
+			if ev.Seq == 0 {
+				if err := writeSSEEvent(w, ev); err != nil {
+					return
+				}
+				flusher.Flush()
 				continue
 			}
-			if ev.Seq > lastSeq {
-				lastSeq = ev.Seq
+			if ev.Seq <= lastSeq {
+				continue
+			}
+			if ev.Seq > lastSeq+1 {
+				if err := s.replaySessionEvents(ctx, w, flusher, sessionID, &lastSeq, ev.Seq, limit); err != nil {
+					s.writeSessionEventsResync(w, flusher, sessionID, lastSeq, "unable to backfill durable events")
+					return
+				}
+				continue
 			}
 			if err := writeSSEEvent(w, ev); err != nil {
 				return
 			}
+			lastSeq = ev.Seq
 			flusher.Flush()
 		}
 	}
 }
 
+func sessionEventSubscriptionOverflow(sub *sessionEventSubscription) bool {
+	select {
+	case <-sub.overflow:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) replaySessionEvents(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, sessionID string, lastSeq *int64, through int64, limit int) error {
+	for *lastSeq < through {
+		events, err := s.store.ListSessionEvents(ctx, sessionID, *lastSeq, limit)
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("session event sequence gap before %d", through)
+		}
+		for _, event := range events {
+			if event.Seq > through {
+				return nil
+			}
+			if event.Seq <= *lastSeq {
+				continue
+			}
+			if event.Seq != *lastSeq+1 {
+				return fmt.Errorf("session event sequence gap at %d", *lastSeq+1)
+			}
+			if err := writeSSEEvent(w, event); err != nil {
+				return err
+			}
+			*lastSeq = event.Seq
+			flusher.Flush()
+		}
+	}
+	return nil
+}
+
+func (s *Server) writeSessionEventsResync(w http.ResponseWriter, flusher http.Flusher, sessionID string, cursor int64, reason string) {
+	event, _ := newSessionEvent(sessionID, "session.events.resync_required", map[string]any{"cursor": cursor, "reason": reason})
+	event.Seq = cursor
+	event.ID = strconv.FormatInt(cursor, 10)
+	if writeSSEEvent(w, event) == nil {
+		flusher.Flush()
+	}
+}
+
 func parseEventQuery(r *http.Request) (int64, int) {
 	var after int64
-	if raw := r.URL.Query().Get("after"); raw != "" {
-		after, _ = strconv.ParseInt(raw, 10, 64)
+	query := r.URL.Query()
+	raw, explicitAfter := query["after"]
+	if explicitAfter && len(raw) > 0 {
+		if cursor, err := strconv.ParseInt(raw[0], 10, 64); err == nil && cursor >= 0 {
+			after = cursor
+		}
+	} else if cursor, err := strconv.ParseInt(r.Header.Get("Last-Event-ID"), 10, 64); err == nil && cursor >= 0 {
+		after = cursor
 	}
 	limit := defaultSessionEventLimit
 	if raw := r.URL.Query().Get("limit"); raw != "" {

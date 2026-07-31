@@ -143,10 +143,7 @@ func TestDeleteSessionPurgesHistoryAndSettlesRuntime(t *testing.T) {
 		t.Fatalf("aggregate events = %d, want 0", len(events))
 	}
 	select {
-	case _, ok := <-live:
-		if ok {
-			t.Fatal("SSE subscription remains open")
-		}
+	case <-live.done:
 	default:
 		t.Fatal("SSE subscription was not closed")
 	}
@@ -513,7 +510,7 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 	})
 
 	select {
-	case event := <-events:
+	case event := <-events.events:
 		if event.Type != "session.tool.progress" || event.Seq != 0 {
 			t.Fatalf("event = %#v, want live tool progress", event)
 		}

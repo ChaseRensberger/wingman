@@ -1427,6 +1427,21 @@ func (s *Store) ListSessionEvents(ctx context.Context, sessionID string, after i
 	return out, nil
 }
 
+func (s *Store) SessionEventWatermark(ctx context.Context, sessionID string) (int64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return 0, store.ErrSessionNotFound
+	}
+	var watermark int64
+	for _, event := range s.events {
+		if event.SessionID == sessionID && event.Seq > watermark {
+			watermark = event.Seq
+		}
+	}
+	return watermark, nil
+}
+
 // ---- auth ----------------------------------------------------------------
 
 func (s *Store) GetAuth() (*store.Auth, error) {

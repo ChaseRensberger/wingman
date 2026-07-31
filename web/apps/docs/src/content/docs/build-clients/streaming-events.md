@@ -57,7 +57,15 @@ data: <json>
 GET /sessions/{id}/events?after=42
 ```
 
-The server first sends at most one bounded page of stored durable events after `42` (default `100`, maximum `500`), keeps the stream open, and then sends events created after subscription. It does not backfill an older backlog beyond that initial page over the live connection.
+Clients may instead send `Last-Event-ID: 42`. An explicit `after` query takes
+precedence when both are present.
+
+The server subscribes to live publication, captures the current durable
+watermark, and replays every stored sequence through that watermark. Replay is
+paged internally; `limit` controls page size (default `100`, maximum `500`), not
+total replay length. The server then emits `session.events.synchronized` before
+pure live delivery. Durable events committed during replay are buffered and
+delivered once after the boundary.
 
 Use the history endpoint when a client needs a finite page instead of an open stream:
 
@@ -65,7 +73,9 @@ Use the history endpoint when a client needs a finite page instead of an open st
 GET /sessions/{id}/events/history?after=<seq>&limit=<n>
 ```
 
-The history response is `{ "data": [...], "has_more": <boolean> }`. `limit` has the same default and maximum. Advance `after` to the last returned durable cursor and request another page while `has_more` is true; `has_more` means the returned page reached the limit, so a final follow-up may be empty.
+The history response is `{ "data": [...], "has_more": <boolean> }`. `limit`
+has the same default and maximum. Advance `after` to the last returned durable
+cursor and request another page while `has_more` is true.
 
 ## Event Envelope
 
@@ -100,10 +110,24 @@ Field meanings:
 | `id` | Unique event ID. |
 | `type` | Event type. Also used as the SSE event name. |
 | `time` | Event timestamp. |
-| `cursor` | Resume position. Present only for durable session events. |
+| `cursor` | Resume position. Present for durable events and nonzero stream control boundaries. |
 | `data` | Event-specific payload. |
 
-For live-only events without `cursor`, the SSE `id` is the event ID.
+For live-only activity without `cursor`, the SSE `id` is the event ID.
+
+## Stream Controls
+
+Control events coordinate replay and recovery; do not render them as session
+activity.
+
+| Event | Meaning |
+|---|---|
+| `session.events.synchronized` | Every durable event through this cursor has been delivered; subsequent frames are live. |
+| `session.events.resync_required` | Delivery overflowed or the cursor could not be reconciled. Reload authoritative state and reconnect. |
+
+The server disconnects after `session.events.resync_required`. Keep the last
+durable cursor, discard volatile partial rendering, reload the session and
+tracked run, and reconnect. Never advance a saved cursor backward.
 
 ## Durable Events
 
@@ -125,6 +149,7 @@ Durable events are stored and replayed. They reconstruct the transcript and fina
 | `session.structured_output.completed` | Output schema parsing succeeded. |
 | `session.run.completed` | The run finished successfully. |
 | `session.run.failed` | The run failed. |
+| `session.run.aborted` | The run was canceled or interrupted. |
 
 Durable events store boundaries, not token streams. A completed text event stores the final text for that block; it does not store every partial token delta.
 
@@ -179,27 +204,34 @@ contain useful partial text, reasoning, or tool input.
 
 ## Recovery
 
-A client only needs a session ID and last durable sequence. If it may have missed more than one page, page through history before opening the live stream:
+A client only needs a session ID and last durable sequence. The open stream
+performs complete durable replay, so clients do not need to page history before
+subscribing:
 
 ```text
 last_seq = load_checkpoint(session_id)
-
-while true:
-  page = GET /sessions/{id}/events/history?after=last_seq
-  apply page.data
-  last_seq = last durable cursor in page, if any
-  if not page.has_more: break
-
 connect /sessions/{id}/events?after=last_seq
 
 for each event:
-  apply event
   if event.cursor exists:
-    save_checkpoint(event.cursor.seq)
+    last_seq = max(last_seq, event.cursor.seq)
+    save_checkpoint(last_seq)
+  if event.type == "session.events.synchronized":
+    continue
+  if event.type == "session.events.resync_required":
+    clear volatile state
+    reload session and run
+    reconnect with last_seq
+  apply event
 
 on disconnect:
-  reconnect with the saved checkpoint
+  reload session and run
+  if the run is still queued or running:
+    reconnect with bounded backoff from last_seq
 ```
+
+Transport loss is not evidence that a run failed. The authoritative run resource
+decides whether to reconnect or present a terminal result.
 
 ## Transport
 
@@ -221,7 +253,10 @@ Idle streams send heartbeat comments:
 
 ```
 
-Persistent run failures are durable `session.run.failed` events with JSON envelopes; they are not transport-terminal errors. The persistent connection stays open after `session.run.completed` or `session.run.failed` so it can carry later queued runs for the session.
+Persistent run failures and aborts are durable `session.run.failed` and
+`session.run.aborted` events with JSON envelopes; they are not transport errors.
+The persistent connection stays open after a terminal run event so it can carry
+later queued runs for the session.
 
 ## One-Shot `/run` Stream
 

@@ -1994,6 +1994,17 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 	return out, rows.Err()
 }
 
+func (s *SQLiteStore) SessionEventWatermark(ctx context.Context, sessionID string) (int64, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return 0, err
+	}
+	var watermark int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM session_events WHERE session_id = ?`, sessionID).Scan(&watermark); err != nil {
+		return 0, fmt.Errorf("read session event watermark: %w", err)
+	}
+	return watermark, nil
+}
+
 // ---- auth ----------------------------------------------------------------
 
 // GetAuth returns the singleton auth row, or an empty Auth if unset.

@@ -9,29 +9,32 @@ export type SessionEvent = {
 };
 
 function parseSSE(buffer: string): {
-	events: Array<{ event: string; data: string }>;
+	events: Array<{ id?: string; event: string; data: string }>;
 	remainder: string;
 } {
-	const events: Array<{ event: string; data: string }> = [];
+	const events: Array<{ id?: string; event: string; data: string }> = [];
 	const chunks = buffer.split("\n\n");
 	const remainder = chunks.pop() ?? "";
 	for (const chunk of chunks) {
 		const lines = chunk.split("\n");
+		let id: string | undefined;
 		let event = "";
 		let data = "";
 		for (const line of lines) {
-			if (line.startsWith("event: ")) {
+			if (line.startsWith("id:")) {
+				id = line.slice(3).replace(/^ /, "");
+			} else if (line.startsWith("event: ")) {
 				event = line.slice(7);
 			} else if (line.startsWith("data: ")) {
 				data = line.slice(6);
 			}
 		}
-		if (event || data) events.push({ event, data });
+		if (event || data) events.push({ id, event, data });
 	}
 	return { events, remainder };
 }
 
-export async function* readSSE(response: Response): AsyncGenerator<{ event: string; data: unknown }> {
+export async function* readSSE(response: Response): AsyncGenerator<{ id?: string; event: string; data: unknown }> {
 	const reader = response.body!.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
@@ -43,18 +46,18 @@ export async function* readSSE(response: Response): AsyncGenerator<{ event: stri
 		buffer = remainder;
 		for (const ev of events) {
 			try {
-				yield { event: ev.event, data: JSON.parse(ev.data) };
+				yield { id: ev.id, event: ev.event, data: JSON.parse(ev.data) };
 			} catch {
-				yield { event: ev.event, data: ev.data };
+				yield { id: ev.id, event: ev.event, data: ev.data };
 			}
 		}
 	}
 	if (!buffer.trim()) return;
 	for (const ev of parseSSE(buffer + "\n\n").events) {
 		try {
-			yield { event: ev.event, data: JSON.parse(ev.data) };
+			yield { id: ev.id, event: ev.event, data: JSON.parse(ev.data) };
 		} catch {
-			yield { event: ev.event, data: ev.data };
+			yield { id: ev.id, event: ev.event, data: ev.data };
 		}
 	}
 }

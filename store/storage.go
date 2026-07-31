@@ -73,6 +73,9 @@ type Store interface {
 	AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error)
 	// ListSessionEvents returns durable session events with Seq > after.
 	ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]SessionEvent, error)
+	// SessionEventWatermark returns the highest durable session-event sequence,
+	// or zero when the existing session has no events.
+	SessionEventWatermark(ctx context.Context, sessionID string) (int64, error)
 
 	// CreateClient registers a Wingman API consumer identity.
 	CreateClient(name string) (*Client, error)
