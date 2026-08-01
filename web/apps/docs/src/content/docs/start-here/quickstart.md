@@ -32,6 +32,12 @@ wingman up
 
 If you don't want to register Wingman as a service you can also just run `wingman serve`.
 
+Load the private API token for the commands in this guide:
+
+```bash
+export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
+```
+
 ## Check that it's running:
 
 ```bash
@@ -54,6 +60,7 @@ export ANTHROPIC_API_KEY={key}
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
@@ -66,6 +73,7 @@ An agent is a reusable definition: instructions, allowed tools, model, and model
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Quickstart Assistant",
@@ -84,6 +92,7 @@ A session is the running conversation. It owns the message history and optional 
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Quickstart\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 
@@ -96,6 +105,7 @@ The working directory must already exist. Directory-scoped tools such as `read`,
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
@@ -119,6 +129,7 @@ Subscribe to session events when you want lifecycle events as the agent runs:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Accept: text/event-stream"
 ```
 

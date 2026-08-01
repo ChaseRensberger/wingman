@@ -3,7 +3,24 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
+import os from "node:os";
 import path from "path";
+
+const stateDir = path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), "wingman");
+let daemonTarget = "http://127.0.0.1:2323";
+let daemonCredential = "";
+try {
+  daemonTarget = JSON.parse(fs.readFileSync(path.join(stateDir, "registration.json"), "utf8")).url ?? daemonTarget;
+  daemonCredential = fs.readFileSync(path.join(stateDir, "credential"), "utf8").trim();
+} catch {
+  // The daemon can start after Vite; restart Vite to refresh discovery state.
+}
+const daemonProxy = () => ({
+  target: daemonTarget,
+  changeOrigin: true,
+  headers: daemonCredential ? { Authorization: `Bearer ${daemonCredential}` } : undefined,
+});
 
 export default defineConfig({
   base: "/console/",
@@ -20,17 +37,17 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/health": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/provider": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/agents": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/clients": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/logs": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/mcp": { target: "http://127.0.0.1:2323", changeOrigin: true },
-       "/workspaces": { target: "http://127.0.0.1:2323", changeOrigin: true },
-       "/filesystem": { target: "http://127.0.0.1:2323", changeOrigin: true },
-       "/sessions": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/tools": { target: "http://127.0.0.1:2323", changeOrigin: true },
-      "/run": { target: "http://127.0.0.1:2323", changeOrigin: true },
+      "/health": daemonProxy(),
+      "/provider": daemonProxy(),
+      "/agents": daemonProxy(),
+      "/clients": daemonProxy(),
+      "/logs": daemonProxy(),
+      "/mcp": daemonProxy(),
+      "/workspaces": daemonProxy(),
+      "/filesystem": daemonProxy(),
+      "/sessions": daemonProxy(),
+      "/tools": daemonProxy(),
+      "/run": daemonProxy(),
     },
   },
 });

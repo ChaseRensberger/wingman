@@ -12,11 +12,32 @@ Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI
 Most clients follow this sequence:
 
 1. Check health with `GET /health`.
-2. Configure provider auth with `PUT /provider/auth`.
-3. Create or reuse an agent with `/agents`.
-4. Create or reuse a Workspace with `/workspaces` if the session should belong to a saved context.
-5. Create a session with `POST /sessions`.
-6. Admit messages with `POST /sessions/{id}/message`; subscribe to live updates and completion with `GET /sessions/{id}/events`.
+2. Read the private daemon token and check readiness with `GET /ready`.
+3. Configure provider auth with `PUT /provider/auth`.
+4. Create or reuse an agent with `/agents`.
+5. Create or reuse a Workspace with `/workspaces` if the session needs a saved context.
+6. Create a session with `POST /sessions`.
+7. Admit messages with `POST /sessions/{id}/message`.
+8. Subscribe to updates with `GET /sessions/{id}/events`.
+
+## Authentication
+
+`GET /health` is public. All other API routes require the private daemon token.
+Load the token from the local state directory:
+
+```bash
+export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
+```
+
+Send it as a bearer token:
+
+```text
+Authorization: Bearer <token>
+```
+
+The token authenticates the local daemon connection. `X-Wingman-Client`
+identifies the calling application for attribution and resource scoping. It is
+not an authentication credential.
 
 ## OpenAPI and TypeScript
 
@@ -44,6 +65,7 @@ Clients can register themselves with `/clients` and then pass `X-Wingman-Client`
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-client"}' | jq -r .id)
 ```
@@ -52,6 +74,7 @@ Create a session attributed to that client:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d '{"title":"Client session"}'
@@ -65,6 +88,7 @@ Create one when needed:
 
 ```bash
 WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "$(jq -n \
@@ -77,6 +101,7 @@ Or reuse an existing Workspace:
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "X-Wingman-Client: ${CLIENT_ID}" | jq -r '.[0].id')
 ```
 
@@ -84,6 +109,7 @@ Create a session in that Workspace:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"

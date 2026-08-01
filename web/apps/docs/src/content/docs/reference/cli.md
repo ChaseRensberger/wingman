@@ -41,7 +41,10 @@ wingman serve
 wingman up
 ```
 
-On Linux, `wingman up` re-executes itself through `sudo` when needed, installs `/etc/systemd/system/wingman.service`, and runs `wingman serve` as the invoking user. On macOS, it writes `~/Library/LaunchAgents/actor.wingman.plist` and bootstraps it in the logged-in user's launchd domain without `sudo`. Both service forms set `HOME` so default configuration and storage stay under the invoking user's home directory.
+On Linux, `wingman up` re-executes itself through `sudo` when required. It
+installs `/etc/systemd/system/wingman.service` and runs the service as the
+invoking user. On macOS, it installs a per-user LaunchAgent. Both service forms
+wait for authenticated readiness before the command returns.
 
 `wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
 
@@ -68,7 +71,9 @@ wingman serve --ephemeral
 wingman up --port 2424
 ```
 
-Bind to `0.0.0.0` only on trusted networks. Wingman does not provide inbound auth or multi-tenant isolation.
+Wingman requires bearer authentication on loopback and non-loopback listeners.
+It does not provide tenant isolation. A valid daemon token grants control of
+providers, agents, sessions, extensions, and enabled tools.
 
 ## Service Commands
 
@@ -77,6 +82,9 @@ Check the generated service:
 ```bash
 wingman status
 ```
+
+The command reports discovery as `ready`, `starting`, `stale`, `incompatible`,
+or missing. It then displays the systemd or launchd status.
 
 Restart the service after editing `~/.config/wingman/wingman.json`:
 

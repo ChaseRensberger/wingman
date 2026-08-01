@@ -157,3 +157,10 @@ type ModelCall struct {
 type StatusResponse struct {
 	Status string `json:"status"`
 }
+
+// ReadinessResponse identifies a daemon that completed startup recovery.
+type ReadinessResponse struct {
+	Ready      bool   `json:"ready"`
+	InstanceID string `json:"instance_id"`
+	Version    string `json:"version"`
+}

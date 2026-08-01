@@ -14,8 +14,11 @@ Client names are unique case-insensitively. `Wingman` is reserved for the built-
 
 If you want a request to run in a client context, send the client ID with `X-Wingman-Client`:
 
+This command uses `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: cli_..." \
   -d '{"title":"From my app"}'

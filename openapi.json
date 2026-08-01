@@ -1596,6 +1596,26 @@
         ],
         "type": "object"
       },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "instance_id": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready",
+          "instance_id",
+          "version"
+        ],
+        "type": "object"
+      },
       "ReasoningPart": {
         "additionalProperties": false,
         "properties": {
@@ -3651,6 +3671,17 @@
         ],
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "consoleSession": {
+        "in": "cookie",
+        "name": "wingman_session",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -4234,6 +4265,7 @@
             "description": "Request failed"
           }
         },
+        "security": [],
         "summary": "Check daemon health"
       }
     },
@@ -5040,6 +5072,54 @@
           }
         },
         "summary": "Get provider OAuth status"
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "summary": "Check daemon readiness"
       }
     },
     "/run": {
@@ -6388,5 +6468,13 @@
         "summary": "List Workspace sessions"
       }
     }
-  }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "consoleSession": []
+    }
+  ]
 }

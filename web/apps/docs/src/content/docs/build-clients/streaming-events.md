@@ -12,12 +12,15 @@ aggregate event log described in [Durable Events and Projections](/concepts/dura
 which records session creation, metadata changes, and run admission to maintain
 critical projections.
 
+These examples use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ## Start Work
 
 Start a persistent session run:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "request_id": "submit-123",
@@ -37,6 +40,7 @@ Subscribe to session events:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Accept: text/event-stream"
 ```
 

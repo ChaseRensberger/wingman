@@ -26,8 +26,11 @@ Wingman ships these built-ins:
 
 Directory-scoped tools require the session to have a working directory. Create the session with `working_directory` or `workspace_id`, or move it with `POST /sessions/{id}/move`, before allowing file or shell tools.
 
+These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
@@ -46,6 +49,7 @@ Agents store tool names in `tools`:
 
 ```bash
 curl -sS -X POST http://localhost:2323/agents \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "Researcher",

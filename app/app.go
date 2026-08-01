@@ -50,6 +50,10 @@ type Config struct {
 	AgentPermissions  map[string]permission.Ruleset
 	PermissionTimeout time.Duration
 	ShutdownTimeout   time.Duration
+	Credential        string
+	InstanceID        string
+	Version           string
+	ConsoleCookie     bool
 }
 
 type lifecycleServer interface {
@@ -172,6 +176,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		RootContext: root, Store: a.store.store, WebDevURL: cfg.WebDevURL,
 		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
+		Credential: cfg.Credential, InstanceID: cfg.InstanceID, Version: cfg.Version, ConsoleCookie: cfg.ConsoleCookie,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

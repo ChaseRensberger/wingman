@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -45,6 +48,11 @@ type Server struct {
 	permissions        permission.Ruleset
 	agentPermissions   map[string]permission.Ruleset
 	oauth              *oauthManager
+	credential         string
+	instanceID         string
+	version            string
+	consoleCookie      bool
+	ready              atomic.Bool
 
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
@@ -74,6 +82,10 @@ type Config struct {
 	// PermissionTimeout bounds interactive permission requests. Values less
 	// than or equal to zero use the five-minute default.
 	PermissionTimeout time.Duration
+	Credential        string
+	InstanceID        string
+	Version           string
+	ConsoleCookie     bool
 }
 
 func New(cfg Config) *Server {
@@ -106,6 +118,10 @@ func New(cfg Config) *Server {
 		permissions:      cfg.Permissions,
 		agentPermissions: cfg.AgentPermissions,
 		oauth:            newOAuthManager(ctx, cfg.Store),
+		credential:       cfg.Credential,
+		instanceID:       cfg.InstanceID,
+		version:          cfg.Version,
+		consoleCookie:    cfg.ConsoleCookie,
 		shutdownCtx:      ctx,
 		shutdownCancel:   cancel,
 	}
@@ -132,6 +148,55 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(s.requestLogger)
 	s.router.Use(s.recoverer)
 	s.router.Use(s.timeoutWithBypass(60*time.Second, shouldBypassTimeout))
+	s.router.Use(s.authenticate)
+}
+
+const consoleSessionCookie = "wingman_session"
+
+func (s *Server) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.credential == "" || r.URL.Path == "/health" || r.URL.Path == "/console" || strings.HasPrefix(r.URL.Path, "/console/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		credential := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if credential == r.Header.Get("Authorization") {
+			if cookie, err := r.Cookie(consoleSessionCookie); err == nil {
+				credential = cookie.Value
+			}
+		}
+		if subtle.ConstantTimeCompare([]byte(credential), []byte(s.credential)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="wingman"`)
+			s.writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
+	if !s.consoleCookie || s.credential == "" || !requestHostIsLoopback(r.Host) {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: s.consoleSessionCookieName(), Value: s.credential, Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (s *Server) consoleSessionCookieName() string { return consoleSessionCookie }
+
+func requestHostIsLoopback(host string) bool {
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		host = name
+	} else {
+		host = strings.Trim(host, "[]")
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func requestIDHeader(next http.Handler) http.Handler {
@@ -230,6 +295,7 @@ func shouldBypassTimeout(r *http.Request) bool {
 func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
+	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
 	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List plugin status", nil, http.StatusOK, pluginsResponse{}, s.handleListPlugins)
 	s.registerJSON(http.MethodPost, "/plugins/reload", "reloadPlugins", "Reload plugins", nil, http.StatusOK, pluginsResponse{}, s.handleReloadPlugins)
@@ -324,8 +390,12 @@ func (s *Server) mountWebUI() {
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(devURL)
-		s.router.Handle("/console", proxy)
-		s.router.Handle("/console/*", proxy)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.setConsoleSession(w, r)
+			proxy.ServeHTTP(w, r)
+		})
+		s.router.Handle("/console", handler)
+		s.router.Handle("/console/*", handler)
 		return
 	}
 
@@ -336,6 +406,7 @@ func (s *Server) mountWebUI() {
 	}
 	files := http.FileServer(http.FS(dist))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.setConsoleSession(w, r)
 		servePath := strings.TrimPrefix(r.URL.Path, "/console")
 		if servePath == "" || servePath == "/" {
 			servePath = "/"
@@ -397,6 +468,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.startMu.Lock()
 	s.startErr = err
+	s.ready.Store(err == nil)
 	close(done)
 	s.startMu.Unlock()
 	return err
@@ -445,6 +517,7 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 // close may be retried with a new context.
 func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
+		s.ready.Store(false)
 		s.shutdownCancel()
 		if s.runs != nil {
 			s.runs.stop()
@@ -588,6 +661,15 @@ func (s *Server) ephemeralNotImplemented(w http.ResponseWriter) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
+	response := api.ReadinessResponse{Ready: s.ready.Load(), InstanceID: s.instanceID, Version: s.version}
+	status := http.StatusOK
+	if !response.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, response)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {

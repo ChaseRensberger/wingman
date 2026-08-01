@@ -161,14 +161,18 @@ Wingman rejects duplicate names rather than choosing an implicit winner.
 
 List loaded plugins and non-fatal load errors:
 
+These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
-curl http://127.0.0.1:2323/plugins/
+curl http://127.0.0.1:2323/plugins \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 Reload plugins in the directoryless scope:
 
 ```bash
-curl -X POST http://127.0.0.1:2323/plugins/reload
+curl -X POST http://127.0.0.1:2323/plugins/reload \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 External plugins run with the same permissions as the Wingman process that starts them. Install plugins only from sources you trust.

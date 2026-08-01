@@ -29,10 +29,13 @@ Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a sav
 
 Wingman's session API follows the same split as OpenCode: create a session first, then send messages to that session.
 
+The commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 Create a session:
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Explore repo\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 ```
@@ -40,9 +43,11 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 Create a session in a Workspace:
 
 ```bash
-WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces | jq -r '.[0].id')
+WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" | jq -r '.[0].id')
 
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
@@ -55,6 +60,7 @@ Persisted session responses include a `version`. Use it to rename a session:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/rename" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"title":"Investigate retries","expected_version":1}'
 ```
@@ -63,6 +69,7 @@ Move a session by sending exactly one of `working_directory` or `workspace_id`:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/move" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"working_directory":"/home/me/other-project","expected_version":2}'
 ```
@@ -79,6 +86,7 @@ parameter:
 
 ```bash
 curl -sS -X DELETE \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
 ```
 
@@ -95,6 +103,7 @@ Send a message with an optional retry identity:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "request_id": "submit-123",
@@ -141,6 +150,7 @@ Use the event stream when a client needs live events:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Accept: text/event-stream"
 ```
 
@@ -156,8 +166,10 @@ Each accepted message emits `session.run.queued`, then `session.run.started` whe
 The durable run record is authoritative after a reload or lost event stream:
 
 ```bash
-curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs"
-curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..."
+curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs" \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
+curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..." \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 A run moves from `queued` to `running`, then to `completed`, `failed`, or
@@ -169,6 +181,7 @@ Abort a specific queued or running run with:
 
 ```bash
 curl -sS -X POST \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   "http://localhost:2323/sessions/${SESSION_ID}/runs/run_.../abort"
 ```
 
@@ -185,6 +198,7 @@ Some agent runs should not leave durable state. Wingman exposes that as an ephem
 
 ```bash
 curl -N -X POST http://localhost:2323/run \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d '{

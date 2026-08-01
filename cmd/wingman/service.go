@@ -10,8 +10,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/chaserensberger/wingman/internal/daemonclient"
+	"github.com/chaserensberger/wingman/internal/daemonstate"
 )
 
 const (
@@ -42,21 +46,34 @@ func runDown(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runRestart(ctx context.Context, cmd *cli.Command) error {
+	stateDir, err := managedStateDir()
+	if err != nil {
+		return err
+	}
 	switch runtime.GOOS {
 	case "linux":
 		ok, err := ensureSystemdRoot(ctx)
 		if err != nil || !ok {
 			return err
 		}
-		return runSystemctl(ctx, "restart", "wingman.service")
+		if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
+			return err
+		}
 	case "darwin":
-		return runLaunchctl(ctx, "kickstart", "-k", launchdTarget())
+		if err := runLaunchctl(ctx, "kickstart", "-k", launchdTarget()); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("wingman restart supports Linux/systemd and macOS/launchd only")
 	}
+	return waitForServiceReady(ctx, stateDir)
 }
 
 func runStatus(ctx context.Context, cmd *cli.Command) error {
+	stateDir, err := managedStateDir()
+	if err == nil {
+		printDaemonStatus(ctx, daemonstate.New(stateDir))
+	}
 	switch runtime.GOOS {
 	case "linux":
 		if _, err := exec.LookPath("systemctl"); err != nil {
@@ -83,13 +100,20 @@ func runLinuxUp(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(systemdServicePath, []byte(systemdUnit(exe, serviceUser, homeDir, serveArgs(exe, cmd))), 0644); err != nil {
+	stateDir := stateDirForHome(homeDir)
+	if err := os.WriteFile(systemdServicePath, []byte(systemdUnit(exe, serviceUser, homeDir, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", systemdServicePath, err)
 	}
 	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	if err := runSystemctl(ctx, "enable", "--now", "wingman.service"); err != nil {
+	if err := runSystemctl(ctx, "enable", "wingman.service"); err != nil {
+		return err
+	}
+	if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
+		return err
+	}
+	if err := waitForServiceReady(ctx, stateDir); err != nil {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
@@ -128,10 +152,11 @@ func runDarwinUp(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	path := launchdPlistPath(home)
+	stateDir := stateDirForHome(home)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(launchdPlist(home, serveArgs(exe, cmd))), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(launchdPlist(home, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	_ = runLaunchctl(ctx, "bootout", launchdTarget())
@@ -139,6 +164,9 @@ func runDarwinUp(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	if err := runLaunchctl(ctx, "kickstart", "-k", launchdTarget()); err != nil {
+		return err
+	}
+	if err := waitForServiceReady(ctx, stateDir); err != nil {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
@@ -187,6 +215,9 @@ func ensureSystemdRoot(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	args := append([]string{exe}, os.Args[1:]...)
+	if os.Getenv("XDG_STATE_HOME") != "" {
+		args = append([]string{"--preserve-env=XDG_STATE_HOME"}, args...)
+	}
 	sudo := exec.CommandContext(ctx, "sudo", args...)
 	sudo.Stdin, sudo.Stdout, sudo.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := sudo.Run(); err != nil {
@@ -195,8 +226,8 @@ func ensureSystemdRoot(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func serveArgs(exe string, cmd *cli.Command) []string {
-	args := []string{exe, "serve", "--host", cmd.String("host"), "--port", fmt.Sprint(cmd.Int("port")), "--log-format", cmd.String("log-format"), "--log-level", cmd.String("log-level")}
+func serveArgs(exe string, cmd *cli.Command, stateDir string) []string {
+	args := []string{exe, "serve", "--register", "--state-dir", stateDir, "--host", cmd.String("host"), "--port", fmt.Sprint(cmd.Int("port")), "--log-format", cmd.String("log-format"), "--log-level", cmd.String("log-level")}
 	if db := cmd.String("db"); db != "" {
 		args = append(args, "--db", db)
 	}
@@ -213,6 +244,50 @@ func serveArgs(exe string, cmd *cli.Command) []string {
 		args = append(args, "--no-plugins")
 	}
 	return args
+}
+
+func stateDirForHome(home string) string {
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		return filepath.Join(stateHome, "wingman")
+	}
+	return filepath.Join(home, ".local", "state", "wingman")
+}
+
+func managedStateDir() (string, error) {
+	_, home, err := serviceAccount()
+	if err != nil {
+		return "", err
+	}
+	return stateDirForHome(home), nil
+}
+
+func waitForServiceReady(ctx context.Context, stateDir string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	registration, err := daemonclient.WaitReady(waitCtx, daemonstate.New(stateDir), version, 100*time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("Wingman service did not become ready; run 'wingman status' for details: %w", err)
+	}
+	fmt.Printf("Wingman daemon ready at %s\n", registration.URL)
+	return nil
+}
+
+func printDaemonStatus(ctx context.Context, state *daemonstate.State) {
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	result := daemonclient.Inspect(probeCtx, state, version)
+	switch result.Status {
+	case daemonclient.StatusReady:
+		fmt.Printf("Wingman daemon: ready at %s (%s)\n", result.Registration.URL, result.Registration.InstanceID)
+	case daemonclient.StatusStarting:
+		fmt.Printf("Wingman daemon: starting at %s\n", result.Registration.URL)
+	case daemonclient.StatusIncompatible:
+		fmt.Printf("Wingman daemon: incompatible version %s at %s\n", result.Registration.Version, result.Registration.URL)
+	case daemonclient.StatusStale:
+		fmt.Printf("Wingman daemon: stale registration at %s\n", result.Registration.URL)
+	default:
+		fmt.Println("Wingman daemon: no registration")
+	}
 }
 
 func systemdUnit(exe, serviceUser, homeDir string, args []string) string {

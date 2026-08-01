@@ -5,7 +5,9 @@ description: "Start Wingman as a foreground process or system service."
 
 # Run the Server
 
-Wingman runs as a local HTTP server. By default it listens on `127.0.0.1:2323` and stores persistent data in SQLite at `~/.local/share/wingman/wingman.db`. Currently it has no inbound authentication, and a reachable caller can use configured providers, inspect directories, manage extensions, and start agents with enabled tools. This will likely change in the near future.
+Wingman runs as a local HTTP server. By default, it listens on
+`127.0.0.1:2323`. It stores persistent data in
+`~/.local/share/wingman/wingman.db`. The API requires a private bearer token.
 
 ## Foreground Server
 
@@ -36,6 +38,14 @@ wingman up
 ```
 
 On Linux, `wingman up` prompts for `sudo` when it needs to write `/etc/systemd/system/wingman.service`. On macOS, it writes the per-user LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist` and does not need `sudo`.
+
+`wingman up` returns after the registered daemon passes its authenticated
+readiness check. The private state files are in
+`${XDG_STATE_HOME:-$HOME/.local/state}/wingman`:
+
+- `credential` contains the stable local API token.
+- `registration.json` contains the instance ID, version, URL, PID, and creation time.
+- `daemon.lock` elects one managed daemon for this state directory.
 
 Inspect the service:
 
@@ -80,6 +90,21 @@ wingman serve --host 127.0.0.1 --port 2424
 ```
 
 Wingman does not enable cross-origin browser access by default. The bundled console UI is served from `/console` on the same origin as the API.
+
+## API Authentication
+
+`GET /health` is public and reports process liveness. All other API routes
+require the bearer token:
+
+```bash
+export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
+curl -sS http://localhost:2323/ready \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
+```
+
+The loopback Console receives an HttpOnly, `SameSite=Strict` session cookie.
+Wingman does not issue this cookie on a non-loopback listener. Native clients
+must read the private credential and send the bearer token.
 
 ## Ephemeral Mode
 

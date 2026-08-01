@@ -308,14 +308,18 @@ active. After a successful atomic swap, it retires the previous generation.
 List status, negotiated capabilities, health, process data, contributions, and
 bounded diagnostics:
 
+These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
-curl http://127.0.0.1:2323/plugins/
+curl http://127.0.0.1:2323/plugins \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 Reload global and accepted project plugin directories:
 
 ```bash
-curl -X POST http://127.0.0.1:2323/plugins/reload
+curl -X POST http://127.0.0.1:2323/plugins/reload \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 Install plugins only from sources you trust.

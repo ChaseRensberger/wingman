@@ -38,6 +38,11 @@ func (s *Server) setupOpenAPI() {
 	config.DocsPath = ""
 	config.SchemasPath = ""
 	config.CreateHooks = nil
+	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"bearerAuth":     {Type: "http", Scheme: "bearer"},
+		"consoleSession": {Type: "apiKey", In: "cookie", Name: consoleSessionCookie},
+	}
+	config.Security = []map[string][]string{{"bearerAuth": {}}, {"consoleSession": {}}}
 	s.protocol = humachi.New(s.router, config)
 
 	registry := s.protocol.OpenAPI().Components.Schemas
@@ -63,6 +68,9 @@ func (s *Server) registerJSONWithParameters(method, path, operationID, summary s
 			strconv.Itoa(status): jsonResponse(http.StatusText(status), schemaFor(s.protocol, response)),
 			"default":            jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
 		},
+	}
+	if path == "/health" {
+		op.Security = []map[string][]string{}
 	}
 	if request != nil {
 		op.RequestBody = &huma.RequestBody{

@@ -17,11 +17,16 @@ The daemon publishes the authoritative OpenAPI 3.1 document at
 `@wingman-actor/client` TypeScript package are derived from the same server-owned Go
 route and schema registrations.
 
-> **Trusted-local control surface:** Wingman has no inbound authentication or tenant isolation. A caller that can reach the server can use its configured providers, inspect local directories, manage extensions, and start agents that may invoke enabled local tools. Keep it bound to trusted local access; `X-Wingman-Client` is attribution, not an access boundary. See [Global Config](/configure/config) and [Run the Server](/use-wingman/run-server).
+> **Authenticated control surface:** Wingman requires its private daemon token
+> for all API routes except `GET /health`. A token holder can use providers,
+> inspect directories, manage extensions, and run enabled tools. Wingman does
+> not provide tenant isolation. `X-Wingman-Client` is attribution, not
+> authentication. See [Run the Server](/use-wingman/run-server#api-authentication).
 
 ## Conventions
 
 - Request bodies are JSON.
+- Send `Authorization: Bearer <token>` on all routes except `GET /health`.
 - Standard request timeout is 60 seconds.
 - Session event endpoints and `POST /run` bypass the standard timeout; `/sessions/{id}/events` and `/run` return `text/event-stream`.
 - ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
@@ -31,9 +36,22 @@ route and schema registrations.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
+| `GET` | `/ready` | Authenticated readiness, instance ID, and version |
 
 ```json
 { "status": "ok" }
+```
+
+`GET /health` reports liveness and does not require authentication.
+`GET /ready` requires authentication. It returns `503 Service Unavailable`
+until startup recovery is complete.
+
+```json
+{
+  "ready": true,
+  "instance_id": "ins_...",
+  "version": "0.3.0"
+}
 ```
 
 ## Provider endpoints
@@ -245,6 +263,7 @@ Deletion requires the current session version in `expected_version`. It returns
 
 ```bash
 curl -sS -X DELETE \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   "http://localhost:2323/sessions/ses_...?expected_version=2"
 ```
 

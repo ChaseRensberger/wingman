@@ -1,7 +1,38 @@
 import { consoleAssets } from "./assets.generated.ts";
 
-const daemonOrigin = "http://127.0.0.1:2323";
 const consolePrefix = "/console";
+
+type DaemonRegistration = {
+  instance_id: string;
+  version: string;
+  url: string;
+  pid: number;
+  created_at: string;
+};
+
+function daemonStateDir(): string {
+  const state = Deno.env.get("XDG_STATE_HOME");
+  if (state) return `${state}/wingman`;
+  const home = Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE");
+  if (!home) throw new Error("unable to resolve the user home directory");
+  return `${home}/.local/state/wingman`;
+}
+
+async function daemonTransport(): Promise<{ origin: string; credential: string }> {
+  const state = daemonStateDir();
+  const [rawRegistration, rawCredential] = await Promise.all([
+    Deno.readTextFile(`${state}/registration.json`),
+    Deno.readTextFile(`${state}/credential`),
+  ]);
+  const registration = JSON.parse(rawRegistration) as DaemonRegistration;
+  const origin = new URL(registration.url);
+  if ((origin.protocol !== "http:" && origin.protocol !== "https:") || !registration.instance_id) {
+    throw new Error("invalid Wingman daemon registration");
+  }
+  const credential = rawCredential.trim();
+  if (!credential) throw new Error("invalid Wingman daemon credential");
+  return { origin: origin.origin, credential };
+}
 
 function contentType(path: string): string {
   if (path.endsWith(".css")) return "text/css; charset=utf-8";
@@ -14,6 +45,21 @@ function contentType(path: string): string {
   if (path.endsWith(".woff")) return "font/woff";
   if (path.endsWith(".woff2")) return "font/woff2";
   return "application/octet-stream";
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function isTrustedRequest(request: Request): boolean {
+  if (!isLoopbackHostname(new URL(request.url).hostname)) return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return isLoopbackHostname(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }
 
 function consoleAsset(pathname: string): Response {
@@ -37,12 +83,16 @@ function consoleAsset(pathname: string): Response {
   return new Response(Uint8Array.fromBase64(asset), { headers });
 }
 
-function proxy(request: Request): Promise<Response> {
+async function proxy(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  return fetch(new Request(`${daemonOrigin}${url.pathname}${url.search}`, request));
+  const daemon = await daemonTransport();
+  const target = new Request(`${daemon.origin}${url.pathname}${url.search}`, request);
+  target.headers.set("Authorization", `Bearer ${daemon.credential}`);
+  return fetch(target);
 }
 
 Deno.serve({ hostname: "127.0.0.1" }, async (request) => {
+  if (!isTrustedRequest(request)) return new Response("Forbidden", { status: 403 });
   const url = new URL(request.url);
   if (url.pathname === "/") return Response.redirect(new URL("/console/", url), 302);
   if (url.pathname === consolePrefix || url.pathname.startsWith(`${consolePrefix}/`)) {
@@ -51,6 +101,6 @@ Deno.serve({ hostname: "127.0.0.1" }, async (request) => {
   try {
     return await proxy(request);
   } catch {
-    return new Response("Wingman daemon is unavailable at http://127.0.0.1:2323", { status: 503 });
+    return new Response("Wingman daemon is unavailable or not registered", { status: 503 });
   }
 });

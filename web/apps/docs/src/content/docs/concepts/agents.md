@@ -8,8 +8,11 @@ order: 100
 
 An agent is a reusable definition for how a task should be completed (in the context of a [session](/concepts/sessions)). It describes the runtime configuration for a turn.
 
+This command uses `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
 curl -sS -X POST http://localhost:2323/agents \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "Builder",

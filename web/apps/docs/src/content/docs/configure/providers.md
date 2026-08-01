@@ -48,8 +48,11 @@ connection replaces a saved API key, and saving an API key replaces OAuth.
 
 Store provider API keys with `PUT /provider/auth`:
 
+The commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
@@ -59,7 +62,8 @@ The server persists credentials in SQLite. Clients do not need access to your sh
 Check auth status:
 
 ```bash
-curl -sS http://localhost:2323/provider/auth | jq
+curl -sS http://localhost:2323/provider/auth \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}" | jq
 ```
 
 The response reports stored SQLite credentials only. It does not return secrets
@@ -68,7 +72,8 @@ or report credentials that Wingman can resolve from environment variables.
 Remove a provider credential:
 
 ```bash
-curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic
+curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic \
+  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
 ## Environment Variables

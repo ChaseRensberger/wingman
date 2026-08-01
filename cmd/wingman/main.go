@@ -8,12 +8,17 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
+	"github.com/segmentio/ksuid"
 	"github.com/urfave/cli/v3"
 
 	"github.com/chaserensberger/wingman/app"
 	daemonconfig "github.com/chaserensberger/wingman/internal/config"
+	"github.com/chaserensberger/wingman/internal/daemonstate"
 )
 
 var (
@@ -52,7 +57,7 @@ func main() {
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
-				Flags:  serveFlags(cfg),
+				Flags:  serveCommandFlags(cfg),
 				Action: runServe(cfg),
 			},
 			{
@@ -97,6 +102,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func serveCommandFlags(cfg daemonconfig.Config) []cli.Flag {
+	return append(serveFlags(cfg),
+		&cli.BoolFlag{Name: "register", Usage: "Publish managed-daemon discovery state", Hidden: true},
+		&cli.StringFlag{Name: "state-dir", Usage: "Override the private daemon state directory", Hidden: true},
+	)
 }
 
 func serveFlags(cfg daemonconfig.Config) []cli.Flag {
@@ -158,6 +170,29 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		if err := effective.Validate(); err != nil {
 			return fmt.Errorf("validate effective config: %w", err)
 		}
+		stateDir := cmd.String("state-dir")
+		if stateDir == "" {
+			var err error
+			stateDir, err = daemonstate.DefaultDir()
+			if err != nil {
+				return err
+			}
+		}
+		state := daemonstate.New(stateDir)
+		var lock *daemonstate.Lock
+		if cmd.Bool("register") {
+			var err error
+			lock, err = state.AcquireLock()
+			if err != nil {
+				return fmt.Errorf("acquire managed daemon ownership: %w", err)
+			}
+			defer func() { _ = lock.Release() }()
+		}
+		credential, err := state.Credential()
+		if err != nil {
+			return fmt.Errorf("load daemon credential: %w", err)
+		}
+		instanceID := "ins_" + ksuid.New().String()
 		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer stopSig()
 		addr := fmt.Sprintf("%s:%d", effective.Server.Host, effective.Server.Port)
@@ -165,12 +200,25 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		if err != nil {
 			return err
 		}
+		if cmd.Bool("register") {
+			registration := daemonstate.Registration{
+				InstanceID: instanceID, Version: version, URL: listenerURL(effective.Server.Host, listener.Addr()),
+				PID: os.Getpid(), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			}
+			if err := state.WriteRegistration(registration); err != nil {
+				_ = listener.Close()
+				return fmt.Errorf("publish daemon registration: %w", err)
+			}
+			defer func() { _, _ = state.RemoveRegistration(instanceID) }()
+		}
 		application, err := app.New(sigCtx, app.Config{
 			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
 			WebDevURL: cmd.String("ui-dev"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			MCP: effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
+			Credential: credential, InstanceID: instanceID, Version: version,
+			ConsoleCookie: isLoopbackHost(effective.Server.Host),
 		})
 		if err != nil {
 			_ = listener.Close()
@@ -185,6 +233,31 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		logger.Info("shutdown complete")
 		return nil
 	}
+}
+
+func listenerURL(configuredHost string, addr net.Addr) string {
+	host := configuredHost
+	switch host {
+	case "", "0.0.0.0":
+		host = "127.0.0.1"
+	case "::", "[::]":
+		host = "::1"
+	}
+	port := 0
+	if tcp, ok := addr.(*net.TCPAddr); ok {
+		port = tcp.Port
+	} else if _, value, err := net.SplitHostPort(addr.String()); err == nil {
+		port, _ = strconv.Atoi(value)
+	}
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 func serviceAccount() (string, string, error) {
