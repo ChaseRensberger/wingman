@@ -5,6 +5,7 @@ import {
 	addPermissionReplyInFlight,
 	latestActiveSessionRun,
 	pendingPermissionRequests,
+	reconcileSessionEventSeq,
 	reducePermissionRequestRecords,
 	sessionRunEventError,
 	sessionRunRetryDelay,
@@ -70,6 +71,11 @@ describe("session stream reconnection", () => {
 		expect(sessionStreamControl("session.events.synchronized")).toBe("synchronized");
 		expect(sessionStreamControl("session.events.resync_required")).toBe("resync_required");
 		expect(sessionStreamControl("session.text.delta")).toBeUndefined();
+	});
+
+	test("resets an invalid cursor only after an explicit resync", () => {
+		expect(reconcileSessionEventSeq(12, 8, false)).toBe(12);
+		expect(reconcileSessionEventSeq(12, 8, true)).toBe(8);
 	});
 });
 

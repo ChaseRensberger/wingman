@@ -2,6 +2,11 @@
 
 Bundled Wingman management UI. It is a Vite/React app served by `wingman serve` at `/console`.
 
+Ordinary API requests use the generated `@wingman-actor/client`. SSE framing
+stays local because replay cursors and reconnect policy belong to the Console.
+The connection banner reports daemon readiness and reloads the active route after
+the daemon recovers.
+
 ## Development
 
 Run the Vite dev server, then proxy `/console` from the Go server:

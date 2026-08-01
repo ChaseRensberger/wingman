@@ -26,7 +26,7 @@ import { Textarea } from "@wingman/core/components/core/textarea";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
@@ -81,10 +81,10 @@ function AgentDetailPage() {
     onSubmit: async ({ value }) => {
       setSaving(true);
       try {
-        const updated = (await wfetch(`/agents/${agentId}`, {
-          method: "PUT",
-          body: JSON.stringify(buildAgentPayload(value)),
-        })) as Agent;
+        const updated = (await apiData(api.PUT("/agents/{id}", {
+          params: { path: { id: agentId } },
+          body: buildAgentPayload(value),
+        }))) as Agent;
         setAgent(updated);
         form.reset(formFromAgent(updated));
       } catch (err) {
@@ -98,9 +98,9 @@ function AgentDetailPage() {
   async function load() {
     try {
       const [agentData, providerData, toolData] = await Promise.all([
-        wfetch(`/agents/${agentId}`) as Promise<Agent>,
-        wfetch("/provider") as Promise<Provider[]>,
-        wfetch("/tools") as Promise<ToolsResponse>,
+        apiData(api.GET("/agents/{id}", { params: { path: { id: agentId } } })) as Promise<Agent>,
+        apiData(api.GET("/provider")) as Promise<Provider[]>,
+        apiData(api.GET("/tools")) as Promise<ToolsResponse>,
       ]);
       setAgent(agentData);
       form.reset(formFromAgent(agentData));
@@ -110,7 +110,9 @@ function AgentDetailPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
+            const data = (await apiData(api.GET("/provider/{name}/models", {
+              params: { path: { name: provider.id } },
+            }))) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
           } catch {
             return [provider.id, []] as const;
@@ -131,7 +133,7 @@ function AgentDetailPage() {
     if (!agent) return;
     setDeleting(true);
     try {
-      await wfetch(`/agents/${agent.id}`, { method: "DELETE" });
+      await apiData(api.DELETE("/agents/{id}", { params: { path: { id: agent.id } } }));
       navigate({ to: "/agents" });
     } catch (err) {
       showErrorToast(err);

@@ -22,7 +22,7 @@ import {
 } from "@wingman/core/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
@@ -58,8 +58,7 @@ function AgentsPage() {
     onSubmit: async ({ value }) => {
       setSaving(true);
       try {
-        const body = JSON.stringify(buildAgentPayload(value));
-        await wfetch("/agents", { method: "POST", body });
+        await apiData(api.POST("/agents", { body: buildAgentPayload(value) }));
         form.reset();
         setCreateOpen(false);
         await load();
@@ -74,9 +73,9 @@ function AgentsPage() {
   async function load() {
     try {
       const [agentData, providerData, toolData] = await Promise.all([
-        wfetch("/agents") as Promise<Agent[]>,
-        wfetch("/provider") as Promise<Provider[]>,
-        wfetch("/tools") as Promise<ToolsResponse>,
+        apiData(api.GET("/agents")) as Promise<Agent[]>,
+        apiData(api.GET("/provider")) as Promise<Provider[]>,
+        apiData(api.GET("/tools")) as Promise<ToolsResponse>,
       ]);
       setAgents(agentData);
       setProviders(providerData);
@@ -85,7 +84,9 @@ function AgentsPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
+            const data = (await apiData(api.GET("/provider/{name}/models", {
+              params: { path: { name: provider.id } },
+            }))) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
           } catch {
             return [provider.id, []] as const;

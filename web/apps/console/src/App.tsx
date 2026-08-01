@@ -5,6 +5,7 @@ import { Button } from "@wingman/core/components/core/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@wingman/core/components/core/sheet";
 import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
+import { DaemonConnectionBanner, useDaemonConnection } from "@/components/daemon-connection";
 import { navItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ function NavLink({
 export default function App() {
 	const { location } = useRouterState();
 	const [navigationOpen, setNavigationOpen] = useState(false);
+	const { revision, hasConnected } = useDaemonConnection();
 	const isSessionDetail = /^\/sessions\/[^/]+$/.test(location.pathname);
 	const activeNavItem = navItems.find(
 		({ to }) => location.pathname === to || location.pathname.startsWith(to + "/"),
@@ -55,6 +57,7 @@ export default function App() {
 	return (
 		<div className={cn("flex flex-col", isSessionDetail ? "h-dvh" : "min-h-screen")}>
 			<CommandPalette />
+			<DaemonConnectionBanner />
 			{!isSessionDetail && (
 				<>
 					<header className="flex items-center justify-between gap-4 border-b px-4 py-3 sm:hidden">
@@ -91,7 +94,7 @@ export default function App() {
 				</>
 			)}
 			<main className="flex-1 min-h-0">
-				<Outlet />
+				{hasConnected && <Outlet key={revision} />}
 			</main>
 		</div>
 	);

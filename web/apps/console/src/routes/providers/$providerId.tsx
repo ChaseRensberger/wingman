@@ -17,7 +17,7 @@ import { Input } from "@wingman/core/components/core/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel, ProviderOAuthAttempt } from "@/lib/types";
 
@@ -37,10 +37,12 @@ function ProviderDetailPage() {
 
   async function load() {
     try {
-      const providerData = (await wfetch("/provider")) as Provider[];
+      const providerData = (await apiData(api.GET("/provider"))) as Provider[];
       setProvider(providerData.find((item) => item.id === providerId) ?? null);
       try {
-        const modelData = (await wfetch(`/provider/${providerId}/models`)) as Record<string, ProviderModel>;
+        const modelData = (await apiData(api.GET("/provider/{name}/models", {
+          params: { path: { name: providerId } },
+        }))) as Record<string, ProviderModel>;
         setModels(Object.values(modelData).sort((a, b) => a.id.localeCompare(b.id)));
       } catch {
         setModels([]);
@@ -57,7 +59,9 @@ function ProviderDetailPage() {
   useEffect(() => {
     if (!oauthAttempt || oauthAttempt.status !== "pending" || !provider) return;
     const interval = window.setInterval(() => {
-      wfetch(`/provider/${provider.id}/oauth/${oauthAttempt.id}`)
+      apiData(api.GET("/provider/{name}/oauth/{attempt}", {
+        params: { path: { name: provider.id, attempt: oauthAttempt.id } },
+      }))
         .then((attempt) => {
           const next = attempt as ProviderOAuthAttempt;
           setOAuthAttempt(next);
@@ -72,10 +76,9 @@ function ProviderDetailPage() {
     if (!provider || !key.trim()) return;
     setSaving(true);
     try {
-      await wfetch("/provider/auth", {
-        method: "PUT",
-        body: JSON.stringify({ providers: { [provider.id]: { type: "api_key", key: key.trim() } } }),
-      });
+      await apiData(api.PUT("/provider/auth", {
+        body: { providers: { [provider.id]: { type: "api_key", key: key.trim() } } },
+      }));
       setKey("");
       await load();
     } catch (err) {
@@ -89,7 +92,9 @@ function ProviderDetailPage() {
     if (!provider) return;
     setDeleting(true);
     try {
-      await wfetch(`/provider/auth/${provider.id}`, { method: "DELETE" });
+      await apiData(api.DELETE("/provider/auth/{provider}", {
+        params: { path: { provider: provider.id } },
+      }));
       await load();
     } catch (err) {
       showErrorToast(err);
@@ -101,10 +106,10 @@ function ProviderDetailPage() {
   async function startOAuth(method: "browser" | "device") {
     if (!provider) return;
     try {
-      const attempt = (await wfetch(`/provider/${provider.id}/oauth/authorize`, {
-        method: "POST",
-        body: JSON.stringify({ method }),
-      })) as ProviderOAuthAttempt;
+      const attempt = (await apiData(api.POST("/provider/{name}/oauth/authorize", {
+        params: { path: { name: provider.id } },
+        body: { method },
+      }))) as ProviderOAuthAttempt;
       setOAuthAttempt(attempt);
       if (method === "browser" && attempt.url) window.open(attempt.url, "_blank", "noopener,noreferrer");
     } catch (err) {

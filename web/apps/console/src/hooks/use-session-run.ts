@@ -1,10 +1,10 @@
 import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
 import { parseSessionEvent, readSSE, type SessionEvent, type SessionEventEnvelope } from "@/lib/session-stream";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
-import type { PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
+import type { Message, PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
 
 export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 export type SessionRunRequest = Omit<FailedRun, "error">;
@@ -38,6 +38,10 @@ export function sessionStreamControl(type: string): SessionStreamControl | undef
 
 export function sessionRunRetryDelay(attempt: number): number {
 	return Math.min(initialRetryDelayMs * 2 ** Math.max(0, attempt), maxRetryDelayMs);
+}
+
+export function reconcileSessionEventSeq(current: number, authoritative: number, resync: boolean): number {
+	return resync ? authoritative : Math.max(current, authoritative);
 }
 
 export function terminalSessionRunError(run: SessionRun): string | undefined {
@@ -101,7 +105,9 @@ type Options = {
 async function latestSessionEventSeq(sessionId: string): Promise<number> {
 	let after = 0;
 	for (;;) {
-		const page = await wfetch(`/sessions/${sessionId}/events/history?after=${after}&limit=500`) as { data?: SessionEventEnvelope[]; has_more?: boolean };
+		const page = await apiData(api.GET("/sessions/{id}/events/history", {
+			params: { path: { id: sessionId }, query: { after, limit: 500 } },
+		})) as { data?: SessionEventEnvelope[] | null; has_more?: boolean };
 		const events = page.data ?? [];
 		if (events.length === 0) return after;
 		after = events.at(-1)?.cursor?.seq ?? after;
@@ -156,7 +162,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	}, [sessionId]);
 
 	async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
-		const requests = await wfetch(`/sessions/${id}/permission-requests`, { signal }) as PermissionRequest[];
+		const requests = await apiData(api.GET("/sessions/{id}/permission-requests", {
+			params: { path: { id } },
+			signal,
+		})) as PermissionRequest[];
 		if (signal?.aborted) return;
 		setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "loaded", requests }));
 	}
@@ -177,7 +186,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 		async function recover() {
 			try {
-				const runs = await wfetch(`/sessions/${sessionId}/runs`, { signal: controller.signal }) as SessionRun[];
+				const runs = await apiData(api.GET("/sessions/{id}/runs", {
+					params: { path: { id: sessionId } },
+					signal: controller.signal,
+				})) as SessionRun[];
 				const run = latestActiveSessionRun(runs);
 				if (cancelled || !run || activeRunRef.current || submissionControllerRef.current) return;
 				setIsStreaming(true);
@@ -233,7 +245,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 			return;
 		}
 		if (ev.type === "session.message.created") {
-			const message = ev.data.message;
+			const message = ev.data.message as Message;
 			setSession((previous) => {
 				if (!previous) return previous;
 				const index = message.id ? previous.history.findIndex((candidate) => candidate.id === message.id) : -1;
@@ -292,7 +304,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	async function reloadRun(id: string, runID: string, controller: AbortController): Promise<SessionRun | undefined> {
 		await Promise.all([load(id), reloadPermissionRequests(id, controller.signal)]);
 		if (!isCurrentSubscription(id, controller)) return;
-		const run = await wfetch(`/sessions/${id}/runs/${runID}`, { signal: controller.signal }) as SessionRun;
+		const run = await apiData(api.GET("/sessions/{id}/runs/{runID}", {
+			params: { path: { id, runID } },
+			signal: controller.signal,
+		})) as SessionRun;
 		return isCurrentSubscription(id, controller) ? run : undefined;
 	}
 
@@ -335,6 +350,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 			const runID = activeRunRef.current?.runId;
 			if (!runID) return;
+			if (result?.resync) {
+				lastEventSeqRef.current = reconcileSessionEventSeq(lastEventSeqRef.current, await latestSessionEventSeq(id), true);
+			}
 			let run: SessionRun | undefined;
 			try {
 				run = await reloadRun(id, runID, controller);
@@ -367,7 +385,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	}
 
 	async function captureCursor(id: string) {
-		lastEventSeqRef.current = Math.max(lastEventSeqRef.current, await latestSessionEventSeq(id));
+		lastEventSeqRef.current = reconcileSessionEventSeq(lastEventSeqRef.current, await latestSessionEventSeq(id), false);
 	}
 
 	function start(id: string, runID: string) {
@@ -387,10 +405,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		setPermissionRepliesInFlight(permissionRepliesInFlightRef.current);
 		try {
 			const targetSessionID = activeRunRef.current?.sessionId ?? sessionId;
-			const request = await wfetch(`/sessions/${targetSessionID}/permission-requests/${requestID}/reply`, {
-				method: "POST",
-				body: JSON.stringify({ response }),
-			}) as PermissionRequest;
+			const request = await apiData(api.POST("/sessions/{id}/permission-requests/{requestID}/reply", {
+				params: { path: { id: targetSessionID, requestID } },
+				body: { response },
+			})) as PermissionRequest;
 			setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "resolved", request }));
 		} finally {
 			const next = new Set(permissionRepliesInFlightRef.current);
@@ -410,8 +428,11 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	async function abort(id: string) {
 		try {
 			const runID = activeRunRef.current?.runId;
-			const path = runID ? `/sessions/${id}/runs/${runID}/abort` : `/sessions/${id}/abort`;
-			await wfetch(path, { method: "POST" });
+			if (runID) {
+				await apiData(api.POST("/sessions/{id}/runs/{runID}/abort", { params: { path: { id, runID } } }));
+			} else {
+				await apiData(api.POST("/sessions/{id}/abort", { params: { path: { id } } }));
+			}
 		} catch (err) {
 			console.error("Abort failed", err);
 		}

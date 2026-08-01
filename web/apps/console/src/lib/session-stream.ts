@@ -1,5 +1,6 @@
+import type { RunStreamEvent, SessionEvent } from "@wingman-actor/client";
+
 import { APIError, apiErrorFromResponse } from "./client";
-import type { CallTrace, Message, PermissionRequest, Usage } from "./types";
 
 export type SessionEventEnvelope<T extends string = string, D = unknown> = {
 	id: string;
@@ -12,76 +13,8 @@ export type SessionEventEnvelope<T extends string = string, D = unknown> = {
 	data: D;
 };
 
-export type RunEventData = {
-	run_id: string;
-	status?: "queued" | "running" | "completed" | "failed" | "aborted";
-	message?: string;
-	error_type?: string;
-	error_message?: string;
-	usage?: Usage;
-	steps?: number;
-	started_at?: string;
-	completed_at?: string;
-	updated_at?: string;
-};
-
-export type StepEventData = { run_id: string; step: number; usage?: Usage };
-export type ContentDeltaEventData = { run_id: string; step?: number; message_id?: string; part_id?: string; revision?: number; call_id?: string; delta: string };
-export type ContentCompletedEventData = { run_id: string; message_id?: string; part_id?: string; revision?: number; text: string };
-export type MessageCreatedEventData = { run_id: string; message: Message };
-export type ToolEventData = {
-	run_id: string;
-	tool_use_id?: string;
-	call_id?: string;
-	tool?: string;
-	status?: string;
-	input?: Record<string, unknown>;
-	output?: string;
-	output_delta?: string;
-	structured?: unknown;
-	metadata?: Record<string, unknown>;
-	error?: string;
-	step?: number;
-	ordinal?: number;
-	message_id?: string;
-	part_id?: string;
-	revision?: number;
-	model_call_id?: string;
-	proposed_at?: string;
-	authorized_at?: string;
-	started_at?: string;
-	completed_at?: string;
-	duration_ms?: number;
-};
-
-export type SessionEventDataMap = {
-	"session.run.queued": RunEventData;
-	"session.run.started": RunEventData;
-	"session.run.completed": RunEventData;
-	"session.run.failed": RunEventData;
-	"session.run.aborted": RunEventData;
-	"session.step.started": StepEventData;
-	"session.step.completed": StepEventData;
-	"session.text.delta": ContentDeltaEventData;
-	"session.text.completed": ContentCompletedEventData;
-	"session.reasoning.delta": ContentDeltaEventData;
-	"session.reasoning.completed": ContentCompletedEventData;
-	"session.message.created": MessageCreatedEventData;
-	"session.tool.called": ToolEventData;
-	"session.tool.updated": ToolEventData;
-	"session.tool.input.delta": ContentDeltaEventData;
-	"session.tool.progress": ToolEventData;
-	"session.tool.completed": ToolEventData;
-	"session.tool.failed": ToolEventData;
-	"session.permission.requested": PermissionRequest;
-	"session.permission.resolved": PermissionRequest;
-	"session.structured_output.completed": { run_id: string; schema?: string; raw_json: string; parsed: Record<string, unknown> };
-	"session.events.synchronized": { cursor: number; watermark: number };
-	"session.events.resync_required": { cursor: number; reason: string };
-};
-
-export type SessionEventType = keyof SessionEventDataMap;
-export type SessionEvent = { [K in SessionEventType]: SessionEventEnvelope<K, SessionEventDataMap[K]> }[SessionEventType];
+export type SessionEventType = SessionEvent["type"];
+export type { SessionEvent };
 export type UnknownSessionEvent = SessionEventEnvelope<string, unknown>;
 export type ParsedSessionEvent = { known: true; event: SessionEvent } | { known: false; event: UnknownSessionEvent };
 
@@ -105,69 +38,8 @@ export function parseSessionEvent(value: unknown): ParsedSessionEvent | undefine
 	return { known: true, event: envelope as SessionEvent };
 }
 
-export type RunToolCall = {
-	call_id: string;
-	tool_use_id?: string;
-	message_id?: string;
-	part_id?: string;
-	model_call_id?: string;
-	step?: number;
-	ordinal?: number;
-	proposed_at?: string;
-	authorized_at?: string;
-	started_at?: string;
-	name: string;
-	args: Record<string, unknown>;
-};
-
-export type RunToolResult = {
-	call_id: string;
-	tool_use_id?: string;
-	status?: string;
-	name: string;
-	args: Record<string, unknown>;
-	output?: string;
-	structured?: unknown;
-	error?: string;
-	error_type?: string;
-	metadata?: Record<string, unknown>;
-	is_error: boolean;
-	duration?: number;
-};
-
-export type RunTurn = {
-	step: number;
-	model_call_id?: string;
-	attempt: number;
-	provider_request_id?: string;
-	assistant: Message;
-	results: RunToolResult[];
-	usage: Usage;
-	started_at: string;
-	completed_at: string;
-	trace: CallTrace;
-	error?: string;
-};
-
-export type RunStreamEventDataMap = {
-	iteration_start: { step: number };
-	iteration_end: { step: number; turn: RunTurn };
-	message: { step?: number; message: Message };
-	tool_proposed: { call: RunToolCall };
-	tool_authorized: { call: RunToolCall };
-	tool_start: { call: RunToolCall };
-	tool_progress: { call_id: string; tool_use_id?: string; name: string; output_delta?: string; metadata?: Record<string, unknown> };
-	tool_end: { result: RunToolResult };
-	stream_part: { step: number; message_id?: string; part_id?: string; revision?: number; part: { type: string; delta?: string } };
-	compaction: { step: number; phase: string; original_count: number; new_count: number; head?: Message };
-	context_transformed: { step: number; phase: string; original_count: number; new_count: number; head?: Message };
-	error: { code: string; message: string; details?: Array<{ field?: string; code?: string; message: string }>; request_id?: string };
-	structured_output: { schema?: string; raw_json: string; parsed: Record<string, unknown> };
-	done: { usage: Usage; steps: number };
-};
-
-export type RunStreamEventType = keyof RunStreamEventDataMap;
-export type RunStreamEvent = { [K in RunStreamEventType]: { type: K; version: number; data: RunStreamEventDataMap[K] } }[RunStreamEventType];
+export type RunStreamEventType = RunStreamEvent["type"];
+export type { RunStreamEvent };
 export type UnknownRunStreamEvent = { type: string; version: number; data: unknown };
 export type ParsedRunStreamEvent = { known: true; event: RunStreamEvent } | { known: false; event: UnknownRunStreamEvent };
 
@@ -294,8 +166,10 @@ export async function generateSessionTitle(
 		}
 		if (parsed.event.type !== "stream_part") continue;
 		const part = parsed.event.data.part;
-		if ((part?.type === "text_delta" || part?.type === "text-delta") && part.delta) {
-			textBuffer += part.delta;
+		if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+		const fields = part as Record<string, unknown>;
+		if ((fields.type === "text_delta" || fields.type === "text-delta") && typeof fields.delta === "string") {
+			textBuffer += fields.delta;
 			const title = sanitizeGeneratedTitle(textBuffer);
 			if (title) onTitle(title);
 		}

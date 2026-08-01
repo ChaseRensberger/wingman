@@ -38,6 +38,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/health": daemonProxy(),
+      "/ready": daemonProxy(),
       "/provider": daemonProxy(),
       "/agents": daemonProxy(),
       "/clients": daemonProxy(),
@@ -47,6 +48,7 @@ export default defineConfig({
       "/filesystem": daemonProxy(),
       "/sessions": daemonProxy(),
       "/tools": daemonProxy(),
+      "/plugins": daemonProxy(),
       "/run": daemonProxy(),
     },
   },

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@wingman/core/components/core/input";
 import { Badge } from "@wingman/core/components/core/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
@@ -30,13 +30,15 @@ function ProvidersPage() {
 
   async function load() {
     try {
-      const providerData = (await wfetch("/provider")) as Provider[];
+      const providerData = (await apiData(api.GET("/provider"))) as Provider[];
       setProviders(providerData);
 
       const modelEntries = await Promise.all(
         providerData.map(async (provider) => {
           try {
-            const data = (await wfetch(`/provider/${provider.id}/models`)) as Record<string, ProviderModel>;
+            const data = (await apiData(api.GET("/provider/{name}/models", {
+              params: { path: { name: provider.id } },
+            }))) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
           } catch {
             return [provider.id, []] as const;

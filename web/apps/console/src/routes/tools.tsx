@@ -13,7 +13,7 @@ import {
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { MCPResponse, MCPServer, PluginsResponse, PluginStatus, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 
@@ -33,9 +33,9 @@ function ToolsPage() {
   async function load() {
     try {
       const [toolData, mcpData, pluginData] = await Promise.all([
-        wfetch("/tools") as Promise<ToolsResponse>,
-        wfetch("/mcp") as Promise<MCPResponse>,
-        wfetch("/plugins/") as Promise<PluginsResponse>,
+        apiData(api.GET("/tools")) as Promise<ToolsResponse>,
+        apiData(api.GET("/mcp")) as Promise<MCPResponse>,
+        apiData(api.GET("/plugins")) as Promise<PluginsResponse>,
       ]);
       setTools(toolData.tools ?? []);
       setServers(mcpData.servers ?? []);
@@ -53,7 +53,11 @@ function ToolsPage() {
   async function mcpAction(server: MCPServer, action: "connect" | "disconnect") {
     setBusy(`${server.name}:${action}`);
     try {
-      await wfetch(`/mcp/${server.name}/${action}`, { method: "POST" });
+      await apiData(
+        action === "connect"
+          ? api.POST("/mcp/{name}/connect", { params: { path: { name: server.name } } })
+          : api.POST("/mcp/{name}/disconnect", { params: { path: { name: server.name } } }),
+      );
       await load();
     } catch (err) {
       showErrorToast(err);
@@ -65,7 +69,7 @@ function ToolsPage() {
   async function reloadPlugins() {
     setReloadingPlugins(true);
     try {
-      const data = (await wfetch("/plugins/reload", { method: "POST" })) as PluginsResponse;
+      const data = (await apiData(api.POST("/plugins/reload"))) as PluginsResponse;
       setPlugins(data.plugins ?? []);
       setPluginErrors(data.errors ?? []);
       await load();

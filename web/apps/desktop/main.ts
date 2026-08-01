@@ -10,6 +10,17 @@ type DaemonRegistration = {
   created_at: string;
 };
 
+type DaemonReadiness = {
+  ready: boolean;
+  instance_id: string;
+  version: string;
+};
+
+type DaemonTransport = { origin: string; credential: string };
+
+let cachedTransport: { value: DaemonTransport; expiresAt: number } | undefined;
+let pendingTransport: Promise<DaemonTransport> | undefined;
+
 function daemonStateDir(): string {
   const state = Deno.env.get("XDG_STATE_HOME");
   if (state) return `${state}/wingman`;
@@ -18,7 +29,19 @@ function daemonStateDir(): string {
   return `${home}/.local/state/wingman`;
 }
 
-async function daemonTransport(): Promise<{ origin: string; credential: string }> {
+async function daemonTransport(): Promise<DaemonTransport> {
+  if (cachedTransport && cachedTransport.expiresAt > Date.now()) return cachedTransport.value;
+  if (pendingTransport) return pendingTransport;
+  const pending = loadDaemonTransport();
+  pendingTransport = pending;
+  try {
+    return await pending;
+  } finally {
+    if (pendingTransport === pending) pendingTransport = undefined;
+  }
+}
+
+async function loadDaemonTransport(): Promise<DaemonTransport> {
   const state = daemonStateDir();
   const [rawRegistration, rawCredential] = await Promise.all([
     Deno.readTextFile(`${state}/registration.json`),
@@ -31,7 +54,20 @@ async function daemonTransport(): Promise<{ origin: string; credential: string }
   }
   const credential = rawCredential.trim();
   if (!credential) throw new Error("invalid Wingman daemon credential");
-  return { origin: origin.origin, credential };
+
+  const response = await fetch(`${origin.origin}/ready`, {
+    headers: { Authorization: `Bearer ${credential}` },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (response.status !== 200) throw new Error(`Wingman daemon is not ready: HTTP ${response.status}`);
+  const readiness = await response.json() as DaemonReadiness;
+  if (!readiness.ready || readiness.instance_id !== registration.instance_id || readiness.version !== registration.version) {
+    throw new Error("Wingman daemon readiness does not match registration");
+  }
+
+  const value = { origin: origin.origin, credential };
+  cachedTransport = { value, expiresAt: Date.now() + 1_000 };
+  return value;
 }
 
 function contentType(path: string): string {
@@ -88,7 +124,14 @@ async function proxy(request: Request): Promise<Response> {
   const daemon = await daemonTransport();
   const target = new Request(`${daemon.origin}${url.pathname}${url.search}`, request);
   target.headers.set("Authorization", `Bearer ${daemon.credential}`);
-  return fetch(target);
+  try {
+    const response = await fetch(target);
+    if (response.status === 401 || response.status === 503) cachedTransport = undefined;
+    return response;
+  } catch (error) {
+    cachedTransport = undefined;
+    throw error;
+  }
 }
 
 Deno.serve({ hostname: "127.0.0.1" }, async (request) => {

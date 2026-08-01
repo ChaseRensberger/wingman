@@ -17,3 +17,8 @@ http://localhost:2323/console
 
 Wingman does not set this cookie on a non-loopback listener. Use a native client
 or trusted reverse proxy that sends the bearer token for remote access.
+
+The Console displays connection loss and retries readiness checks with bounded
+backoff. After the daemon returns, the Console reloads the active page from
+durable API state. An active session then rediscovers queued or running work and
+resumes its event stream.

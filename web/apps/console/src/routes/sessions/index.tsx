@@ -52,7 +52,7 @@ import {
 	TableRow,
 } from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
-import { moveSession, purgeSession, renameSession, wfetch } from "@/lib/client";
+import { api, apiData, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { SessionSummary, Workspace } from "@/lib/types";
 import type { DirectoryListing } from "@/lib/types";
@@ -123,15 +123,12 @@ function SessionsPage() {
 				const payload = { name: value.name.trim(), path: value.path.trim() };
 				let saved: Workspace;
 				if (editingWorkspace) {
-					saved = (await wfetch(`/workspaces/${editingWorkspace.id}`, {
-						method: "PUT",
-						body: JSON.stringify(payload),
-					})) as Workspace;
+					saved = (await apiData(api.PUT("/workspaces/{id}", {
+						params: { path: { id: editingWorkspace.id } },
+						body: payload,
+					}))) as Workspace;
 				} else {
-					saved = (await wfetch("/workspaces", {
-						method: "POST",
-						body: JSON.stringify(payload),
-					})) as Workspace;
+					saved = (await apiData(api.POST("/workspaces", { body: payload }))) as Workspace;
 					setWorkspaceFilter(saved.id);
 				}
 				await loadData();
@@ -199,8 +196,8 @@ function SessionsPage() {
 
 	async function loadData() {
 		const [workspaceData, sessionData] = await Promise.all([
-			wfetch("/workspaces") as Promise<Workspace[]>,
-			wfetch("/sessions") as Promise<SessionSummary[]>,
+			apiData(api.GET("/workspaces")) as Promise<Workspace[]>,
+			apiData(api.GET("/sessions")) as Promise<SessionSummary[]>,
 		]);
 		setWorkspaces(workspaceData);
 		setSessions(sessionData);
@@ -257,8 +254,9 @@ function SessionsPage() {
 		setLoadingDirectories(true);
 		setDirectoryPickerError("");
 		try {
-			const query = path ? `?path=${encodeURIComponent(path)}` : "";
-			const listing = (await wfetch(`/filesystem/directories${query}`)) as DirectoryListing;
+			const listing = (await apiData(api.GET("/filesystem/directories", path ? {
+				params: { query: { path } },
+			} : {}))) as DirectoryListing;
 			setDirectoryListing(listing);
 			setDirectoryPickerPath(listing.path);
 		} catch (err) {
@@ -278,7 +276,9 @@ function SessionsPage() {
 		if (!deleteWorkspace) return;
 		setDeletingWorkspaceId(deleteWorkspace.id);
 		try {
-			await wfetch(`/workspaces/${deleteWorkspace.id}`, { method: "DELETE" });
+			await apiData(api.DELETE("/workspaces/{id}", {
+				params: { path: { id: deleteWorkspace.id } },
+			}));
 			if (workspaceFilter === deleteWorkspace.id) setWorkspaceFilter();
 			await loadData();
 			setDeleteWorkspace(null);

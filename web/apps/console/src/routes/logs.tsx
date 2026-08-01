@@ -6,7 +6,7 @@ import { Button } from "@wingman/core/components/core/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@wingman/core/components/core/card";
 import { Input } from "@wingman/core/components/core/input";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-import { wfetch } from "@/lib/client";
+import { api, apiData } from "@/lib/client";
 import type { LogEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +25,7 @@ function LogsPage() {
 
 	async function load() {
 		try {
-			const data = (await wfetch("/logs")) as LogEntry[];
+			const data = (await apiData(api.GET("/logs"))) as LogEntry[];
 			setLogs(data);
 			setError("");
 		} catch (err) {

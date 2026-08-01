@@ -6,6 +6,7 @@ import { router } from "./router";
 import { ThemeProvider } from "@wingman/core/components/theme-provider";
 import { ToastProvider } from "@wingman/core/components/core/toast";
 import { AppToaster } from "./components/app-toaster";
+import { DaemonConnectionProvider } from "./components/daemon-connection";
 import { toastManager } from "./lib/toast";
 
 async function main() {
@@ -13,7 +14,9 @@ async function main() {
     <StrictMode>
       <ThemeProvider>
         <ToastProvider toastManager={toastManager}>
-          <RouterProvider router={router} />
+          <DaemonConnectionProvider>
+            <RouterProvider router={router} />
+          </DaemonConnectionProvider>
           <AppToaster />
         </ToastProvider>
       </ThemeProvider>
