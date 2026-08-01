@@ -2,6 +2,7 @@
 *.local
 /wingman
 __debug*
+graphify-out/
 
 node_modules/
 
