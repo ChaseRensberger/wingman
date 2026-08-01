@@ -61,3 +61,34 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  release-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install JavaScript dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Build Console assets
+        working-directory: web
+        run: bun run build:console
+
+      - name: Build snapshot artifacts
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+
+      - name: Smoke test Linux artifact
+        run: ./scripts/smoke-release-artifact.sh "$(find dist -type f -name 'wingman_*_linux_amd64.tar.gz' -print -quit)"

@@ -22,6 +22,9 @@ For now Wingman is not available on any package managers so the best way to inst
 curl -fsSL https://wingman.actor/install | bash
 ```
 
+The installer downloads the matching GitHub release archive and verifies it
+against the release `checksums.txt` before it extracts the binary.
+
 ```
 export PATH="~/.wingman/bin:$PATH"
 ```

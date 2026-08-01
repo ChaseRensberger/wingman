@@ -200,7 +200,8 @@ resolve_release_asset_url() {
 }
 
 install_from_archive() {
-  local os arch version ext filename url tmp_dir archive bin_name
+  local os arch version ext filename url archive_name tmp_dir archive checksums bin_name
+  local line expected_checksum actual_checksum checksum_candidate archive_candidate checksum_entry_found=false
   os=$(detect_os)
   arch=$(detect_arch)
   version=$(resolve_version)
@@ -215,15 +216,58 @@ install_from_archive() {
   if [[ -z "$url" ]]; then
     url="https://github.com/${OWNER}/${REPO}/releases/download/v${version}/${filename}"
   fi
+  archive_name=$(basename "$url")
 
   echo "Installing ${APP} v${version} (${os}/${arch})"
 
   tmp_dir=$(mktemp -d)
   archive="${tmp_dir}/${filename}"
+  checksums="${tmp_dir}/checksums.txt"
   trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "$tmp_dir"' EXIT
 
   if ! curl -fL "$url" -o "$archive"; then
     echo "Failed to download release artifact: $url" >&2
+    exit 1
+  fi
+
+  if ! curl -fL "https://github.com/${OWNER}/${REPO}/releases/download/v${version}/checksums.txt" -o "$checksums"; then
+    echo "Failed to download release checksums" >&2
+    exit 1
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^([^[:space:]]+)[[:space:]]+\*?(.+)$ ]] || continue
+    checksum_candidate=${BASH_REMATCH[1]}
+    archive_candidate=${BASH_REMATCH[2]}
+    [[ "$archive_candidate" == "$archive_name" ]] || continue
+
+    checksum_entry_found=true
+    if [[ ! "$checksum_candidate" =~ ^[[:xdigit:]]{64}$ ]]; then
+      echo "Invalid SHA-256 checksum entry for ${archive_name}" >&2
+      exit 1
+    fi
+
+    expected_checksum=$(printf '%s' "$checksum_candidate" | tr '[:upper:]' '[:lower:]')
+    break
+  done < "$checksums"
+
+  if [[ "$checksum_entry_found" == false ]]; then
+    echo "No SHA-256 checksum entry found for ${archive_name}" >&2
+    exit 1
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_checksum=$(sha256sum "$archive" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_checksum=$(shasum -a 256 "$archive" | awk '{print $1}')
+  else
+    echo "Error: sha256sum or shasum is required to verify the download" >&2
+    exit 1
+  fi
+
+  actual_checksum=$(printf '%s' "$actual_checksum" | tr '[:upper:]' '[:lower:]')
+  if [[ ! "$actual_checksum" =~ ^[[:xdigit:]]{64}$ ]] || [[ "$actual_checksum" != "$expected_checksum" ]]; then
+    echo "SHA-256 checksum verification failed for ${archive_name}" >&2
     exit 1
   fi
 
@@ -250,6 +294,8 @@ install_from_archive() {
 
   cp "${tmp_dir}/${bin_name}" "${install_dir}/${bin_name}"
   chmod +x "${install_dir}/${bin_name}"
+  rm -rf "$tmp_dir"
+  trap - EXIT
 }
 
 install_from_binary() {

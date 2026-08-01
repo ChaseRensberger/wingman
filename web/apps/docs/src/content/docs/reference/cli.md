@@ -134,6 +134,9 @@ wingman update
 
 The executable directory must be writable. This works with the default installer location (`~/.wingman/bin`) and other writable standalone installs. Installations owned by a package manager or another user should be updated through that original installation method.
 
+The public installer also verifies the downloaded release archive against the
+published `checksums.txt` before it installs the binary.
+
 If Wingman is running through systemd or launchd, the command restarts that running managed service after replacement. It does not start an installed but stopped service.
 
 Check availability without writing files:

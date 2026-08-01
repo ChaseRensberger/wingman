@@ -36,6 +36,13 @@ jobs:
         working-directory: web
         run: bun run build
 
+      - name: Check API contract drift
+        run: ./scripts/check-api-contract.sh
+
+      - name: Check browser client boundaries
+        working-directory: web
+        run: bun --filter @wingman-actor/client test
+
       - name: Vet
         run: go vet ./...
 
@@ -45,7 +52,16 @@ jobs:
       - name: Test
         run: go test ./...
 
-      - name: Run GoReleaser
+      - name: Build snapshot artifacts
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+
+      - name: Smoke test Linux artifact
+        run: ./scripts/smoke-release-artifact.sh "$(find dist -type f -name 'wingman_*_linux_amd64.tar.gz' -print -quit)"
+
+      - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
