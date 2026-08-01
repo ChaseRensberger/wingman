@@ -199,6 +199,53 @@ func TestSQLiteSessionMetadataEventsCommitAndReplay(t *testing.T) {
 	}
 }
 
+func TestSQLiteRebuildsAllSessionProjectionsFromAggregateHistory(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	first := &Session{ID: "ses_rebuild_first", Title: "First", WorkDir: "/before"}
+	second := &Session{ID: "ses_rebuild_second", Title: "Second"}
+	for _, session := range []*Session{first, second} {
+		if err := data.CreateSession(session); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := data.RenameSession(ctx, first.ID, "Renamed", first.AggregateVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err = data.MoveSession(ctx, first.ID, "/after", "", first.AggregateVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_rebuild_first", SessionID: first.ID, Message: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_rebuild_second", SessionID: second.ID, Message: "second"}); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := data.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("session count = %d, want 2", len(sessions))
+	}
+	for _, stored := range sessions {
+		events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: stored.ID}, 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		projected, err := ProjectSession(events)
+		if err != nil {
+			t.Fatalf("rebuild %s: %v", stored.ID, err)
+		}
+		if !reflect.DeepEqual(projected, stored) {
+			t.Fatalf("rebuild %s = %#v, stored = %#v", stored.ID, projected, stored)
+		}
+	}
+}
+
 func TestSQLiteSessionMetadataNoOpAndRollback(t *testing.T) {
 	data := newTestSQLiteStore(t)
 	session := &Session{ID: "ses_noop", Title: "Same"}
