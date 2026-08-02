@@ -106,6 +106,11 @@ The loopback Console receives an HttpOnly, `SameSite=Strict` session cookie.
 Wingman does not issue this cookie on a non-loopback listener. Native clients
 must read the private credential and send the bearer token.
 
+The bundled Desktop client reads the managed registration and credential before
+proxying each API request. It verifies authenticated readiness, instance ID, and
+version. A not-ready daemon, stale registration, or proxied `401`/`503` clears
+its short-lived discovery cache so the next request rereads current daemon state.
+
 ## Ephemeral Mode
 
 Run without persistence:

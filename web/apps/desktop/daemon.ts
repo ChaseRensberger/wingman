@@ -1,0 +1,86 @@
+export type DaemonRegistration = {
+  instance_id: string;
+  version: string;
+  url: string;
+  pid: number;
+  created_at: string;
+};
+
+type DaemonReadiness = {
+  ready: boolean;
+  instance_id: string;
+  version: string;
+};
+
+export type DaemonTransport = { origin: string; credential: string };
+
+type Dependencies = {
+  stateDir: () => string;
+  readTextFile: (path: string) => Promise<string>;
+  fetch: typeof fetch;
+  now?: () => number;
+  timeoutSignal?: () => AbortSignal;
+};
+
+export function daemonStateDir(getenv: (name: string) => string | undefined): string {
+  const state = getenv("XDG_STATE_HOME");
+  if (state) return `${state}/wingman`;
+  const home = getenv("HOME") ?? getenv("USERPROFILE");
+  if (!home) throw new Error("unable to resolve the user home directory");
+  return `${home}/.local/state/wingman`;
+}
+
+export class DaemonDiscovery {
+  private cached: { value: DaemonTransport; expiresAt: number } | undefined;
+  private pending: Promise<DaemonTransport> | undefined;
+  private readonly now: () => number;
+  private readonly timeoutSignal: () => AbortSignal;
+
+  constructor(private readonly deps: Dependencies) {
+    this.now = deps.now ?? Date.now;
+    this.timeoutSignal = deps.timeoutSignal ?? (() => AbortSignal.timeout(3_000));
+  }
+
+  transport(): Promise<DaemonTransport> {
+    if (this.cached && this.cached.expiresAt > this.now()) return Promise.resolve(this.cached.value);
+    if (this.pending) return this.pending;
+    const pending = this.load();
+    this.pending = pending;
+    return pending.finally(() => {
+      if (this.pending === pending) this.pending = undefined;
+    });
+  }
+
+  invalidate() {
+    this.cached = undefined;
+  }
+
+  private async load(): Promise<DaemonTransport> {
+    const state = this.deps.stateDir();
+    const [rawRegistration, rawCredential] = await Promise.all([
+      this.deps.readTextFile(`${state}/registration.json`),
+      this.deps.readTextFile(`${state}/credential`),
+    ]);
+    const registration = JSON.parse(rawRegistration) as DaemonRegistration;
+    const origin = new URL(registration.url);
+    if ((origin.protocol !== "http:" && origin.protocol !== "https:") || !registration.instance_id) {
+      throw new Error("invalid Wingman daemon registration");
+    }
+    const credential = rawCredential.trim();
+    if (!credential) throw new Error("invalid Wingman daemon credential");
+
+    const response = await this.deps.fetch(`${origin.origin}/ready`, {
+      headers: { Authorization: `Bearer ${credential}` },
+      signal: this.timeoutSignal(),
+    });
+    if (response.status !== 200) throw new Error(`Wingman daemon is not ready: HTTP ${response.status}`);
+    const readiness = await response.json() as DaemonReadiness;
+    if (!readiness.ready || readiness.instance_id !== registration.instance_id || readiness.version !== registration.version) {
+      throw new Error("Wingman daemon readiness does not match registration");
+    }
+
+    const value = { origin: origin.origin, credential };
+    this.cached = { value, expiresAt: this.now() + 1_000 };
+    return value;
+  }
+}

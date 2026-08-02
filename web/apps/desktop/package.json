@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run generate-assets && deno desktop --no-npm --allow-env --allow-read --allow-net --config deno.json main.ts",
-    "generate-assets": "bun run scripts/generate-assets.ts"
+    "generate-assets": "bun run scripts/generate-assets.ts",
+    "test": "deno test --allow-env --allow-read --allow-net --config deno.json daemon_test.ts"
   }
 }
