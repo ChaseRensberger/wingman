@@ -158,9 +158,25 @@ type StatusResponse struct {
 	Status string `json:"status"`
 }
 
+// ReadinessDiagnostic explains why a daemon is not ready and how to recover it.
+type ReadinessDiagnostic struct {
+	Subsystem      string `json:"subsystem"`
+	RecoveryAction string `json:"recovery_action"`
+}
+
 // ReadinessResponse identifies a daemon that completed startup recovery.
 type ReadinessResponse struct {
-	Ready      bool   `json:"ready"`
-	InstanceID string `json:"instance_id"`
-	Version    string `json:"version"`
+	Ready      bool                 `json:"ready"`
+	InstanceID string               `json:"instance_id"`
+	Version    string               `json:"version"`
+	Diagnostic *ReadinessDiagnostic `json:"diagnostic,omitempty"`
+}
+
+// DiagnosticsResponse reports bounded daemon operational state.
+type DiagnosticsResponse struct {
+	QueuedRuns          int   `json:"queued_runs"`
+	ActiveRuns          int   `json:"active_runs"`
+	ActiveScopes        int   `json:"active_scopes"`
+	EventSubscribers    int   `json:"event_subscribers"`
+	SubscriberOverflows int64 `json:"subscriber_overflows"`
 }

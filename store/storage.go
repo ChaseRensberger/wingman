@@ -70,6 +70,7 @@ type Store interface {
 	SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error)
 	ListRunningSessionRuns(ctx context.Context) ([]SessionRun, error)
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
+	CountQueuedSessionRuns(ctx context.Context) (int, error)
 	CreatePermissionRequest(ctx context.Context, request PermissionRequest) (PermissionRequestTransition, error)
 	GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*PermissionRequest, error)
 	ListPermissionRequests(ctx context.Context, sessionID string) ([]PermissionRequest, error)

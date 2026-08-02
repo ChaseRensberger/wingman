@@ -162,7 +162,14 @@ func (m *sessionRunManager) finishLocked(sessionID string) {
 	close(done)
 }
 
+func (m *sessionRunManager) activeCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.active)
+}
+
 func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.SessionRun) {
+	m.server.logger.Info("session run started", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID)
 	persistCtx := context.Background()
 	runCtx, cancel := context.WithCancel(workerCtx)
 	m.mu.Lock()
@@ -211,6 +218,7 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 						err = runCtx.Err()
 					} else {
 						result := stream.Result()
+						m.server.logger.Info("session run completed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "steps", result.Steps)
 						m.settle(persistCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{"usage": result.Usage, "steps": result.Steps}})
 						return
 					}
@@ -226,6 +234,7 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	if err != nil {
 		message = err.Error()
 	}
+	m.server.logger.Error("session run failed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "error_type", errorType, "error", message)
 	m.settle(persistCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: status, ErrorType: errorType, ErrorMessage: message, EventData: map[string]any{"error_type": errorType, "error_message": message}})
 }
 

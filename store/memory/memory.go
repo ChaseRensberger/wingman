@@ -239,6 +239,18 @@ func (s *Store) ListQueuedSessionRunSessions(ctx context.Context) ([]string, err
 	return out, nil
 }
 
+func (s *Store) CountQueuedSessionRuns(ctx context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var count int
+	for _, run := range s.runs {
+		if run.Status == store.SessionRunStatusQueued {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *Store) ListRunningSessionRuns(ctx context.Context) ([]store.SessionRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

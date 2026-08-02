@@ -297,6 +297,7 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
+	s.registerJSON(http.MethodGet, "/diagnostics", "getDiagnostics", "Get bounded daemon operational diagnostics", nil, http.StatusOK, api.DiagnosticsResponse{}, s.handleDiagnostics)
 	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List plugin status", nil, http.StatusOK, pluginsResponse{}, s.handleListPlugins)
 	s.registerJSON(http.MethodPost, "/plugins/reload", "reloadPlugins", "Reload plugins", nil, http.StatusOK, pluginsResponse{}, s.handleReloadPlugins)
 	s.registerJSON(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, s.handleListMCP)
@@ -668,8 +669,31 @@ func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
 	status := http.StatusOK
 	if !response.Ready {
 		status = http.StatusServiceUnavailable
+		response.Diagnostic = &api.ReadinessDiagnostic{Subsystem: "startup", RecoveryAction: "start the daemon"}
+		s.startMu.Lock()
+		if s.startErr != nil {
+			response.Diagnostic = &api.ReadinessDiagnostic{Subsystem: "startup_recovery", RecoveryAction: "inspect daemon logs, correct the reported failure, then restart the daemon"}
+		}
+		s.startMu.Unlock()
 	}
 	writeJSON(w, status, response)
+}
+
+func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	response := api.DiagnosticsResponse{ActiveRuns: s.runs.activeCount()}
+	if s.store != nil {
+		queued, err := s.store.CountQueuedSessionRuns(r.Context())
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		response.QueuedRuns = queued
+	}
+	if s.scopes != nil {
+		response.ActiveScopes = s.scopes.Count()
+	}
+	response.EventSubscribers, response.SubscriberOverflows = s.events.diagnostics()
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {

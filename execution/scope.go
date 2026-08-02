@@ -59,6 +59,13 @@ type Manager struct {
 	closed bool
 }
 
+// Count returns the number of cached execution scopes, including the daemon scope.
+func (m *Manager) Count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.scopes)
+}
+
 type ownedScope struct {
 	scope   *Scope
 	ready   chan struct{}

@@ -801,6 +801,13 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		return nil, err
 	}
 
+	logger := s.logger.With("session_id", sess.ID, "agent_id", stored.ID, "model_ref", modelRef.Ref())
+	if runID != "" {
+		logger = logger.With("run_id", runID)
+	}
+	if executionScope != nil {
+		logger = logger.With("scope_id", executionScope.ID())
+	}
 	opts := []session.Option{
 		session.WithID(sess.ID),
 		session.WithClient(client),
@@ -809,7 +816,7 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		session.WithWorkDir(workDir),
 		session.WithPermissions(s.effectivePermissions(stored)),
 		session.WithPermissionPrompter(prompter),
-		session.WithLogger(s.logger.With("agent_id", stored.ID)),
+		session.WithLogger(logger),
 		session.WithAgentID(stored.ID),
 	}
 	if st != nil {

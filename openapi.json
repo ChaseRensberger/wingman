@@ -442,6 +442,39 @@
         ],
         "type": "object"
       },
+      "DiagnosticsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_runs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "active_scopes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "event_subscribers": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "queued_runs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriber_overflows": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued_runs",
+          "active_runs",
+          "active_scopes",
+          "event_subscribers",
+          "subscriber_overflows"
+        ],
+        "type": "object"
+      },
       "DirectoryEntry": {
         "additionalProperties": false,
         "properties": {
@@ -1596,9 +1629,28 @@
         ],
         "type": "object"
       },
+      "ReadinessDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "recovery_action": {
+            "type": "string"
+          },
+          "subsystem": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subsystem",
+          "recovery_action"
+        ],
+        "type": "object"
+      },
       "ReadinessResponse": {
         "additionalProperties": false,
         "properties": {
+          "diagnostic": {
+            "$ref": "#/components/schemas/ReadinessDiagnostic"
+          },
           "instance_id": {
             "type": "string"
           },
@@ -4182,6 +4234,44 @@
           }
         },
         "summary": "Get an API client"
+      }
+    },
+    "/diagnostics": {
+      "get": {
+        "operationId": "getDiagnostics",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "summary": "Get bounded daemon operational diagnostics"
       }
     },
     "/filesystem/directories": {

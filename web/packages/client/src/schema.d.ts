@@ -127,6 +127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get bounded daemon operational diagnostics */
+        get: operations["getDiagnostics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/filesystem/directories": {
         parameters: {
             query?: never;
@@ -921,6 +938,18 @@ export interface components {
             name: string;
             path: string;
         };
+        DiagnosticsResponse: {
+            /** Format: int64 */
+            active_runs: number;
+            /** Format: int64 */
+            active_scopes: number;
+            /** Format: int64 */
+            event_subscribers: number;
+            /** Format: int64 */
+            queued_runs: number;
+            /** Format: int64 */
+            subscriber_overflows: number;
+        };
         DirectoryEntry: {
             name: string;
             path: string;
@@ -1259,7 +1288,12 @@ export interface components {
             };
             updated_at?: string;
         };
+        ReadinessDiagnostic: {
+            recovery_action: string;
+            subsystem: string;
+        };
         ReadinessResponse: {
+            diagnostic?: components["schemas"]["ReadinessDiagnostic"];
             instance_id: string;
             ready: boolean;
             version: string;
@@ -2252,6 +2286,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Client"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDiagnostics: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticsResponse"];
                 };
             };
             /** @description Request failed */

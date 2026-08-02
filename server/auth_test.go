@@ -32,6 +32,13 @@ func TestAuthenticationAndReadiness(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("starting readiness status = %d", response.Code)
 	}
+	var starting api.ReadinessResponse
+	if err := json.NewDecoder(response.Body).Decode(&starting); err != nil {
+		t.Fatal(err)
+	}
+	if starting.Diagnostic == nil || starting.Diagnostic.Subsystem != "startup" || starting.Diagnostic.RecoveryAction != "start the daemon" {
+		t.Fatalf("starting readiness = %#v", starting)
+	}
 
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -45,7 +52,7 @@ func TestAuthenticationAndReadiness(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&ready); err != nil {
 		t.Fatal(err)
 	}
-	if !ready.Ready || ready.InstanceID != "instance_test" || ready.Version != "1.2.3" {
+	if !ready.Ready || ready.InstanceID != "instance_test" || ready.Version != "1.2.3" || ready.Diagnostic != nil {
 		t.Fatalf("readiness = %#v", ready)
 	}
 }

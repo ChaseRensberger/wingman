@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chaserensberger/wingman/agent/run"
@@ -21,8 +22,9 @@ import (
 const defaultSessionEventLimit = 100
 
 type sessionEventBroker struct {
-	mu   sync.RWMutex
-	subs map[string]map[*sessionEventSubscription]struct{}
+	mu        sync.RWMutex
+	subs      map[string]map[*sessionEventSubscription]struct{}
+	overflows atomic.Int64
 }
 
 type sessionEventSubscription struct {
@@ -43,7 +45,13 @@ func newSessionEventSubscription() *sessionEventSubscription {
 
 func (s *sessionEventSubscription) close() { s.doneOnce.Do(func() { close(s.done) }) }
 
-func (s *sessionEventSubscription) signalOverflow() { s.overOnce.Do(func() { close(s.overflow) }) }
+func (s *sessionEventSubscription) signalOverflow() (signaled bool) {
+	s.overOnce.Do(func() {
+		close(s.overflow)
+		signaled = true
+	})
+	return signaled
+}
 
 func newSessionEventBroker() *sessionEventBroker {
 	return &sessionEventBroker{subs: make(map[string]map[*sessionEventSubscription]struct{})}
@@ -88,10 +96,21 @@ func (b *sessionEventBroker) publish(event store.SessionEvent) {
 		select {
 		case sub.events <- event:
 		default:
-			sub.signalOverflow()
+			if sub.signalOverflow() {
+				b.overflows.Add(1)
+			}
 		}
 	}
 	b.mu.RUnlock()
+}
+
+func (b *sessionEventBroker) diagnostics() (subscribers int, overflows int64) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for _, subs := range b.subs {
+		subscribers += len(subs)
+	}
+	return subscribers, b.overflows.Load()
 }
 
 func (s *Server) appendSessionEvent(ctx context.Context, event store.SessionEvent) (store.SessionEvent, error) {

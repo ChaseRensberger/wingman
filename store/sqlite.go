@@ -2050,6 +2050,12 @@ func (s *SQLiteStore) ListQueuedSessionRunSessions(ctx context.Context) ([]strin
 	return out, rows.Err()
 }
 
+func (s *SQLiteStore) CountQueuedSessionRuns(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE status = ?`, SessionRunStatusQueued).Scan(&count)
+	return count, err
+}
+
 func isSessionRunTerminal(status string) bool {
 	return status == SessionRunStatusCompleted || status == SessionRunStatusFailed || status == SessionRunStatusAborted
 }
