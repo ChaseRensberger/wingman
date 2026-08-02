@@ -17,6 +17,12 @@ type transientClaimStore struct {
 	attempts int
 }
 
+type transientSettlementStore struct {
+	store.Store
+	failures int
+	attempts int
+}
+
 func TestPermissionRequestManagerResolvesAndRemembersGrant(t *testing.T) {
 	data := memory.NewStore()
 	if err := data.CreateSession(&store.Session{ID: "ses_permission"}); err != nil {
@@ -286,6 +292,14 @@ func (s *transientClaimStore) ClaimNextSessionRun(ctx context.Context, sessionID
 	return s.Store.ClaimNextSessionRun(ctx, sessionID)
 }
 
+func (s *transientSettlementStore) SettleSessionRun(ctx context.Context, settlement store.SessionRunSettlement) (store.SessionRunTransition, error) {
+	s.attempts++
+	if s.attempts <= s.failures {
+		return store.SessionRunTransition{}, errors.New("temporary settlement failure")
+	}
+	return s.Store.SettleSessionRun(ctx, settlement)
+}
+
 func TestSessionRunManagerRetriesTransientClaims(t *testing.T) {
 	data := memory.NewStore()
 	if err := data.CreateSession(&store.Session{ID: "ses_claim_retry"}); err != nil {
@@ -302,6 +316,48 @@ func TestSessionRunManagerRetriesTransientClaims(t *testing.T) {
 	}
 	if !transition.Changed || transition.Run.Status != store.SessionRunStatusRunning || retrying.attempts != 3 {
 		t.Fatalf("transition = %#v, attempts = %d", transition, retrying.attempts)
+	}
+}
+
+func TestSessionRunManagerRetriesTerminalSettlementBeforeNextClaim(t *testing.T) {
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_settlement_retry"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"run_settlement_first", "run_settlement_second"} {
+		if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: id, SessionID: "ses_settlement_retry"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := data.ClaimNextSessionRun(ctx, "ses_settlement_retry")
+	if err != nil || first.Run.ID != "run_settlement_first" {
+		t.Fatalf("first claim = %#v, error = %v", first, err)
+	}
+	retrying := &transientSettlementStore{Store: data, failures: 1}
+	manager := newSessionRunManager(New(Config{Store: retrying}))
+
+	blocked, err := retrying.ClaimNextSessionRun(ctx, "ses_settlement_retry")
+	if err != nil || blocked.Run.ID != "" {
+		t.Fatalf("claim before settlement = %#v, error = %v", blocked, err)
+	}
+	if !manager.settle(ctx, store.SessionRunSettlement{ID: first.Run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted}) {
+		t.Fatal("settlement was deferred, want committed retry")
+	}
+	if retrying.attempts != 2 {
+		t.Fatalf("settlement attempts = %d, want 2", retrying.attempts)
+	}
+	settled, err := data.GetSessionRun(ctx, "ses_settlement_retry", first.Run.ID)
+	if err != nil || settled.Status != store.SessionRunStatusCompleted {
+		t.Fatalf("settled run = %#v, error = %v", settled, err)
+	}
+	events, err := data.ListSessionEvents(ctx, "ses_settlement_retry", 0, 10)
+	if err != nil || len(events) != 4 || events[2].Type != "session.run.started" || events[3].Type != "session.run.completed" {
+		t.Fatalf("events = %#v, error = %v", events, err)
+	}
+	next, err := manager.claim(ctx, "ses_settlement_retry")
+	if err != nil || next.Run.ID != "run_settlement_second" {
+		t.Fatalf("next claim = %#v, error = %v", next, err)
 	}
 }
 

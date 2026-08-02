@@ -343,6 +343,10 @@ unfinished tool uses and model calls, preserves failed partial messages, settles
 running runs as aborted, and only then resumes queued runs. It does not replay
 ambiguous provider calls or tool side effects.
 
+If a terminal settlement temporarily fails while the daemon is still running,
+Wingman retries it before that session can claim later queued work. This retry
+does not repeat provider dispatch or tool execution.
+
 ### Model-call response
 
 `GET /sessions/{id}/model-calls` returns one record per physical upstream

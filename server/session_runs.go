@@ -17,6 +17,7 @@ const (
 	defaultRunReconcileInterval = 5 * time.Second
 	claimRetryDelay             = 100 * time.Millisecond
 	claimRetryLimit             = 3
+	settleRetryMaxDelay         = 5 * time.Second
 )
 
 // sessionRunManager owns daemon-local workers. The queue itself is durable;
@@ -218,8 +219,9 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 						err = runCtx.Err()
 					} else {
 						result := stream.Result()
-						m.server.logger.Info("session run completed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "steps", result.Steps)
-						m.settle(persistCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{"usage": result.Usage, "steps": result.Steps}})
+						if m.settle(workerCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{"usage": result.Usage, "steps": result.Steps}}) {
+							m.server.logger.Info("session run completed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "steps", result.Steps)
+						}
 						return
 					}
 				}
@@ -234,18 +236,40 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	if err != nil {
 		message = err.Error()
 	}
-	m.server.logger.Error("session run failed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "error_type", errorType, "error", message)
-	m.settle(persistCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: status, ErrorType: errorType, ErrorMessage: message, EventData: map[string]any{"error_type": errorType, "error_message": message}})
+	if m.settle(workerCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: status, ErrorType: errorType, ErrorMessage: message, EventData: map[string]any{"error_type": errorType, "error_message": message}}) {
+		m.server.logger.Error("session run failed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "error_type", errorType, "error", message)
+	}
 }
 
-func (m *sessionRunManager) settle(ctx context.Context, settlement store.SessionRunSettlement) {
-	transition, err := m.server.store.SettleSessionRun(ctx, settlement)
-	if err != nil {
-		m.server.logger.Error("settle session run", "run_id", settlement.ID, "error", err)
-		return
-	}
-	if transition.Changed {
-		m.server.events.publish(transition.Event)
+// settle retries a terminal transition until it commits or the daemon stops.
+// A completed provider or tool call cannot be safely repeated, so the worker
+// stays pinned to this run rather than advancing the session queue.
+func (m *sessionRunManager) settle(ctx context.Context, settlement store.SessionRunSettlement) bool {
+	delay := claimRetryDelay
+	for attempt := 1; ; attempt++ {
+		transition, err := m.server.store.SettleSessionRun(ctx, settlement)
+		if err == nil {
+			if transition.Changed {
+				m.server.events.publish(transition.Event)
+			}
+			return true
+		}
+		if ctx.Err() != nil {
+			m.server.logger.Error("terminal run settlement deferred to startup recovery", "run_id", settlement.ID, "attempt", attempt, "error", err)
+			return false
+		}
+		m.server.logger.Error("retry terminal run settlement", "run_id", settlement.ID, "attempt", attempt, "retry_in_ms", delay.Milliseconds(), "error", err)
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(delay):
+		}
+		if delay < settleRetryMaxDelay {
+			delay *= 2
+			if delay > settleRetryMaxDelay {
+				delay = settleRetryMaxDelay
+			}
+		}
 	}
 }
 

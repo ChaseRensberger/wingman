@@ -177,6 +177,12 @@ A run moves from `queued` to `running`, then to `completed`, `failed`, or
 each claim or terminal settlement together with its matching durable event, so
 the status resource and event history do not disagree.
 
+If a terminal settlement write fails after provider or tool work returns, the
+daemon retries that write while keeping the session worker on the same run. It
+does not claim later queued work or repeat the provider request or tool call. A
+daemon shutdown before settlement completes leaves recovery to conservatively
+abort the running run on its next start.
+
 Abort a specific queued or running run with:
 
 ```bash
