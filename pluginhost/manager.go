@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -421,17 +422,20 @@ func (p *loadedPlugin) watchExit() {
 }
 
 func (p *loadedPlugin) noteExitLocked() {
-	if p.exitedAt.IsZero() {
-		p.exitedAt = time.Now()
+	if !p.exitedAt.IsZero() {
+		return
 	}
+	p.exitedAt = time.Now()
 	if p.retiring {
 		return
 	}
 	p.err = p.client.Err()
 	if p.err == nil {
 		p.status = "stopped"
+		slog.Default().Info("plugin process stopped", "plugin_id", p.id.ID)
 	} else {
 		p.status = "failed"
+		slog.Default().Error("plugin process exited", "plugin_id", p.id.ID, "error", p.err)
 	}
 }
 

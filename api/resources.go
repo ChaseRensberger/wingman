@@ -179,4 +179,8 @@ type DiagnosticsResponse struct {
 	ActiveScopes        int   `json:"active_scopes"`
 	EventSubscribers    int   `json:"event_subscribers"`
 	SubscriberOverflows int64 `json:"subscriber_overflows"`
+	PluginsRunning      int   `json:"plugins_running"`
+	PluginsDegraded     int   `json:"plugins_degraded"`
+	PluginsFailed       int   `json:"plugins_failed"`
+	PluginLoadErrors    int   `json:"plugin_load_errors"`
 }

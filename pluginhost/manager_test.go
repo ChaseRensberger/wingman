@@ -2,9 +2,11 @@ package pluginhost
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -262,6 +264,10 @@ func TestManagerHealthExitAndReloadRollback(t *testing.T) {
 }
 
 func TestManagerProcessExitDuringToolCallFailsGenerationAndRetainsDiagnostic(t *testing.T) {
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	dir := t.TempDir()
 	writeManagerManifest(t, dir, "one", "exit-call")
 	m := newTestManager(t, dir)
@@ -282,6 +288,9 @@ func TestManagerProcessExitDuringToolCallFailsGenerationAndRetainsDiagnostic(t *
 				if diagnostic.Source == "process" && strings.Contains(diagnostic.Message, "plugin exited") {
 					if _, err := rpcTool.Execute(context.Background(), tool.Invocation{}); err == nil || !strings.Contains(err.Error(), "not running") {
 						t.Fatalf("future call error = %v", err)
+					}
+					if !strings.Contains(logs.String(), `"plugin_id":"one"`) {
+						t.Fatalf("exit logs = %s", logs.String())
 					}
 					return
 				}

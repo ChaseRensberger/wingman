@@ -156,7 +156,7 @@ returned by these endpoints.
 | `POST` | `/clients` | Register a client by name. |
 | `GET` | `/clients/{id}` | Get a registered client. |
 | `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
-| `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, active event subscribers, and subscriber overflows. |
+| `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, active event subscribers, subscriber overflows, and aggregate plugin health. |
 | `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |
 
 Plugin directories and MCP server definitions are configured server-wide; see [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins), and [MCP Servers](/configure/mcp). Client records and the client header organize persisted resources only; they do not authorize requests.
@@ -164,8 +164,9 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 `/logs` is an operational diagnostic endpoint, not durable logging or a stream. Request log entries can include paths, raw query strings, remote addresses, user agents, and client headers. Do not put secrets in API URLs, and keep the endpoint on trusted local access.
 
 `/diagnostics` is a point-in-time operational snapshot, not durable history or
-a metrics feed. Use it to identify queue buildup or disconnected event clients;
-use the session and run APIs for authoritative per-run state.
+a metrics feed. Use it to identify queue buildup, disconnected event clients, or
+aggregate plugin failures. Use `/plugins` for per-plugin detail and the session
+and run APIs for authoritative per-run state.
 
 ## Session endpoints
 

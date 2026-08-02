@@ -713,6 +713,26 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.scopes != nil {
 		response.ActiveScopes = s.scopes.Count()
+		scope, release, err := s.executionScope(r.Context(), "")
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		defer release()
+		if scope != nil && scope.Plugins() != nil {
+			plugins, errs := scope.Plugins().Status()
+			response.PluginLoadErrors = len(errs)
+			for _, plugin := range plugins {
+				switch plugin.Status {
+				case "running":
+					response.PluginsRunning++
+				case "degraded":
+					response.PluginsDegraded++
+				case "failed":
+					response.PluginsFailed++
+				}
+			}
+		}
 	}
 	response.EventSubscribers, response.SubscriberOverflows = s.events.diagnostics()
 	writeJSON(w, http.StatusOK, response)

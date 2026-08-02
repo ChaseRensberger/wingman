@@ -946,6 +946,14 @@ export interface components {
             /** Format: int64 */
             event_subscribers: number;
             /** Format: int64 */
+            plugin_load_errors: number;
+            /** Format: int64 */
+            plugins_degraded: number;
+            /** Format: int64 */
+            plugins_failed: number;
+            /** Format: int64 */
+            plugins_running: number;
+            /** Format: int64 */
             queued_runs: number;
             /** Format: int64 */
             subscriber_overflows: number;

@@ -457,6 +457,22 @@
             "format": "int64",
             "type": "integer"
           },
+          "plugin_load_errors": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "plugins_degraded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "plugins_failed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "plugins_running": {
+            "format": "int64",
+            "type": "integer"
+          },
           "queued_runs": {
             "format": "int64",
             "type": "integer"
@@ -471,7 +487,11 @@
           "active_runs",
           "active_scopes",
           "event_subscribers",
-          "subscriber_overflows"
+          "subscriber_overflows",
+          "plugins_running",
+          "plugins_degraded",
+          "plugins_failed",
+          "plugin_load_errors"
         ],
         "type": "object"
       },
