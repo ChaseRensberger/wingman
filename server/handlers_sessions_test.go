@@ -606,6 +606,23 @@ func TestForwardRunEventPublishesLiveToolProgress(t *testing.T) {
 	}
 }
 
+type startedToolClient struct{}
+
+func (startedToolClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (startedToolClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (startedToolClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	message := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call_started_tool_recovery", Name: "test", Input: map[string]any{}}}}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+	stream.Close(message, nil)
+	return stream, nil
+}
+
 type startupRecoveryStore struct {
 	store.Store
 	order         []string

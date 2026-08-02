@@ -198,6 +198,10 @@ in-progress message becomes `failed` while retaining its checkpointed content.
 Only runs that never started remain queued and resume automatically. If any
 recovery write fails, the server does not begin serving requests.
 
+The `started` tool-use record is a safety fence: it is committed before a tool
+function runs. If a process stops after entering that function, Wingman records
+the tool as interrupted on recovery and does not automatically invoke it again.
+
 ## Ephemeral Sessions
 
 Some agent runs should not leave durable state. Wingman exposes that as an ephemeral run:
