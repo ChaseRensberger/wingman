@@ -1948,7 +1948,8 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 		return SessionRunTransition{}, err
 	}
 	defer tx.Rollback()
-	if _, err := getSessionTx(ctx, tx, sessionID); err != nil {
+	session, err := getSessionTx(ctx, tx, sessionID)
+	if err != nil {
 		return SessionRunTransition{}, err
 	}
 	var running int
@@ -1980,6 +1981,17 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
 	run.Status, run.StartedAt, run.UpdatedAt = SessionRunStatusRunning, now, now
+	aggregateEvent, err := NewSessionRunTransitionEvent(run)
+	if err != nil {
+		return SessionRunTransition{}, err
+	}
+	aggregateEvent, err = appendAggregateEventTx(ctx, tx, aggregateEvent, session.AggregateVersion)
+	if err != nil {
+		return SessionRunTransition{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, aggregateEvent.Version, sessionID); err != nil {
+		return SessionRunTransition{}, fmt.Errorf("update session run version: %w", err)
+	}
 	event, err := appendRunEventTx(ctx, tx, run, "session.run.started", nil, now)
 	if err != nil {
 		return SessionRunTransition{}, err
@@ -2027,6 +2039,21 @@ func (s *SQLiteStore) SettleSessionRun(ctx context.Context, settlement SessionRu
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
 	run.Status, run.ErrorType, run.ErrorMessage, run.CompletedAt, run.UpdatedAt = settlement.Status, settlement.ErrorType, settlement.ErrorMessage, now, now
+	session, err := getSessionTx(ctx, tx, run.SessionID)
+	if err != nil {
+		return SessionRunTransition{}, err
+	}
+	aggregateEvent, err := NewSessionRunTransitionEvent(run)
+	if err != nil {
+		return SessionRunTransition{}, err
+	}
+	aggregateEvent, err = appendAggregateEventTx(ctx, tx, aggregateEvent, session.AggregateVersion)
+	if err != nil {
+		return SessionRunTransition{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, aggregateEvent.Version, run.SessionID); err != nil {
+		return SessionRunTransition{}, fmt.Errorf("update session run version: %w", err)
+	}
 	event, err := appendRunEventTx(ctx, tx, run, "session.run."+settlement.Status, settlement.EventData, now)
 	if err != nil {
 		return SessionRunTransition{}, err

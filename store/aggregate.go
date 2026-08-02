@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -15,10 +16,14 @@ const (
 )
 
 const (
-	EventSessionCreated     = "session.created"
-	EventSessionRenamed     = "session.renamed"
-	EventSessionMoved       = "session.moved"
-	EventSessionRunAdmitted = "session.run.admitted"
+	EventSessionCreated      = "session.created"
+	EventSessionRenamed      = "session.renamed"
+	EventSessionMoved        = "session.moved"
+	EventSessionRunAdmitted  = "session.run.admitted"
+	EventSessionRunStarted   = "session.run.started"
+	EventSessionRunCompleted = "session.run.completed"
+	EventSessionRunFailed    = "session.run.failed"
+	EventSessionRunAborted   = "session.run.aborted"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -83,22 +88,13 @@ type sessionRunAdmittedData struct {
 	Run json.RawMessage `json:"run"`
 }
 
+type sessionRunTransitionData struct {
+	Run json.RawMessage `json:"run"`
+}
+
 // NewSessionRunAdmittedEvent records an immutable admitted run projection.
 func NewSessionRunAdmittedEvent(run SessionRun) (AggregateEvent, error) {
-	runData, err := json.Marshal(run)
-	if err != nil {
-		return AggregateEvent{}, fmt.Errorf("marshal admitted run: %w", err)
-	}
-	var projection map[string]json.RawMessage
-	if err := json.Unmarshal(runData, &projection); err != nil {
-		return AggregateEvent{}, fmt.Errorf("decode admitted run: %w", err)
-	}
-	outputSchema, err := json.Marshal(string(run.OutputSchemaJSON))
-	if err != nil {
-		return AggregateEvent{}, fmt.Errorf("marshal admitted run output schema: %w", err)
-	}
-	projection["output_schema_json"] = outputSchema
-	runData, err = json.Marshal(projection)
+	runData, err := marshalSessionRun(run)
 	if err != nil {
 		return AggregateEvent{}, fmt.Errorf("marshal admitted run projection: %w", err)
 	}
@@ -127,15 +123,9 @@ func ProjectSessionRunAdmission(event AggregateEvent) (SessionRun, error) {
 	if err := json.Unmarshal(event.Data, &data); err != nil {
 		return SessionRun{}, fmt.Errorf("project session run: decode session.run.admitted: %w", err)
 	}
-	var run SessionRun
-	if err := json.Unmarshal(data.Run, &run); err != nil {
-		return SessionRun{}, fmt.Errorf("project session run: decode run: %w", err)
-	}
-	var encoded struct {
-		OutputSchemaJSON string `json:"output_schema_json"`
-	}
-	if err := json.Unmarshal(data.Run, &encoded); err != nil {
-		return SessionRun{}, fmt.Errorf("project session run: decode output schema: %w", err)
+	run, err := unmarshalSessionRun(data.Run)
+	if err != nil {
+		return SessionRun{}, err
 	}
 	if run.SessionID != event.Aggregate.ID {
 		return SessionRun{}, fmt.Errorf("project session run: payload session %q does not match aggregate", run.SessionID)
@@ -143,7 +133,110 @@ func ProjectSessionRunAdmission(event AggregateEvent) (SessionRun, error) {
 	if run.AdmittedVersion != event.Version {
 		return SessionRun{}, fmt.Errorf("project session run %s: payload admitted version %d does not match event version %d", run.ID, run.AdmittedVersion, event.Version)
 	}
-	run.OutputSchemaJSON = []byte(encoded.OutputSchemaJSON)
+	return run, nil
+}
+
+// NewSessionRunTransitionEvent records an immutable run lifecycle transition.
+func NewSessionRunTransitionEvent(run SessionRun) (AggregateEvent, error) {
+	typeName, ok := map[string]string{
+		SessionRunStatusRunning:   EventSessionRunStarted,
+		SessionRunStatusCompleted: EventSessionRunCompleted,
+		SessionRunStatusFailed:    EventSessionRunFailed,
+		SessionRunStatusAborted:   EventSessionRunAborted,
+	}[run.Status]
+	if !ok {
+		return AggregateEvent{}, fmt.Errorf("session run %s: unsupported transition status %q", run.ID, run.Status)
+	}
+	runData, err := marshalSessionRun(run)
+	if err != nil {
+		return AggregateEvent{}, err
+	}
+	data, err := json.Marshal(sessionRunTransitionData{Run: runData})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal %s: %w", typeName, err)
+	}
+	return AggregateEvent{
+		ID:            NewID(PrefixEvent),
+		Aggregate:     AggregateRef{Type: AggregateSession, ID: run.SessionID},
+		Type:          typeName,
+		SchemaVersion: 1,
+		Time:          run.UpdatedAt,
+		Data:          data,
+		ClientID:      run.ClientID,
+		RunID:         run.ID,
+	}, nil
+}
+
+// ProjectSessionRunTransition decodes an immutable run transition snapshot.
+func ProjectSessionRunTransition(event AggregateEvent) (SessionRun, error) {
+	if event.SchemaVersion != 1 {
+		return SessionRun{}, fmt.Errorf("project session run: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionRunTransitionData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode %s: %w", event.Type, err)
+	}
+	run, err := unmarshalSessionRun(data.Run)
+	if err != nil {
+		return SessionRun{}, err
+	}
+	if run.SessionID != event.Aggregate.ID || run.ID != event.RunID {
+		return SessionRun{}, fmt.Errorf("project session run: transition payload does not match aggregate event")
+	}
+	wantType, ok := map[string]string{
+		SessionRunStatusRunning:   EventSessionRunStarted,
+		SessionRunStatusCompleted: EventSessionRunCompleted,
+		SessionRunStatusFailed:    EventSessionRunFailed,
+		SessionRunStatusAborted:   EventSessionRunAborted,
+	}[run.Status]
+	if !ok || event.Type != wantType {
+		return SessionRun{}, fmt.Errorf("project session run %s: event %q does not match status %q", run.ID, event.Type, run.Status)
+	}
+	return run, nil
+}
+
+func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
+	runData, err := json.Marshal(run)
+	if err != nil {
+		return nil, fmt.Errorf("marshal run: %w", err)
+	}
+	var projection map[string]json.RawMessage
+	if err := json.Unmarshal(runData, &projection); err != nil {
+		return nil, fmt.Errorf("decode run: %w", err)
+	}
+	outputSchema, err := json.Marshal(string(run.OutputSchemaJSON))
+	if err != nil {
+		return nil, fmt.Errorf("marshal run output schema: %w", err)
+	}
+	projection["output_schema_json"] = outputSchema
+	requestHash, err := json.Marshal(run.RequestHash)
+	if err != nil {
+		return nil, fmt.Errorf("marshal run request hash: %w", err)
+	}
+	projection["request_hash"] = requestHash
+	runData, err = json.Marshal(projection)
+	if err != nil {
+		return nil, fmt.Errorf("marshal run projection: %w", err)
+	}
+	return runData, nil
+}
+
+func unmarshalSessionRun(data json.RawMessage) (SessionRun, error) {
+	var run SessionRun
+	if err := json.Unmarshal(data, &run); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode run: %w", err)
+	}
+	var encoded struct {
+		OutputSchemaJSON string `json:"output_schema_json"`
+		RequestHash      string `json:"request_hash"`
+	}
+	if err := json.Unmarshal(data, &encoded); err != nil {
+		return SessionRun{}, fmt.Errorf("project session run: decode output schema: %w", err)
+	}
+	if encoded.OutputSchemaJSON != "" {
+		run.OutputSchemaJSON = []byte(encoded.OutputSchemaJSON)
+	}
+	run.RequestHash = encoded.RequestHash
 	return run, nil
 }
 
@@ -246,6 +339,56 @@ func ProjectSession(events []AggregateEvent) (*Session, error) {
 	return session, nil
 }
 
+// ProjectSessionRuns rebuilds session-run projections from a Session aggregate stream.
+func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
+	if _, err := ProjectSession(events); err != nil {
+		return nil, err
+	}
+	runs := make(map[string]SessionRun)
+	for _, event := range events {
+		var run SessionRun
+		var err error
+		switch event.Type {
+		case EventSessionRunAdmitted:
+			run, err = ProjectSessionRunAdmission(event)
+			if err != nil {
+				return nil, err
+			}
+			if run.Status != SessionRunStatusQueued {
+				return nil, fmt.Errorf("project session run %s: admission status %q", run.ID, run.Status)
+			}
+			if _, exists := runs[run.ID]; exists {
+				return nil, fmt.Errorf("project session run %s: duplicate admission", run.ID)
+			}
+			runs[run.ID] = run
+		case EventSessionRunStarted, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+			run, err = ProjectSessionRunTransition(event)
+			if err != nil {
+				return nil, err
+			}
+			previous, exists := runs[run.ID]
+			if !exists || !legalProjectedRunTransition(previous.Status, run.Status) {
+				return nil, fmt.Errorf("project session run %s: illegal transition %q -> %q", run.ID, previous.Status, run.Status)
+			}
+			if run.Sequence != previous.Sequence || run.AdmittedVersion != previous.AdmittedVersion || run.Message != previous.Message {
+				return nil, fmt.Errorf("project session run %s: immutable admission fields changed", run.ID)
+			}
+			runs[run.ID] = run
+		}
+	}
+	out := make([]SessionRun, 0, len(runs))
+	for _, run := range runs {
+		out = append(out, run)
+	}
+	slices.SortFunc(out, func(a, b SessionRun) int { return a.Sequence - b.Sequence })
+	return out, nil
+}
+
+func legalProjectedRunTransition(from, to string) bool {
+	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
+		(from == SessionRunStatusRunning && isSessionRunTerminal(to))
+}
+
 func projectSessionEvent(session *Session, event AggregateEvent) (*Session, error) {
 	switch event.Type {
 	case EventSessionCreated:
@@ -301,6 +444,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: run admission before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionRunAdmission(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionRunStarted, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: run transition before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionRunTransition(event); err != nil {
 			return nil, err
 		}
 		projected := *session

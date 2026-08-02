@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -91,6 +92,44 @@ func TestSessionRunSettlementContract(t *testing.T) {
 	runs, err := data.ListSessionRuns(ctx, "ses_settle")
 	if err != nil || len(runs) != 1 || runs[0].Status != SessionRunStatusAborted {
 		t.Fatalf("runs = %#v, %v", runs, err)
+	}
+}
+
+func TestSessionRunAggregateEventsProjectRunState(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_run_events"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_events", SessionID: "ses_run_events", Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := data.ClaimNextSessionRun(ctx, "ses_run_events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := data.SettleSessionRun(ctx, SessionRunSettlement{ID: started.Run.ID, ExpectedStatus: SessionRunStatusRunning, Status: SessionRunStatusCompleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: "ses_run_events"}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []string{events[1].Type, events[2].Type, events[3].Type}; !reflect.DeepEqual(got, []string{EventSessionRunAdmitted, EventSessionRunStarted, EventSessionRunCompleted}) {
+		t.Fatalf("run event types = %#v", got)
+	}
+	projected, err := ProjectSessionRuns(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projected) != 1 || !reflect.DeepEqual(projected[0], completed.Run) || projected[0].ID != admission.Run.ID {
+		t.Fatalf("projected runs = %#v, want %#v", projected, completed.Run)
+	}
+	session, err := data.GetSession("ses_run_events")
+	if err != nil || session.AggregateVersion != 4 {
+		t.Fatalf("session = %#v, error = %v", session, err)
 	}
 }
 

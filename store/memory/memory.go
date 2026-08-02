@@ -163,7 +163,8 @@ func (s *Store) ListSessionRuns(ctx context.Context, sessionID string) ([]store.
 func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (store.SessionRunTransition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[sessionID]; !ok {
+	session, ok := s.sessions[sessionID]
+	if !ok {
 		return store.SessionRunTransition{}, store.ErrSessionNotFound
 	}
 	for _, run := range s.runs {
@@ -183,10 +184,24 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	now := time.Now().UTC()
 	candidate := copySessionRun(next)
 	candidate.Status, candidate.StartedAt, candidate.UpdatedAt = store.SessionRunStatusRunning, now, now
+	aggregateEvent, err := store.NewSessionRunTransitionEvent(candidate)
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
+	events := s.aggregates[aggregateEvent.Aggregate]
+	aggregateEvent.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), aggregateEvent))
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
 	event, err := s.appendRunEventLocked(&candidate, "session.run.started", nil, now)
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
+	s.globalSeq++
+	aggregateEvent.GlobalSequence = s.globalSeq
+	s.aggregates[aggregateEvent.Aggregate] = append(events, copyAggregateEvent(aggregateEvent))
+	s.sessions[sessionID] = copySession(projected)
 	*next = candidate
 	return store.SessionRunTransition{Run: copySessionRun(next), Event: event, Changed: true}, nil
 }
@@ -214,10 +229,28 @@ func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRu
 	candidate := copySessionRun(run)
 	candidate.Status, candidate.ErrorType, candidate.ErrorMessage = settlement.Status, settlement.ErrorType, settlement.ErrorMessage
 	candidate.CompletedAt, candidate.UpdatedAt = now, now
+	session, ok := s.sessions[candidate.SessionID]
+	if !ok {
+		return store.SessionRunTransition{}, store.ErrSessionNotFound
+	}
+	aggregateEvent, err := store.NewSessionRunTransitionEvent(candidate)
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
+	events := s.aggregates[aggregateEvent.Aggregate]
+	aggregateEvent.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), aggregateEvent))
+	if err != nil {
+		return store.SessionRunTransition{}, err
+	}
 	event, err := s.appendRunEventLocked(&candidate, "session.run."+settlement.Status, settlement.EventData, now)
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
+	s.globalSeq++
+	aggregateEvent.GlobalSequence = s.globalSeq
+	s.aggregates[aggregateEvent.Aggregate] = append(events, copyAggregateEvent(aggregateEvent))
+	s.sessions[candidate.SessionID] = copySession(projected)
 	*run = candidate
 	return store.SessionRunTransition{Run: copySessionRun(run), Event: event, Changed: true}, nil
 }

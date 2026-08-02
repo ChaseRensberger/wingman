@@ -110,6 +110,39 @@ func TestSessionMetadataNoOpAndConflict(t *testing.T) {
 	}
 }
 
+func TestSessionRunTransitionsUpdateAggregateProjection(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_memory_run"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_memory", SessionID: "ses_memory_run", Message: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	started, err := data.ClaimNextSessionRun(ctx, "ses_memory_run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.SettleSessionRun(ctx, store.SessionRunSettlement{ID: started.Run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusFailed, ErrorType: "provider"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: "ses_memory_run"}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, err := store.ProjectSessionRuns(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].Status != store.SessionRunStatusFailed || runs[0].ErrorType != "provider" {
+		t.Fatalf("projected runs = %#v", runs)
+	}
+	session, err := data.GetSession("ses_memory_run")
+	if err != nil || session.AggregateVersion != 4 {
+		t.Fatalf("session = %#v, error = %v", session, err)
+	}
+}
+
 func TestPurgeSessionRemovesAllState(t *testing.T) {
 	data := NewStore()
 	ctx := context.Background()
