@@ -174,13 +174,16 @@ type ReadinessResponse struct {
 
 // DiagnosticsResponse reports bounded daemon operational state.
 type DiagnosticsResponse struct {
-	QueuedRuns          int   `json:"queued_runs"`
-	ActiveRuns          int   `json:"active_runs"`
-	ActiveScopes        int   `json:"active_scopes"`
-	EventSubscribers    int   `json:"event_subscribers"`
-	SubscriberOverflows int64 `json:"subscriber_overflows"`
-	PluginsRunning      int   `json:"plugins_running"`
-	PluginsDegraded     int   `json:"plugins_degraded"`
-	PluginsFailed       int   `json:"plugins_failed"`
-	PluginLoadErrors    int   `json:"plugin_load_errors"`
+	QueuedRuns           int   `json:"queued_runs"`
+	ActiveRuns           int   `json:"active_runs"`
+	ActiveScopes         int   `json:"active_scopes"`
+	EventSubscribers     int   `json:"event_subscribers"`
+	SubscriberOverflows  int64 `json:"subscriber_overflows"`
+	SubscriberClosures   int64 `json:"subscriber_closures"`
+	SubscriberBacklog    int   `json:"subscriber_backlog"`
+	SubscriberMaxBacklog int   `json:"subscriber_max_backlog"`
+	PluginsRunning       int   `json:"plugins_running"`
+	PluginsDegraded      int   `json:"plugins_degraded"`
+	PluginsFailed        int   `json:"plugins_failed"`
+	PluginLoadErrors     int   `json:"plugin_load_errors"`
 }

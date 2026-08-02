@@ -25,6 +25,7 @@ type sessionEventBroker struct {
 	mu        sync.RWMutex
 	subs      map[string]map[*sessionEventSubscription]struct{}
 	overflows atomic.Int64
+	closures  atomic.Int64
 }
 
 type sessionEventSubscription struct {
@@ -43,7 +44,13 @@ func newSessionEventSubscription() *sessionEventSubscription {
 	}
 }
 
-func (s *sessionEventSubscription) close() { s.doneOnce.Do(func() { close(s.done) }) }
+func (s *sessionEventSubscription) close() (closed bool) {
+	s.doneOnce.Do(func() {
+		close(s.done)
+		closed = true
+	})
+	return closed
+}
 
 func (s *sessionEventSubscription) signalOverflow() (signaled bool) {
 	s.overOnce.Do(func() {
@@ -76,14 +83,18 @@ func (b *sessionEventBroker) subscribe(sessionID string) (*sessionEventSubscript
 			}
 		}
 		b.mu.Unlock()
-		sub.close()
+		if sub.close() {
+			b.closures.Add(1)
+		}
 	}
 }
 
 func (b *sessionEventBroker) closeSession(sessionID string) {
 	b.mu.Lock()
 	for sub := range b.subs[sessionID] {
-		sub.close()
+		if sub.close() {
+			b.closures.Add(1)
+		}
 	}
 	delete(b.subs, sessionID)
 	b.mu.Unlock()
@@ -104,13 +115,20 @@ func (b *sessionEventBroker) publish(event store.SessionEvent) {
 	b.mu.RUnlock()
 }
 
-func (b *sessionEventBroker) diagnostics() (subscribers int, overflows int64) {
+func (b *sessionEventBroker) diagnostics() (subscribers, backlog, maxBacklog int, overflows, closures int64) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, subs := range b.subs {
 		subscribers += len(subs)
+		for sub := range subs {
+			queued := len(sub.events)
+			backlog += queued
+			if queued > maxBacklog {
+				maxBacklog = queued
+			}
+		}
 	}
-	return subscribers, b.overflows.Load()
+	return subscribers, backlog, maxBacklog, b.overflows.Load(), b.closures.Load()
 }
 
 func (s *Server) appendSessionEvent(ctx context.Context, event store.SessionEvent) (store.SessionEvent, error) {

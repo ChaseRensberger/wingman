@@ -477,6 +477,18 @@
             "format": "int64",
             "type": "integer"
           },
+          "subscriber_backlog": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriber_closures": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "subscriber_max_backlog": {
+            "format": "int64",
+            "type": "integer"
+          },
           "subscriber_overflows": {
             "format": "int64",
             "type": "integer"
@@ -488,6 +500,9 @@
           "active_scopes",
           "event_subscribers",
           "subscriber_overflows",
+          "subscriber_closures",
+          "subscriber_backlog",
+          "subscriber_max_backlog",
           "plugins_running",
           "plugins_degraded",
           "plugins_failed",

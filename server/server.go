@@ -734,7 +734,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	response.EventSubscribers, response.SubscriberOverflows = s.events.diagnostics()
+	response.EventSubscribers, response.SubscriberBacklog, response.SubscriberMaxBacklog, response.SubscriberOverflows, response.SubscriberClosures = s.events.diagnostics()
 	writeJSON(w, http.StatusOK, response)
 }
 

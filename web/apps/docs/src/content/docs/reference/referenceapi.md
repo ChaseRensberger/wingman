@@ -156,7 +156,7 @@ returned by these endpoints.
 | `POST` | `/clients` | Register a client by name. |
 | `GET` | `/clients/{id}` | Get a registered client. |
 | `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
-| `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, active event subscribers, subscriber overflows, and aggregate plugin health. |
+| `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
 | `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |
 
 Plugin directories and MCP server definitions are configured server-wide; see [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins), and [MCP Servers](/configure/mcp). Client records and the client header organize persisted resources only; they do not authorize requests.
@@ -167,6 +167,10 @@ Plugin directories and MCP server definitions are configured server-wide; see [G
 a metrics feed. Use it to identify queue buildup, disconnected event clients, or
 aggregate plugin failures. Use `/plugins` for per-plugin detail and the session
 and run APIs for authoritative per-run state.
+
+Session projections update in the same transaction as their aggregate events, so
+they have no asynchronous projection lag. The endpoint reports live subscriber
+backlog instead; a full subscriber buffer becomes an explicit resync overflow.
 
 ## Session endpoints
 

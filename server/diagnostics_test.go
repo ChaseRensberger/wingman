@@ -38,7 +38,7 @@ func TestDiagnosticsReportsBoundedOperationalState(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&diagnostics); err != nil {
 		t.Fatal(err)
 	}
-	if diagnostics.QueuedRuns != 2 || diagnostics.ActiveRuns != 0 || diagnostics.EventSubscribers != 1 || diagnostics.SubscriberOverflows != 1 || diagnostics.PluginsRunning != 0 || diagnostics.PluginsDegraded != 0 || diagnostics.PluginsFailed != 0 || diagnostics.PluginLoadErrors != 0 {
+	if diagnostics.QueuedRuns != 2 || diagnostics.ActiveRuns != 0 || diagnostics.EventSubscribers != 1 || diagnostics.SubscriberOverflows != 1 || diagnostics.SubscriberClosures != 0 || diagnostics.SubscriberBacklog != 256 || diagnostics.SubscriberMaxBacklog != 256 || diagnostics.PluginsRunning != 0 || diagnostics.PluginsDegraded != 0 || diagnostics.PluginsFailed != 0 || diagnostics.PluginLoadErrors != 0 {
 		t.Fatalf("diagnostics = %#v", diagnostics)
 	}
 }

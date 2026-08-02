@@ -219,6 +219,27 @@ func TestSessionEventsOverflowRequiresResync(t *testing.T) {
 	}
 }
 
+func TestSessionEventBrokerDiagnosticsTrackBacklogAndClosures(t *testing.T) {
+	broker := newSessionEventBroker()
+	_, firstUnsubscribe := broker.subscribe("ses_first")
+	_, secondUnsubscribe := broker.subscribe("ses_second")
+	broker.publish(store.SessionEvent{SessionID: "ses_first"})
+	broker.publish(store.SessionEvent{SessionID: "ses_first"})
+	broker.publish(store.SessionEvent{SessionID: "ses_second"})
+
+	subscribers, backlog, maxBacklog, overflows, closures := broker.diagnostics()
+	if subscribers != 2 || backlog != 3 || maxBacklog != 2 || overflows != 0 || closures != 0 {
+		t.Fatalf("diagnostics = subscribers:%d backlog:%d max_backlog:%d overflows:%d closures:%d", subscribers, backlog, maxBacklog, overflows, closures)
+	}
+	firstUnsubscribe()
+	broker.closeSession("ses_second")
+	secondUnsubscribe()
+	subscribers, backlog, maxBacklog, overflows, closures = broker.diagnostics()
+	if subscribers != 0 || backlog != 0 || maxBacklog != 0 || overflows != 0 || closures != 2 {
+		t.Fatalf("diagnostics after close = subscribers:%d backlog:%d max_backlog:%d overflows:%d closures:%d", subscribers, backlog, maxBacklog, overflows, closures)
+	}
+}
+
 func TestSessionEventCursorUsesExplicitAfterBeforeLastEventID(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/?after=7", nil)
 	request.Header.Set("Last-Event-ID", "3")

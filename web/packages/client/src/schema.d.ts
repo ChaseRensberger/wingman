@@ -956,6 +956,12 @@ export interface components {
             /** Format: int64 */
             queued_runs: number;
             /** Format: int64 */
+            subscriber_backlog: number;
+            /** Format: int64 */
+            subscriber_closures: number;
+            /** Format: int64 */
+            subscriber_max_backlog: number;
+            /** Format: int64 */
             subscriber_overflows: number;
         };
         DirectoryEntry: {
