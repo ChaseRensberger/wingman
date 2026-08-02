@@ -14,6 +14,7 @@ fail() {
 [[ $# -eq 1 ]] || usage
 archive=$1
 [[ -f $archive ]] || fail "release archive does not exist: $archive"
+repo=$(cd "$(dirname "$0")/.." && pwd)
 
 case $archive in
   *.tar.gz|*.zip) ;;
@@ -65,6 +66,11 @@ esac
 binary=$(find "$extract_dir" -type f \( -name wingman -o -name wingman.exe \) -print -quit)
 [[ -n $binary ]] || fail 'wingman binary not found in release archive'
 chmod u+x "$binary"
+
+install_dir=$tmp/install
+"$repo/install" --binary "$binary" --install-dir "$install_dir" --no-modify-path --yes
+binary=$install_dir/wingman
+[[ -x $binary ]] || fail 'installer did not produce an executable wingman binary'
 
 version_output=$("$binary" version)
 [[ -n $version_output ]] || fail 'wingman version returned no output'

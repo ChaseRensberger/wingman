@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -46,6 +47,29 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		if name != "ErrorResponse" && len(variants) == 0 {
 			t.Errorf("schema %s has no variants", name)
 		}
+	}
+}
+
+func TestOpenAPIEndpointMatchesGeneratedDocument(t *testing.T) {
+	s := New(Config{})
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	document, err := OpenAPIDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published, generated any
+	if err := json.Unmarshal(response.Body.Bytes(), &published); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(document, &generated); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(published, generated) {
+		t.Fatal("published OpenAPI document differs from generated document")
 	}
 }
 
