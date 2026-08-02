@@ -75,6 +75,9 @@ func TestManagerRPCProcessHelper(t *testing.T) {
 		case HealthMethod:
 			respond(request, map[string]any{"status": "ok", "message": "healthy"})
 		case "tool.execute":
+			if scenario == "exit-call" {
+				os.Exit(3)
+			}
 			if scenario == "cancel" {
 				if request := read(); request["method"] != CancelRequestMethod {
 					os.Exit(2)
@@ -256,6 +259,37 @@ func TestManagerHealthExitAndReloadRollback(t *testing.T) {
 			t.Fatalf("dead plugin status = %#v", status)
 		}
 	}
+}
+
+func TestManagerProcessExitDuringToolCallFailsGenerationAndRetainsDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	writeManagerManifest(t, dir, "one", "exit-call")
+	m := newTestManager(t, dir)
+	defer m.Close()
+
+	rpcTool := m.Tools()[0]
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := rpcTool.Execute(ctx, tool.Invocation{}); err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("active call error = %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		statuses, _ := m.Status()
+		if len(statuses) == 1 && statuses[0].Status == "failed" {
+			for _, diagnostic := range statuses[0].Diagnostics {
+				if diagnostic.Source == "process" && strings.Contains(diagnostic.Message, "plugin exited") {
+					if _, err := rpcTool.Execute(context.Background(), tool.Invocation{}); err == nil || !strings.Contains(err.Error(), "not running") {
+						t.Fatalf("future call error = %v", err)
+					}
+					return
+				}
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("plugin did not enter failed state")
 }
 
 func newTestManager(t *testing.T, dir string) *Manager {

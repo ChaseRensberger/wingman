@@ -481,7 +481,9 @@ func (c *rpcClient) appendDiagnostic(diagnostic Diagnostic) {
 func (c *rpcClient) wait() {
 	err := c.cmd.Wait()
 	if err != nil {
-		c.terminate(fmt.Errorf("plugin exited: %w", err))
+		terminal := fmt.Errorf("plugin exited: %w", err)
+		c.appendDiagnostic(Diagnostic{Source: "process", Level: "error", Message: terminal.Error()})
+		c.terminate(terminal)
 		return
 	}
 	c.terminate(nil)

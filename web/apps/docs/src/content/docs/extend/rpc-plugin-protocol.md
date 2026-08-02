@@ -291,6 +291,11 @@ notifications:
 ```
 
 Wingman keeps a bounded recent diagnostic buffer. Stdout is reserved for JSON-RPC.
+If a plugin process exits during `tool.execute`, the active call fails, the
+plugin becomes `failed`, and later calls through that generation are rejected.
+Wingman records a bounded process-exit diagnostic. It does not retry the call
+because the plugin might have completed an external side effect before exit.
+Reload the plugin to stage a new generation.
 
 ## Shutdown And Replacement
 
