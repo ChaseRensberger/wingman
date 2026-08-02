@@ -246,6 +246,56 @@ func TestSQLiteRebuildsAllSessionProjectionsFromAggregateHistory(t *testing.T) {
 	}
 }
 
+func TestSQLiteMessageSnapshotsProjectFromAggregateHistory(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_message_events"}); err != nil {
+		t.Fatal(err)
+	}
+	message := StoredMessage{ID: "msg_events", SessionID: "ses_message_events", Idx: 1, Role: "assistant", Revision: 1, State: "in_progress", Parts: []StoredPart{{ID: "prt_events", MessageID: "msg_events", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"first"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	message.Revision, message.State, message.Parts[0].PayloadJSON = 2, "completed", []byte(`{"text":"second"}`)
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: "ses_message_events"}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 || events[1].Type != EventSessionMessageSaved || events[2].Type != EventSessionMessageSaved {
+		t.Fatalf("aggregate events = %#v", events)
+	}
+	projected, err := ProjectSessionMessages(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListMessages(ctx, "ses_message_events")
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
+	}
+}
+
+func TestSQLiteMessageSnapshotRollsBackWithAggregateEvent(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_message_rollback"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`CREATE TRIGGER fail_message_event BEFORE INSERT ON aggregate_events WHEN NEW.event_type = 'session.message.saved' BEGIN SELECT RAISE(ABORT, 'reject'); END`); err != nil {
+		t.Fatal(err)
+	}
+	err := data.SaveMessage(ctx, StoredMessage{ID: "msg_rollback", SessionID: "ses_message_rollback", Idx: 1, Role: "user", Parts: []StoredPart{{ID: "prt_rollback", MessageID: "msg_rollback", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"nope"}`)}}})
+	if err == nil {
+		t.Fatal("SaveMessage succeeded")
+	}
+	messages, err := data.ListMessages(ctx, "ses_message_rollback")
+	if err != nil || len(messages) != 0 {
+		t.Fatalf("messages = %#v, error = %v", messages, err)
+	}
+}
+
 func TestSQLiteSessionMetadataNoOpAndRollback(t *testing.T) {
 	data := newTestSQLiteStore(t)
 	session := &Session{ID: "ses_noop", Title: "Same"}
@@ -348,7 +398,7 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 2); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 3); err != nil {
 		t.Fatal(err)
 	}
 

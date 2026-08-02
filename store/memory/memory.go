@@ -1007,7 +1007,12 @@ func (s *Store) SaveMessage(ctx context.Context, msg store.StoredMessage) error 
 			}
 			return store.ErrMessageRevisionConflict
 		}
-		return s.replaceMessageLocked(existing, msg, existingParts)
+		snapshot := prepareMessageSnapshot(msg, existing, existingParts, time.Now().UTC())
+		if err := s.appendMessageAggregateLocked(snapshot); err != nil {
+			return err
+		}
+		s.applyMessageSnapshotLocked(snapshot)
+		return nil
 	}
 	for _, existing := range s.messages {
 		if existing.SessionID == msg.SessionID && existing.Idx == msg.Idx {
@@ -1025,26 +1030,11 @@ func (s *Store) SaveMessage(ctx context.Context, msg store.StoredMessage) error 
 			return fmt.Errorf("part %s belongs to message %s", part.ID, owner.MessageID)
 		}
 	}
-	now := time.Now().UTC()
-	if msg.CreatedAt.IsZero() {
-		msg.CreatedAt = now
+	snapshot := prepareMessageSnapshot(msg, nil, nil, time.Now().UTC())
+	if err := s.appendMessageAggregateLocked(snapshot); err != nil {
+		return err
 	}
-	if msg.UpdatedAt.IsZero() {
-		msg.UpdatedAt = now
-	}
-	stored := copyMessage(&msg)
-	stored.Parts = nil
-	s.messages[msg.ID] = &stored
-	for _, part := range msg.Parts {
-		if part.CreatedAt.IsZero() {
-			part.CreatedAt = now
-		}
-		if part.UpdatedAt.IsZero() {
-			part.UpdatedAt = now
-		}
-		cp := copyPart(&part)
-		s.parts[part.ID] = &cp
-	}
+	s.applyMessageSnapshotLocked(snapshot)
 	return nil
 }
 
@@ -1091,25 +1081,22 @@ func messageRevisionEqual(existing store.StoredMessage, existingParts []store.St
 	return true
 }
 
-func (s *Store) replaceMessageLocked(existing *store.StoredMessage, msg store.StoredMessage, oldParts []store.StoredPart) error {
-	for _, part := range msg.Parts {
-		if owner, ok := s.parts[part.ID]; ok && owner.MessageID != msg.ID {
-			return fmt.Errorf("part %s belongs to message %s", part.ID, owner.MessageID)
+func prepareMessageSnapshot(msg store.StoredMessage, existing *store.StoredMessage, oldParts []store.StoredPart, now time.Time) store.StoredMessage {
+	if existing == nil {
+		if msg.CreatedAt.IsZero() {
+			msg.CreatedAt = now
 		}
+	} else {
+		msg.CreatedAt = existing.CreatedAt
 	}
-	now := time.Now().UTC()
 	if msg.UpdatedAt.IsZero() {
 		msg.UpdatedAt = now
 	}
-	msg.CreatedAt = existing.CreatedAt
-	stored := copyMessage(&msg)
-	stored.Parts = nil
 	oldByID := make(map[string]store.StoredPart, len(oldParts))
 	for _, part := range oldParts {
 		oldByID[part.ID] = part
 	}
-	newParts := make(map[string]*store.StoredPart, len(msg.Parts))
-	for _, part := range msg.Parts {
+	for i, part := range msg.Parts {
 		if old, ok := oldByID[part.ID]; ok {
 			part.CreatedAt = old.CreatedAt
 		} else if part.CreatedAt.IsZero() {
@@ -1118,20 +1105,43 @@ func (s *Store) replaceMessageLocked(existing *store.StoredMessage, msg store.St
 		if part.UpdatedAt.IsZero() {
 			part.UpdatedAt = now
 		}
-		cp := copyPart(&part)
-		newParts[part.ID] = &cp
+		msg.Parts[i] = part
 	}
-	// All validation and copies complete before replacing either authoritative set.
-	s.messages[msg.ID] = &stored
+	return msg
+}
+
+func (s *Store) appendMessageAggregateLocked(message store.StoredMessage) error {
+	session := s.sessions[message.SessionID]
+	event, err := store.NewSessionMessageSavedEvent(message)
+	if err != nil {
+		return err
+	}
+	events := s.aggregates[event.Aggregate]
+	event.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	if err != nil {
+		return err
+	}
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.sessions[message.SessionID] = copySession(projected)
+	return nil
+}
+
+func (s *Store) applyMessageSnapshotLocked(message store.StoredMessage) {
+	stored := copyMessage(&message)
+	stored.Parts = nil
+	s.messages[message.ID] = &stored
 	for id, part := range s.parts {
-		if part.MessageID == msg.ID {
+		if part.MessageID == message.ID {
 			delete(s.parts, id)
 		}
 	}
-	for id, part := range newParts {
-		s.parts[id] = part
+	for _, part := range message.Parts {
+		cp := copyPart(&part)
+		s.parts[part.ID] = &cp
 	}
-	return nil
 }
 
 func (s *Store) ListMessages(ctx context.Context, sessionID string) ([]store.StoredMessage, error) {

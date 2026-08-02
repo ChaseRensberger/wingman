@@ -24,6 +24,7 @@ const (
 	EventSessionRunCompleted = "session.run.completed"
 	EventSessionRunFailed    = "session.run.failed"
 	EventSessionRunAborted   = "session.run.aborted"
+	EventSessionMessageSaved = "session.message.saved"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -90,6 +91,34 @@ type sessionRunAdmittedData struct {
 
 type sessionRunTransitionData struct {
 	Run json.RawMessage `json:"run"`
+}
+
+type sessionMessageSavedData struct {
+	Message storedMessageSnapshot `json:"message"`
+}
+
+type storedMessageSnapshot struct {
+	ID           string               `json:"id"`
+	SessionID    string               `json:"session_id"`
+	RunID        string               `json:"run_id,omitempty"`
+	Idx          int                  `json:"idx"`
+	Role         string               `json:"role"`
+	Revision     int64                `json:"revision"`
+	State        string               `json:"state"`
+	MetadataJSON json.RawMessage      `json:"metadata_json,omitempty"`
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
+	Parts        []storedPartSnapshot `json:"parts"`
+}
+
+type storedPartSnapshot struct {
+	ID          string          `json:"id"`
+	MessageID   string          `json:"message_id"`
+	Sequence    int             `json:"sequence"`
+	Kind        string          `json:"kind"`
+	PayloadJSON json.RawMessage `json:"payload_json"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 // NewSessionRunAdmittedEvent records an immutable admitted run projection.
@@ -193,6 +222,56 @@ func ProjectSessionRunTransition(event AggregateEvent) (SessionRun, error) {
 		return SessionRun{}, fmt.Errorf("project session run %s: event %q does not match status %q", run.ID, event.Type, run.Status)
 	}
 	return run, nil
+}
+
+// NewSessionMessageSavedEvent records one complete authoritative message revision.
+func NewSessionMessageSavedEvent(message StoredMessage) (AggregateEvent, error) {
+	snapshot := storedMessageSnapshot{
+		ID: message.ID, SessionID: message.SessionID, RunID: message.RunID,
+		Idx: message.Idx, Role: message.Role, Revision: message.Revision, State: message.State,
+		MetadataJSON: message.MetadataJSON, CreatedAt: message.CreatedAt, UpdatedAt: message.UpdatedAt,
+		Parts: make([]storedPartSnapshot, len(message.Parts)),
+	}
+	for i, part := range message.Parts {
+		snapshot.Parts[i] = storedPartSnapshot{ID: part.ID, MessageID: part.MessageID, Sequence: part.Sequence, Kind: part.Kind, PayloadJSON: part.PayloadJSON, CreatedAt: part.CreatedAt, UpdatedAt: part.UpdatedAt}
+	}
+	data, err := json.Marshal(sessionMessageSavedData{Message: snapshot})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.message.saved: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: message.SessionID}, Type: EventSessionMessageSaved, SchemaVersion: 1, Time: message.UpdatedAt, Data: data, RunID: message.RunID}, nil
+}
+
+// ProjectSessionMessageSaved decodes an immutable message revision snapshot.
+func ProjectSessionMessageSaved(event AggregateEvent) (StoredMessage, error) {
+	if event.Type != EventSessionMessageSaved || event.SchemaVersion != 1 {
+		return StoredMessage{}, fmt.Errorf("project session message: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionMessageSavedData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return StoredMessage{}, fmt.Errorf("project session message: decode: %w", err)
+	}
+	message := StoredMessage{ID: data.Message.ID, SessionID: data.Message.SessionID, RunID: data.Message.RunID, Idx: data.Message.Idx, Role: data.Message.Role, Revision: data.Message.Revision, State: data.Message.State, MetadataJSON: data.Message.MetadataJSON, CreatedAt: data.Message.CreatedAt, UpdatedAt: data.Message.UpdatedAt, Parts: make([]StoredPart, len(data.Message.Parts))}
+	if message.ID == "" || message.SessionID != event.Aggregate.ID || message.RunID != event.RunID || message.Revision < 1 {
+		return StoredMessage{}, fmt.Errorf("project session message: snapshot does not match aggregate event")
+	}
+	partIDs := make(map[string]struct{}, len(data.Message.Parts))
+	sequences := make(map[int]struct{}, len(data.Message.Parts))
+	for i, part := range data.Message.Parts {
+		if part.ID == "" || part.MessageID != message.ID {
+			return StoredMessage{}, fmt.Errorf("project session message %s: invalid part snapshot", message.ID)
+		}
+		if _, exists := partIDs[part.ID]; exists {
+			return StoredMessage{}, fmt.Errorf("project session message %s: duplicate part %s", message.ID, part.ID)
+		}
+		if _, exists := sequences[part.Sequence]; exists {
+			return StoredMessage{}, fmt.Errorf("project session message %s: duplicate part sequence %d", message.ID, part.Sequence)
+		}
+		partIDs[part.ID] = struct{}{}
+		sequences[part.Sequence] = struct{}{}
+		message.Parts[i] = StoredPart{ID: part.ID, MessageID: part.MessageID, Sequence: part.Sequence, Kind: part.Kind, PayloadJSON: part.PayloadJSON, CreatedAt: part.CreatedAt, UpdatedAt: part.UpdatedAt}
+	}
+	return message, nil
 }
 
 func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
@@ -384,6 +463,40 @@ func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
 	return out, nil
 }
 
+// ProjectSessionMessages rebuilds message projections from a Session aggregate stream.
+func ProjectSessionMessages(events []AggregateEvent) ([]StoredMessage, error) {
+	if _, err := ProjectSession(events); err != nil {
+		return nil, err
+	}
+	messages := make(map[string]StoredMessage)
+	indices := make(map[int]string)
+	for _, event := range events {
+		if event.Type != EventSessionMessageSaved {
+			continue
+		}
+		message, err := ProjectSessionMessageSaved(event)
+		if err != nil {
+			return nil, err
+		}
+		previous, exists := messages[message.ID]
+		if exists {
+			if message.Revision <= previous.Revision || message.SessionID != previous.SessionID || message.RunID != previous.RunID || message.Idx != previous.Idx || message.Role != previous.Role {
+				return nil, fmt.Errorf("project session message %s: invalid revision", message.ID)
+			}
+		} else if owner, exists := indices[message.Idx]; exists && owner != message.ID {
+			return nil, fmt.Errorf("project session message %s: index %d belongs to %s", message.ID, message.Idx, owner)
+		}
+		messages[message.ID] = message
+		indices[message.Idx] = message.ID
+	}
+	out := make([]StoredMessage, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, message)
+	}
+	slices.SortFunc(out, func(a, b StoredMessage) int { return a.Idx - b.Idx })
+	return out, nil
+}
+
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
 		(from == SessionRunStatusRunning && isSessionRunTerminal(to))
@@ -454,6 +567,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: run transition before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionRunTransition(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionMessageSaved:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: message before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionMessageSaved(event); err != nil {
 			return nil, err
 		}
 		projected := *session

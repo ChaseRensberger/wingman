@@ -143,6 +143,34 @@ func TestSessionRunTransitionsUpdateAggregateProjection(t *testing.T) {
 	}
 }
 
+func TestMessageSnapshotsUpdateAggregateProjection(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_memory_message"}); err != nil {
+		t.Fatal(err)
+	}
+	message := store.StoredMessage{ID: "msg_memory", SessionID: "ses_memory_message", Idx: 1, Role: "assistant", Revision: 1, Parts: []store.StoredPart{{ID: "prt_memory", MessageID: "msg_memory", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"first"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	message.Revision, message.Parts[0].PayloadJSON = 2, []byte(`{"text":"second"}`)
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: "ses_memory_message"}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := store.ProjectSessionMessages(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListMessages(ctx, "ses_memory_message")
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
+	}
+}
+
 func TestPurgeSessionRemovesAllState(t *testing.T) {
 	data := NewStore()
 	ctx := context.Background()
@@ -172,7 +200,7 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, store.ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 2); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 3); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := data.sessions[session.ID]; ok {

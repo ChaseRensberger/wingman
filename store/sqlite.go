@@ -1214,11 +1214,8 @@ func (s *SQLiteStore) SaveMessage(ctx context.Context, msg StoredMessage) error 
 		return err
 	}
 	defer tx.Rollback()
-	var session int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, msg.SessionID).Scan(&session); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrSessionNotFound
-		}
+	session, err := getSessionTx(ctx, tx, msg.SessionID)
+	if err != nil {
 		return err
 	}
 	var existing StoredMessage
@@ -1237,28 +1234,49 @@ func (s *SQLiteStore) SaveMessage(ctx context.Context, msg StoredMessage) error 
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		return insertMessageTx(ctx, tx, msg, time.Now().UTC())
+		if err := insertMessageTx(ctx, tx, msg, time.Now().UTC()); err != nil {
+			return err
+		}
+	} else {
+		if existing.SessionID != msg.SessionID || existing.RunID != msg.RunID || existing.Idx != msg.Idx || existing.Role != msg.Role {
+			return fmt.Errorf("message identity is immutable")
+		}
+		existing.MetadataJSON = nullableStringBytes(metadata)
+		existing.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		existing.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		existing.Parts, err = listMessagePartsTx(ctx, tx, existing.ID)
+		if err != nil {
+			return err
+		}
+		if msg.Revision < existing.Revision {
+			return ErrMessageRevisionStale
+		}
+		if msg.Revision == existing.Revision {
+			if messageRevisionEqual(existing, msg) {
+				return tx.Commit(ctx)
+			}
+			return ErrMessageRevisionConflict
+		}
+		if err := replaceMessageRevisionTx(ctx, tx, existing, msg, time.Now().UTC()); err != nil {
+			return err
+		}
 	}
-	if existing.SessionID != msg.SessionID || existing.RunID != msg.RunID || existing.Idx != msg.Idx || existing.Role != msg.Role {
-		return fmt.Errorf("message identity is immutable")
-	}
-	existing.MetadataJSON = nullableStringBytes(metadata)
-	existing.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
-	existing.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-	existing.Parts, err = listMessagePartsTx(ctx, tx, existing.ID)
+	persisted, err := getStoredMessageTx(ctx, tx, msg.ID)
 	if err != nil {
 		return err
 	}
-	if msg.Revision < existing.Revision {
-		return ErrMessageRevisionStale
+	aggregateEvent, err := NewSessionMessageSavedEvent(persisted)
+	if err != nil {
+		return err
 	}
-	if msg.Revision == existing.Revision {
-		if messageRevisionEqual(existing, msg) {
-			return tx.Commit(ctx)
-		}
-		return ErrMessageRevisionConflict
+	aggregateEvent, err = appendAggregateEventTx(ctx, tx, aggregateEvent, session.AggregateVersion)
+	if err != nil {
+		return err
 	}
-	return replaceMessageRevisionTx(ctx, tx, existing, msg, time.Now().UTC())
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, aggregateEvent.Version, msg.SessionID); err != nil {
+		return fmt.Errorf("update session message version: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func validateMessageParts(msg StoredMessage) error {
@@ -1317,7 +1335,7 @@ func insertMessageTx(ctx context.Context, tx *immediateTx, msg StoredMessage, no
 	if err := insertPartsTx(ctx, tx, msg.Parts, nil, now); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func replaceMessageRevisionTx(ctx context.Context, tx *immediateTx, existing, msg StoredMessage, now time.Time) error {
@@ -1354,7 +1372,22 @@ func replaceMessageRevisionTx(ctx context.Context, tx *immediateTx, existing, ms
 	if err := upsertPartsTx(ctx, tx, msg.Parts, oldParts, now); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
+}
+
+func getStoredMessageTx(ctx context.Context, tx *immediateTx, messageID string) (StoredMessage, error) {
+	var message StoredMessage
+	var metadata sql.NullString
+	var created, updated string
+	if err := tx.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), idx, role, revision, state, metadata_json, created_at, updated_at FROM messages WHERE id = ?`, messageID).Scan(&message.ID, &message.SessionID, &message.RunID, &message.Idx, &message.Role, &message.Revision, &message.State, &metadata, &created, &updated); err != nil {
+		return StoredMessage{}, fmt.Errorf("read stored message: %w", err)
+	}
+	message.MetadataJSON = nullableStringBytes(metadata)
+	message.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+	message.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	var err error
+	message.Parts, err = listMessagePartsTx(ctx, tx, message.ID)
+	return message, err
 }
 
 func messageTimes(msg StoredMessage, now time.Time) (string, string) {
