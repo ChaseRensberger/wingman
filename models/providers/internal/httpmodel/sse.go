@@ -59,6 +59,14 @@ func (m *Model) handleSSEData(data string, state *parseState, stream *models.Eve
 	if data == "" || data == "[DONE]" {
 		return nil
 	}
+	switch m.Protocol {
+	case OpenAIChat:
+		var event openAIChatEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			return decodingError(m.Info_.Provider, "invalid OpenAI Chat SSE event", err)
+		}
+		return parseOpenAIChat(event, state, stream)
+	}
 	var event map[string]any
 	if err := json.Unmarshal([]byte(data), &event); err != nil {
 		return decodingError(m.Info_.Provider, "invalid SSE event", err)
@@ -66,8 +74,6 @@ func (m *Model) handleSSEData(data string, state *parseState, stream *models.Eve
 	switch m.Protocol {
 	case OpenAIResponses:
 		return parseOpenAIResponses(event, state, stream)
-	case OpenAIChat:
-		return parseOpenAIChat(event, state, stream)
 	case AnthropicMessages:
 		return parseAnthropic(event, state, stream)
 	case GeminiGenerate:

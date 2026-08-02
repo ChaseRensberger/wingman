@@ -255,36 +255,102 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 }
 
 func (m *Model) openAIChatBody(req models.Request) (map[string]any, error) {
-	messages := make([]any, 0, len(req.Messages)+1)
+	messages := make([]openAIChatMessage, 0, len(req.Messages)+1)
 	if req.System != "" {
-		messages = append(messages, map[string]any{"role": "system", "content": req.System})
+		messages = append(messages, openAIChatMessage{Role: "system", Content: req.System})
 	}
 	for _, msg := range req.Messages {
 		switch msg.Role {
 		case models.RoleUser:
-			messages = append(messages, map[string]any{"role": "user", "content": openAIChatContent(msg.Content)})
+			messages = append(messages, openAIChatMessage{Role: "user", Content: openAIChatContent(msg.Content)})
 		case models.RoleAssistant:
-			m := map[string]any{"role": "assistant", "content": joinText(msg.Content)}
+			message := openAIChatMessage{Role: "assistant", Content: joinText(msg.Content)}
 			if calls := toolCalls(msg.Content); len(calls) > 0 {
-				arr := make([]any, 0, len(calls))
+				message.ToolCalls = make([]openAIChatToolCall, 0, len(calls))
 				for _, call := range calls {
-					arr = append(arr, map[string]any{"id": call.CallID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": encodeJSON(call.Input)}})
+					message.ToolCalls = append(message.ToolCalls, openAIChatToolCall{ID: call.CallID, Type: "function", Function: openAIChatFunction{Name: call.Name, Arguments: encodeJSON(call.Input)}})
 				}
-				m["tool_calls"] = arr
 			}
-			messages = append(messages, m)
+			messages = append(messages, message)
 		case models.RoleTool:
 			for _, result := range toolResults(msg.Content) {
-				messages = append(messages, map[string]any{"role": "tool", "tool_call_id": result.CallID, "content": toolResultText(result)})
+				messages = append(messages, openAIChatMessage{Role: "tool", ToolCallID: result.CallID, Content: toolResultText(result)})
 			}
 		}
 	}
-	body := map[string]any{"model": m.Info_.ID, "messages": messages, "stream": true, "stream_options": map[string]any{"include_usage": true}}
+	body, err := jsonObject(openAIChatRequest{Model: m.Info_.ID, Messages: messages, Stream: true, StreamOptions: openAIChatStreamOptions{IncludeUsage: true}})
+	if err != nil {
+		return nil, err
+	}
 	addTools(body, req.Tools, "chat")
 	addOpenAIToolChoice(body, req.ToolChoice, "chat")
 	addOpenAIResponseFormat(body, req.OutputSchema, req.ResponseFormat, "chat")
 	addCommonOptions(body, req)
 	return m.applyRequestOptions(body, req), nil
+}
+
+type openAIChatRequest struct {
+	Model         string                  `json:"model"`
+	Messages      []openAIChatMessage     `json:"messages"`
+	Stream        bool                    `json:"stream"`
+	StreamOptions openAIChatStreamOptions `json:"stream_options"`
+}
+
+type openAIChatStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+type openAIChatMessage struct {
+	Role       string               `json:"role"`
+	Content    any                  `json:"content"`
+	ToolCalls  []openAIChatToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string               `json:"tool_call_id,omitempty"`
+}
+type openAIChatToolCall struct {
+	Index    *int               `json:"index,omitempty"`
+	ID       string             `json:"id,omitempty"`
+	Type     string             `json:"type,omitempty"`
+	Function openAIChatFunction `json:"function"`
+}
+type openAIChatFunction struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+type openAIChatUsageEvent struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	PromptTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionTokensDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
+}
+type openAIChatChoice struct {
+	Delta        openAIChatDelta       `json:"delta"`
+	FinishReason string                `json:"finish_reason"`
+	Usage        *openAIChatUsageEvent `json:"usage"`
+}
+type openAIChatDelta struct {
+	Content          string               `json:"content"`
+	ReasoningContent string               `json:"reasoning_content"`
+	ToolCalls        []openAIChatToolCall `json:"tool_calls"`
+}
+type openAIChatEvent struct {
+	Choices []openAIChatChoice    `json:"choices"`
+	Usage   *openAIChatUsageEvent `json:"usage"`
+}
+
+func jsonObject(value any) (map[string]any, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]any
+	if err := json.Unmarshal(encoded, &object); err != nil {
+		return nil, err
+	}
+	return object, nil
 }
 
 func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
@@ -494,43 +560,51 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 	return nil
 }
 
-func parseOpenAIChat(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-	choices, _ := event["choices"].([]any)
+func parseOpenAIChat(raw any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+	event, ok := raw.(openAIChatEvent)
+	if !ok {
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return decodingError(state.provider, "invalid OpenAI Chat event", err)
+		}
+		if err := json.Unmarshal(encoded, &event); err != nil {
+			return decodingError(state.provider, "invalid OpenAI Chat event", err)
+		}
+	}
+	choices := event.Choices
 	var choiceUsage models.Usage
 	if len(choices) > 0 {
-		choice, _ := choices[0].(map[string]any)
-		choiceUsage = openAIChatUsage(choice["usage"])
-		delta, _ := choice["delta"].(map[string]any)
-		if text, _ := delta["content"].(string); text != "" {
+		choice := choices[0]
+		choiceUsage = openAIChatUsage(choice.Usage)
+		delta := choice.Delta
+		if text := delta.Content; text != "" {
 			pushText(state, stream, "text-0", text)
 		}
-		if reasoning := stringValue(delta["reasoning_content"]); reasoning != "" {
+		if reasoning := delta.ReasoningContent; reasoning != "" {
 			pushReasoning(state, stream, "reasoning-0", reasoning)
 		}
-		if calls, _ := delta["tool_calls"].([]any); len(calls) > 0 {
+		if calls := delta.ToolCalls; len(calls) > 0 {
 			if state.toolBuf == nil {
 				state.toolBuf = map[string]*toolAccum{}
 			}
-			for _, raw := range calls {
-				call, _ := raw.(map[string]any)
-				index, err := toolCallIndex(call["index"])
-				if err != nil {
-					return decodingError(state.provider, "invalid OpenAI Chat tool call index", err)
+			for _, call := range calls {
+				if call.Index == nil {
+					return decodingError(state.provider, "invalid OpenAI Chat tool call index", nil)
 				}
+				index := *call.Index
 				idx := fmt.Sprint(index)
 				acc := state.toolBuf[idx]
 				if acc == nil {
 					acc = &toolAccum{}
 					state.toolBuf[idx] = acc
 				}
-				if id := stringValue(call["id"]); id != "" {
+				if id := call.ID; id != "" {
 					acc.id = id
 				}
-				fn, _ := call["function"].(map[string]any)
-				if name := stringValue(fn["name"]); name != "" {
+				if name := call.Function.Name; name != "" {
 					acc.name = name
 				}
-				fragment := stringValue(fn["arguments"])
+				fragment := call.Function.Arguments
 				if fragment != "" {
 					if !acc.started {
 						stream.Push(models.ToolInputStartPart{ID: acc.id, ToolName: acc.name})
@@ -541,7 +615,7 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 				}
 			}
 		}
-		if reason := stringValue(choice["finish_reason"]); reason != "" {
+		if reason := choice.FinishReason; reason != "" {
 			for index := 0; len(state.toolBuf) > 0; index++ {
 				acc, ok := state.toolBuf[fmt.Sprint(index)]
 				if !ok {
@@ -562,7 +636,7 @@ func parseOpenAIChat(event map[string]any, state *parseState, stream *models.Eve
 			state.finish = finishReason(reason, len(state.tools) > 0)
 		}
 	}
-	if usage := openAIChatUsage(event["usage"]); !usage.Empty() {
+	if usage := openAIChatUsage(event.Usage); !usage.Empty() {
 		state.usage = usage
 	} else if !choiceUsage.Empty() {
 		state.usage = choiceUsage
@@ -1117,9 +1191,11 @@ func finishReason(raw string, hasTools bool) models.FinishReason {
 	return models.FinishReasonStop
 }
 
-func openAIChatUsage(v any) models.Usage {
-	m, _ := v.(map[string]any)
-	return models.Usage{InputTokens: intValue(m["prompt_tokens"]), OutputTokens: intValue(m["completion_tokens"]), TotalTokens: intValue(m["total_tokens"]), CachedInputTokens: intValue(nested(m, "prompt_tokens_details", "cached_tokens")), ReasoningTokens: intValue(nested(m, "completion_tokens_details", "reasoning_tokens"))}
+func openAIChatUsage(v *openAIChatUsageEvent) models.Usage {
+	if v == nil {
+		return models.Usage{}
+	}
+	return models.Usage{InputTokens: v.PromptTokens, OutputTokens: v.CompletionTokens, TotalTokens: v.TotalTokens, CachedInputTokens: v.PromptTokensDetails.CachedTokens, ReasoningTokens: v.CompletionTokensDetails.ReasoningTokens}
 }
 
 func openAIResponsesUsage(v any) models.Usage {

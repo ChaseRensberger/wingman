@@ -239,6 +239,15 @@ func TestSSEMultilineAndIncompleteToolFailure(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatSSERejectsInvalidNativeFields(t *testing.T) {
+	model := &Model{Info_: models.ModelInfo{Provider: "test"}, Protocol: OpenAIChat}
+	err := model.handleSSEData(`{"choices":"invalid"}`, &parseState{provider: "test"}, models.NewEventStream[models.StreamPart, *models.Message](1))
+	var providerErr *models.ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorDecoding {
+		t.Fatalf("error = %#v", err)
+	}
+}
+
 func stringsBuilder(value string) *strings.Builder {
 	var builder strings.Builder
 	builder.WriteString(value)
