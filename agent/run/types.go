@@ -572,17 +572,18 @@ type ToolCall struct {
 
 // ToolResult is the outcome of a single tool execution.
 type ToolResult struct {
-	CallID     string         `json:"call_id"`
-	ToolUseID  string         `json:"tool_use_id,omitempty"`
-	Status     ToolUseStatus  `json:"status,omitempty"`
-	Name       string         `json:"name"`
-	Args       map[string]any `json:"args"`
-	Output     string         `json:"output,omitempty"`
-	Structured any            `json:"structured,omitempty"`
-	Error      string         `json:"error,omitempty"`
-	ErrorType  string         `json:"error_type,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
-	IsError    bool           `json:"is_error"`
+	CallID      string         `json:"call_id"`
+	ToolUseID   string         `json:"tool_use_id,omitempty"`
+	Status      ToolUseStatus  `json:"status,omitempty"`
+	Name        string         `json:"name"`
+	Args        map[string]any `json:"args"`
+	Output      string         `json:"output,omitempty"`
+	OutputParts models.Content `json:"output_parts,omitempty"`
+	Structured  any            `json:"structured,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	ErrorType   string         `json:"error_type,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	IsError     bool           `json:"is_error"`
 	// Duration is the wall-clock time spent in Tool.Execute (excluding
 	// hook overhead). Zero for skipped or unknown-tool calls.
 	Duration time.Duration `json:"duration,omitempty"`

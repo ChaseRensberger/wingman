@@ -387,7 +387,7 @@ func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
 		case models.RoleTool:
 			content := make([]anthropicContentBlock, 0, len(msg.Content))
 			for _, result := range toolResults(msg.Content) {
-				content = append(content, anthropicContentBlock{Type: "tool_result", ToolUseID: result.CallID, Content: toolResultText(result), IsError: result.IsError})
+				content = append(content, anthropicContentBlock{Type: "tool_result", ToolUseID: result.CallID, Content: anthropicToolResultContent(result), IsError: result.IsError})
 			}
 			messages = append(messages, anthropicMessage{Role: "user", Content: content})
 		}
@@ -436,7 +436,7 @@ type anthropicContentBlock struct {
 	Name      string           `json:"name,omitempty"`
 	Input     map[string]any   `json:"input,omitempty"`
 	ToolUseID string           `json:"tool_use_id,omitempty"`
-	Content   string           `json:"content,omitempty"`
+	Content   any              `json:"content,omitempty"`
 	IsError   bool             `json:"is_error,omitempty"`
 }
 
@@ -465,7 +465,7 @@ func (m *Model) geminiBody(req models.Request) (map[string]any, error) {
 				if name == "" {
 					name = result.CallID
 				}
-				parts = append(parts, geminiPart{FunctionResponse: &geminiFunctionResponse{Name: name, Response: geminiFunctionResponseValue{Output: toolResultText(result), Error: result.IsError}}})
+				parts = append(parts, geminiPart{FunctionResponse: &geminiFunctionResponse{Name: name, Response: geminiToolResultResponse(result)}})
 			}
 			contents = append(contents, geminiContent{Role: "user", Parts: parts})
 		}
@@ -526,12 +526,8 @@ type geminiFunctionCall struct {
 	Args map[string]any `json:"args"`
 }
 type geminiFunctionResponse struct {
-	Name     string                      `json:"name"`
-	Response geminiFunctionResponseValue `json:"response"`
-}
-type geminiFunctionResponseValue struct {
-	Output string `json:"output"`
-	Error  bool   `json:"error,omitempty"`
+	Name     string         `json:"name"`
+	Response map[string]any `json:"response"`
 }
 
 func (m *Model) applyRequestOptions(body map[string]any, req models.Request) map[string]any {
@@ -1303,7 +1299,52 @@ func toolResults(content models.Content) []models.ToolResultPart {
 }
 
 func toolResultText(part models.ToolResultPart) string {
-	return joinText(part.Output)
+	text := joinText(part.Output)
+	if part.Structured == nil {
+		return text
+	}
+	structured := encodeJSON(part.Structured)
+	if text == "" {
+		return structured
+	}
+	return text + "\n" + structured
+}
+
+func anthropicToolResultContent(part models.ToolResultPart) any {
+	blocks := make([]anthropicContentBlock, 0, len(part.Output)+1)
+	for _, output := range part.Output {
+		switch p := output.(type) {
+		case models.TextPart:
+			blocks = append(blocks, anthropicContentBlock{Type: "text", Text: p.Text})
+		case models.ImagePart:
+			if p.Base64 == "" {
+				continue
+			}
+			mediaType := p.MediaType
+			if mediaType == "" {
+				mediaType = "image/png"
+			}
+			blocks = append(blocks, anthropicContentBlock{Type: "image", Source: &anthropicSource{Type: "base64", MediaType: mediaType, Data: p.Base64}})
+		}
+	}
+	if part.Structured != nil {
+		blocks = append(blocks, anthropicContentBlock{Type: "text", Text: encodeJSON(part.Structured)})
+	}
+	if len(blocks) == 1 && blocks[0].Type == "text" {
+		return blocks[0].Text
+	}
+	return blocks
+}
+
+func geminiToolResultResponse(part models.ToolResultPart) map[string]any {
+	response := map[string]any{"output": toolResultText(part)}
+	if part.Structured != nil {
+		response["structured"] = part.Structured
+	}
+	if part.IsError {
+		response["error"] = true
+	}
+	return response
 }
 
 func encodeJSON(v any) string {

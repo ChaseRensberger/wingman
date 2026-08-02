@@ -143,6 +143,30 @@ func TestExpandToolMessagesDerivesProviderResult(t *testing.T) {
 	}
 }
 
+func TestExpandToolMessagesPreservesOutputPartsAndStructuredResult(t *testing.T) {
+	messages := []Message{{Role: RoleAssistant, Content: Content{ToolPart{
+		CallID:      "call_1",
+		Name:        "screenshot",
+		State:       ToolStateCompleted,
+		Input:       map[string]any{},
+		Output:      "captured",
+		OutputParts: Content{TextPart{Text: "captured"}, ImagePart{Base64: "image-data", MediaType: "image/png"}},
+		Structured:  map[string]any{"width": float64(10)},
+	}}}}
+
+	expanded := ExpandToolMessages(messages)
+	result := expanded[1].Content[0].(ToolResultPart)
+	if len(result.Output) != 2 {
+		t.Fatalf("output = %#v, want text and image", result.Output)
+	}
+	if _, ok := result.Output[1].(ImagePart); !ok {
+		t.Fatalf("output[1] = %T, want ImagePart", result.Output[1])
+	}
+	if result.Structured.(map[string]any)["width"] != float64(10) {
+		t.Fatalf("structured = %#v", result.Structured)
+	}
+}
+
 func TestExpandToolMessagesCombinesOutputAndError(t *testing.T) {
 	messages := []Message{{Role: RoleAssistant, Content: Content{ToolPart{
 		CallID: "call_1",
@@ -216,7 +240,7 @@ func TestToolPartProviderFieldsPreservedThroughNormalizationAndExpansion(t *test
 }
 
 func TestToolUseIDPreservedThroughJSONNormalizationAndExpansion(t *testing.T) {
-	part := ToolResultPart{ID: "part_1", ToolUseID: "tlu_1", CallID: "call_1", Name: "bash", Output: Content{TextPart{Text: "ok"}}}
+	part := ToolResultPart{ID: "part_1", ToolUseID: "tlu_1", CallID: "call_1", Name: "bash", Output: Content{TextPart{Text: "ok"}}, Structured: map[string]any{"count": float64(1)}}
 	b, err := MarshalPart(part)
 	if err != nil {
 		t.Fatal(err)
@@ -227,6 +251,9 @@ func TestToolUseIDPreservedThroughJSONNormalizationAndExpansion(t *testing.T) {
 	}
 	if got := decoded.(ToolResultPart).ToolUseID; got != "tlu_1" {
 		t.Fatalf("JSON ToolUseID = %q", got)
+	}
+	if got := decoded.(ToolResultPart).Structured.(map[string]any)["count"]; got != float64(1) {
+		t.Fatalf("JSON structured result = %#v", decoded)
 	}
 	messages := NormalizeMessages([]Message{
 		{Role: RoleAssistant, Content: Content{ToolCallPart{ID: "part_1", ToolUseID: "tlu_1", CallID: "call_1", Name: "bash", Input: map[string]any{}}}},

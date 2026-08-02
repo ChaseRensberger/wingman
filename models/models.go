@@ -154,6 +154,7 @@ type ToolPart struct {
 	Input            map[string]any `json:"input"`
 	InputRaw         string         `json:"input_raw,omitempty"`
 	Output           string         `json:"output,omitempty"`
+	OutputParts      Content        `json:"output_parts,omitempty"`
 	Structured       any            `json:"structured,omitempty"`
 	Metadata         Meta           `json:"metadata,omitempty"`
 	ProviderExecuted bool           `json:"provider_executed,omitempty"`
@@ -194,6 +195,7 @@ type ToolResultPart struct {
 	CallID           string `json:"call_id"`
 	Name             string `json:"name,omitempty"`
 	Output           []Part `json:"output"`
+	Structured       any    `json:"structured,omitempty"`
 	IsError          bool   `json:"is_error"`
 	Metadata         Meta   `json:"metadata,omitempty"`
 	ProviderExecuted bool   `json:"provider_executed,omitempty"`
@@ -217,11 +219,12 @@ func (p ToolResultPart) MarshalJSON() ([]byte, error) {
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
+		Structured       any               `json:"structured,omitempty"`
 		IsError          bool              `json:"is_error"`
 		Metadata         Meta              `json:"metadata,omitempty"`
 		ProviderExecuted bool              `json:"provider_executed,omitempty"`
 		ProviderMetadata Meta              `json:"provider_metadata,omitempty"`
-	}{p.ID, p.ToolUseID, p.CallID, p.Name, raw, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
+	}{p.ID, p.ToolUseID, p.CallID, p.Name, raw, p.Structured, p.IsError, p.Metadata, p.ProviderExecuted, p.ProviderMetadata})
 }
 
 func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
@@ -231,6 +234,7 @@ func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 		CallID           string            `json:"call_id"`
 		Name             string            `json:"name,omitempty"`
 		Output           []json.RawMessage `json:"output"`
+		Structured       any               `json:"structured,omitempty"`
 		IsError          bool              `json:"is_error"`
 		Metadata         Meta              `json:"metadata,omitempty"`
 		ProviderExecuted bool              `json:"provider_executed,omitempty"`
@@ -243,6 +247,7 @@ func (p *ToolResultPart) UnmarshalJSON(data []byte) error {
 	p.ID = raw.ID
 	p.ToolUseID = raw.ToolUseID
 	p.Name = raw.Name
+	p.Structured = raw.Structured
 	p.IsError = raw.IsError
 	p.Metadata = raw.Metadata
 	p.ProviderExecuted = raw.ProviderExecuted
@@ -481,7 +486,7 @@ func NormalizeMessages(messages []Message) []Message {
 				continue
 			}
 			text := toolResultText(result)
-			tool := ToolPart{ID: result.ID, ToolUseID: result.ToolUseID, CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, Metadata: result.Metadata, ProviderExecuted: result.ProviderExecuted, ProviderMetadata: result.ProviderMetadata}
+			tool := ToolPart{ID: result.ID, ToolUseID: result.ToolUseID, CallID: result.CallID, Name: result.Name, State: ToolStateCompleted, Output: text, OutputParts: result.Output, Structured: result.Structured, Metadata: result.Metadata, ProviderExecuted: result.ProviderExecuted, ProviderMetadata: result.ProviderMetadata}
 			if result.IsError {
 				tool.State = ToolStateError
 				tool.Output = ""
@@ -526,7 +531,11 @@ func ExpandToolMessages(messages []Message) []Message {
 					text = tool.Error
 				}
 			}
-			results = append(results, ToolResultPart{ID: tool.ID, ToolUseID: tool.ToolUseID, CallID: tool.CallID, Name: tool.Name, Output: Content{TextPart{Text: text}}, IsError: tool.State == ToolStateError, Metadata: tool.Metadata, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
+			output := tool.OutputParts
+			if len(output) == 0 {
+				output = Content{TextPart{Text: text}}
+			}
+			results = append(results, ToolResultPart{ID: tool.ID, ToolUseID: tool.ToolUseID, CallID: tool.CallID, Name: tool.Name, Output: output, Structured: tool.Structured, IsError: tool.State == ToolStateError, Metadata: tool.Metadata, ProviderExecuted: tool.ProviderExecuted, ProviderMetadata: tool.ProviderMetadata})
 		}
 		if hasUnresolvedTool && len(content) == 0 {
 			continue

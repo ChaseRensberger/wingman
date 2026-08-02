@@ -965,6 +965,7 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 			toolPart.ToolUseID = result.ToolUseID
 		}
 		toolPart.Output = result.Output
+		toolPart.OutputParts = result.OutputParts
 		toolPart.Structured = result.Structured
 		toolPart.Metadata = result.Metadata
 		toolPart.Error = result.Error
@@ -1133,13 +1134,14 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 
 	res := ToolResult{
 		CallID: call.ID, ToolUseID: call.ToolUseID,
-		Name:       call.Name,
-		Args:       call.Args,
-		Output:     toolResult.Text,
-		Structured: toolResult.Structured,
-		Metadata:   toolResult.Metadata,
-		IsError:    execErr != nil,
-		Duration:   duration,
+		Name:        call.Name,
+		Args:        call.Args,
+		Output:      toolResult.Text,
+		OutputParts: toolResult.OutputParts,
+		Structured:  toolResult.Structured,
+		Metadata:    toolResult.Metadata,
+		IsError:     execErr != nil,
+		Duration:    duration,
 	}
 	if execErr != nil {
 		res.Error = execErr.Error()
@@ -1552,22 +1554,28 @@ func anySequential(calls []ToolCall) bool {
 // all tool results from a batch. It uses RoleTool and one ToolResultPart
 // per result. Providers (Anthropic, Ollama) translate this into their
 // native tool-result shape on the wire.
-//
-// The output of each tool is wrapped in a single TextPart since v0.1
-// tools return strings. Multimodal tool outputs are deferred.
 func buildToolResultMessage(results []ToolResult) models.Message {
 	content := make(models.Content, 0, len(results))
 	for _, r := range results {
 		text := toolResultText(r)
 		content = append(content, models.ToolResultPart{
 			CallID: r.CallID, ToolUseID: r.ToolUseID,
-			Name:     r.Name,
-			Output:   []models.Part{models.TextPart{Text: text}},
-			IsError:  r.IsError,
-			Metadata: r.Metadata,
+			Name:       r.Name,
+			Output:     toolResultParts(r, text),
+			Structured: r.Structured,
+			IsError:    r.IsError,
+			Metadata:   r.Metadata,
 		})
 	}
 	return models.Message{Role: models.RoleTool, Content: content}
+}
+
+func toolResultParts(result ToolResult, text string) models.Content {
+	output := append(models.Content(nil), result.OutputParts...)
+	if text != "" || len(output) == 0 {
+		output = append([]models.Part{models.TextPart{Text: text}}, output...)
+	}
+	return output
 }
 
 // toolResultText builds the model-facing text from a ToolResult. When

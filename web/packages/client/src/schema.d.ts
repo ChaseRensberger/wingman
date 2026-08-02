@@ -1822,6 +1822,7 @@ export interface components {
             };
             name: string;
             output?: string;
+            output_parts?: unknown[] | null;
             provider_executed?: boolean;
             provider_metadata?: {
                 [key: string]: unknown;
@@ -1847,6 +1848,7 @@ export interface components {
             provider_metadata?: {
                 [key: string]: unknown;
             };
+            structured?: unknown;
             tool_use_id?: string;
             /** @constant */
             type: "tool_result";

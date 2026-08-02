@@ -339,6 +339,52 @@ func TestOpenAIChatBodyExpandsCanonicalToolPart(t *testing.T) {
 	}
 }
 
+func TestAnthropicBodyPreservesImageToolResult(t *testing.T) {
+	model := &Model{Protocol: AnthropicMessages, Info_: models.ModelInfo{ID: "test"}}
+	body, err := model.body(models.Request{Messages: []models.Message{{
+		Role: models.RoleAssistant,
+		Content: models.Content{models.ToolPart{
+			CallID:      "call_1",
+			Name:        "screenshot",
+			State:       models.ToolStateCompleted,
+			Input:       map[string]any{},
+			OutputParts: models.Content{models.ImagePart{Base64: "image-data", MediaType: "image/png"}},
+		}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := body["messages"].([]any)
+	blocks := messages[1].(map[string]any)["content"].([]any)
+	content := blocks[0].(map[string]any)["content"].([]any)
+	image := content[0].(map[string]any)
+	if image["type"] != "image" || image["source"].(map[string]any)["data"] != "image-data" {
+		t.Fatalf("tool result content = %#v", content)
+	}
+}
+
+func TestGeminiBodyPreservesStructuredToolResult(t *testing.T) {
+	model := &Model{Protocol: GeminiGenerate, Info_: models.ModelInfo{ID: "test"}}
+	body, err := model.body(models.Request{Messages: []models.Message{{
+		Role: models.RoleAssistant,
+		Content: models.Content{models.ToolPart{
+			CallID:     "call_1",
+			Name:       "lookup",
+			State:      models.ToolStateCompleted,
+			Input:      map[string]any{},
+			Structured: map[string]any{"answer": "42"},
+		}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := body["contents"].([]any)
+	response := contents[1].(map[string]any)["parts"].([]any)[0].(map[string]any)["functionResponse"].(map[string]any)["response"].(map[string]any)
+	if response["structured"].(map[string]any)["answer"] != "42" {
+		t.Fatalf("function response = %#v", response)
+	}
+}
+
 func TestOpenAIResponsesBodyRequestsReasoningSummary(t *testing.T) {
 	model := &Model{Protocol: OpenAIResponses, Info_: models.ModelInfo{ID: "test"}}
 	body, err := model.body(models.Request{Capabilities: models.Capabilities{Thinking: true}})

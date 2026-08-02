@@ -3450,6 +3450,13 @@
           "output": {
             "type": "string"
           },
+          "output_parts": {
+            "items": {},
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "provider_executed": {
             "type": "boolean"
           },
@@ -3514,6 +3521,7 @@
             "additionalProperties": {},
             "type": "object"
           },
+          "structured": {},
           "tool_use_id": {
             "type": "string"
           },

@@ -187,6 +187,27 @@ func TestAfterToolCallPreservesStructuredError(t *testing.T) {
 	}
 }
 
+func TestBuildToolResultMessagePreservesOutputParts(t *testing.T) {
+	message := buildToolResultMessage([]ToolResult{{
+		CallID:      "call_1",
+		Name:        "screenshot",
+		Output:      "captured",
+		OutputParts: models.Content{models.ImagePart{Base64: "image-data", MediaType: "image/png"}},
+		Structured:  map[string]any{"width": 10},
+	}})
+
+	result := message.Content[0].(models.ToolResultPart)
+	if len(result.Output) != 2 {
+		t.Fatalf("output = %#v, want text and image", result.Output)
+	}
+	if _, ok := result.Output[1].(models.ImagePart); !ok {
+		t.Fatalf("output[1] = %T, want ImagePart", result.Output[1])
+	}
+	if result.Structured.(map[string]any)["width"] != 10 {
+		t.Fatalf("structured = %#v", result.Structured)
+	}
+}
+
 func TestAfterToolCallPreservesResultIdentity(t *testing.T) {
 	r := &runner{cfg: Config{Hooks: Hooks{AfterToolCall: func(_ context.Context, _ ToolCall, _ ToolResult) (ToolResult, error) {
 		return ToolResult{Output: "rewritten"}, nil

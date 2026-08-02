@@ -43,12 +43,13 @@ type Tool interface {
 	Execute(ctx context.Context, inv Invocation) (Result, error)
 }
 
-// Result is the structured outcome a tool returns. Text is model-facing output;
-// Structured and Metadata are optional client-facing data for richer renderers.
+// Result is the structured outcome a tool returns. Text and OutputParts are
+// model-facing output; Structured and Metadata are for richer renderers.
 type Result struct {
-	Text       string         `json:"text"`
-	Structured any            `json:"structured,omitempty"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	Text        string         `json:"text"`
+	OutputParts models.Content `json:"output_parts,omitempty"`
+	Structured  any            `json:"structured,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 // Progress is the callback a tool may use to stream intermediate output
