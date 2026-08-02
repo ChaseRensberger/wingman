@@ -57,11 +57,12 @@ type Server struct {
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
 
-	startMu   sync.Mutex
-	started   bool
-	startDone chan struct{}
-	startErr  error
-	closeOnce sync.Once
+	startMu        sync.Mutex
+	started        bool
+	startDone      chan struct{}
+	startErr       error
+	startSubsystem string
+	closeOnce      sync.Once
 
 	inflightMu     sync.Mutex
 	inflightClosed bool
@@ -469,6 +470,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.startMu.Lock()
 	s.startErr = err
+	if err != nil {
+		s.startSubsystem = readinessSubsystem(err)
+	}
 	s.ready.Store(err == nil)
 	close(done)
 	s.startMu.Unlock()
@@ -672,11 +676,29 @@ func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
 		response.Diagnostic = &api.ReadinessDiagnostic{Subsystem: "startup", RecoveryAction: "start the daemon"}
 		s.startMu.Lock()
 		if s.startErr != nil {
-			response.Diagnostic = &api.ReadinessDiagnostic{Subsystem: "startup_recovery", RecoveryAction: "inspect daemon logs, correct the reported failure, then restart the daemon"}
+			response.Diagnostic = &api.ReadinessDiagnostic{Subsystem: s.startSubsystem, RecoveryAction: "inspect daemon logs, correct the reported failure, then restart the daemon"}
 		}
 		s.startMu.Unlock()
 	}
 	writeJSON(w, status, response)
+}
+
+func readinessSubsystem(err error) string {
+	message := err.Error()
+	switch {
+	case strings.HasPrefix(message, "interrupt pending permission requests:"):
+		return "permission_recovery"
+	case strings.HasPrefix(message, "interrupt active tool uses:"):
+		return "tool_recovery"
+	case strings.HasPrefix(message, "interrupt active model calls for run"):
+		return "model_call_recovery"
+	case strings.HasPrefix(message, "list running session runs:"), strings.HasPrefix(message, "recover messages for run:"), strings.HasPrefix(message, "abort running session run "):
+		return "run_recovery"
+	case strings.HasPrefix(message, "resume queued session runs:"):
+		return "queue_recovery"
+	default:
+		return "startup_recovery"
+	}
 }
 
 func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {

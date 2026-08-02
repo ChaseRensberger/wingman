@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/chaserensberger/wingman/agent/run"
+	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
 )
@@ -36,6 +40,26 @@ func TestStartRecoversOnlyOnce(t *testing.T) {
 	}
 	if got, want := len(recoveryStore.order), 4; got != want {
 		t.Fatalf("recovery calls = %d, want %d (%v)", got, want, recoveryStore.order)
+	}
+}
+
+func TestReadinessIdentifiesFailedRecoverySubsystem(t *testing.T) {
+	server := New(Config{Store: &startupRecoveryStore{Store: memory.NewStore(), permissionErr: errors.New("database unavailable")}, Credential: "secret"})
+	t.Cleanup(func() { _ = server.Close(context.Background()) })
+	if err := server.Start(context.Background()); err == nil {
+		t.Fatal("Start succeeded, want recovery failure")
+	}
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/ready", "secret"))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var readiness api.ReadinessResponse
+	if err := json.NewDecoder(response.Body).Decode(&readiness); err != nil {
+		t.Fatal(err)
+	}
+	if readiness.Diagnostic == nil || readiness.Diagnostic.Subsystem != "permission_recovery" {
+		t.Fatalf("readiness = %#v", readiness)
 	}
 }
 

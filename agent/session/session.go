@@ -768,11 +768,13 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			agentID:   agentID,
 			model:     model,
 			modelInfo: modelInfo,
+			logger:    logger,
 		}
 		cfg.ToolUseLifecycle = &toolUseRecorder{
 			store:     s.store,
 			sessionID: s.id,
 			runID:     runID,
+			logger:    logger,
 		}
 	}
 

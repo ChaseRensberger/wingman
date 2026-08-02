@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"time"
 
@@ -273,6 +274,7 @@ type modelCallRecorder struct {
 	agentID   string
 	model     models.ModelRef
 	modelInfo models.ModelInfo
+	logger    *slog.Logger
 }
 
 // toolUseRecorder durably records the lifecycle of one model-proposed tool
@@ -282,6 +284,7 @@ type toolUseRecorder struct {
 	store     store.Store
 	sessionID string
 	runID     string
+	logger    *slog.Logger
 }
 
 func (r *toolUseRecorder) Propose(ctx context.Context, info run.ToolUseProposeInfo) (string, error) {
@@ -297,6 +300,7 @@ func (r *toolUseRecorder) Propose(ctx context.Context, info run.ToolUseProposeIn
 	if err := r.store.SaveToolUse(ctx, use); err != nil {
 		return "", err
 	}
+	r.logToolUse("proposed", use)
 	return use.ID, nil
 }
 
@@ -310,7 +314,11 @@ func (r *toolUseRecorder) Authorize(ctx context.Context, info run.ToolUseAuthori
 	use.Status = store.ToolUseStatusAuthorized
 	use.InputJSON = input
 	use.AuthorizedAt = info.AuthorizedAt
-	return r.store.SaveToolUse(ctx, use)
+	if err := r.store.SaveToolUse(ctx, use); err != nil {
+		return err
+	}
+	r.logToolUse("authorized", use)
+	return nil
 }
 
 func (r *toolUseRecorder) Start(ctx context.Context, info run.ToolUseStartInfo) error {
@@ -323,7 +331,11 @@ func (r *toolUseRecorder) Start(ctx context.Context, info run.ToolUseStartInfo) 
 	use.Status = store.ToolUseStatusStarted
 	use.InputJSON = input
 	use.StartedAt = info.StartedAt
-	return r.store.SaveToolUse(ctx, use)
+	if err := r.store.SaveToolUse(ctx, use); err != nil {
+		return err
+	}
+	r.logToolUse("started", use)
+	return nil
 }
 
 func (r *toolUseRecorder) Finish(ctx context.Context, info run.ToolUseFinishInfo) error {
@@ -355,7 +367,26 @@ func (r *toolUseRecorder) Finish(ctx context.Context, info run.ToolUseFinishInfo
 	use.AuthorizedAt = info.AuthorizedAt
 	use.StartedAt = info.StartedAt
 	use.CompletedAt = info.CompletedAt
-	return r.store.SaveToolUse(ctx, use)
+	if err := r.store.SaveToolUse(ctx, use); err != nil {
+		return err
+	}
+	r.logToolUse("finished", use)
+	return nil
+}
+
+func (r *toolUseRecorder) logToolUse(phase string, use store.ToolUse) {
+	if r.logger == nil {
+		return
+	}
+	r.logger.Info("tool use "+phase,
+		"tool_use_id", use.ID,
+		"model_call_id", use.ModelCallID,
+		"call_id", use.CallID,
+		"tool", use.Name,
+		"status", use.Status,
+		"step", use.Step,
+		"ordinal", use.Ordinal,
+	)
 }
 
 func toolUseRecord(sessionID, runID string, step, ordinal int, callID, name, messageID, partID, modelCallID string) store.ToolUse {
@@ -400,6 +431,14 @@ func (r *modelCallRecorder) Start(ctx context.Context, info run.ModelCallStartIn
 	if err := r.store.UpsertModelCall(ctx, call); err != nil {
 		return "", err
 	}
+	if r.logger != nil {
+		r.logger.Info("model call started",
+			"model_call_id", call.ID,
+			"step", call.Step,
+			"attempt", call.Attempt,
+			"trace", info.Trace,
+		)
+	}
 	return call.ID, nil
 }
 
@@ -418,7 +457,30 @@ func (r *modelCallRecorder) Finish(ctx context.Context, info run.ModelCallFinish
 	if info.Assistant != nil {
 		turn.Assistant = *info.Assistant
 	}
-	return r.store.UpsertModelCall(ctx, modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, turn))
+	call := modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, turn)
+	if err := r.store.UpsertModelCall(ctx, call); err != nil {
+		return err
+	}
+	if r.logger != nil {
+		attrs := []any{
+			"model_call_id", call.ID,
+			"step", call.Step,
+			"attempt", call.Attempt,
+			"status", call.Status,
+			"provider_request_id", call.ProviderRequestID,
+			"duration_ms", call.CompletedAt.Sub(call.StartedAt).Milliseconds(),
+		}
+		var providerErr *models.ProviderError
+		if errors.As(info.Failure, &providerErr) {
+			attrs = append(attrs,
+				"provider_error_category", providerErr.Category,
+				"provider_error_status", providerErr.Status,
+				"retryable", providerErr.Retryable,
+			)
+		}
+		r.logger.Info("model call finished", attrs...)
+	}
+	return nil
 }
 
 func (s *Session) persistModelCall(ctx context.Context, msgID string, turn run.Turn, model models.ModelRef, info models.ModelInfo, runID, agentID, stopReason string, structuredOutput map[string]any) error {

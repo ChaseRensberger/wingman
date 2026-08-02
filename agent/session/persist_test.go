@@ -1,10 +1,13 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -51,6 +54,53 @@ func TestPersistModelCallStoresUsageUnavailableAndEstimatedCost(t *testing.T) {
 	}
 	if calls[1].Cost == nil || math.Abs(*calls[1].Cost-18) > 0.000001 {
 		t.Fatalf("cost = %v, want 18", calls[1].Cost)
+	}
+}
+
+func TestDurableLifecycleLogsUseSafeCorrelationFields(t *testing.T) {
+	data := memory.NewStore()
+	if err := data.CreateSession(&store.Session{ID: "ses_diagnostic_logs"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_diagnostic_logs", SessionID: "ses_diagnostic_logs"}); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil)).With("session_id", "ses_diagnostic_logs", "run_id", "run_diagnostic_logs")
+	model := models.ModelRef{Provider: "test", ID: "model"}
+	recorder := &modelCallRecorder{store: data, sessionID: "ses_diagnostic_logs", runID: "run_diagnostic_logs", model: model, logger: logger}
+	trace := models.CallTrace{Version: "1", Model: model, Provider: "test"}
+	callID, err := recorder.Start(context.Background(), run.ModelCallStartInfo{Step: 1, Attempt: 1, MessageID: "msg_diagnostic_logs", StartedAt: time.Now().Add(-time.Second), Trace: trace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := &models.ProviderError{Category: models.ErrorUnavailable, Provider: "test", Retryable: true, Cause: errors.New("raw provider body: secret-value")}
+	if err := recorder.Finish(context.Background(), run.ModelCallFinishInfo{CallID: callID, Step: 1, Attempt: 1, StartedAt: time.Now().Add(-time.Second), CompletedAt: time.Now(), Trace: trace, Failure: failure}); err != nil {
+		t.Fatal(err)
+	}
+	tools := &toolUseRecorder{store: data, sessionID: "ses_diagnostic_logs", runID: "run_diagnostic_logs", logger: logger}
+	toolUseID, err := tools.Propose(context.Background(), run.ToolUseProposeInfo{Step: 1, CallID: "call_diagnostic_logs", Name: "bash", Args: map[string]any{"token": "secret-value"}, ModelCallID: callID, ProposedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tools.Authorize(context.Background(), run.ToolUseAuthorizeInfo{Step: 1, ToolUseID: toolUseID, CallID: "call_diagnostic_logs", Name: "bash", ModelCallID: callID, AuthorizedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tools.Start(context.Background(), run.ToolUseStartInfo{Step: 1, ToolUseID: toolUseID, CallID: "call_diagnostic_logs", Name: "bash", ModelCallID: callID, StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tools.Finish(context.Background(), run.ToolUseFinishInfo{Step: 1, ToolUseID: toolUseID, CallID: "call_diagnostic_logs", Name: "bash", ModelCallID: callID, Status: run.ToolUseStatusCompleted, ToolResult: run.ToolResult{Output: "secret-value"}, CompletedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	logs := output.String()
+	for _, want := range []string{"model_call_id", callID, "tool_use_id", toolUseID, "provider_error_category", "unavailable"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("logs missing %q: %s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "secret-value") || strings.Contains(logs, "raw provider body") {
+		t.Fatalf("logs exposed sensitive provider or tool data: %s", logs)
 	}
 }
 
