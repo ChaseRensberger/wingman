@@ -1339,10 +1339,19 @@ func replaceMessageRevisionTx(ctx context.Context, tx *immediateTx, existing, ms
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM parts WHERE message_id = ?`, msg.ID); err != nil {
-		return fmt.Errorf("delete message parts: %w", err)
+	newParts := make(map[string]struct{}, len(msg.Parts))
+	for _, part := range msg.Parts {
+		newParts[part.ID] = struct{}{}
 	}
-	if err := insertPartsTx(ctx, tx, msg.Parts, oldParts, now); err != nil {
+	for _, part := range existing.Parts {
+		if _, ok := newParts[part.ID]; ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM parts WHERE id = ?`, part.ID); err != nil {
+			return fmt.Errorf("delete message part: %w", err)
+		}
+	}
+	if err := upsertPartsTx(ctx, tx, msg.Parts, oldParts, now); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -1359,6 +1368,14 @@ func messageTimes(msg StoredMessage, now time.Time) (string, string) {
 }
 
 func insertPartsTx(ctx context.Context, tx *immediateTx, parts []StoredPart, old map[string]StoredPart, now time.Time) error {
+	return writePartsTx(ctx, tx, parts, old, now, false)
+}
+
+func upsertPartsTx(ctx context.Context, tx *immediateTx, parts []StoredPart, old map[string]StoredPart, now time.Time) error {
+	return writePartsTx(ctx, tx, parts, old, now, true)
+}
+
+func writePartsTx(ctx context.Context, tx *immediateTx, parts []StoredPart, old map[string]StoredPart, now time.Time, replace bool) error {
 	for _, part := range parts {
 		if oldPart, ok := old[part.ID]; ok {
 			part.CreatedAt = oldPart.CreatedAt
@@ -1368,7 +1385,11 @@ func insertPartsTx(ctx context.Context, tx *immediateTx, parts []StoredPart, old
 		if part.UpdatedAt.IsZero() {
 			part.UpdatedAt = now
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO parts (id, message_id, idx, kind, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, part.ID, part.MessageID, part.Sequence, part.Kind, string(part.PayloadJSON), part.CreatedAt.UTC().Format(time.RFC3339Nano), part.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+		query := `INSERT INTO parts (id, message_id, idx, kind, payload_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+		if replace {
+			query += ` ON CONFLICT(id) DO UPDATE SET message_id = excluded.message_id, idx = excluded.idx, kind = excluded.kind, payload_json = excluded.payload_json, updated_at = excluded.updated_at`
+		}
+		if _, err := tx.ExecContext(ctx, query, part.ID, part.MessageID, part.Sequence, part.Kind, string(part.PayloadJSON), part.CreatedAt.UTC().Format(time.RFC3339Nano), part.UpdatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("insert message part: %w", err)
 		}
 	}

@@ -6,6 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +19,7 @@ import (
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 func TestSessionSummaryAndDetailUsePublicDTOs(t *testing.T) {
@@ -617,10 +621,28 @@ func (startedToolClient) Generate(context.Context, models.Request) (*models.Mess
 }
 
 func (startedToolClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
-	message := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call_started_tool_recovery", Name: "test", Input: map[string]any{}}}}
+	message := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{ID: "part_started_tool_recovery", CallID: "call_started_tool_recovery", Name: "test", Input: map[string]any{}}}}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](0)
 	stream.Close(message, nil)
 	return stream, nil
+}
+
+type crashDispatchClient struct{ marker string }
+
+func (crashDispatchClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+	return nil, errors.New("unexpected Prepare")
+}
+
+func (crashDispatchClient) Generate(context.Context, models.Request) (*models.Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (c crashDispatchClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	if err := os.WriteFile(c.marker, []byte("1"), 0o600); err != nil {
+		return nil, err
+	}
+	os.Exit(0)
+	return nil, nil
 }
 
 type startupRecoveryStore struct {
@@ -906,6 +928,164 @@ func TestRecoverStartupSettlesRunningRunAfterChildState(t *testing.T) {
 	if err != nil || len(eventsAfterRetry) != len(events) {
 		t.Fatalf("events after retry = %#v, error = %v", eventsAfterRetry, err)
 	}
+}
+
+func TestStartupRecoveryAfterToolSideEffectDoesNotReplay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	marker := filepath.Join(t.TempDir(), "side-effect")
+	command := exec.Command(os.Args[0], "-test.run=TestStartupRecoveryAfterToolSideEffectDoesNotReplayHelper")
+	command.Env = append(os.Environ(), "GO_WANT_TOOL_SIDE_EFFECT_CRASH=1", "WINGMAN_TEST_DB="+path, "WINGMAN_TEST_MARKER="+marker)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("crash helper failed: %v\n%s", err, output)
+	}
+	if marker, err := os.ReadFile(marker); err != nil || string(marker) != "1" {
+		t.Fatalf("side effect = %q, error = %v", marker, err)
+	}
+
+	data, err := store.NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	server := New(Config{Store: data})
+	server.runs.reconcileInterval = time.Hour
+	t.Cleanup(func() {
+		server.shutdownCancel()
+		server.runs.stop()
+		waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.runs.wait(waitCtx)
+	})
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := data.GetSessionRun(context.Background(), "ses_crash_side_effect", "run_crash_side_effect")
+	if err != nil || run.Status != store.SessionRunStatusAborted || run.ErrorType != "process_interrupted" {
+		t.Fatalf("run = %#v, error = %v", run, err)
+	}
+	uses, err := data.ListToolUses(context.Background(), "ses_crash_side_effect")
+	if err != nil || len(uses) != 1 || uses[0].Status != store.ToolUseStatusInterrupted || uses[0].ErrorType != "process_interrupted" {
+		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if marker, err := os.ReadFile(marker); err != nil || string(marker) != "1" {
+		t.Fatalf("side effect after recovery = %q, error = %v", marker, err)
+	}
+}
+
+func TestStartupRecoveryAfterProviderDispatchDoesNotRedispatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	marker := filepath.Join(t.TempDir(), "dispatch")
+	command := exec.Command(os.Args[0], "-test.run=TestStartupRecoveryAfterProviderDispatchDoesNotRedispatchHelper")
+	command.Env = append(os.Environ(), "GO_WANT_PROVIDER_DISPATCH_CRASH=1", "WINGMAN_TEST_DB="+path, "WINGMAN_TEST_MARKER="+marker)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("crash helper failed: %v\n%s", err, output)
+	}
+	if marker, err := os.ReadFile(marker); err != nil || string(marker) != "1" {
+		t.Fatalf("provider dispatch = %q, error = %v", marker, err)
+	}
+
+	data, err := store.NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	server := New(Config{Store: data})
+	server.runs.reconcileInterval = time.Hour
+	t.Cleanup(func() {
+		server.shutdownCancel()
+		server.runs.stop()
+		waitCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.runs.wait(waitCtx)
+	})
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	run, err := data.GetSessionRun(context.Background(), "ses_crash_dispatch", "run_crash_dispatch")
+	if err != nil || run.Status != store.SessionRunStatusAborted || run.ErrorType != "process_interrupted" {
+		t.Fatalf("run = %#v, error = %v", run, err)
+	}
+	calls, err := data.ListModelCalls(context.Background(), "ses_crash_dispatch")
+	if err != nil || len(calls) != 1 || calls[0].Status != store.ModelCallStatusAborted || calls[0].ErrorType != "process_interrupted" {
+		t.Fatalf("model calls = %#v, error = %v", calls, err)
+	}
+	if err := server.recoverStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if marker, err := os.ReadFile(marker); err != nil || string(marker) != "1" {
+		t.Fatalf("provider dispatch after recovery = %q, error = %v", marker, err)
+	}
+}
+
+func TestStartupRecoveryAfterToolSideEffectDoesNotReplayHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_TOOL_SIDE_EFFECT_CRASH") != "1" {
+		return
+	}
+	data, err := store.NewSQLiteStore(os.Getenv("WINGMAN_TEST_DB"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_crash_side_effect"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_crash_side_effect", SessionID: "ses_crash_side_effect", Message: "run tool"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(context.Background(), admission.Run.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	marker := os.Getenv("WINGMAN_TEST_MARKER")
+	sess := session.New(
+		session.WithID(admission.Run.SessionID),
+		session.WithRunID(admission.Run.ID),
+		session.WithStore(data),
+		session.WithClient(startedToolClient{}),
+		session.WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+		session.WithTools(tool.NewFuncTool("test", "test", tool.Definition{Name: "test", InputSchema: tool.InputSchema{Type: "object"}}, func(context.Context, tool.Invocation) (tool.Result, error) {
+			if err := os.WriteFile(marker, []byte("1"), 0o600); err != nil {
+				return tool.Result{}, err
+			}
+			os.Exit(0)
+			return tool.Result{}, nil
+		})),
+	)
+	_, err = sess.Run(context.Background(), admission.Run.Message)
+	t.Fatalf("tool did not terminate the crash helper: %v", err)
+}
+
+func TestStartupRecoveryAfterProviderDispatchDoesNotRedispatchHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_PROVIDER_DISPATCH_CRASH") != "1" {
+		return
+	}
+	data, err := store.NewSQLiteStore(os.Getenv("WINGMAN_TEST_DB"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_crash_dispatch"}); err != nil {
+		t.Fatal(err)
+	}
+	admission, err := data.AdmitSessionRun(context.Background(), store.SessionRun{ID: "run_crash_dispatch", SessionID: "ses_crash_dispatch", Message: "dispatch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(context.Background(), admission.Run.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	sess := session.New(
+		session.WithID(admission.Run.SessionID),
+		session.WithRunID(admission.Run.ID),
+		session.WithStore(data),
+		session.WithClient(crashDispatchClient{marker: os.Getenv("WINGMAN_TEST_MARKER")}),
+		session.WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{}),
+	)
+	_, err = sess.Run(context.Background(), admission.Run.Message)
+	t.Fatalf("provider dispatch did not terminate the crash helper: %v", err)
 }
 
 func TestSessionRunEndpointsAuthorizeAndAbortQueuedRun(t *testing.T) {
