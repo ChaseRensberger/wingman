@@ -201,17 +201,17 @@ func TestToolArgumentFailuresAreDecodingErrors(t *testing.T) {
 		fn   func(*parseState, *models.EventStream[models.StreamPart, *models.Message]) error
 	}{
 		{"responses", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-			return parseOpenAIResponses(map[string]any{"type": "response.output_item.done", "item": map[string]any{"type": "function_call", "arguments": "{"}}, s, stream)
+			return parseOpenAIResponses(openAIResponsesEvent{Type: "response.output_item.done", Item: openAIResponsesOutputItem{Type: "function_call", Arguments: "{"}}, s, stream)
 		}},
 		{"chat missing index", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 			return parseOpenAIChat(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"function": map[string]any{}}}}}}}, s, stream)
 		}},
 		{"anthropic", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
 			s.toolBuf = map[string]*toolAccum{"0": {args: *stringsBuilder("{")}}
-			return parseAnthropic(map[string]any{"type": "content_block_stop", "index": float64(0)}, s, stream)
+			return parseAnthropic(anthropicEvent{Type: "content_block_stop"}, s, stream)
 		}},
 		{"gemini", func(s *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-			return parseGemini(map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": []any{map[string]any{"functionCall": map[string]any{"args": "not-object"}}}}}}}, s, stream)
+			return (&Model{Info_: models.ModelInfo{Provider: "test"}, Protocol: GeminiGenerate}).handleSSEData(`{"candidates":[{"content":{"parts":[{"functionCall":{"args":"not-object"}}]}}]}`, s, stream)
 		}},
 	}
 	for _, tt := range tests {
@@ -245,6 +245,28 @@ func TestOpenAIChatSSERejectsInvalidNativeFields(t *testing.T) {
 	var providerErr *models.ProviderError
 	if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorDecoding {
 		t.Fatalf("error = %#v", err)
+	}
+}
+
+func TestNativeSSERejectsInvalidNativeFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		protocol Protocol
+		data     string
+	}{
+		{"responses", OpenAIResponses, `{"type":"response.output_text.delta","delta":1}`},
+		{"anthropic", AnthropicMessages, `{"type":"content_block_delta","index":"zero"}`},
+		{"gemini", GeminiGenerate, `{"candidates":"invalid"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := &Model{Info_: models.ModelInfo{Provider: "test"}, Protocol: tt.protocol}
+			err := model.handleSSEData(tt.data, &parseState{provider: "test"}, models.NewEventStream[models.StreamPart, *models.Message](1))
+			var providerErr *models.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.Category != models.ErrorDecoding {
+				t.Fatalf("error = %#v", err)
+			}
+		})
 	}
 }
 
@@ -345,15 +367,8 @@ func TestAnthropicBodyUsesAdaptiveThinking(t *testing.T) {
 func TestParseOpenAIResponsesKeepsReasoningSummary(t *testing.T) {
 	state := parseState{}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](2)
-	parseOpenAIResponses(map[string]any{
-		"type":    "response.reasoning_summary_text.delta",
-		"item_id": "rs_1",
-		"delta":   "**Planning lookup**",
-	}, &state, stream)
-	parseOpenAIResponses(map[string]any{
-		"type": "response.output_item.done",
-		"item": map[string]any{"type": "reasoning", "id": "rs_1", "encrypted_content": "encrypted-state"},
-	}, &state, stream)
+	parseOpenAIResponses(openAIResponsesEvent{Type: "response.reasoning_summary_text.delta", ItemID: "rs_1", Delta: "**Planning lookup**"}, &state, stream)
+	parseOpenAIResponses(openAIResponsesEvent{Type: "response.output_item.done", Item: openAIResponsesOutputItem{Type: "reasoning", ID: "rs_1", EncryptedContent: "encrypted-state"}}, &state, stream)
 	if got := state.message().Content; len(got) != 1 {
 		t.Fatalf("content = %#v, want reasoning part", got)
 	} else if reasoning, ok := got[0].(models.ReasoningPart); !ok || reasoning.Reasoning != "**Planning lookup**" || reasoning.Encrypted != "encrypted-state" {

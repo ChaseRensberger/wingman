@@ -208,7 +208,7 @@ func (m *Model) body(req models.Request) (map[string]any, error) {
 	case AnthropicMessages:
 		return m.anthropicBody(req)
 	case GeminiGenerate:
-		return m.geminiBody(req), nil
+		return m.geminiBody(req)
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", m.Protocol)
 	}
@@ -217,28 +217,31 @@ func (m *Model) body(req models.Request) (map[string]any, error) {
 func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) {
 	input := make([]any, 0, len(req.Messages)+1)
 	if req.System != "" {
-		input = append(input, map[string]any{"role": "system", "content": req.System})
+		input = append(input, openAIResponsesInputItem{Role: "system", Content: req.System})
 	}
 	for _, msg := range req.Messages {
 		switch msg.Role {
 		case models.RoleUser:
-			input = append(input, map[string]any{"role": "user", "content": openAIResponsesInputContent(msg.Content)})
+			input = append(input, openAIResponsesInputItem{Role: "user", Content: openAIResponsesInputContent(msg.Content)})
 		case models.RoleAssistant:
 			input = append(input, openAIResponsesReasoningContent(msg.Content)...)
 			texts := openAIResponsesTextContent(msg.Content, "output_text")
 			if len(texts) > 0 {
-				input = append(input, map[string]any{"role": "assistant", "content": texts})
+				input = append(input, openAIResponsesInputItem{Role: "assistant", Content: texts})
 			}
 			for _, call := range toolCalls(msg.Content) {
-				input = append(input, map[string]any{"type": "function_call", "call_id": call.CallID, "name": call.Name, "arguments": encodeJSON(call.Input)})
+				input = append(input, openAIResponsesInputItem{Type: "function_call", CallID: call.CallID, Name: call.Name, Arguments: encodeJSON(call.Input)})
 			}
 		case models.RoleTool:
 			for _, result := range toolResults(msg.Content) {
-				input = append(input, map[string]any{"type": "function_call_output", "call_id": result.CallID, "output": toolResultText(result)})
+				input = append(input, openAIResponsesInputItem{Type: "function_call_output", CallID: result.CallID, Output: toolResultText(result)})
 			}
 		}
 	}
-	body := map[string]any{"model": m.Info_.ID, "input": input, "stream": true}
+	body, err := jsonObject(openAIResponsesRequest{Model: m.Info_.ID, Input: input, Stream: true})
+	if err != nil {
+		return nil, err
+	}
 	if req.Capabilities.Thinking {
 		body["reasoning"] = map[string]any{"summary": "auto"}
 		body["include"] = []string{"reasoning.encrypted_content"}
@@ -252,6 +255,22 @@ func (m *Model) openAIResponsesBody(req models.Request) (map[string]any, error) 
 		body["store"] = false
 	}
 	return body, nil
+}
+
+type openAIResponsesRequest struct {
+	Model  string `json:"model"`
+	Input  []any  `json:"input"`
+	Stream bool   `json:"stream"`
+}
+
+type openAIResponsesInputItem struct {
+	Type      string `json:"type,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Content   any    `json:"content,omitempty"`
+	CallID    string `json:"call_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Output    string `json:"output,omitempty"`
 }
 
 func (m *Model) openAIChatBody(req models.Request) (map[string]any, error) {
@@ -354,32 +373,31 @@ func jsonObject(value any) (map[string]any, error) {
 }
 
 func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
-	messages := make([]any, 0, len(req.Messages))
+	messages := make([]anthropicMessage, 0, len(req.Messages))
 	for _, msg := range req.Messages {
 		switch msg.Role {
 		case models.RoleUser:
-			messages = append(messages, map[string]any{"role": "user", "content": anthropicUserBlocks(msg.Content)})
+			messages = append(messages, anthropicMessage{Role: "user", Content: anthropicUserBlocks(msg.Content)})
 		case models.RoleAssistant:
 			content := anthropicAssistantBlocks(msg.Content)
 			for _, call := range toolCalls(msg.Content) {
-				content = append(content, map[string]any{"type": "tool_use", "id": call.CallID, "name": call.Name, "input": call.Input})
+				content = append(content, anthropicContentBlock{Type: "tool_use", ID: call.CallID, Name: call.Name, Input: call.Input})
 			}
-			messages = append(messages, map[string]any{"role": "assistant", "content": content})
+			messages = append(messages, anthropicMessage{Role: "assistant", Content: content})
 		case models.RoleTool:
-			content := make([]any, 0, len(msg.Content))
+			content := make([]anthropicContentBlock, 0, len(msg.Content))
 			for _, result := range toolResults(msg.Content) {
-				block := map[string]any{"type": "tool_result", "tool_use_id": result.CallID, "content": toolResultText(result)}
-				if result.IsError {
-					block["is_error"] = true
-				}
-				content = append(content, block)
+				content = append(content, anthropicContentBlock{Type: "tool_result", ToolUseID: result.CallID, Content: toolResultText(result), IsError: result.IsError})
 			}
-			messages = append(messages, map[string]any{"role": "user", "content": content})
+			messages = append(messages, anthropicMessage{Role: "user", Content: content})
 		}
 	}
-	body := map[string]any{"model": m.Info_.ID, "messages": messages, "stream": true, "max_tokens": maxOutput(req, m.Info_.MaxOutput)}
+	body, err := jsonObject(anthropicRequest{Model: m.Info_.ID, Messages: messages, Stream: true, MaxTokens: maxOutput(req, m.Info_.MaxOutput)})
+	if err != nil {
+		return nil, err
+	}
 	if req.System != "" {
-		body["system"] = []any{map[string]any{"type": "text", "text": req.System}}
+		body["system"] = []anthropicContentBlock{{Type: "text", Text: req.System}}
 	}
 	if len(req.Tools) > 0 && req.ToolChoice != models.ToolChoiceNone {
 		tools := make([]any, 0, len(req.Tools))
@@ -396,37 +414,68 @@ func (m *Model) anthropicBody(req models.Request) (map[string]any, error) {
 	return m.applyRequestOptions(body, req), nil
 }
 
-func (m *Model) geminiBody(req models.Request) map[string]any {
-	contents := make([]any, 0, len(req.Messages))
+type anthropicRequest struct {
+	Model     string             `json:"model"`
+	Messages  []anthropicMessage `json:"messages"`
+	Stream    bool               `json:"stream"`
+	MaxTokens int                `json:"max_tokens"`
+}
+
+type anthropicMessage struct {
+	Role    string                  `json:"role"`
+	Content []anthropicContentBlock `json:"content"`
+}
+
+type anthropicContentBlock struct {
+	Type      string           `json:"type"`
+	Text      string           `json:"text,omitempty"`
+	Thinking  string           `json:"thinking,omitempty"`
+	Signature string           `json:"signature,omitempty"`
+	Source    *anthropicSource `json:"source,omitempty"`
+	ID        string           `json:"id,omitempty"`
+	Name      string           `json:"name,omitempty"`
+	Input     map[string]any   `json:"input,omitempty"`
+	ToolUseID string           `json:"tool_use_id,omitempty"`
+	Content   string           `json:"content,omitempty"`
+	IsError   bool             `json:"is_error,omitempty"`
+}
+
+type anthropicSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+}
+
+func (m *Model) geminiBody(req models.Request) (map[string]any, error) {
+	contents := make([]geminiContent, 0, len(req.Messages))
 	for _, msg := range req.Messages {
 		switch msg.Role {
 		case models.RoleUser:
-			contents = append(contents, map[string]any{"role": "user", "parts": geminiUserParts(msg.Content)})
+			contents = append(contents, geminiContent{Role: "user", Parts: geminiUserParts(msg.Content)})
 		case models.RoleAssistant:
 			parts := geminiAssistantParts(msg.Content)
 			for _, call := range toolCalls(msg.Content) {
-				parts = append(parts, map[string]any{"functionCall": map[string]any{"name": call.Name, "args": call.Input}})
+				parts = append(parts, geminiPart{FunctionCall: &geminiFunctionCall{Name: call.Name, Args: call.Input}})
 			}
-			contents = append(contents, map[string]any{"role": "model", "parts": parts})
+			contents = append(contents, geminiContent{Role: "model", Parts: parts})
 		case models.RoleTool:
-			parts := make([]any, 0, len(msg.Content))
+			parts := make([]geminiPart, 0, len(msg.Content))
 			for _, result := range toolResults(msg.Content) {
-				response := map[string]any{"output": toolResultText(result)}
-				if result.IsError {
-					response["error"] = true
-				}
 				name := result.Name
 				if name == "" {
 					name = result.CallID
 				}
-				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": response}})
+				parts = append(parts, geminiPart{FunctionResponse: &geminiFunctionResponse{Name: name, Response: geminiFunctionResponseValue{Output: toolResultText(result), Error: result.IsError}}})
 			}
-			contents = append(contents, map[string]any{"role": "user", "parts": parts})
+			contents = append(contents, geminiContent{Role: "user", Parts: parts})
 		}
 	}
-	body := map[string]any{"contents": contents}
+	body, err := jsonObject(geminiRequest{Contents: contents})
+	if err != nil {
+		return nil, err
+	}
 	if req.System != "" {
-		body["systemInstruction"] = map[string]any{"parts": []any{map[string]any{"text": req.System}}}
+		body["systemInstruction"] = geminiContent{Parts: []geminiPart{{Text: req.System}}}
 	}
 	if len(req.Tools) > 0 && req.ToolChoice != models.ToolChoiceNone {
 		declarations := make([]any, 0, len(req.Tools))
@@ -450,7 +499,39 @@ func (m *Model) geminiBody(req models.Request) map[string]any {
 		}
 	}
 	addGeminiOptions(body, req)
-	return m.applyRequestOptions(body, req)
+	return m.applyRequestOptions(body, req), nil
+}
+
+type geminiRequest struct {
+	Contents []geminiContent `json:"contents"`
+}
+type geminiContent struct {
+	Role  string       `json:"role,omitempty"`
+	Parts []geminiPart `json:"parts"`
+}
+type geminiPart struct {
+	Text             string                  `json:"text,omitempty"`
+	Thought          bool                    `json:"thought,omitempty"`
+	ThoughtSignature string                  `json:"thoughtSignature,omitempty"`
+	InlineData       *geminiInlineData       `json:"inlineData,omitempty"`
+	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
+}
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+type geminiFunctionCall struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+}
+type geminiFunctionResponse struct {
+	Name     string                      `json:"name"`
+	Response geminiFunctionResponseValue `json:"response"`
+}
+type geminiFunctionResponseValue struct {
+	Output string `json:"output"`
+	Error  bool   `json:"error,omitempty"`
 }
 
 func (m *Model) applyRequestOptions(body map[string]any, req models.Request) map[string]any {
@@ -498,34 +579,69 @@ func (s *parseState) message() *models.Message {
 	return &models.Message{Role: models.RoleAssistant, Content: content, FinishReason: s.finish, Origin: &models.MessageOrigin{Provider: s.provider, API: s.api, ModelID: s.model}}
 }
 
-func parseOpenAIResponses(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-	typeName, _ := event["type"].(string)
-	switch typeName {
+type openAIResponsesEvent struct {
+	Type     string                    `json:"type"`
+	Delta    string                    `json:"delta"`
+	ItemID   string                    `json:"item_id"`
+	Item     openAIResponsesOutputItem `json:"item"`
+	Response openAIResponsesResponse   `json:"response"`
+}
+
+type openAIResponsesOutputItem struct {
+	Type             string `json:"type"`
+	ID               string `json:"id"`
+	CallID           string `json:"call_id"`
+	Name             string `json:"name"`
+	Arguments        string `json:"arguments"`
+	EncryptedContent string `json:"encrypted_content"`
+}
+
+type openAIResponsesResponse struct {
+	IncompleteDetails struct {
+		Reason string `json:"reason"`
+	} `json:"incomplete_details"`
+	Usage openAIResponsesUsageEvent `json:"usage"`
+}
+
+type openAIResponsesUsageEvent struct {
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	TotalTokens        int `json:"total_tokens"`
+	InputTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
+	OutputTokensDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"output_tokens_details"`
+}
+
+func parseOpenAIResponses(event openAIResponsesEvent, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+	switch event.Type {
 	case "response.output_text.delta":
-		if delta, _ := event["delta"].(string); delta != "" {
+		if delta := event.Delta; delta != "" {
 			pushText(state, stream, "text-0", delta)
 		}
 	case "response.reasoning_text.delta", "response.reasoning_summary.delta", "response.reasoning_summary_text.delta":
-		if delta, _ := event["delta"].(string); delta != "" {
-			id := stringValue(event["item_id"])
+		if delta := event.Delta; delta != "" {
+			id := event.ItemID
 			if id == "" {
 				id = "reasoning-0"
 			}
 			pushReasoning(state, stream, id, delta)
 		}
 	case "response.output_item.done":
-		item, _ := event["item"].(map[string]any)
-		if itemType, _ := item["type"].(string); itemType == "reasoning" {
-			if id := stringValue(item["id"]); id != "" {
+		item := event.Item
+		if item.Type == "reasoning" {
+			if id := item.ID; id != "" {
 				state.reasonID = id
 			}
-			if encrypted := stringValue(item["encrypted_content"]); encrypted != "" {
+			if encrypted := item.EncryptedContent; encrypted != "" {
 				state.sig = encrypted
 			}
 		}
-		if itemType, _ := item["type"].(string); itemType == "function_call" {
-			itemID := stringValue(item["id"])
-			arguments := stringValue(item["arguments"])
+		if item.Type == "function_call" {
+			itemID := item.ID
+			arguments := item.Arguments
 			if arguments == "" && state.toolBuf != nil {
 				if acc := state.toolBuf[itemID]; acc != nil {
 					arguments = acc.args.String()
@@ -535,12 +651,12 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 			if err != nil {
 				return decodingError(state.provider, "invalid tool arguments", err)
 			}
-			call := models.ToolCallPart{CallID: stringValue(item["call_id"]), Name: stringValue(item["name"]), Input: input}
+			call := models.ToolCallPart{CallID: item.CallID, Name: item.Name, Input: input}
 			pushToolRaw(state, stream, call, arguments)
 			delete(state.toolBuf, itemID)
 		}
 	case "response.function_call_arguments.delta":
-		itemID := stringValue(event["item_id"])
+		itemID := event.ItemID
 		if itemID == "" {
 			return nil
 		}
@@ -552,10 +668,10 @@ func parseOpenAIResponses(event map[string]any, state *parseState, stream *model
 			acc = &toolAccum{}
 			state.toolBuf[itemID] = acc
 		}
-		acc.args.WriteString(stringValue(event["delta"]))
+		acc.args.WriteString(event.Delta)
 	case "response.completed", "response.incomplete":
-		state.finish = finishReason(stringValue(nested(event, "response", "incomplete_details", "reason")), len(state.tools) > 0)
-		state.usage = openAIResponsesUsage(nested(event, "response", "usage"))
+		state.finish = finishReason(event.Response.IncompleteDetails.Reason, len(state.tools) > 0)
+		state.usage = openAIResponsesUsage(event.Response.Usage)
 	}
 	return nil
 }
@@ -644,41 +760,66 @@ func parseOpenAIChat(raw any, state *parseState, stream *models.EventStream[mode
 	return nil
 }
 
-func parseAnthropic(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-	typeName := stringValue(event["type"])
-	switch typeName {
+type anthropicEvent struct {
+	Type         string                   `json:"type"`
+	Index        int                      `json:"index"`
+	ContentBlock anthropicSSEContentBlock `json:"content_block"`
+	Delta        anthropicSSEDelta        `json:"delta"`
+	Usage        anthropicUsageEvent      `json:"usage"`
+}
+type anthropicSSEContentBlock struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+type anthropicSSEDelta struct {
+	Type        string `json:"type"`
+	Text        string `json:"text"`
+	Thinking    string `json:"thinking"`
+	PartialJSON string `json:"partial_json"`
+	StopReason  string `json:"stop_reason"`
+}
+type anthropicUsageEvent struct {
+	InputTokens              int `json:"input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+}
+
+func parseAnthropic(event anthropicEvent, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+	switch event.Type {
 	case "content_block_start":
-		block, _ := event["content_block"].(map[string]any)
-		if stringValue(block["type"]) != "tool_use" {
+		block := event.ContentBlock
+		if block.Type != "tool_use" {
 			return nil
 		}
 		if state.toolBuf == nil {
 			state.toolBuf = map[string]*toolAccum{}
 		}
-		idx := fmt.Sprint(intValue(event["index"]))
-		state.toolBuf[idx] = &toolAccum{id: stringValue(block["id"]), name: stringValue(block["name"])}
-		stream.Push(models.ToolInputStartPart{ID: stringValue(block["id"]), ToolName: stringValue(block["name"])})
+		idx := fmt.Sprint(event.Index)
+		state.toolBuf[idx] = &toolAccum{id: block.ID, name: block.Name}
+		stream.Push(models.ToolInputStartPart{ID: block.ID, ToolName: block.Name})
 	case "content_block_delta":
-		delta, _ := event["delta"].(map[string]any)
-		if text := stringValue(delta["text"]); text != "" {
-			pushText(state, stream, fmt.Sprintf("text-%d", intValue(event["index"])), text)
+		delta := event.Delta
+		if text := delta.Text; text != "" {
+			pushText(state, stream, fmt.Sprintf("text-%d", event.Index), text)
 			return nil
 		}
-		if thinking := stringValue(delta["thinking"]); thinking != "" {
-			pushReasoning(state, stream, fmt.Sprintf("reasoning-%d", intValue(event["index"])), thinking)
+		if thinking := delta.Thinking; thinking != "" {
+			pushReasoning(state, stream, fmt.Sprintf("reasoning-%d", event.Index), thinking)
 			return nil
 		}
-		if stringValue(delta["type"]) == "input_json_delta" {
-			idx := fmt.Sprint(intValue(event["index"]))
+		if delta.Type == "input_json_delta" {
+			idx := fmt.Sprint(event.Index)
 			if state.toolBuf == nil || state.toolBuf[idx] == nil {
 				return nil
 			}
-			fragment := stringValue(delta["partial_json"])
+			fragment := delta.PartialJSON
 			state.toolBuf[idx].args.WriteString(fragment)
 			stream.Push(models.ToolInputDeltaPart{ID: state.toolBuf[idx].id, Delta: fragment})
 		}
 	case "content_block_stop":
-		idx := fmt.Sprint(intValue(event["index"]))
+		idx := fmt.Sprint(event.Index)
 		if state.toolBuf == nil || state.toolBuf[idx] == nil {
 			return nil
 		}
@@ -693,50 +834,70 @@ func parseAnthropic(event map[string]any, state *parseState, stream *models.Even
 		stream.Push(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input})
 		delete(state.toolBuf, idx)
 	case "message_delta":
-		delta, _ := event["delta"].(map[string]any)
-		state.finish = finishReason(stringValue(delta["stop_reason"]), len(state.tools) > 0)
-		state.usage = anthropicUsage(event["usage"])
+		state.finish = finishReason(event.Delta.StopReason, len(state.tools) > 0)
+		state.usage = anthropicUsage(event.Usage)
 	}
 	return nil
 }
 
-func parseGemini(event map[string]any, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
-	if usage := geminiUsage(event["usageMetadata"]); !usage.Empty() {
+type geminiEvent struct {
+	UsageMetadata geminiUsageEvent  `json:"usageMetadata"`
+	Candidates    []geminiCandidate `json:"candidates"`
+}
+type geminiUsageEvent struct {
+	PromptTokenCount        int `json:"promptTokenCount"`
+	CandidatesTokenCount    int `json:"candidatesTokenCount"`
+	TotalTokenCount         int `json:"totalTokenCount"`
+	CachedContentTokenCount int `json:"cachedContentTokenCount"`
+	ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
+}
+type geminiCandidate struct {
+	Content      geminiSSEContent `json:"content"`
+	FinishReason string           `json:"finishReason"`
+}
+type geminiSSEContent struct {
+	Parts []geminiSSEPart `json:"parts"`
+}
+type geminiSSEPart struct {
+	Text             string              `json:"text"`
+	Thought          bool                `json:"thought"`
+	ThoughtSignature string              `json:"thoughtSignature"`
+	FunctionCall     *geminiFunctionCall `json:"functionCall"`
+}
+
+func parseGemini(event geminiEvent, state *parseState, stream *models.EventStream[models.StreamPart, *models.Message]) error {
+	if usage := geminiUsage(event.UsageMetadata); !usage.Empty() {
 		state.usage = usage
 	}
-	choices, _ := event["candidates"].([]any)
+	choices := event.Candidates
 	if len(choices) == 0 {
 		return nil
 	}
-	choice, _ := choices[0].(map[string]any)
-	content, _ := choice["content"].(map[string]any)
-	parts, _ := content["parts"].([]any)
-	for _, rawPart := range parts {
-		part, _ := rawPart.(map[string]any)
-		if sig := stringValue(part["thoughtSignature"]); sig != "" {
+	choice := choices[0]
+	for _, part := range choice.Content.Parts {
+		if sig := part.ThoughtSignature; sig != "" {
 			state.sig = sig
 		}
-		if text := stringValue(part["text"]); text != "" {
-			if thought, _ := part["thought"].(bool); thought {
+		if text := part.Text; text != "" {
+			if part.Thought {
 				pushReasoning(state, stream, "reasoning-0", text)
 				continue
 			}
 			pushText(state, stream, "text-0", text)
 		}
-		if rawCall, _ := part["functionCall"].(map[string]any); rawCall != nil {
-			args, ok := rawCall["args"].(map[string]any)
-			if !ok {
+		if rawCall := part.FunctionCall; rawCall != nil {
+			if rawCall.Args == nil {
 				return decodingError(state.provider, "invalid Gemini function arguments", nil)
 			}
 			call := models.ToolCallPart{
 				CallID: fmt.Sprintf("call_%d", len(state.tools)+1),
-				Name:   stringValue(rawCall["name"]),
-				Input:  args,
+				Name:   rawCall.Name,
+				Input:  rawCall.Args,
 			}
 			pushTool(state, stream, call)
 		}
 	}
-	if reason := stringValue(choice["finishReason"]); reason != "" {
+	if reason := choice.FinishReason; reason != "" {
 		state.finish = finishReason(reason, len(state.tools) > 0)
 	}
 	return nil
@@ -952,14 +1113,23 @@ func maxOutput(req models.Request, fallback int) int {
 	return 4096
 }
 
-func openAIResponsesTextContent(content models.Content, typ string) []any {
-	out := []any{}
+func openAIResponsesTextContent(content models.Content, typ string) []openAIResponsesContent {
+	out := []openAIResponsesContent{}
 	for _, part := range content {
 		if t, ok := part.(models.TextPart); ok {
-			out = append(out, map[string]any{"type": typ, "text": t.Text})
+			out = append(out, openAIResponsesContent{Type: typ, Text: t.Text})
 		}
 	}
 	return out
+}
+
+type openAIResponsesContent struct {
+	Type             string `json:"type"`
+	Text             string `json:"text,omitempty"`
+	ImageURL         string `json:"image_url,omitempty"`
+	ID               string `json:"id,omitempty"`
+	Summary          []any  `json:"summary,omitempty"`
+	EncryptedContent string `json:"encrypted_content,omitempty"`
 }
 
 func openAIResponsesReasoningContent(content models.Content) []any {
@@ -977,20 +1147,20 @@ func openAIResponsesReasoningContent(content models.Content) []any {
 		if itemID == "" {
 			continue
 		}
-		out = append(out, map[string]any{"type": "reasoning", "id": itemID, "summary": []any{}, "encrypted_content": reasoning.Encrypted})
+		out = append(out, openAIResponsesContent{Type: "reasoning", ID: itemID, Summary: []any{}, EncryptedContent: reasoning.Encrypted})
 	}
 	return out
 }
 
-func openAIResponsesInputContent(content models.Content) []any {
-	out := []any{}
+func openAIResponsesInputContent(content models.Content) []openAIResponsesContent {
+	out := []openAIResponsesContent{}
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
-			out = append(out, map[string]any{"type": "input_text", "text": p.Text})
+			out = append(out, openAIResponsesContent{Type: "input_text", Text: p.Text})
 		case models.ImagePart:
 			if url := imageURL(p); url != "" {
-				out = append(out, map[string]any{"type": "input_image", "image_url": url})
+				out = append(out, openAIResponsesContent{Type: "input_image", ImageURL: url})
 			}
 		}
 	}
@@ -1015,73 +1185,65 @@ func openAIChatContent(content models.Content) any {
 	return out
 }
 
-func anthropicUserBlocks(content models.Content) []any {
-	out := []any{}
+func anthropicUserBlocks(content models.Content) []anthropicContentBlock {
+	out := []anthropicContentBlock{}
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
-			out = append(out, map[string]any{"type": "text", "text": p.Text})
+			out = append(out, anthropicContentBlock{Type: "text", Text: p.Text})
 		case models.ImagePart:
 			if p.Base64 != "" {
 				mediaType := p.MediaType
 				if mediaType == "" {
 					mediaType = "image/png"
 				}
-				out = append(out, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": mediaType, "data": p.Base64}})
+				out = append(out, anthropicContentBlock{Type: "image", Source: &anthropicSource{Type: "base64", MediaType: mediaType, Data: p.Base64}})
 			}
 		}
 	}
 	return out
 }
 
-func anthropicAssistantBlocks(content models.Content) []any {
-	out := []any{}
+func anthropicAssistantBlocks(content models.Content) []anthropicContentBlock {
+	out := []anthropicContentBlock{}
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
-			out = append(out, map[string]any{"type": "text", "text": p.Text})
+			out = append(out, anthropicContentBlock{Type: "text", Text: p.Text})
 		case models.ReasoningPart:
-			block := map[string]any{"type": "thinking", "thinking": p.Reasoning}
-			if p.Encrypted != "" {
-				block["signature"] = p.Encrypted
-			}
-			out = append(out, block)
+			out = append(out, anthropicContentBlock{Type: "thinking", Thinking: p.Reasoning, Signature: p.Encrypted})
 		}
 	}
 	return out
 }
 
-func geminiUserParts(content models.Content) []any {
-	out := []any{}
+func geminiUserParts(content models.Content) []geminiPart {
+	out := []geminiPart{}
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
-			out = append(out, map[string]any{"text": p.Text})
+			out = append(out, geminiPart{Text: p.Text})
 		case models.ImagePart:
 			if p.Base64 != "" {
 				mediaType := p.MediaType
 				if mediaType == "" {
 					mediaType = "image/png"
 				}
-				out = append(out, map[string]any{"inlineData": map[string]any{"mimeType": mediaType, "data": p.Base64}})
+				out = append(out, geminiPart{InlineData: &geminiInlineData{MimeType: mediaType, Data: p.Base64}})
 			}
 		}
 	}
 	return out
 }
 
-func geminiAssistantParts(content models.Content) []any {
-	out := []any{}
+func geminiAssistantParts(content models.Content) []geminiPart {
+	out := []geminiPart{}
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
-			out = append(out, map[string]any{"text": p.Text})
+			out = append(out, geminiPart{Text: p.Text})
 		case models.ReasoningPart:
-			part := map[string]any{"text": p.Reasoning, "thought": true}
-			if p.Encrypted != "" {
-				part["thoughtSignature"] = p.Encrypted
-			}
-			out = append(out, part)
+			out = append(out, geminiPart{Text: p.Reasoning, Thought: true, ThoughtSignature: p.Encrypted})
 		}
 	}
 	return out
@@ -1198,29 +1360,26 @@ func openAIChatUsage(v *openAIChatUsageEvent) models.Usage {
 	return models.Usage{InputTokens: v.PromptTokens, OutputTokens: v.CompletionTokens, TotalTokens: v.TotalTokens, CachedInputTokens: v.PromptTokensDetails.CachedTokens, ReasoningTokens: v.CompletionTokensDetails.ReasoningTokens}
 }
 
-func openAIResponsesUsage(v any) models.Usage {
-	m, _ := v.(map[string]any)
-	return models.Usage{InputTokens: intValue(m["input_tokens"]), OutputTokens: intValue(m["output_tokens"]), TotalTokens: intValue(m["total_tokens"]), CachedInputTokens: intValue(nested(m, "input_tokens_details", "cached_tokens")), ReasoningTokens: intValue(nested(m, "output_tokens_details", "reasoning_tokens"))}
+func openAIResponsesUsage(v openAIResponsesUsageEvent) models.Usage {
+	return models.Usage{InputTokens: v.InputTokens, OutputTokens: v.OutputTokens, TotalTokens: v.TotalTokens, CachedInputTokens: v.InputTokensDetails.CachedTokens, ReasoningTokens: v.OutputTokensDetails.ReasoningTokens}
 }
 
-func anthropicUsage(v any) models.Usage {
-	m, _ := v.(map[string]any)
-	input := intValue(m["input_tokens"])
-	cacheRead := intValue(m["cache_read_input_tokens"])
-	cacheWrite := intValue(m["cache_creation_input_tokens"])
-	output := intValue(m["output_tokens"])
+func anthropicUsage(v anthropicUsageEvent) models.Usage {
+	input := v.InputTokens
+	cacheRead := v.CacheReadInputTokens
+	cacheWrite := v.CacheCreationInputTokens
+	output := v.OutputTokens
 	return models.Usage{InputTokens: input + cacheRead + cacheWrite, OutputTokens: output, TotalTokens: input + cacheRead + cacheWrite + output, CachedInputTokens: cacheRead, CacheWriteTokens: cacheWrite}
 }
 
-func geminiUsage(v any) models.Usage {
-	m, _ := v.(map[string]any)
-	input := intValue(m["promptTokenCount"])
-	output := intValue(m["candidatesTokenCount"])
-	total := intValue(m["totalTokenCount"])
+func geminiUsage(v geminiUsageEvent) models.Usage {
+	input := v.PromptTokenCount
+	output := v.CandidatesTokenCount
+	total := v.TotalTokenCount
 	if total == 0 {
 		total = input + output
 	}
-	return models.Usage{InputTokens: input, OutputTokens: output, TotalTokens: total, CachedInputTokens: intValue(m["cachedContentTokenCount"]), ReasoningTokens: intValue(m["thoughtsTokenCount"])}
+	return models.Usage{InputTokens: input, OutputTokens: output, TotalTokens: total, CachedInputTokens: v.CachedContentTokenCount, ReasoningTokens: v.ThoughtsTokenCount}
 }
 
 func nested(v any, path ...string) any {
