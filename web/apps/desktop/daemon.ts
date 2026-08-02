@@ -84,3 +84,18 @@ export class DaemonDiscovery {
     return value;
   }
 }
+
+export async function proxyDaemonRequest(discovery: DaemonDiscovery, request: Request, fetchRequest: typeof fetch = fetch): Promise<Response> {
+  const url = new URL(request.url);
+  const transport = await discovery.transport();
+  const target = new Request(`${transport.origin}${url.pathname}${url.search}`, request);
+  target.headers.set("Authorization", `Bearer ${transport.credential}`);
+  try {
+    const response = await fetchRequest(target);
+    if (response.status === 401 || response.status === 503) discovery.invalidate();
+    return response;
+  } catch (error) {
+    discovery.invalidate();
+    throw error;
+  }
+}

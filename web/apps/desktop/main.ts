@@ -1,5 +1,5 @@
 import { consoleAssets } from "./assets.generated.ts";
-import { DaemonDiscovery, daemonStateDir } from "./daemon.ts";
+import { DaemonDiscovery, daemonStateDir, proxyDaemonRequest } from "./daemon.ts";
 
 const consolePrefix = "/console";
 const daemon = new DaemonDiscovery({
@@ -57,21 +57,6 @@ function consoleAsset(pathname: string): Response {
   return new Response(Uint8Array.fromBase64(asset), { headers });
 }
 
-async function proxy(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const transport = await daemon.transport();
-  const target = new Request(`${transport.origin}${url.pathname}${url.search}`, request);
-  target.headers.set("Authorization", `Bearer ${transport.credential}`);
-  try {
-    const response = await fetch(target);
-    if (response.status === 401 || response.status === 503) daemon.invalidate();
-    return response;
-  } catch (error) {
-    daemon.invalidate();
-    throw error;
-  }
-}
-
 Deno.serve({ hostname: "127.0.0.1" }, async (request) => {
   if (!isTrustedRequest(request)) return new Response("Forbidden", { status: 403 });
   const url = new URL(request.url);
@@ -80,7 +65,7 @@ Deno.serve({ hostname: "127.0.0.1" }, async (request) => {
     return consoleAsset(url.pathname);
   }
   try {
-    return await proxy(request);
+    return await proxyDaemonRequest(daemon, request);
   } catch {
     return new Response("Wingman daemon is unavailable or not registered", { status: 503 });
   }

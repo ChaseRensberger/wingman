@@ -4,6 +4,7 @@ import {
 	isTerminalSessionRunEvent,
 	addPermissionReplyInFlight,
 	latestActiveSessionRun,
+	maintainSessionRunStream,
 	pendingPermissionRequests,
 	reconcileSessionEventSeq,
 	reducePermissionRequestRecords,
@@ -76,6 +77,52 @@ describe("session stream reconnection", () => {
 	test("resets an invalid cursor only after an explicit resync", () => {
 		expect(reconcileSessionEventSeq(12, 8, false)).toBe(12);
 		expect(reconcileSessionEventSeq(12, 8, true)).toBe(8);
+	});
+
+	test("reconnects an active run after an unavailable stream and reloads authoritative state", async () => {
+		let current = true;
+		let subscriptions = 0;
+		let reloads = 0;
+		const delays: number[] = [];
+		await maintainSessionRunStream({
+			isCurrent: () => current,
+			isCompleted: () => false,
+			subscribe: async () => {
+				subscriptions++;
+				if (subscriptions === 1) throw new Error("HTTP 503");
+				current = false;
+				return { resync: false, synchronized: false };
+			},
+			clearVolatileStreamState: () => {},
+			reload: async () => {
+				reloads++;
+				return run("run-1", 1, "running");
+			},
+			finish: async () => { throw new Error("active run should not finish"); },
+			resync: async () => {},
+			waitForRetry: async (delay) => { delays.push(delay); },
+			reportFailure: () => {},
+		});
+		expect(subscriptions).toBe(2);
+		expect(reloads).toBe(1);
+		expect(delays).toEqual([250]);
+	});
+
+	test("finishes from an authoritative terminal run after an unauthorized stream", async () => {
+		let current = true;
+		let finished: string | undefined;
+		await maintainSessionRunStream({
+			isCurrent: () => current,
+			isCompleted: () => false,
+			subscribe: async () => { throw new Error("HTTP 401"); },
+			clearVolatileStreamState: () => {},
+			reload: async () => ({ ...run("run-1", 1, "failed"), error_message: "daemon restarted" }),
+			finish: async (error) => { finished = error; current = false; },
+			resync: async () => {},
+			waitForRetry: async () => { throw new Error("terminal run should not retry"); },
+			reportFailure: () => {},
+		});
+		expect(finished).toBe("daemon restarted");
 	});
 });
 
