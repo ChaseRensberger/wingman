@@ -37,7 +37,6 @@ msg, err := provider.NewClient(nil).Generate(ctx, models.Request{
   },
 })
 \`\`\``;
-
 const FEATURES = [
 	{
 		title: "Client-agnostic runtime",
@@ -45,24 +44,28 @@ const FEATURES = [
 			"Run Wingman as the backend for any client that depends on LLM functionality.",
 	},
 	{
-		title: "Extendable",
+		title: "Durable run queue",
 		description:
-			"Strong plugin support so you can extend session behavior however you want.",
+			"Each submitted prompt is admitted, ordered, and tracked independently of the request that created it.",
+	},
+	{
+		title: "Per-tool permissions",
+		description:
+			"Ask before sensitive actions, approve once or remember an exact session-scoped grant.",
+	},
+	{
+		title: "Reconnectable events",
+		description:
+			"Durable, versioned events replay before live delivery so clients can recover their view of a session.",
+	},
+	{
+		title: "Plugins",
+		description:
+			"Add tools and session behavior with in-process Go modules or out-of-process JSON-RPC plugins.",
 	},
 	{
 		title: "Provider-agnostic",
-		description:
-			"Wingman ships its own provider-agnostic model SDK (WingModels).",
-	},
-	{
-		title: "Context handoff",
-		description:
-			"Swap between provider/model combinations with minimal (and often zero) data loss."
-	},
-	{
-		title: "HTTP API",
-		description:
-			"Communicate with Wingman via HTTP. Stdio and other protocols coming later."
+		description: "Wingman ships its own provider-agnostic model SDK (WingModels).",
 	}
 ];
 
@@ -106,7 +109,7 @@ function InstallSection() {
 				{SERVER_COMMAND}
 			</CopyCommand>
 			<p className="text-xs text-muted-foreground font-mono">
-				Linux (x86_64, ARM64) · SUPPORTED: macOS (Apple Silicon, Intel)
+				SUPPORTED: Linux (x86_64, ARM64) · macOS (Apple Silicon, Intel)
 			</p>
 
 			<p className="text-xs text-muted-foreground uppercase tracking-wider">ENABLE</p>
@@ -114,7 +117,7 @@ function InstallSection() {
 				{ENABLE_COMMAND}
 			</CopyCommand>
 			<p className="text-xs text-muted-foreground">
-				<code>wingman up</code> runs as a LaunchAgent on macOS and systemd service on Linux.
+				Uses systemd service on Linux and LaunchAgent on macOS.
 			</p>
 		</div >
 	);
@@ -176,7 +179,7 @@ function WhatIsWingmanSection() {
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
-					<span>Client agnostic - can run multiple clients/UIs on a single machine that all use Wingman as a dependency. Wingman is decoupled from any specific use case, so it doesn't come bundled with a coding TUI, but you can run a coding TUI on top of it.</span>
+					<span>Client agnostic - can run multiple clients/UIs on a single machine that all use Wingman as a dependency. Wingman is decoupled from any specific use case, so it doesn't come bundled with a coding TUI, but you can build a coding TUI on top of it.</span>
 				</li>
 				<li className="flex items-start gap-2 text-sm text-muted-foreground">
 					<span className="text-primary">[*]</span>
@@ -221,29 +224,69 @@ function FeaturesSection() {
 	);
 }
 
+function ReliableExecutionSection() {
+	return (
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
+			<SectionHeader title="Reliable execution" markerId="03" />
+			<p className="max-w-3xl text-sm text-muted-foreground">
+				Each prompt gets a durable run. Wingman records its state as it runs. After a restart, queued runs continue.
+			</p>
+			<div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
+				<div className="border bg-card font-mono text-xs">
+					<div className="flex items-center justify-between border-b px-4 py-3 text-muted-foreground">
+						<span>RUN / run_01H...</span>
+						<span className="text-primary">COMPLETED</span>
+					</div>
+					<div className="space-y-3 p-4">
+						<ExecutionRow state="01" title="Queued" detail="Prompt admitted with its agent and model snapshot" />
+						<ExecutionRow state="02" title="Model attempt" detail="anthropic/claude-sonnet-5 · 1,248 tokens" />
+						<ExecutionRow state="03" title="Tool use" detail="bash · authorized · completed" />
+						<ExecutionRow state="04" title="Settled" detail="Run and final message committed together" active />
+					</div>
+				</div>
+				<div className="border bg-card p-4 space-y-4">
+					<p className="text-xs uppercase tracking-wider text-muted-foreground">After a restart</p>
+					<ul className="space-y-3 text-sm text-muted-foreground">
+						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Queued runs continue.</span></li>
+						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Started provider calls and tool uses become interrupted.</span></li>
+						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Clients reload session state after an event resync.</span></li>
+					</ul>
+				</div>
+			</div>
+		</section>
+	)
+}
+
+function ExecutionRow({ state, title, detail, active = false }: { state: string; title: string; detail: string; active?: boolean }) {
+	return (
+		<div className="flex gap-3">
+			<div className={`flex size-6 shrink-0 items-center justify-center border text-[0.625rem] ${active ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground"}`}>{state}</div>
+			<div className="min-w-0 pt-0.5">
+				<p className="font-medium text-foreground">{title}</p>
+				<p className="mt-1 text-muted-foreground">{detail}</p>
+			</div>
+		</div>
+	)
+}
+
 function PluginsSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<div>
 				<SectionHeader title="Plugins" markerId="05" />
-				<p className='text-sm text-muted-foreground'>Extend Wingman via in-process Go modules or out-of-process JSON-RPC. If you build one, open up a PR to add it to this section.</p>
+				<p className='text-sm text-muted-foreground'>Extend Wingman with in-process Go modules or out-of-process JSON-RPC plugins.</p>
 			</div>
-			<LinkCard
-				title="Compaction"
-				description="Save context by compacting older messages when close to a session overflow."
-				href={COMPACTION_PLUGIN_URL}
-			/>
-			<Button disabled>Plugin Registry Coming Soon -&gt;</Button>
+			<LinkCard title="Compaction" description="Save context by compacting older messages when close to a session overflow." href={COMPACTION_PLUGIN_URL} />
 		</section>
 	);
 }
 
 function ProvidersSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-2">
+		<section className="px-6 py-8 border-b space-y-2 sm:px-12">
 			<SectionHeader title="Multi-provider support via WingModels" markerId="04" markerTitle='WingModels' />
 			<p className='text-sm text-muted-foreground'>
-				Wingman ships its own provider-agnostic model SDK (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters, not in calling code.
+				Wingman ships its own provider-agnostic model SDK (written in Go). One typed request, response, event, and tool language; provider quirks live in adapters.
 			</p>
 			<Markdown>{WINGMODELS_EXAMPLE}</Markdown>
 			<div className="space-y-3">
@@ -285,7 +328,7 @@ function ProvidersSection() {
 
 function ClientsSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<div>
 				<SectionHeader title="Clients" markerId="06" />
 				<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
@@ -307,11 +350,40 @@ function ClientsSection() {
 	);
 }
 
+function OperationsSection() {
+	return (
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
+			<SectionHeader title="Observability" markerId="07" />
+			<p className="max-w-3xl text-sm text-muted-foreground">
+				Use the daemon API to see where work is waiting, why an event client disconnected, and whether an external plugin is healthy.
+			</p>
+			<div className="overflow-hidden border bg-card font-mono text-xs">
+				<div className="border-b px-4 py-3 text-muted-foreground">OPERATOR SURFACES</div>
+				<div className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+					<ObservabilityItem endpoint="/diagnostics" question="Is the daemon under pressure?" detail="Queued and active runs, execution scopes, event subscriber backlog, and aggregate plugin health." />
+					<ObservabilityItem endpoint="/plugins" question="Which plugin failed?" detail="Plugin status, process details, and recent diagnostics for each external plugin." />
+					<ObservabilityItem endpoint="/logs" question="What happened recently?" detail="A bounded buffer of recent daemon log entries for local diagnosis." />
+				</div>
+			</div>
+		</section>
+	)
+}
+
+function ObservabilityItem({ endpoint, question, detail }: { endpoint: string; question: string; detail: string }) {
+	return (
+		<div className="space-y-3 p-4">
+			<p className="text-primary">GET {endpoint}</p>
+			<p className="font-sans font-semibold text-foreground">{question}</p>
+			<p className="font-sans text-sm text-muted-foreground">{detail}</p>
+		</div>
+	)
+}
+
 function ComingSoonSection() {
 	return (
-		<section className="px-12 py-8 border-b space-y-4">
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<div>
-				<SectionHeader title="Coming Soon" markerId="07" />
+				<SectionHeader title="Coming Soon" markerId="08" />
 				<p className="text-sm text-muted-foreground mb-4">Also many more things that aren't listed.</p>
 			</div>
 			<div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
@@ -383,10 +455,10 @@ function Hero() {
 			</section>
 			<WhatIsWingmanSection />
 			<FeaturesSection />
+			<ReliableExecutionSection />
 			<ProvidersSection />
 			<PluginsSection />
 			<ClientsSection />
-			<ComingSoonSection />
 			<footer className="px-6 py-4 flex justify-between items-center">
 				<p className="text-sm text-muted-foreground font-mono mx-auto">
 					Wingman
