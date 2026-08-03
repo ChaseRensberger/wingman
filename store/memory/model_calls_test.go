@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -104,5 +105,36 @@ func TestInterruptActiveModelCalls(t *testing.T) {
 	calls, err := data.ListModelCalls(ctx, "ses_interrupt")
 	if err != nil || len(calls) != 1 || calls[0].Status != store.ModelCallStatusAborted || calls[0].ErrorType != "shutdown" || calls[0].CompletedAt.IsZero() {
 		t.Fatalf("calls = %#v, %v", calls, err)
+	}
+}
+
+func TestModelCallEventsReplay(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_model_call_events"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_model_call_events", SessionID: "ses_model_call_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := store.ModelCall{ID: "mcl_event", SessionID: "ses_model_call_events", RunID: run.Run.ID, Step: 1, Status: store.ModelCallStatusStarted, StructuredOutputJSON: []byte(`{"answer":1}`), MetadataJSON: []byte(`{"trace":"metadata"}`), Trace: []byte(`{"trace":"metadata"}`)}
+	if err := data.UpsertModelCall(ctx, call); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveModelCalls(ctx, run.Run.ID, "shutdown", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: call.SessionID}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := store.ProjectSessionModelCalls(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListModelCalls(ctx, call.SessionID)
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
 	}
 }

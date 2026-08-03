@@ -52,6 +52,31 @@ func TestSQLiteCreateSessionCommitsEventAndProjection(t *testing.T) {
 	}
 }
 
+func TestProjectSessionModelCallsRejectsImmutableIdentityChanges(t *testing.T) {
+	now := time.Now().UTC()
+	created, err := NewSessionCreatedEvent(Session{ID: "ses_call_projection", CreatedAt: Now(), UpdatedAt: Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created.Version = 1
+	call := ModelCall{ID: "mcl_projection", SessionID: "ses_call_projection", RunID: "run_projection", Step: 1, Attempt: 1, Status: ModelCallStatusStarted, StartedAt: now, CreatedAt: now, UpdatedAt: now}
+	first, err := NewSessionModelCallSavedEvent(call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Version = 2
+	call.Attempt = 2
+	call.UpdatedAt = now.Add(time.Second)
+	second, err := NewSessionModelCallSavedEvent(call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Version = 3
+	if _, err := ProjectSessionModelCalls([]AggregateEvent{created, first, second}); err == nil {
+		t.Fatal("ProjectSessionModelCalls accepted an immutable attempt change")
+	}
+}
+
 func TestSQLiteCreateSessionRollsBackEventWhenProjectionFails(t *testing.T) {
 	data := newTestSQLiteStore(t)
 	if _, err := data.db.Exec(`
@@ -398,7 +423,7 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 3); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 4); err != nil {
 		t.Fatal(err)
 	}
 

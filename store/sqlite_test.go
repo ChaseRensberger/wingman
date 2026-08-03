@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
@@ -219,6 +220,53 @@ func TestSQLiteInterruptActiveModelCalls(t *testing.T) {
 	calls, err := data.ListModelCalls(ctx, "ses_interrupt_calls")
 	if err != nil || calls[0].Status != ModelCallStatusAborted || calls[0].ErrorType != "shutdown" || calls[0].CompletedAt.IsZero() || calls[1].Status != ModelCallStatusCompleted {
 		t.Fatalf("calls = %#v, %v", calls, err)
+	}
+}
+
+func TestSQLiteModelCallEventsReplayAndRollback(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_model_call_events"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_model_call_events", SessionID: "ses_model_call_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := ModelCall{ID: "mcl_event", SessionID: "ses_model_call_events", RunID: run.Run.ID, Step: 1, Status: ModelCallStatusStarted, StructuredOutputJSON: []byte(`{"answer":1}`), MetadataJSON: []byte(`{"trace":"metadata"}`), Trace: []byte(`{"trace":"metadata"}`)}
+	if err := data.UpsertModelCall(ctx, call); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.InterruptActiveModelCalls(ctx, run.Run.ID, "shutdown", "stopped"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: call.SessionID}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := ProjectSessionModelCalls(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListModelCalls(ctx, call.SessionID)
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
+	}
+	if len(events) != 4 || events[2].Type != EventSessionModelCallSaved || events[3].Type != EventSessionModelCallSaved {
+		t.Fatalf("events = %#v", events)
+	}
+
+	err = data.UpsertModelCall(ctx, ModelCall{ID: "mcl_rollback", SessionID: call.SessionID, Step: 2, StructuredOutputJSON: []byte(`{`)})
+	if err == nil {
+		t.Fatal("UpsertModelCall succeeded with invalid opaque JSON")
+	}
+	events, err = data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: call.SessionID}, 0, 10)
+	if err != nil || len(events) != 4 {
+		t.Fatalf("events after rollback = %#v, error = %v", events, err)
+	}
+	stored, err = data.ListModelCalls(ctx, call.SessionID)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("calls after rollback = %#v, error = %v", stored, err)
 	}
 }
 

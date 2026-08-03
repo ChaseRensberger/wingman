@@ -1570,22 +1570,30 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 	}
 	createdAt := call.CreatedAt.UTC().Format(time.RFC3339Nano)
 	updatedAt := call.UpdatedAt.UTC().Format(time.RFC3339Nano)
-
-	var existingID string
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM model_calls WHERE id = ?`, call.ID).Scan(&existingID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("check model call ID: %w", err)
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return err
 	}
-	if err == sql.ErrNoRows && call.RunID != "" {
+	defer tx.Rollback()
+
+	existing, err := scanModelCall(tx.QueryRowContext(ctx, `SELECT `+modelCallColumns+` FROM model_calls WHERE id = ?`, call.ID))
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("read model call: %w", err)
+	}
+	if err == nil {
+		call.SessionID, call.RunID, call.Step, call.Attempt = existing.SessionID, existing.RunID, existing.Step, existing.Attempt
+		call.StartedAt, call.CreatedAt = existing.StartedAt, existing.CreatedAt
+		startedAt, createdAt = call.StartedAt.UTC().Format(time.RFC3339Nano), call.CreatedAt.UTC().Format(time.RFC3339Nano)
+	} else if call.RunID != "" {
 		var runExists int
-		if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM session_runs WHERE id = ? AND session_id = ?`, call.RunID, call.SessionID).Scan(&runExists); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM session_runs WHERE id = ? AND session_id = ?`, call.RunID, call.SessionID).Scan(&runExists); err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("session run %s does not belong to session %s", call.RunID, call.SessionID)
 			}
 			return fmt.Errorf("check model call session run: %w", err)
 		}
 		var existingID string
-		err := s.db.QueryRowContext(ctx, `
+		err := tx.QueryRowContext(ctx, `
 			SELECT id FROM model_calls
 			WHERE run_id = ? AND step = ? AND attempt = ?
 		`, call.RunID, call.Step, call.Attempt).Scan(&existingID)
@@ -1596,8 +1604,12 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 			return ErrModelCallAttemptConflict
 		}
 	}
+	session, err := getSessionTx(ctx, tx, call.SessionID)
+	if err != nil {
+		return err
+	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO model_calls (
 			id, session_id, run_id, assistant_message_id, step, attempt, status,
 			agent_id, model_ref, provider, provider_request_id, api, model_id,
@@ -1643,14 +1655,29 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 	if err != nil {
 		if call.RunID != "" {
 			var conflictingID string
-			conflictErr := s.db.QueryRowContext(ctx, `SELECT id FROM model_calls WHERE run_id = ? AND step = ? AND attempt = ?`, call.RunID, call.Step, call.Attempt).Scan(&conflictingID)
+			conflictErr := tx.QueryRowContext(ctx, `SELECT id FROM model_calls WHERE run_id = ? AND step = ? AND attempt = ?`, call.RunID, call.Step, call.Attempt).Scan(&conflictingID)
 			if conflictErr == nil && conflictingID != call.ID {
 				return ErrModelCallAttemptConflict
 			}
 		}
 		return fmt.Errorf("upsert model call: %w", err)
 	}
-	return nil
+	event, err := NewSessionModelCallSavedEvent(call)
+	if err != nil {
+		return err
+	}
+	event, err = appendAggregateEventTx(ctx, tx, event, session.AggregateVersion)
+	if err != nil {
+		return err
+	}
+	projected, err := projectSessionEvent(session, event)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+		return fmt.Errorf("update session aggregate version: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 // LatestModelCall returns the latest call with context usage for a session.
@@ -1715,9 +1742,48 @@ func (s *SQLiteStore) InterruptActiveModelCalls(ctx context.Context, runID, erro
 		return err
 	}
 	defer tx.Rollback()
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := tx.ExecContext(ctx, `UPDATE model_calls SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE run_id = ? AND status = ?`, ModelCallStatusAborted, errorType, errorMessage, now, now, runID, ModelCallStatusStarted); err != nil {
-		return fmt.Errorf("interrupt active model calls: %w", err)
+	rows, err := tx.QueryContext(ctx, `SELECT `+modelCallColumns+` FROM model_calls WHERE run_id = ? AND status = ?`, runID, ModelCallStatusStarted)
+	if err != nil {
+		return fmt.Errorf("list active model calls: %w", err)
+	}
+	defer rows.Close()
+	var calls []ModelCall
+	for rows.Next() {
+		call, err := scanModelCall(rows)
+		if err != nil {
+			return err
+		}
+		calls = append(calls, call)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, call := range calls {
+		call.Status, call.ErrorType, call.ErrorMessage = ModelCallStatusAborted, errorType, errorMessage
+		call.CompletedAt, call.UpdatedAt = now, now
+		if _, err := tx.ExecContext(ctx, `UPDATE model_calls SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE id = ?`, call.Status, call.ErrorType, call.ErrorMessage, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), call.ID); err != nil {
+			return fmt.Errorf("interrupt active model calls: %w", err)
+		}
+		session, err := getSessionTx(ctx, tx, call.SessionID)
+		if err != nil {
+			return err
+		}
+		event, err := NewSessionModelCallSavedEvent(call)
+		if err != nil {
+			return err
+		}
+		event, err = appendAggregateEventTx(ctx, tx, event, session.AggregateVersion)
+		if err != nil {
+			return err
+		}
+		projected, err := projectSessionEvent(session, event)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+			return fmt.Errorf("update session aggregate version: %w", err)
+		}
 	}
 	return tx.Commit(ctx)
 }

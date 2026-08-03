@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -16,15 +17,16 @@ const (
 )
 
 const (
-	EventSessionCreated      = "session.created"
-	EventSessionRenamed      = "session.renamed"
-	EventSessionMoved        = "session.moved"
-	EventSessionRunAdmitted  = "session.run.admitted"
-	EventSessionRunStarted   = "session.run.started"
-	EventSessionRunCompleted = "session.run.completed"
-	EventSessionRunFailed    = "session.run.failed"
-	EventSessionRunAborted   = "session.run.aborted"
-	EventSessionMessageSaved = "session.message.saved"
+	EventSessionCreated        = "session.created"
+	EventSessionRenamed        = "session.renamed"
+	EventSessionMoved          = "session.moved"
+	EventSessionRunAdmitted    = "session.run.admitted"
+	EventSessionRunStarted     = "session.run.started"
+	EventSessionRunCompleted   = "session.run.completed"
+	EventSessionRunFailed      = "session.run.failed"
+	EventSessionRunAborted     = "session.run.aborted"
+	EventSessionMessageSaved   = "session.message.saved"
+	EventSessionModelCallSaved = "session.model_call.saved"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -95,6 +97,47 @@ type sessionRunTransitionData struct {
 
 type sessionMessageSavedData struct {
 	Message storedMessageSnapshot `json:"message"`
+}
+
+type sessionModelCallSavedData struct {
+	Call modelCallSnapshot `json:"call"`
+}
+
+type modelCallSnapshot struct {
+	ID                   string          `json:"id"`
+	SessionID            string          `json:"session_id"`
+	RunID                string          `json:"run_id,omitempty"`
+	AssistantMessageID   string          `json:"assistant_message_id,omitempty"`
+	Step                 int             `json:"step"`
+	Attempt              int             `json:"attempt"`
+	Status               string          `json:"status"`
+	AgentID              string          `json:"agent_id,omitempty"`
+	ModelRef             string          `json:"model_ref,omitempty"`
+	Provider             string          `json:"provider,omitempty"`
+	ProviderRequestID    string          `json:"provider_request_id,omitempty"`
+	API                  string          `json:"api,omitempty"`
+	ModelID              string          `json:"model_id,omitempty"`
+	FinishReason         string          `json:"finish_reason,omitempty"`
+	StopReason           string          `json:"stop_reason,omitempty"`
+	ErrorType            string          `json:"error_type,omitempty"`
+	ErrorMessage         string          `json:"error_message,omitempty"`
+	InputTokens          int             `json:"input_tokens"`
+	OutputTokens         int             `json:"output_tokens"`
+	ReasoningTokens      int             `json:"reasoning_tokens,omitempty"`
+	CachedInputTokens    int             `json:"cached_input_tokens,omitempty"`
+	CacheWriteTokens     int             `json:"cache_write_tokens,omitempty"`
+	TotalTokens          int             `json:"total_tokens"`
+	ContextTokens        int             `json:"context_tokens"`
+	ContextWindow        int             `json:"context_window,omitempty"`
+	ContextPercent       float64         `json:"context_percent,omitempty"`
+	Cost                 *float64        `json:"cost,omitempty"`
+	StructuredOutputJSON json.RawMessage `json:"structured_output_json,omitempty"`
+	MetadataJSON         json.RawMessage `json:"metadata_json,omitempty"`
+	Trace                json.RawMessage `json:"trace,omitempty"`
+	StartedAt            time.Time       `json:"started_at"`
+	CompletedAt          time.Time       `json:"completed_at,omitempty"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
 }
 
 type storedMessageSnapshot struct {
@@ -272,6 +315,42 @@ func ProjectSessionMessageSaved(event AggregateEvent) (StoredMessage, error) {
 		message.Parts[i] = StoredPart{ID: part.ID, MessageID: part.MessageID, Sequence: part.Sequence, Kind: part.Kind, PayloadJSON: part.PayloadJSON, CreatedAt: part.CreatedAt, UpdatedAt: part.UpdatedAt}
 	}
 	return message, nil
+}
+
+// NewSessionModelCallSavedEvent records one authoritative model-call snapshot.
+func NewSessionModelCallSavedEvent(call ModelCall) (AggregateEvent, error) {
+	snapshot := modelCallSnapshot{
+		ID: call.ID, SessionID: call.SessionID, RunID: call.RunID, AssistantMessageID: call.AssistantMessageID,
+		Step: call.Step, Attempt: call.Attempt, Status: call.Status, AgentID: call.AgentID, ModelRef: call.ModelRef,
+		Provider: call.Provider, ProviderRequestID: call.ProviderRequestID, API: call.API, ModelID: call.ModelID,
+		FinishReason: call.FinishReason, StopReason: call.StopReason, ErrorType: call.ErrorType, ErrorMessage: call.ErrorMessage,
+		InputTokens: call.InputTokens, OutputTokens: call.OutputTokens, ReasoningTokens: call.ReasoningTokens,
+		CachedInputTokens: call.CachedInputTokens, CacheWriteTokens: call.CacheWriteTokens, TotalTokens: call.TotalTokens,
+		ContextTokens: call.ContextTokens, ContextWindow: call.ContextWindow, ContextPercent: call.ContextPercent, Cost: call.Cost,
+		StructuredOutputJSON: call.StructuredOutputJSON, MetadataJSON: call.MetadataJSON, Trace: call.Trace,
+		StartedAt: call.StartedAt, CompletedAt: call.CompletedAt, CreatedAt: call.CreatedAt, UpdatedAt: call.UpdatedAt,
+	}
+	data, err := json.Marshal(sessionModelCallSavedData{Call: snapshot})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.model_call.saved: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: call.SessionID}, Type: EventSessionModelCallSaved, SchemaVersion: 1, Time: call.UpdatedAt, Data: data, RunID: call.RunID}, nil
+}
+
+// ProjectSessionModelCallSaved decodes one authoritative model-call snapshot.
+func ProjectSessionModelCallSaved(event AggregateEvent) (ModelCall, error) {
+	if event.Type != EventSessionModelCallSaved || event.SchemaVersion != 1 {
+		return ModelCall{}, fmt.Errorf("project session model call: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionModelCallSavedData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return ModelCall{}, fmt.Errorf("project session model call: decode: %w", err)
+	}
+	call := ModelCall{ID: data.Call.ID, SessionID: data.Call.SessionID, RunID: data.Call.RunID, AssistantMessageID: data.Call.AssistantMessageID, Step: data.Call.Step, Attempt: data.Call.Attempt, Status: data.Call.Status, AgentID: data.Call.AgentID, ModelRef: data.Call.ModelRef, Provider: data.Call.Provider, ProviderRequestID: data.Call.ProviderRequestID, API: data.Call.API, ModelID: data.Call.ModelID, FinishReason: data.Call.FinishReason, StopReason: data.Call.StopReason, ErrorType: data.Call.ErrorType, ErrorMessage: data.Call.ErrorMessage, InputTokens: data.Call.InputTokens, OutputTokens: data.Call.OutputTokens, ReasoningTokens: data.Call.ReasoningTokens, CachedInputTokens: data.Call.CachedInputTokens, CacheWriteTokens: data.Call.CacheWriteTokens, TotalTokens: data.Call.TotalTokens, ContextTokens: data.Call.ContextTokens, ContextWindow: data.Call.ContextWindow, ContextPercent: data.Call.ContextPercent, Cost: data.Call.Cost, StructuredOutputJSON: data.Call.StructuredOutputJSON, MetadataJSON: data.Call.MetadataJSON, Trace: data.Call.Trace, StartedAt: data.Call.StartedAt, CompletedAt: data.Call.CompletedAt, CreatedAt: data.Call.CreatedAt, UpdatedAt: data.Call.UpdatedAt}
+	if call.ID == "" || call.SessionID != event.Aggregate.ID || call.RunID != event.RunID || call.Attempt < 1 || call.StartedAt.IsZero() || call.CreatedAt.IsZero() || call.UpdatedAt.IsZero() {
+		return ModelCall{}, fmt.Errorf("project session model call: snapshot does not match aggregate event")
+	}
+	return call, nil
 }
 
 func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
@@ -497,6 +576,55 @@ func ProjectSessionMessages(events []AggregateEvent) ([]StoredMessage, error) {
 	return out, nil
 }
 
+// ProjectSessionModelCalls rebuilds current model-call state from a Session aggregate stream.
+func ProjectSessionModelCalls(events []AggregateEvent) ([]ModelCall, error) {
+	if _, err := ProjectSession(events); err != nil {
+		return nil, err
+	}
+	calls := make(map[string]ModelCall)
+	type attemptKey struct {
+		runID   string
+		step    int
+		attempt int
+	}
+	attempts := make(map[attemptKey]string)
+	for _, event := range events {
+		if event.Type != EventSessionModelCallSaved {
+			continue
+		}
+		call, err := ProjectSessionModelCallSaved(event)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := calls[call.ID]; exists {
+			if call.SessionID != previous.SessionID || call.RunID != previous.RunID || call.Step != previous.Step || call.Attempt != previous.Attempt || !call.StartedAt.Equal(previous.StartedAt) || !call.CreatedAt.Equal(previous.CreatedAt) {
+				return nil, fmt.Errorf("project session model call %s: immutable identity changed", call.ID)
+			}
+		} else if call.RunID != "" {
+			key := attemptKey{runID: call.RunID, step: call.Step, attempt: call.Attempt}
+			if owner, exists := attempts[key]; exists && owner != call.ID {
+				return nil, fmt.Errorf("project session model call %s: attempt belongs to %s", call.ID, owner)
+			}
+			attempts[key] = call.ID
+		}
+		calls[call.ID] = call
+	}
+	out := make([]ModelCall, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, call)
+	}
+	slices.SortFunc(out, func(a, b ModelCall) int {
+		if a.StartedAt.Equal(b.StartedAt) {
+			return strings.Compare(a.ID, b.ID)
+		}
+		if a.StartedAt.Before(b.StartedAt) {
+			return -1
+		}
+		return 1
+	})
+	return out, nil
+}
+
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
 		(from == SessionRunStatusRunning && isSessionRunTerminal(to))
@@ -577,6 +705,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: message before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionMessageSaved(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionModelCallSaved:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: model call before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionModelCallSaved(event); err != nil {
 			return nil, err
 		}
 		projected := *session

@@ -1232,8 +1232,23 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 			}
 		}
 	}
+	event, err := store.NewSessionModelCallSavedEvent(call)
+	if err != nil {
+		return err
+	}
+	session := s.sessions[call.SessionID]
+	events := s.aggregates[event.Aggregate]
+	event.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	if err != nil {
+		return err
+	}
 	cp := copyModelCall(&call)
 	s.modelCalls[call.ID] = &cp
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.sessions[call.SessionID] = copySession(projected)
 	return nil
 }
 
@@ -1289,11 +1304,50 @@ func (s *Store) InterruptActiveModelCalls(ctx context.Context, runID, errorType,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UTC()
+	type update struct {
+		call      *store.ModelCall
+		candidate store.ModelCall
+		event     store.AggregateEvent
+		projected *store.Session
+	}
+	updates := []update{}
+	pendingEvents := make(map[store.AggregateRef][]store.AggregateEvent)
+	pendingSessions := make(map[string]*store.Session)
 	for _, call := range s.modelCalls {
 		if call.RunID == runID && call.Status == store.ModelCallStatusStarted {
-			call.Status, call.ErrorType, call.ErrorMessage = store.ModelCallStatusAborted, errorType, errorMessage
-			call.CompletedAt, call.UpdatedAt = now, now
+			candidate := copyModelCall(call)
+			candidate.Status, candidate.ErrorType, candidate.ErrorMessage = store.ModelCallStatusAborted, errorType, errorMessage
+			candidate.CompletedAt, candidate.UpdatedAt = now, now
+			event, err := store.NewSessionModelCallSavedEvent(candidate)
+			if err != nil {
+				return err
+			}
+			session := pendingSessions[candidate.SessionID]
+			if session == nil {
+				session = s.sessions[candidate.SessionID]
+			}
+			events, ok := pendingEvents[event.Aggregate]
+			if !ok {
+				events = append([]store.AggregateEvent(nil), s.aggregates[event.Aggregate]...)
+			}
+			event.Version = session.AggregateVersion + 1
+			projected, err := store.ProjectSession(append(events, event))
+			if err != nil {
+				return err
+			}
+			pendingEvents[event.Aggregate] = append(events, event)
+			pendingSessions[candidate.SessionID] = projected
+			updates = append(updates, update{call: call, candidate: candidate, event: event, projected: projected})
 		}
+	}
+	for _, update := range updates {
+		*update.call = update.candidate
+		s.globalSeq++
+		update.event.GlobalSequence = s.globalSeq
+		ref := update.event.Aggregate
+		// pending events hold the validated sequence; append the committed copy one at a time.
+		s.aggregates[ref] = append(s.aggregates[ref], copyAggregateEvent(update.event))
+		s.sessions[update.candidate.SessionID] = copySession(update.projected)
 	}
 	return nil
 }

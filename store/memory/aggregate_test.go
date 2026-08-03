@@ -200,7 +200,7 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, store.ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 3); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 4); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := data.sessions[session.ID]; ok {
