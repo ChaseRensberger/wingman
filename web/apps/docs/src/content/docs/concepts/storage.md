@@ -139,12 +139,6 @@ Schema migrations live in `store/migrations` and are embedded into the Go
 binary. `NewSQLiteStore` validates the applied migration history and runs
 pending migrations when the store opens.
 
-Migration files use this naming pattern:
-
-```text
-0001_init.sql
-```
-
 The runner applies migrations in order. Every migration and its journal record
 commit in the same SQLite transaction, so a failed migration is rolled back and
 remains pending for the next startup.
@@ -153,27 +147,6 @@ The journal must be a contiguous prefix of the migrations embedded in the
 binary. Each record must have the expected name and SQL checksum. Wingman
 refuses to start when it finds a missing, renamed, unknown, or modified applied
 migration rather than guessing how to repair the database.
-
-### Pre-Beta Policy
-
-Wingman currently ships one canonical `0001_init.sql`. While the project is
-pre-beta and has no external data-compatibility commitment, schema changes are
-folded into that initial migration. This keeps fresh databases representative of
-the intended design instead of preserving transitional tables, `_legacy`
-rebuilds, and speculative backfills.
-
-Changing the initial migration intentionally invalidates existing local
-databases. Delete the configured database and restart Wingman to create the new
-schema. There is no automatic upgrade guarantee during this phase.
-
-The migration runner, checksummed journal, ordering validation, and transactional
-application remain in place. Once Wingman has external users or a declared data
-compatibility boundary, `0001_init.sql` will be frozen and later schema changes
-will use new append-only migration files.
-
-At that point, migrations should preserve committed user data, avoid large
-startup backfills, and use resumable application work when a transformation is
-too large for one startup transaction.
 
 ## SQLite Settings
 
