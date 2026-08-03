@@ -18,12 +18,29 @@ func TestConfigValidate(t *testing.T) {
 		{Servers: map[string]ServerConfig{"local": {Type: "local"}}},
 		{Servers: map[string]ServerConfig{"remote": {Type: "remote", URL: "relative"}}},
 		{Servers: map[string]ServerConfig{"server": {Type: "unknown"}}},
-		{Servers: map[string]ServerConfig{"server": {Type: "local", Command: []string{"server"}, Timeout: -1}}},
+		{Servers: map[string]ServerConfig{"server": {Type: "local", Command: []string{"server"}, DiscoveryTimeout: -1}}},
+		{Servers: map[string]ServerConfig{"server": {Type: "local", Command: []string{"server"}, ExecutionTimeout: -1}}},
 	}
 	for _, cfg := range invalid {
 		if err := cfg.Validate(); err == nil {
 			t.Fatalf("Validate(%#v) succeeded", cfg)
 		}
+	}
+}
+
+func TestTimeouts(t *testing.T) {
+	if got := discoveryTimeout(ServerConfig{}); got != defaultTimeout {
+		t.Fatalf("default discovery timeout = %s, want %s", got, defaultTimeout)
+	}
+	if got := executionTimeout(ServerConfig{}); got != defaultTimeout {
+		t.Fatalf("default execution timeout = %s, want %s", got, defaultTimeout)
+	}
+	cfg := ServerConfig{DiscoveryTimeout: 10, ExecutionTimeout: 20}
+	if got := discoveryTimeout(cfg); got.String() != "10ms" {
+		t.Fatalf("discovery timeout = %s, want 10ms", got)
+	}
+	if got := executionTimeout(cfg); got.String() != "20ms" {
+		t.Fatalf("execution timeout = %s, want 20ms", got)
 	}
 }
 

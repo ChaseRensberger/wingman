@@ -60,7 +60,8 @@ Use `type: "remote"` for a remote MCP endpoint. Currently remote MCPs need an au
       "headers": {
         "Authorization": "Bearer ..."
       },
-      "timeout": 30000
+      "discovery_timeout": 30000,
+      "execution_timeout": 120000
     }
   }
 }
@@ -112,6 +113,10 @@ An MCP reconnect stages the connection and tool discovery before publication.
 If the candidate fails, the current healthy connection stays active. A
 successful replacement rejects new calls through stale tools, drains active
 calls for a bounded period, and then closes the old connection.
+
+`discovery_timeout` bounds connecting and listing a server's tools.
+`execution_timeout` bounds each MCP tool call. Both values are milliseconds and
+default to `30000` when omitted.
 
 ## Enable And Disable Servers
 

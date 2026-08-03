@@ -299,6 +299,31 @@ func TestCloseContextUsesOneDeadlineForAllConnections(t *testing.T) {
 	}
 }
 
+func TestToolExecutionUsesConfiguredTimeout(t *testing.T) {
+	enabled := true
+	conn := &timeoutConnection{}
+	m := newManager(Config{Servers: map[string]ServerConfig{
+		"server": {Type: "local", Command: []string{"test"}, Enabled: &enabled, ExecutionTimeout: 10},
+	}}, func(_ context.Context, _ string, _ ServerConfig) (connection, []*mcpsdk.Tool, error) {
+		return conn, testTools("current"), nil
+	})
+	if err := m.Connect(context.Background(), "server"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := currentTool(t, m).Execute(context.Background(), tool.Invocation{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("tool execution error = %v, want deadline exceeded", err)
+	}
+}
+
+type timeoutConnection struct{}
+
+func (timeoutConnection) CallTool(ctx context.Context, _ *mcpsdk.CallToolParams) (*mcpsdk.CallToolResult, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (timeoutConnection) Close() error { return nil }
+
 func waitFor(t *testing.T, ready func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

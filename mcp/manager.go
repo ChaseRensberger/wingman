@@ -77,9 +77,10 @@ type connectionGeneration struct {
 	connection connection
 	tools      []*mcpsdk.Tool
 
-	mu        sync.Mutex
-	accepting bool
-	calls     sync.WaitGroup
+	mu               sync.Mutex
+	accepting        bool
+	calls            sync.WaitGroup
+	executionTimeout time.Duration
 }
 
 // New creates a manager and connects all enabled configured servers.
@@ -284,7 +285,7 @@ func (m *Manager) Connect(ctx context.Context, name string) error {
 		return err
 	}
 
-	newGeneration := &connectionGeneration{connection: conn, tools: tools, accepting: true}
+	newGeneration := &connectionGeneration{connection: conn, tools: tools, executionTimeout: executionTimeout(state.cfg), accepting: true}
 	oldGeneration := state.generation
 	if oldGeneration != nil {
 		retireLocked(oldGeneration)
@@ -331,6 +332,8 @@ func (g *connectionGeneration) callTool(ctx context.Context, remoteName string, 
 	g.calls.Add(1)
 	g.mu.Unlock()
 	defer g.calls.Done()
+	ctx, cancel := context.WithTimeout(ctx, g.executionTimeout)
+	defer cancel()
 	return g.connection.CallTool(ctx, &mcpsdk.CallToolParams{Name: remoteName, Arguments: args})
 }
 
@@ -376,7 +379,7 @@ func retireAll(ctx context.Context, generations []*connectionGeneration) error {
 }
 
 func connectServer(ctx context.Context, name string, cfg ServerConfig) (connection, []*mcpsdk.Tool, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout(cfg))
+	ctx, cancel := context.WithTimeout(ctx, discoveryTimeout(cfg))
 	defer cancel()
 	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "wingman", Version: "dev"}, &mcpsdk.ClientOptions{Capabilities: &mcpsdk.ClientCapabilities{}})
 
@@ -451,9 +454,16 @@ func listTools(ctx context.Context, session *mcpsdk.ClientSession) ([]*mcpsdk.To
 	return nil, fmt.Errorf("list MCP tools exceeded page limit")
 }
 
-func timeout(cfg ServerConfig) time.Duration {
-	if cfg.Timeout > 0 {
-		return time.Duration(cfg.Timeout) * time.Millisecond
+func discoveryTimeout(cfg ServerConfig) time.Duration {
+	if cfg.DiscoveryTimeout > 0 {
+		return time.Duration(cfg.DiscoveryTimeout) * time.Millisecond
+	}
+	return defaultTimeout
+}
+
+func executionTimeout(cfg ServerConfig) time.Duration {
+	if cfg.ExecutionTimeout > 0 {
+		return time.Duration(cfg.ExecutionTimeout) * time.Millisecond
 	}
 	return defaultTimeout
 }

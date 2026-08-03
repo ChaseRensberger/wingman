@@ -34,7 +34,7 @@ func TestLoad(t *testing.T) {
 				"permissions":{"bash":"ask"},
 				"agent_permissions":{"research":{"read":"allow"}},
 				"provider":{"custom":{"name":"Custom","options":{"baseURL":"https://example.test","query":{"version":"1"}}}},
-				"mcp":{"filesystem":{"type":"local","command":["mcp-filesystem"],"cwd":"~/project","environment":{"HOME":"/tmp"}}}
+				"mcp":{"filesystem":{"type":"local","command":["mcp-filesystem"],"cwd":"~/project","environment":{"HOME":"/tmp"},"discovery_timeout":1000,"execution_timeout":2000}}
 			}`,
 			check: func(t *testing.T, cfg Config) {
 				if cfg.Server.Port != 8080 {
@@ -45,6 +45,12 @@ func TestLoad(t *testing.T) {
 				}
 				if got := cfg.MCP["filesystem"].Command[0]; got != "mcp-filesystem" {
 					t.Fatalf("MCP command = %q", got)
+				}
+				if got := cfg.MCP["filesystem"].DiscoveryTimeout; got != 1000 {
+					t.Fatalf("MCP discovery timeout = %d", got)
+				}
+				if got := cfg.MCP["filesystem"].ExecutionTimeout; got != 2000 {
+					t.Fatalf("MCP execution timeout = %d", got)
 				}
 			},
 		},
@@ -63,6 +69,7 @@ func TestLoad(t *testing.T) {
 		{name: "invalid MCP type", contents: `{"mcp":{"bad":{"type":"stdio","command":["bad"]}}}`, wantErr: "type must be local or remote"},
 		{name: "missing local MCP command", contents: `{"mcp":{"bad":{"type":"local"}}}`, wantErr: "local command is required"},
 		{name: "invalid remote MCP URL", contents: `{"mcp":{"bad":{"type":"remote","url":"relative"}}}`, wantErr: "absolute HTTP URL"},
+		{name: "removed MCP timeout", contents: `{"mcp":{"remote":{"type":"remote","url":"https://example.test","timeout":1000}}}`, wantErr: "unknown field"},
 		{name: "unsupported MCP OAuth", contents: `{"mcp":{"remote":{"type":"remote","url":"https://example.test","oauth":{}}}}`, wantErr: "unknown field"},
 	}
 

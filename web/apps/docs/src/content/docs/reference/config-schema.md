@@ -161,7 +161,8 @@ There is no config-file equivalent for `--no-plugins`.
 | `url` | string | remote | Remote MCP endpoint URL. Wingman tries streamable HTTP, then SSE. |
 | `headers` | object | no | HTTP headers supplied to a remote server. |
 | `enabled` | boolean | no | Whether the server connects at startup. Defaults to `true`. |
-| `timeout` | number | no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
+| `discovery_timeout` | number | no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
+| `execution_timeout` | number | no | Per-tool-call timeout in milliseconds. Defaults to `30000`. |
 
 Wingman validates MCP definitions before it constructs daemon resources. The
 `cwd` field supports `~` and `~/...` expansion for the effective user.

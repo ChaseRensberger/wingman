@@ -16,14 +16,15 @@ type Config struct {
 // ServerConfig declares one MCP server. Local servers run over stdio; remote
 // servers are tried with streamable HTTP first and SSE as a fallback.
 type ServerConfig struct {
-	Type        string            `json:"type"`
-	Command     []string          `json:"command,omitempty"`
-	CWD         string            `json:"cwd,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
-	URL         string            `json:"url,omitempty"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	Enabled     *bool             `json:"enabled,omitempty"`
-	Timeout     int               `json:"timeout,omitempty"`
+	Type             string            `json:"type"`
+	Command          []string          `json:"command,omitempty"`
+	CWD              string            `json:"cwd,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+	URL              string            `json:"url,omitempty"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	Enabled          *bool             `json:"enabled,omitempty"`
+	DiscoveryTimeout int               `json:"discovery_timeout,omitempty"`
+	ExecutionTimeout int               `json:"execution_timeout,omitempty"`
 }
 
 func (c Config) normalized() Config {
@@ -75,8 +76,11 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("MCP server name must not be empty")
 		}
-		if server.Timeout < 0 {
-			return fmt.Errorf("MCP server %q timeout must not be negative", name)
+		if server.DiscoveryTimeout < 0 {
+			return fmt.Errorf("MCP server %q discovery timeout must not be negative", name)
+		}
+		if server.ExecutionTimeout < 0 {
+			return fmt.Errorf("MCP server %q execution timeout must not be negative", name)
 		}
 		switch server.Type {
 		case "local":
