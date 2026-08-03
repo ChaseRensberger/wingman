@@ -32,5 +32,6 @@ Wingman is yet another agent harness, but this one is:
 ## Docs
 
 [Introduction](https://docs.wingman.actor/)
+
 [Quick Start](https://docs.wingman.actor/start-here/quickstart)
 
