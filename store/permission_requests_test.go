@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -54,6 +55,30 @@ func TestPermissionRequestLifecycleParity(t *testing.T) {
 			grants, err := data.ListPermissionGrants(ctx, "ses_one")
 			if err != nil || len(grants) != 2 {
 				t.Fatalf("grants = %#v, %v; want two", grants, err)
+			}
+			reader, ok := data.(store.AggregateEventReader)
+			if !ok {
+				t.Fatal("store does not expose aggregate history")
+			}
+			events, err := reader.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: "ses_one"}, 0, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			replayedRequests, err := store.ProjectSessionPermissionRequests(events)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storedRequests, err := data.ListPermissionRequests(ctx, "ses_one")
+			if err != nil || !reflect.DeepEqual(replayedRequests, storedRequests) {
+				t.Fatalf("replayed requests = %#v, stored = %#v, error = %v", replayedRequests, storedRequests, err)
+			}
+			replayedGrants, err := store.ProjectSessionPermissionGrants(events)
+			if err != nil || !reflect.DeepEqual(replayedGrants, grants) {
+				t.Fatalf("replayed grants = %#v, stored = %#v, error = %v", replayedGrants, grants, err)
+			}
+			session, err := data.GetSession("ses_one")
+			if err != nil || session.AggregateVersion != 5 {
+				t.Fatalf("session version = %#v, error = %v; want 5", session, err)
 			}
 			idempotent, err := data.ResolvePermissionRequest(ctx, store.PermissionRequestResolution{SessionID: "ses_one", RequestID: created.Request.ID, Status: store.PermissionRequestStatusApproved, Response: store.PermissionResponseAlways})
 			if err != nil || idempotent.Changed || idempotent.Event.ID != "" {
@@ -113,7 +138,7 @@ func TestPermissionRequestLifecycleParity(t *testing.T) {
 			if _, err := data.CreatePermissionRequest(ctx, store.PermissionRequest{SessionID: "ses_one", RunID: toolRun.Run.ID, ToolUseID: "tlu_permission", CallID: "call_expected", Action: "shell.exec", Resources: []string{"pwd"}}); err != nil {
 				t.Fatalf("matching tool use ownership = %v", err)
 			}
-			session, err := data.GetSession("ses_one")
+			session, err = data.GetSession("ses_one")
 			if err != nil {
 				t.Fatal(err)
 			}

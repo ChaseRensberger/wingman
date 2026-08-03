@@ -1010,7 +1010,8 @@ func (s *SQLiteStore) CreatePermissionRequest(ctx context.Context, request Permi
 		return PermissionRequestTransition{}, err
 	}
 	defer tx.Rollback()
-	if _, err := getSessionTx(ctx, tx, request.SessionID); err != nil {
+	session, err := getSessionTx(ctx, tx, request.SessionID)
+	if err != nil {
 		return PermissionRequestTransition{}, err
 	}
 	if existing, err := scanPermissionRequest(tx.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE id = ?`, request.ID)); err == nil {
@@ -1038,6 +1039,13 @@ func (s *SQLiteStore) CreatePermissionRequest(ctx context.Context, request Permi
 	event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.requested", now)
 	if err != nil {
 		return PermissionRequestTransition{}, err
+	}
+	projected, err := appendPermissionRequestAggregateTx(ctx, tx, session, request, false)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+		return PermissionRequestTransition{}, fmt.Errorf("update session aggregate version: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PermissionRequestTransition{}, err
@@ -1091,7 +1099,8 @@ func (s *SQLiteStore) ResolvePermissionRequest(ctx context.Context, resolution P
 		return PermissionRequestTransition{}, err
 	}
 	defer tx.Rollback()
-	if _, err := getSessionTx(ctx, tx, resolution.SessionID); err != nil {
+	session, err := getSessionTx(ctx, tx, resolution.SessionID)
+	if err != nil {
 		return PermissionRequestTransition{}, err
 	}
 	request, err := scanPermissionRequest(tx.QueryRowContext(ctx, `SELECT id, session_id, COALESCE(run_id, ''), COALESCE(tool_use_id, ''), call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at FROM permission_requests WHERE id = ? AND session_id = ?`, resolution.RequestID, resolution.SessionID))
@@ -1113,16 +1122,33 @@ func (s *SQLiteStore) ResolvePermissionRequest(ctx context.Context, resolution P
 	if _, err := tx.ExecContext(ctx, `UPDATE permission_requests SET status = ?, response = ?, error_type = ?, error_message = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND session_id = ? AND status = ?`, request.Status, request.Response, request.ErrorType, request.ErrorMessage, formatTime(now), formatTime(now), request.ID, request.SessionID, PermissionRequestStatusPending); err != nil {
 		return PermissionRequestTransition{}, err
 	}
-	if resolution.Response == PermissionResponseAlways {
-		for _, resource := range request.Resources {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO permission_grants (id, session_id, action, resource, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id, action, resource) DO NOTHING`, NewID(PrefixPermissionGrant), request.SessionID, request.Action, resource, formatTime(now)); err != nil {
-				return PermissionRequestTransition{}, fmt.Errorf("insert permission grant: %w", err)
-			}
-		}
-	}
 	event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.resolved", now)
 	if err != nil {
 		return PermissionRequestTransition{}, err
+	}
+	projected, err := appendPermissionRequestAggregateTx(ctx, tx, session, request, true)
+	if err != nil {
+		return PermissionRequestTransition{}, err
+	}
+	if resolution.Response == PermissionResponseAlways {
+		for _, resource := range request.Resources {
+			grant := PermissionGrant{ID: NewID(PrefixPermissionGrant), SessionID: request.SessionID, Action: request.Action, Resource: resource, CreatedAt: now}
+			result, err := tx.ExecContext(ctx, `INSERT INTO permission_grants (id, session_id, action, resource, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id, action, resource) DO NOTHING`, grant.ID, grant.SessionID, grant.Action, grant.Resource, formatTime(now))
+			if err != nil {
+				return PermissionRequestTransition{}, fmt.Errorf("insert permission grant: %w", err)
+			}
+			if changed, err := result.RowsAffected(); err != nil {
+				return PermissionRequestTransition{}, fmt.Errorf("read permission grant insert result: %w", err)
+			} else if changed != 0 {
+				projected, err = appendPermissionGrantAggregateTx(ctx, tx, projected, grant)
+				if err != nil {
+					return PermissionRequestTransition{}, err
+				}
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+		return PermissionRequestTransition{}, fmt.Errorf("update session aggregate version: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return PermissionRequestTransition{}, err
@@ -1186,9 +1212,20 @@ func (s *SQLiteStore) InterruptPendingPermissionRequests(ctx context.Context) ([
 		if _, err := tx.ExecContext(ctx, `UPDATE permission_requests SET status = ?, error_type = ?, error_message = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND status = ?`, request.Status, request.ErrorType, request.ErrorMessage, formatTime(now), formatTime(now), request.ID, PermissionRequestStatusPending); err != nil {
 			return nil, err
 		}
+		session, err := getSessionTx(ctx, tx, request.SessionID)
+		if err != nil {
+			return nil, err
+		}
 		event, err := appendPermissionEventTx(ctx, tx, request, "session.permission.resolved", now)
 		if err != nil {
 			return nil, err
+		}
+		projected, err := appendPermissionRequestAggregateTx(ctx, tx, session, request, true)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+			return nil, fmt.Errorf("update session aggregate version: %w", err)
 		}
 		transitions = append(transitions, PermissionRequestTransition{Request: request, Event: event, Changed: true})
 	}
@@ -2467,6 +2504,40 @@ func samePermissionResolution(request PermissionRequest, resolution PermissionRe
 
 func samePendingPermissionRequest(existing, request PermissionRequest) bool {
 	return existing.SessionID == request.SessionID && existing.RunID == request.RunID && existing.ToolUseID == request.ToolUseID && existing.CallID == request.CallID && existing.Action == request.Action && existing.Status == PermissionRequestStatusPending && request.Status == PermissionRequestStatusPending && slices.Equal(existing.Resources, request.Resources)
+}
+
+func appendPermissionRequestAggregateTx(ctx context.Context, tx *immediateTx, session *Session, request PermissionRequest, resolved bool) (*Session, error) {
+	var (
+		event AggregateEvent
+		err   error
+	)
+	if resolved {
+		event, err = NewSessionPermissionResolutionEvent(request)
+	} else {
+		event, err = NewSessionPermissionRequestEvent(request)
+	}
+	if err != nil {
+		return nil, err
+	}
+	event.ClientID = session.ClientID
+	event, err = appendAggregateEventTx(ctx, tx, event, session.AggregateVersion)
+	if err != nil {
+		return nil, err
+	}
+	return projectSessionEvent(session, event)
+}
+
+func appendPermissionGrantAggregateTx(ctx context.Context, tx *immediateTx, session *Session, grant PermissionGrant) (*Session, error) {
+	event, err := NewSessionPermissionGrantCreatedEvent(grant)
+	if err != nil {
+		return nil, err
+	}
+	event.ClientID = session.ClientID
+	event, err = appendAggregateEventTx(ctx, tx, event, session.AggregateVersion)
+	if err != nil {
+		return nil, err
+	}
+	return projectSessionEvent(session, event)
 }
 
 func appendPermissionEventTx(ctx context.Context, tx *immediateTx, request PermissionRequest, typ string, now time.Time) (SessionEvent, error) {

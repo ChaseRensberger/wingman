@@ -1398,13 +1398,20 @@ func (s *Store) CreatePermissionRequest(ctx context.Context, request store.Permi
 	}
 	now := time.Now().UTC()
 	request.CreatedAt, request.UpdatedAt = now, now
-	event, err := s.appendPermissionEventLocked(&request, "session.permission.requested", now)
+	event, err := s.newPermissionEventLocked(&request, "session.permission.requested", now)
+	if err != nil {
+		return store.PermissionRequestTransition{}, err
+	}
+	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(s.sessions[request.SessionID], s.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: request.SessionID}], request, false)
 	if err != nil {
 		return store.PermissionRequestTransition{}, err
 	}
 	cp := copyPermissionRequest(&request)
 	s.permissionRequests[request.ID] = &cp
-	return store.PermissionRequestTransition{Request: cp, Event: event, Changed: true}, nil
+	s.appendPermissionAggregateCommitLocked(aggregateEvent, projected)
+	eventCopy := copySessionEvent(&event)
+	s.events[event.ID] = &eventCopy
+	return store.PermissionRequestTransition{Request: cp, Event: eventCopy, Changed: true}, nil
 }
 
 func (s *Store) GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*store.PermissionRequest, error) {
@@ -1468,6 +1475,19 @@ func (s *Store) ResolvePermissionRequest(ctx context.Context, resolution store.P
 	updated := copyPermissionRequest(request)
 	updated.Status, updated.Response, updated.ErrorType, updated.ErrorMessage = resolution.Status, resolution.Response, resolution.ErrorType, resolution.ErrorMessage
 	updated.ResolvedAt, updated.UpdatedAt = now, now
+	event, err := s.newPermissionEventLocked(&updated, "session.permission.resolved", now)
+	if err != nil {
+		return store.PermissionRequestTransition{}, err
+	}
+	aggregateEvents := []store.AggregateEvent{}
+	projected := s.sessions[updated.SessionID]
+	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(projected, s.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: updated.SessionID}], updated, true)
+	if err != nil {
+		return store.PermissionRequestTransition{}, err
+	}
+	aggregateEvents = append(aggregateEvents, aggregateEvent)
+	history := append(append([]store.AggregateEvent(nil), s.aggregates[aggregateEvent.Aggregate]...), aggregateEvent)
+	grants := []store.PermissionGrant{}
 	if updated.Response == store.PermissionResponseAlways {
 		for _, resource := range updated.Resources {
 			found := false
@@ -1479,17 +1499,28 @@ func (s *Store) ResolvePermissionRequest(ctx context.Context, resolution store.P
 			}
 			if !found {
 				grant := store.PermissionGrant{ID: store.NewID(store.PrefixPermissionGrant), SessionID: updated.SessionID, Action: updated.Action, Resource: resource, CreatedAt: now}
-				cp := copyPermissionGrant(&grant)
-				s.permissionGrants[grant.ID] = &cp
+				aggregateEvent, next, err := s.permissionGrantAggregateLocked(projected, history, grant)
+				if err != nil {
+					return store.PermissionRequestTransition{}, err
+				}
+				projected = next
+				aggregateEvents = append(aggregateEvents, aggregateEvent)
+				history = append(history, aggregateEvent)
+				grants = append(grants, grant)
 			}
 		}
 	}
-	event, err := s.appendPermissionEventLocked(&updated, "session.permission.resolved", now)
-	if err != nil {
-		return store.PermissionRequestTransition{}, err
+	for _, aggregateEvent := range aggregateEvents {
+		s.appendPermissionAggregateCommitLocked(aggregateEvent, projected)
+	}
+	for _, grant := range grants {
+		cp := copyPermissionGrant(&grant)
+		s.permissionGrants[grant.ID] = &cp
 	}
 	*request = updated
-	return store.PermissionRequestTransition{Request: copyPermissionRequest(request), Event: event, Changed: true}, nil
+	eventCopy := copySessionEvent(&event)
+	s.events[event.ID] = &eventCopy
+	return store.PermissionRequestTransition{Request: copyPermissionRequest(request), Event: eventCopy, Changed: true}, nil
 }
 
 func (s *Store) ListPermissionGrants(ctx context.Context, sessionID string) ([]store.PermissionGrant, error) {
@@ -1530,16 +1561,44 @@ func (s *Store) InterruptPendingPermissionRequests(ctx context.Context) ([]store
 		}
 		return requests[i].CreatedAt.Before(requests[j].CreatedAt)
 	})
+	type pendingTransition struct {
+		request        *store.PermissionRequest
+		updated        store.PermissionRequest
+		event          store.SessionEvent
+		aggregateEvent store.AggregateEvent
+		projected      *store.Session
+	}
+	pending := make([]pendingTransition, 0, len(requests))
+	pendingSessions := make(map[string]*store.Session)
+	pendingHistories := make(map[store.AggregateRef][]store.AggregateEvent)
 	for _, request := range requests {
 		updated := copyPermissionRequest(request)
 		updated.Status, updated.ErrorType, updated.ErrorMessage = store.PermissionRequestStatusInterrupted, "process_interrupted", "permission request interrupted because the process stopped"
 		updated.ResolvedAt, updated.UpdatedAt = now, now
-		event, err := s.appendPermissionEventLocked(&updated, "session.permission.resolved", now)
+		event, err := s.newPermissionEventLocked(&updated, "session.permission.resolved", now)
 		if err != nil {
 			return nil, err
 		}
-		*request = updated
-		out = append(out, store.PermissionRequestTransition{Request: copyPermissionRequest(request), Event: event, Changed: true})
+		ref := store.AggregateRef{Type: store.AggregateSession, ID: updated.SessionID}
+		session := pendingSessions[updated.SessionID]
+		if session == nil {
+			session = s.sessions[updated.SessionID]
+			pendingHistories[ref] = append([]store.AggregateEvent(nil), s.aggregates[ref]...)
+		}
+		aggregateEvent, projected, err := s.permissionRequestAggregateLocked(session, pendingHistories[ref], updated, true)
+		if err != nil {
+			return nil, err
+		}
+		pendingSessions[updated.SessionID] = projected
+		pendingHistories[ref] = append(pendingHistories[ref], aggregateEvent)
+		pending = append(pending, pendingTransition{request: request, updated: updated, event: event, aggregateEvent: aggregateEvent, projected: projected})
+	}
+	for _, transition := range pending {
+		s.appendPermissionAggregateCommitLocked(transition.aggregateEvent, transition.projected)
+		*transition.request = transition.updated
+		eventCopy := copySessionEvent(&transition.event)
+		s.events[eventCopy.ID] = &eventCopy
+		out = append(out, store.PermissionRequestTransition{Request: copyPermissionRequest(transition.request), Event: eventCopy, Changed: true})
 	}
 	return out, nil
 }
@@ -1552,7 +1611,7 @@ func samePendingPermissionRequestMemory(existing, request store.PermissionReques
 	return existing.SessionID == request.SessionID && existing.RunID == request.RunID && existing.ToolUseID == request.ToolUseID && existing.CallID == request.CallID && existing.Action == request.Action && existing.Status == store.PermissionRequestStatusPending && request.Status == store.PermissionRequestStatusPending && slices.Equal(existing.Resources, request.Resources)
 }
 
-func (s *Store) appendPermissionEventLocked(request *store.PermissionRequest, typ string, now time.Time) (store.SessionEvent, error) {
+func (s *Store) newPermissionEventLocked(request *store.PermissionRequest, typ string, now time.Time) (store.SessionEvent, error) {
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return store.SessionEvent{}, err
@@ -1564,9 +1623,50 @@ func (s *Store) appendPermissionEventLocked(request *store.PermissionRequest, ty
 		}
 	}
 	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: typ, Time: now, SessionID: request.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
-	cp := copySessionEvent(&event)
-	s.events[event.ID] = &cp
-	return cp, nil
+	return event, nil
+}
+
+func (s *Store) permissionRequestAggregateLocked(session *store.Session, history []store.AggregateEvent, request store.PermissionRequest, resolved bool) (store.AggregateEvent, *store.Session, error) {
+	var (
+		event store.AggregateEvent
+		err   error
+	)
+	if resolved {
+		event, err = store.NewSessionPermissionResolutionEvent(request)
+	} else {
+		event, err = store.NewSessionPermissionRequestEvent(request)
+	}
+	if err != nil {
+		return store.AggregateEvent{}, nil, err
+	}
+	event.ClientID = session.ClientID
+	event.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), history...), event))
+	if err != nil {
+		return store.AggregateEvent{}, nil, err
+	}
+	return event, projected, nil
+}
+
+func (s *Store) permissionGrantAggregateLocked(session *store.Session, history []store.AggregateEvent, grant store.PermissionGrant) (store.AggregateEvent, *store.Session, error) {
+	event, err := store.NewSessionPermissionGrantCreatedEvent(grant)
+	if err != nil {
+		return store.AggregateEvent{}, nil, err
+	}
+	event.ClientID = session.ClientID
+	event.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), history...), event))
+	if err != nil {
+		return store.AggregateEvent{}, nil, err
+	}
+	return event, projected, nil
+}
+
+func (s *Store) appendPermissionAggregateCommitLocked(event store.AggregateEvent, projected *store.Session) {
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	s.aggregates[event.Aggregate] = append(s.aggregates[event.Aggregate], copyAggregateEvent(event))
+	s.sessions[event.Aggregate.ID] = copySession(projected)
 }
 
 func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {

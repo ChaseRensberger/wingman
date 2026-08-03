@@ -17,17 +17,20 @@ const (
 )
 
 const (
-	EventSessionCreated        = "session.created"
-	EventSessionRenamed        = "session.renamed"
-	EventSessionMoved          = "session.moved"
-	EventSessionRunAdmitted    = "session.run.admitted"
-	EventSessionRunStarted     = "session.run.started"
-	EventSessionRunCompleted   = "session.run.completed"
-	EventSessionRunFailed      = "session.run.failed"
-	EventSessionRunAborted     = "session.run.aborted"
-	EventSessionMessageSaved   = "session.message.saved"
-	EventSessionModelCallSaved = "session.model_call.saved"
-	EventSessionToolUseSaved   = "session.tool_use.saved"
+	EventSessionCreated                = "session.created"
+	EventSessionRenamed                = "session.renamed"
+	EventSessionMoved                  = "session.moved"
+	EventSessionRunAdmitted            = "session.run.admitted"
+	EventSessionRunStarted             = "session.run.started"
+	EventSessionRunCompleted           = "session.run.completed"
+	EventSessionRunFailed              = "session.run.failed"
+	EventSessionRunAborted             = "session.run.aborted"
+	EventSessionMessageSaved           = "session.message.saved"
+	EventSessionModelCallSaved         = "session.model_call.saved"
+	EventSessionToolUseSaved           = "session.tool_use.saved"
+	EventSessionPermissionRequested    = "session.permission.requested"
+	EventSessionPermissionResolved     = "session.permission.resolved"
+	EventSessionPermissionGrantCreated = "session.permission_grant.created"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -106,6 +109,14 @@ type sessionModelCallSavedData struct {
 
 type sessionToolUseSavedData struct {
 	ToolUse toolUseSnapshot `json:"tool_use"`
+}
+
+type sessionPermissionRequestData struct {
+	Request PermissionRequest `json:"request"`
+}
+
+type sessionPermissionGrantCreatedData struct {
+	Grant PermissionGrant `json:"grant"`
 }
 
 // []byte deliberately keeps these payloads opaque: the store does not impose
@@ -417,6 +428,85 @@ func ProjectSessionToolUseSaved(event AggregateEvent) (ToolUse, error) {
 		return ToolUse{}, fmt.Errorf("project session tool use: snapshot does not match aggregate event")
 	}
 	return use, nil
+}
+
+// NewSessionPermissionRequestEvent records a complete pending permission request snapshot.
+func NewSessionPermissionRequestEvent(request PermissionRequest) (AggregateEvent, error) {
+	if request.ID == "" || request.SessionID == "" || request.Action == "" || len(request.Resources) == 0 || request.Status != PermissionRequestStatusPending || !request.ResolvedAt.IsZero() || request.CreatedAt.IsZero() || request.UpdatedAt.IsZero() {
+		return AggregateEvent{}, fmt.Errorf("session permission request: invalid pending snapshot")
+	}
+	data, err := json.Marshal(sessionPermissionRequestData{Request: request})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.permission.requested: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: request.SessionID}, Type: EventSessionPermissionRequested, SchemaVersion: 1, Time: request.UpdatedAt, Data: data, RunID: request.RunID}, nil
+}
+
+// NewSessionPermissionResolutionEvent records a complete terminal permission request snapshot.
+func NewSessionPermissionResolutionEvent(request PermissionRequest) (AggregateEvent, error) {
+	if request.ID == "" || request.SessionID == "" || request.Action == "" || len(request.Resources) == 0 || !legalPermissionResolution(request.Status, request.Response) || request.ResolvedAt.IsZero() || request.CreatedAt.IsZero() || request.UpdatedAt.IsZero() {
+		return AggregateEvent{}, fmt.Errorf("session permission resolution: invalid terminal snapshot")
+	}
+	data, err := json.Marshal(sessionPermissionRequestData{Request: request})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.permission.resolved: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: request.SessionID}, Type: EventSessionPermissionResolved, SchemaVersion: 1, Time: request.UpdatedAt, Data: data, RunID: request.RunID}, nil
+}
+
+// NewSessionPermissionGrantCreatedEvent records a remembered permission grant.
+func NewSessionPermissionGrantCreatedEvent(grant PermissionGrant) (AggregateEvent, error) {
+	if grant.ID == "" || grant.SessionID == "" || grant.Action == "" || grant.Resource == "" || grant.CreatedAt.IsZero() {
+		return AggregateEvent{}, fmt.Errorf("session permission grant: invalid snapshot")
+	}
+	data, err := json.Marshal(sessionPermissionGrantCreatedData{Grant: grant})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.permission_grant.created: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: grant.SessionID}, Type: EventSessionPermissionGrantCreated, SchemaVersion: 1, Time: grant.CreatedAt, Data: data}, nil
+}
+
+// ProjectSessionPermissionRequest decodes a permission request snapshot.
+func ProjectSessionPermissionRequest(event AggregateEvent) (PermissionRequest, error) {
+	if (event.Type != EventSessionPermissionRequested && event.Type != EventSessionPermissionResolved) || event.SchemaVersion != 1 {
+		return PermissionRequest{}, fmt.Errorf("project session permission request: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionPermissionRequestData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return PermissionRequest{}, fmt.Errorf("project session permission request: decode: %w", err)
+	}
+	request := data.Request
+	if request.ID == "" || request.SessionID != event.Aggregate.ID || request.RunID != event.RunID || request.Action == "" || len(request.Resources) == 0 || request.CreatedAt.IsZero() || request.UpdatedAt.IsZero() {
+		return PermissionRequest{}, fmt.Errorf("project session permission request: snapshot does not match aggregate event")
+	}
+	for _, resource := range request.Resources {
+		if resource == "" {
+			return PermissionRequest{}, fmt.Errorf("project session permission request %s: empty resource", request.ID)
+		}
+	}
+	if event.Type == EventSessionPermissionRequested && (request.Status != PermissionRequestStatusPending || !request.ResolvedAt.IsZero() || request.Response != "" || request.ErrorType != "" || request.ErrorMessage != "") {
+		return PermissionRequest{}, fmt.Errorf("project session permission request %s: invalid requested snapshot", request.ID)
+	}
+	if event.Type == EventSessionPermissionResolved && (!legalPermissionResolution(request.Status, request.Response) || request.ResolvedAt.IsZero()) {
+		return PermissionRequest{}, fmt.Errorf("project session permission request %s: invalid resolved snapshot", request.ID)
+	}
+	return request, nil
+}
+
+// ProjectSessionPermissionGrantCreated decodes a remembered permission grant snapshot.
+func ProjectSessionPermissionGrantCreated(event AggregateEvent) (PermissionGrant, error) {
+	if event.Type != EventSessionPermissionGrantCreated || event.SchemaVersion != 1 {
+		return PermissionGrant{}, fmt.Errorf("project session permission grant: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionPermissionGrantCreatedData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return PermissionGrant{}, fmt.Errorf("project session permission grant: decode: %w", err)
+	}
+	grant := data.Grant
+	if grant.ID == "" || grant.SessionID != event.Aggregate.ID || grant.Action == "" || grant.Resource == "" || grant.CreatedAt.IsZero() {
+		return PermissionGrant{}, fmt.Errorf("project session permission grant: snapshot does not match aggregate event")
+	}
+	return grant, nil
 }
 
 func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
@@ -743,6 +833,105 @@ func ProjectSessionToolUses(events []AggregateEvent) ([]ToolUse, error) {
 	return out, nil
 }
 
+// ProjectSessionPermissionRequests rebuilds permission request state from a Session aggregate stream.
+func ProjectSessionPermissionRequests(events []AggregateEvent) ([]PermissionRequest, error) {
+	if _, err := ProjectSession(events); err != nil {
+		return nil, err
+	}
+	requests := make(map[string]PermissionRequest)
+	for _, event := range events {
+		if event.Type != EventSessionPermissionRequested && event.Type != EventSessionPermissionResolved {
+			continue
+		}
+		request, err := ProjectSessionPermissionRequest(event)
+		if err != nil {
+			return nil, err
+		}
+		previous, exists := requests[request.ID]
+		if !exists {
+			if event.Type != EventSessionPermissionRequested {
+				return nil, fmt.Errorf("project session permission request %s: resolution before request", request.ID)
+			}
+		} else {
+			if event.Type != EventSessionPermissionResolved || previous.Status != PermissionRequestStatusPending || !samePermissionRequestIdentity(previous, request) {
+				return nil, fmt.Errorf("project session permission request %s: invalid lifecycle snapshot", request.ID)
+			}
+		}
+		requests[request.ID] = request
+	}
+	out := make([]PermissionRequest, 0, len(requests))
+	for _, request := range requests {
+		out = append(out, request)
+	}
+	slices.SortFunc(out, func(a, b PermissionRequest) int {
+		if a.CreatedAt.Equal(b.CreatedAt) {
+			return strings.Compare(a.ID, b.ID)
+		}
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		return 1
+	})
+	return out, nil
+}
+
+// ProjectSessionPermissionGrants rebuilds remembered permission grants from a Session aggregate stream.
+func ProjectSessionPermissionGrants(events []AggregateEvent) ([]PermissionGrant, error) {
+	requests, err := ProjectSessionPermissionRequests(events)
+	if err != nil {
+		return nil, err
+	}
+	approved := make(map[string]struct{})
+	for _, request := range requests {
+		if request.Status == PermissionRequestStatusApproved && request.Response == PermissionResponseAlways {
+			for _, resource := range request.Resources {
+				approved[request.Action+"\x00"+resource] = struct{}{}
+			}
+		}
+	}
+	grants := make(map[string]PermissionGrant)
+	resources := make(map[string]string)
+	for _, event := range events {
+		if event.Type != EventSessionPermissionGrantCreated {
+			continue
+		}
+		grant, err := ProjectSessionPermissionGrantCreated(event)
+		if err != nil {
+			return nil, err
+		}
+		key := grant.Action + "\x00" + grant.Resource
+		if _, ok := approved[key]; !ok {
+			return nil, fmt.Errorf("project session permission grant %s: no always approval", grant.ID)
+		}
+		if existing, ok := grants[grant.ID]; ok || resources[key] != "" {
+			if ok && existing == grant {
+				return nil, fmt.Errorf("project session permission grant %s: duplicate event", grant.ID)
+			}
+			return nil, fmt.Errorf("project session permission grant %s: duplicate grant", grant.ID)
+		}
+		grants[grant.ID] = grant
+		resources[key] = grant.ID
+	}
+	out := make([]PermissionGrant, 0, len(grants))
+	for _, grant := range grants {
+		out = append(out, grant)
+	}
+	slices.SortFunc(out, func(a, b PermissionGrant) int {
+		if a.CreatedAt.Equal(b.CreatedAt) {
+			return strings.Compare(a.ID, b.ID)
+		}
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		return 1
+	})
+	return out, nil
+}
+
+func samePermissionRequestIdentity(a, b PermissionRequest) bool {
+	return a.ID == b.ID && a.SessionID == b.SessionID && a.RunID == b.RunID && a.ToolUseID == b.ToolUseID && a.CallID == b.CallID && a.Action == b.Action && a.CreatedAt.Equal(b.CreatedAt) && slices.Equal(a.Resources, b.Resources)
+}
+
 func legalProjectedToolUseTransition(from, to string) bool {
 	return legalToolUseTransition(from, to)
 }
@@ -847,6 +1036,26 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: tool use before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionToolUseSaved(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionPermissionRequested, EventSessionPermissionResolved:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: permission request before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionPermissionRequest(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionPermissionGrantCreated:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: permission grant before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionPermissionGrantCreated(event); err != nil {
 			return nil, err
 		}
 		projected := *session

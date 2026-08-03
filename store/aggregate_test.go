@@ -383,6 +383,31 @@ func TestSQLiteMessageSnapshotRollsBackWithAggregateEvent(t *testing.T) {
 	}
 }
 
+func TestSQLitePermissionRequestRollsBackWithAggregateEvent(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_permission_rollback"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`CREATE TRIGGER fail_permission_event BEFORE INSERT ON aggregate_events WHEN NEW.event_type = 'session.permission.requested' BEGIN SELECT RAISE(ABORT, 'reject'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.CreatePermissionRequest(ctx, PermissionRequest{ID: "prq_rollback", SessionID: "ses_permission_rollback", Action: "shell.exec", Resources: []string{"pwd"}}); err == nil {
+		t.Fatal("CreatePermissionRequest succeeded")
+	}
+	requests, err := data.ListPermissionRequests(ctx, "ses_permission_rollback")
+	if err != nil || len(requests) != 0 {
+		t.Fatalf("requests = %#v, error = %v", requests, err)
+	}
+	if watermark, err := data.SessionEventWatermark(ctx, "ses_permission_rollback"); err != nil || watermark != 0 {
+		t.Fatalf("watermark = %d, error = %v", watermark, err)
+	}
+	session, err := data.GetSession("ses_permission_rollback")
+	if err != nil || session.AggregateVersion != 1 {
+		t.Fatalf("session = %#v, error = %v", session, err)
+	}
+}
+
 func TestSQLiteSessionMetadataNoOpAndRollback(t *testing.T) {
 	data := newTestSQLiteStore(t)
 	session := &Session{ID: "ses_noop", Title: "Same"}
