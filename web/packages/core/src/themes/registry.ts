@@ -12,7 +12,7 @@ export type Theme = {
 export const themes: readonly Theme[] = [
   {
     id: "default",
-    label: "Default",
+    label: "WingTheme",
     modes: ["light", "dark"],
     shiki: { light: "github-light", dark: "github-dark" },
   },
