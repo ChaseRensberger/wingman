@@ -138,6 +138,10 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	store := &SQLiteStore{db: db}
+	if err := store.validateSessionAggregateCompatibility(context.Background()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("validate session aggregate compatibility: %w", err)
+	}
 	if !dbExists {
 		if err := store.seedDefaultAgents(); err != nil {
 			db.Close()
@@ -146,6 +150,174 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	return store, nil
+}
+
+// RebuildSessionProjections replaces one Session aggregate's derived state
+// from its immutable aggregate history. Aggregate and public session events
+// are intentionally left untouched.
+func (s *SQLiteStore) RebuildSessionProjections(ctx context.Context, sessionID string) error {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	projection, err := projectSQLiteSessionAggregate(ctx, tx, sessionID)
+	if err != nil {
+		return fmt.Errorf("rebuild session projections %s: %w", sessionID, err)
+	}
+	if err := replaceSQLiteSessionProjection(ctx, tx, projection); err != nil {
+		return fmt.Errorf("rebuild session projections %s: %w", sessionID, err)
+	}
+	return tx.Commit(ctx)
+}
+
+// RebuildAllSessionProjections replaces every Session aggregate's derived
+// state in one transaction. Aggregate and public session events are preserved.
+func (s *SQLiteStore) RebuildAllSessionProjections(ctx context.Context) error {
+	tx, err := s.beginImmediate(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	ids, err := sqliteSessionAggregateIDs(ctx, tx)
+	if err != nil {
+		return err
+	}
+	projections := make([]SessionAggregateProjection, 0, len(ids))
+	for _, id := range ids {
+		projection, err := projectSQLiteSessionAggregate(ctx, tx, id)
+		if err != nil {
+			return fmt.Errorf("rebuild session projections %s: %w", id, err)
+		}
+		projections = append(projections, projection)
+	}
+	for _, projection := range projections {
+		if err := replaceSQLiteSessionProjection(ctx, tx, projection); err != nil {
+			return fmt.Errorf("replace session projection %s: %w", projection.Session.ID, err)
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *SQLiteStore) validateSessionAggregateCompatibility(ctx context.Context) error {
+	ids, err := sqliteSessionAggregateIDs(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := projectSQLiteSessionAggregate(ctx, s.db, id); err != nil {
+			return fmt.Errorf("session %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
+type aggregateEventQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func sqliteSessionAggregateIDs(ctx context.Context, q aggregateEventQueryer) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT DISTINCT aggregate_id FROM aggregate_events WHERE aggregate_type = ? ORDER BY aggregate_id`, AggregateSession)
+	if err != nil {
+		return nil, fmt.Errorf("list session aggregates: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan session aggregate: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func projectSQLiteSessionAggregate(ctx context.Context, q aggregateEventQueryer, sessionID string) (SessionAggregateProjection, error) {
+	rows, err := q.QueryContext(ctx, `SELECT global_sequence, id, version, event_type, schema_version, payload_json, created_at, COALESCE(causation_id, ''), COALESCE(correlation_id, ''), COALESCE(client_id, ''), COALESCE(run_id, '') FROM aggregate_events WHERE aggregate_type = ? AND aggregate_id = ? ORDER BY version`, AggregateSession, sessionID)
+	if err != nil {
+		return SessionAggregateProjection{}, fmt.Errorf("read aggregate history: %w", err)
+	}
+	defer rows.Close()
+	events := []AggregateEvent{}
+	for rows.Next() {
+		var event AggregateEvent
+		var payload []byte
+		var createdAt string
+		event.Aggregate = AggregateRef{Type: AggregateSession, ID: sessionID}
+		if err := rows.Scan(&event.GlobalSequence, &event.ID, &event.Version, &event.Type, &event.SchemaVersion, &payload, &createdAt, &event.CausationID, &event.CorrelationID, &event.ClientID, &event.RunID); err != nil {
+			return SessionAggregateProjection{}, fmt.Errorf("scan aggregate event: %w", err)
+		}
+		event.Data = append(json.RawMessage(nil), payload...)
+		if event.Time, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
+			return SessionAggregateProjection{}, fmt.Errorf("parse aggregate event time: %w", err)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	return ProjectSessionAggregate(events)
+}
+
+func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projection SessionAggregateProjection) error {
+	id := projection.Session.ID
+	for _, table := range []string{"permission_requests", "permission_grants", "tool_uses", "model_calls"} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE session_id = ?`, id); err != nil {
+			return fmt.Errorf("clear %s: %w", table, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM parts WHERE message_id IN (SELECT id FROM messages WHERE session_id = ?)`, id); err != nil {
+		return fmt.Errorf("clear parts: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, id); err != nil {
+		return fmt.Errorf("clear messages: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM session_runs WHERE session_id = ?`, id); err != nil {
+		return fmt.Errorf("clear session runs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, work_dir, workspace_id, client_id, created_at, updated_at, aggregate_version) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, work_dir = excluded.work_dir, workspace_id = excluded.workspace_id, client_id = excluded.client_id, created_at = excluded.created_at, updated_at = excluded.updated_at, aggregate_version = excluded.aggregate_version`, id, projection.Session.Title, projection.Session.WorkDir, projection.Session.WorkspaceID, projection.Session.ClientID, projection.Session.CreatedAt, projection.Session.UpdatedAt, projection.Session.AggregateVersion); err != nil {
+		return fmt.Errorf("replace session: %w", err)
+	}
+	for _, run := range projection.Runs {
+		agent, err := json.Marshal(run.Agent)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agent), nullableBytes(run.OutputSchemaJSON), run.ErrorType, run.ErrorMessage, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.CompletedAt), formatTime(run.UpdatedAt)); err != nil {
+			return fmt.Errorf("insert session run: %w", err)
+		}
+	}
+	for _, message := range projection.Messages {
+		if err := insertMessageTx(ctx, tx, message, message.CreatedAt); err != nil {
+			return err
+		}
+	}
+	for _, call := range projection.ModelCalls {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO model_calls (id, session_id, run_id, assistant_message_id, step, attempt, status, agent_id, model_ref, provider, provider_request_id, api, model_id, finish_reason, stop_reason, error_type, error_message, input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, total_tokens, context_tokens, context_window, context_percent, cost, structured_output_json, metadata_json, started_at, completed_at, created_at, updated_at) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, call.ID, call.SessionID, call.RunID, call.AssistantMessageID, call.Step, call.Attempt, call.Status, call.AgentID, call.ModelRef, call.Provider, call.ProviderRequestID, call.API, call.ModelID, call.FinishReason, call.StopReason, call.ErrorType, call.ErrorMessage, call.InputTokens, call.OutputTokens, call.ReasoningTokens, call.CachedInputTokens, call.CacheWriteTokens, call.TotalTokens, call.ContextTokens, call.ContextWindow, call.ContextPercent, call.Cost, nullableBytes(call.StructuredOutputJSON), nullableBytes(call.MetadataJSON), formatTime(call.StartedAt), nullableTime(call.CompletedAt), formatTime(call.CreatedAt), formatTime(call.UpdatedAt)); err != nil {
+			return fmt.Errorf("insert model call: %w", err)
+		}
+	}
+	for _, use := range projection.ToolUses {
+		if err := insertToolUse(ctx, tx, use); err != nil {
+			return fmt.Errorf("insert tool use: %w", err)
+		}
+	}
+	for _, request := range projection.PermissionRequests {
+		resources, err := json.Marshal(request.Resources)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO permission_requests (id, session_id, run_id, tool_use_id, call_id, action, resources_json, status, response, error_type, error_message, created_at, resolved_at, updated_at) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, request.ID, request.SessionID, request.RunID, request.ToolUseID, request.CallID, request.Action, string(resources), request.Status, request.Response, request.ErrorType, request.ErrorMessage, formatTime(request.CreatedAt), nullableTime(request.ResolvedAt), formatTime(request.UpdatedAt)); err != nil {
+			return fmt.Errorf("insert permission request: %w", err)
+		}
+	}
+	for _, grant := range projection.PermissionGrants {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO permission_grants (id, session_id, action, resource, created_at) VALUES (?, ?, ?, ?, ?)`, grant.ID, grant.SessionID, grant.Action, grant.Resource, formatTime(grant.CreatedAt)); err != nil {
+			return fmt.Errorf("insert permission grant: %w", err)
+		}
+	}
+	return nil
 }
 
 // Close releases the underlying database handle.

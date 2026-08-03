@@ -801,6 +801,119 @@ func (s *Store) ListAggregateEvents(_ context.Context, aggregate store.Aggregate
 	return out, nil
 }
 
+// RebuildSessionProjections replaces one Session aggregate's derived state
+// from immutable aggregate history. Public session events remain untouched.
+func (s *Store) RebuildSessionProjections(_ context.Context, sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ref := store.AggregateRef{Type: store.AggregateSession, ID: sessionID}
+	projection, err := store.ProjectSessionAggregate(copyAggregateEvents(s.aggregates[ref]))
+	if err != nil {
+		return fmt.Errorf("rebuild session projections %s: %w", sessionID, err)
+	}
+	s.replaceSessionProjectionLocked(projection)
+	return nil
+}
+
+// RebuildAllSessionProjections replaces all Session aggregate projections only
+// after every aggregate history has been successfully validated and copied.
+func (s *Store) RebuildAllSessionProjections(_ context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	projections := make([]store.SessionAggregateProjection, 0)
+	for ref, events := range s.aggregates {
+		if ref.Type != store.AggregateSession {
+			continue
+		}
+		projection, err := store.ProjectSessionAggregate(copyAggregateEvents(events))
+		if err != nil {
+			return fmt.Errorf("rebuild session projections %s: %w", ref.ID, err)
+		}
+		projections = append(projections, projection)
+	}
+	for _, projection := range projections {
+		s.replaceSessionProjectionLocked(projection)
+	}
+	return nil
+}
+
+func (s *Store) replaceSessionProjectionLocked(projection store.SessionAggregateProjection) {
+	id := projection.Session.ID
+	for key, value := range s.runs {
+		if value.SessionID == id {
+			delete(s.runs, key)
+		}
+	}
+	for key, value := range s.parts {
+		if message, ok := s.messages[value.MessageID]; ok && message.SessionID == id {
+			delete(s.parts, key)
+		}
+	}
+	for key, value := range s.messages {
+		if value.SessionID == id {
+			delete(s.messages, key)
+		}
+	}
+	for key, value := range s.modelCalls {
+		if value.SessionID == id {
+			delete(s.modelCalls, key)
+		}
+	}
+	for key, value := range s.toolUses {
+		if value.SessionID == id {
+			delete(s.toolUses, key)
+		}
+	}
+	for key, value := range s.permissionRequests {
+		if value.SessionID == id {
+			delete(s.permissionRequests, key)
+		}
+	}
+	for key, value := range s.permissionGrants {
+		if value.SessionID == id {
+			delete(s.permissionGrants, key)
+		}
+	}
+	s.sessions[id] = copySession(projection.Session)
+	for _, run := range projection.Runs {
+		cp := copySessionRun(&run)
+		s.runs[run.ID] = &cp
+	}
+	for _, message := range projection.Messages {
+		cp := copyMessage(&message)
+		cp.Parts = nil
+		s.messages[message.ID] = &cp
+		for _, part := range message.Parts {
+			partCopy := copyPart(&part)
+			s.parts[part.ID] = &partCopy
+		}
+	}
+	for _, call := range projection.ModelCalls {
+		cp := copyModelCall(&call)
+		s.modelCalls[call.ID] = &cp
+	}
+	for _, use := range projection.ToolUses {
+		cp := copyToolUse(&use)
+		s.toolUses[use.ID] = &cp
+	}
+	for _, request := range projection.PermissionRequests {
+		cp := copyPermissionRequest(&request)
+		s.permissionRequests[request.ID] = &cp
+	}
+	for _, grant := range projection.PermissionGrants {
+		cp := copyPermissionGrant(&grant)
+		s.permissionGrants[grant.ID] = &cp
+	}
+}
+
+func copyAggregateEvents(events []store.AggregateEvent) []store.AggregateEvent {
+	copied := make([]store.AggregateEvent, len(events))
+	for i, event := range events {
+		copied[i] = copyAggregateEvent(event)
+	}
+	return copied
+}
+
 func (s *Store) GetSession(id string) (*store.Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

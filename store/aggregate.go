@@ -928,6 +928,56 @@ func ProjectSessionPermissionGrants(events []AggregateEvent) ([]PermissionGrant,
 	return out, nil
 }
 
+// SessionAggregateProjection is the complete rebuildable projection of one
+// Session aggregate stream.
+type SessionAggregateProjection struct {
+	Session            *Session
+	Runs               []SessionRun
+	Messages           []StoredMessage
+	ModelCalls         []ModelCall
+	ToolUses           []ToolUse
+	PermissionRequests []PermissionRequest
+	PermissionGrants   []PermissionGrant
+}
+
+// ProjectSessionAggregate rebuilds every Session projection from one ordered
+// aggregate stream. It validates every supported event type before returning
+// a projection that can be atomically installed by a store.
+func ProjectSessionAggregate(events []AggregateEvent) (SessionAggregateProjection, error) {
+	session, err := ProjectSession(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	runs, err := ProjectSessionRuns(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	messages, err := ProjectSessionMessages(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	modelCalls, err := ProjectSessionModelCalls(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	toolUses, err := ProjectSessionToolUses(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	permissionRequests, err := ProjectSessionPermissionRequests(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	permissionGrants, err := ProjectSessionPermissionGrants(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
+	return SessionAggregateProjection{
+		Session: session, Runs: runs, Messages: messages, ModelCalls: modelCalls,
+		ToolUses: toolUses, PermissionRequests: permissionRequests, PermissionGrants: permissionGrants,
+	}, nil
+}
+
 func samePermissionRequestIdentity(a, b PermissionRequest) bool {
 	return a.ID == b.ID && a.SessionID == b.SessionID && a.RunID == b.RunID && a.ToolUseID == b.ToolUseID && a.CallID == b.CallID && a.Action == b.Action && a.CreatedAt.Equal(b.CreatedAt) && slices.Equal(a.Resources, b.Resources)
 }

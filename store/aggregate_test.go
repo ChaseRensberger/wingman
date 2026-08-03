@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -268,6 +269,82 @@ func TestSQLiteRebuildsAllSessionProjectionsFromAggregateHistory(t *testing.T) {
 		if !reflect.DeepEqual(projected, stored) {
 			t.Fatalf("rebuild %s = %#v, stored = %#v", stored.ID, projected, stored)
 		}
+	}
+}
+
+func TestSQLiteRebuildSessionProjectionsRestoresDerivedRows(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	session := &Session{ID: "ses_rebuild_rows", Title: "original"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	message := StoredMessage{ID: "msg_rebuild_rows", SessionID: session.ID, Idx: 1, Role: "assistant", Revision: 1, State: "completed", Parts: []StoredPart{{ID: "prt_rebuild_rows", MessageID: "msg_rebuild_rows", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"original"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := ProjectSessionAggregate(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`DELETE FROM parts; DELETE FROM messages; UPDATE sessions SET title = 'disturbed', aggregate_version = 0 WHERE id = ?`, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.RebuildSessionProjections(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	gotSession, err := data.GetSession(session.ID)
+	if err != nil || !reflect.DeepEqual(gotSession, want.Session) {
+		t.Fatalf("session = %#v, %v; want %#v", gotSession, err, want.Session)
+	}
+	gotMessages, err := data.ListMessages(ctx, session.ID)
+	if err != nil || !reflect.DeepEqual(gotMessages, want.Messages) {
+		t.Fatalf("messages = %#v, %v; want %#v", gotMessages, err, want.Messages)
+	}
+}
+
+func TestSQLiteStartupRejectsUnsupportedSessionAggregateEvent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wingman.db")
+	data, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`INSERT INTO aggregate_events (id, aggregate_type, aggregate_id, version, event_type, schema_version, payload_json, created_at) VALUES ('evt_unsupported', 'session', 'ses_unsupported', 1, 'session.future', 99, '{}', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSQLiteStore(path)
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("NewSQLiteStore error = %v, want unsupported aggregate event", err)
+	}
+}
+
+func TestSQLiteRebuildAllSessionProjectionsRollsBackOnInvalidHistory(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	for _, id := range []string{"ses_rebuild_valid", "ses_rebuild_invalid"} {
+		if err := data.CreateSession(&Session{ID: id, Title: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := data.db.Exec(`UPDATE aggregate_events SET schema_version = 99 WHERE aggregate_type = 'session' AND aggregate_id = 'ses_rebuild_invalid'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`UPDATE sessions SET title = 'disturbed' WHERE id = 'ses_rebuild_valid'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.RebuildAllSessionProjections(ctx); err == nil {
+		t.Fatal("RebuildAllSessionProjections succeeded with invalid history")
+	}
+	valid, err := data.GetSession("ses_rebuild_valid")
+	if err != nil || valid.Title != "disturbed" {
+		t.Fatalf("valid session = %#v, %v; want untouched disturbed projection", valid, err)
 	}
 }
 

@@ -33,6 +33,60 @@ func TestCreateSessionCommitsEventAndProjection(t *testing.T) {
 	}
 }
 
+func TestRebuildSessionProjectionsRestoresDerivedMaps(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	session := &store.Session{ID: "ses_memory_rebuild"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	message := store.StoredMessage{ID: "msg_memory_rebuild", SessionID: session.ID, Idx: 1, Role: "assistant", Revision: 1, State: "completed", Parts: []store.StoredPart{{ID: "prt_memory_rebuild", MessageID: "msg_memory_rebuild", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"original"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: session.ID}, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := store.ProjectSessionAggregate(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(data.messages, message.ID)
+	delete(data.parts, message.Parts[0].ID)
+	data.sessions[session.ID].Title = "disturbed"
+	if err := data.RebuildSessionProjections(ctx, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	gotSession, err := data.GetSession(session.ID)
+	if err != nil || !reflect.DeepEqual(gotSession, want.Session) {
+		t.Fatalf("session = %#v, %v; want %#v", gotSession, err, want.Session)
+	}
+	gotMessages, err := data.ListMessages(ctx, session.ID)
+	if err != nil || !reflect.DeepEqual(gotMessages, want.Messages) {
+		t.Fatalf("messages = %#v, %v; want %#v", gotMessages, err, want.Messages)
+	}
+}
+
+func TestRebuildAllSessionProjectionsDoesNotPartiallyCommit(t *testing.T) {
+	data := NewStore()
+	for _, id := range []string{"ses_memory_valid", "ses_memory_invalid"} {
+		if err := data.CreateSession(&store.Session{ID: id, Title: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	valid := data.sessions["ses_memory_valid"]
+	valid.Title = "disturbed"
+	invalidRef := store.AggregateRef{Type: store.AggregateSession, ID: "ses_memory_invalid"}
+	data.aggregates[invalidRef][0].SchemaVersion = 99
+	if err := data.RebuildAllSessionProjections(context.Background()); err == nil {
+		t.Fatal("RebuildAllSessionProjections succeeded with invalid history")
+	}
+	if got := data.sessions["ses_memory_valid"].Title; got != "disturbed" {
+		t.Fatalf("valid session title = %q, want untouched projection", got)
+	}
+}
+
 func TestCreateSessionRejectsDuplicateAggregate(t *testing.T) {
 	data := NewStore()
 	if err := data.CreateSession(&store.Session{ID: "ses_duplicate"}); err != nil {
