@@ -341,6 +341,14 @@ func TestSQLiteToolUseLifecycleAndInterruption(t *testing.T) {
 	if err != nil || len(uses) != 1 || uses[0].Status != ToolUseStatusInterrupted || uses[0].ErrorType != "process_interrupted" || uses[0].CompletedAt.IsZero() {
 		t.Fatalf("uses = %#v, error = %v", uses, err)
 	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: "ses_tools"}, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := ProjectSessionToolUses(events)
+	if err != nil || !reflect.DeepEqual(projected, uses) {
+		t.Fatalf("projected uses = %#v, stored = %#v, error = %v", projected, uses, err)
+	}
 	interrupted := uses[0]
 	interrupted.Status = ToolUseStatusCompleted
 	if err := data.SaveToolUse(ctx, interrupted); !errors.Is(err, ErrToolUseInvalidTransition) {

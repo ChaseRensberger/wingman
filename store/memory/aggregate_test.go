@@ -171,6 +171,45 @@ func TestMessageSnapshotsUpdateAggregateProjection(t *testing.T) {
 	}
 }
 
+func TestToolUseSnapshotsUpdateAggregateProjection(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_memory_tool"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_memory_tool", SessionID: "ses_memory_tool"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := store.ToolUse{ID: "tlu_memory", SessionID: "ses_memory_tool", RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_memory", Name: "shell", Status: store.ToolUseStatusProposed, InputJSON: []byte(`{"command":"pwd"}`)}
+	for _, status := range []string{store.ToolUseStatusProposed, store.ToolUseStatusAuthorized, store.ToolUseStatusStarted, store.ToolUseStatusCompleted} {
+		use.Status = status
+		if status == store.ToolUseStatusAuthorized {
+			use.InputJSON = []byte(`not json, intentionally opaque`)
+		}
+		if status == store.ToolUseStatusCompleted {
+			use.Output = "ok"
+			use.StructuredJSON = []byte(`also opaque`)
+			use.MetadataJSON = []byte(`metadata bytes`)
+		}
+		if err := data.SaveToolUse(ctx, use); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: use.SessionID}, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := store.ProjectSessionToolUses(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListToolUses(ctx, use.SessionID)
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
+	}
+}
+
 func TestPurgeSessionRemovesAllState(t *testing.T) {
 	data := NewStore()
 	ctx := context.Background()
@@ -200,7 +239,7 @@ func TestPurgeSessionRemovesAllState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, store.ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 4); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := data.sessions[session.ID]; ok {

@@ -1842,6 +1842,9 @@ func (s *SQLiteStore) SaveToolUse(ctx context.Context, use ToolUse) error {
 		if err := insertToolUse(ctx, tx, use); err != nil {
 			return fmt.Errorf("insert tool use: %w", err)
 		}
+		if err := appendToolUseAggregateTx(ctx, tx, use); err != nil {
+			return err
+		}
 		return tx.Commit(ctx)
 	}
 	if !sameToolUseIdentity(existing, use) {
@@ -1888,7 +1891,33 @@ func (s *SQLiteStore) SaveToolUse(ctx context.Context, use ToolUse) error {
 	if err := updateToolUse(ctx, tx, use); err != nil {
 		return fmt.Errorf("update tool use: %w", err)
 	}
+	if err := appendToolUseAggregateTx(ctx, tx, use); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+func appendToolUseAggregateTx(ctx context.Context, tx *immediateTx, use ToolUse) error {
+	session, err := getSessionTx(ctx, tx, use.SessionID)
+	if err != nil {
+		return err
+	}
+	event, err := NewSessionToolUseSavedEvent(use)
+	if err != nil {
+		return err
+	}
+	event, err = appendAggregateEventTx(ctx, tx, event, session.AggregateVersion)
+	if err != nil {
+		return err
+	}
+	projected, err := projectSessionEvent(session, event)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, projected.AggregateVersion, projected.ID); err != nil {
+		return fmt.Errorf("update session tool use aggregate version: %w", err)
+	}
+	return nil
 }
 
 // ListToolUses returns tool uses in their source order for a session.
@@ -1919,10 +1948,35 @@ func (s *SQLiteStore) InterruptActiveToolUses(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE status IN (?, ?, ?)`, ToolUseStatusInterrupted, "process_interrupted", "tool use interrupted because the process stopped", now, now, ToolUseStatusProposed, ToolUseStatusAuthorized, ToolUseStatusStarted)
+	rows, err := tx.QueryContext(ctx, `SELECT `+toolUseColumns+` FROM tool_uses WHERE status IN (?, ?, ?) ORDER BY proposed_at, step, ordinal, id`, ToolUseStatusProposed, ToolUseStatusAuthorized, ToolUseStatusStarted)
 	if err != nil {
-		return fmt.Errorf("interrupt active tool uses: %w", err)
+		return fmt.Errorf("list active tool uses: %w", err)
+	}
+	var uses []ToolUse
+	for rows.Next() {
+		use, err := scanToolUse(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		uses = append(uses, use)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, use := range uses {
+		use.Status, use.ErrorType, use.ErrorMessage = ToolUseStatusInterrupted, "process_interrupted", "tool use interrupted because the process stopped"
+		use.CompletedAt, use.UpdatedAt = now, now
+		if err := updateToolUse(ctx, tx, use); err != nil {
+			return fmt.Errorf("interrupt active tool uses: %w", err)
+		}
+		if err := appendToolUseAggregateTx(ctx, tx, use); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

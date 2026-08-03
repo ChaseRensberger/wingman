@@ -27,6 +27,7 @@ const (
 	EventSessionRunAborted     = "session.run.aborted"
 	EventSessionMessageSaved   = "session.message.saved"
 	EventSessionModelCallSaved = "session.model_call.saved"
+	EventSessionToolUseSaved   = "session.tool_use.saved"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -101,6 +102,38 @@ type sessionMessageSavedData struct {
 
 type sessionModelCallSavedData struct {
 	Call modelCallSnapshot `json:"call"`
+}
+
+type sessionToolUseSavedData struct {
+	ToolUse toolUseSnapshot `json:"tool_use"`
+}
+
+// []byte deliberately keeps these payloads opaque: the store does not impose
+// JSON validity or rewrite their bytes while serializing aggregate history.
+type toolUseSnapshot struct {
+	ID                 string    `json:"id"`
+	SessionID          string    `json:"session_id"`
+	RunID              string    `json:"run_id,omitempty"`
+	ModelCallID        string    `json:"model_call_id,omitempty"`
+	AssistantMessageID string    `json:"assistant_message_id,omitempty"`
+	PartID             string    `json:"part_id,omitempty"`
+	Step               int       `json:"step"`
+	Ordinal            int       `json:"ordinal"`
+	CallID             string    `json:"call_id,omitempty"`
+	Name               string    `json:"name"`
+	Status             string    `json:"status"`
+	InputJSON          []byte    `json:"input_json,omitempty"`
+	Output             string    `json:"output,omitempty"`
+	StructuredJSON     []byte    `json:"structured_json,omitempty"`
+	MetadataJSON       []byte    `json:"metadata_json,omitempty"`
+	ErrorType          string    `json:"error_type,omitempty"`
+	ErrorMessage       string    `json:"error_message,omitempty"`
+	ProposedAt         time.Time `json:"proposed_at"`
+	AuthorizedAt       time.Time `json:"authorized_at,omitempty"`
+	StartedAt          time.Time `json:"started_at,omitempty"`
+	CompletedAt        time.Time `json:"completed_at,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type modelCallSnapshot struct {
@@ -351,6 +384,39 @@ func ProjectSessionModelCallSaved(event AggregateEvent) (ModelCall, error) {
 		return ModelCall{}, fmt.Errorf("project session model call: snapshot does not match aggregate event")
 	}
 	return call, nil
+}
+
+// NewSessionToolUseSavedEvent records one authoritative tool-use lifecycle snapshot.
+func NewSessionToolUseSavedEvent(use ToolUse) (AggregateEvent, error) {
+	snapshot := toolUseSnapshot{
+		ID: use.ID, SessionID: use.SessionID, RunID: use.RunID, ModelCallID: use.ModelCallID,
+		AssistantMessageID: use.AssistantMessageID, PartID: use.PartID, Step: use.Step, Ordinal: use.Ordinal,
+		CallID: use.CallID, Name: use.Name, Status: use.Status, InputJSON: use.InputJSON, Output: use.Output,
+		StructuredJSON: use.StructuredJSON, MetadataJSON: use.MetadataJSON, ErrorType: use.ErrorType,
+		ErrorMessage: use.ErrorMessage, ProposedAt: use.ProposedAt, AuthorizedAt: use.AuthorizedAt,
+		StartedAt: use.StartedAt, CompletedAt: use.CompletedAt, CreatedAt: use.CreatedAt, UpdatedAt: use.UpdatedAt,
+	}
+	data, err := json.Marshal(sessionToolUseSavedData{ToolUse: snapshot})
+	if err != nil {
+		return AggregateEvent{}, fmt.Errorf("marshal session.tool_use.saved: %w", err)
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: use.SessionID}, Type: EventSessionToolUseSaved, SchemaVersion: 1, Time: use.UpdatedAt, Data: data, RunID: use.RunID}, nil
+}
+
+// ProjectSessionToolUseSaved decodes one authoritative tool-use lifecycle snapshot.
+func ProjectSessionToolUseSaved(event AggregateEvent) (ToolUse, error) {
+	if event.Type != EventSessionToolUseSaved || event.SchemaVersion != 1 {
+		return ToolUse{}, fmt.Errorf("project session tool use: unsupported event %q schema version %d", event.Type, event.SchemaVersion)
+	}
+	var data sessionToolUseSavedData
+	if err := json.Unmarshal(event.Data, &data); err != nil {
+		return ToolUse{}, fmt.Errorf("project session tool use: decode: %w", err)
+	}
+	use := ToolUse{ID: data.ToolUse.ID, SessionID: data.ToolUse.SessionID, RunID: data.ToolUse.RunID, ModelCallID: data.ToolUse.ModelCallID, AssistantMessageID: data.ToolUse.AssistantMessageID, PartID: data.ToolUse.PartID, Step: data.ToolUse.Step, Ordinal: data.ToolUse.Ordinal, CallID: data.ToolUse.CallID, Name: data.ToolUse.Name, Status: data.ToolUse.Status, InputJSON: data.ToolUse.InputJSON, Output: data.ToolUse.Output, StructuredJSON: data.ToolUse.StructuredJSON, MetadataJSON: data.ToolUse.MetadataJSON, ErrorType: data.ToolUse.ErrorType, ErrorMessage: data.ToolUse.ErrorMessage, ProposedAt: data.ToolUse.ProposedAt, AuthorizedAt: data.ToolUse.AuthorizedAt, StartedAt: data.ToolUse.StartedAt, CompletedAt: data.ToolUse.CompletedAt, CreatedAt: data.ToolUse.CreatedAt, UpdatedAt: data.ToolUse.UpdatedAt}
+	if use.ID == "" || use.SessionID != event.Aggregate.ID || use.RunID != event.RunID || use.Status == "" || use.ProposedAt.IsZero() || use.CreatedAt.IsZero() || use.UpdatedAt.IsZero() {
+		return ToolUse{}, fmt.Errorf("project session tool use: snapshot does not match aggregate event")
+	}
+	return use, nil
 }
 
 func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
@@ -625,6 +691,62 @@ func ProjectSessionModelCalls(events []AggregateEvent) ([]ModelCall, error) {
 	return out, nil
 }
 
+// ProjectSessionToolUses rebuilds current tool-use state from a Session aggregate stream.
+func ProjectSessionToolUses(events []AggregateEvent) ([]ToolUse, error) {
+	if _, err := ProjectSession(events); err != nil {
+		return nil, err
+	}
+	uses := make(map[string]ToolUse)
+	identities := make(map[string]string)
+	for _, event := range events {
+		if event.Type != EventSessionToolUseSaved {
+			continue
+		}
+		use, err := ProjectSessionToolUseSaved(event)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := uses[use.ID]; exists {
+			if !sameToolUseIdentity(previous, use) || !legalProjectedToolUseTransition(previous.Status, use.Status) {
+				return nil, fmt.Errorf("project session tool use %s: invalid lifecycle snapshot", use.ID)
+			}
+		} else if use.Status != ToolUseStatusProposed {
+			return nil, fmt.Errorf("project session tool use %s: lifecycle starts at %q", use.ID, use.Status)
+		} else if use.RunID != "" {
+			key := fmt.Sprintf("%s:%d:%d", use.RunID, use.Step, use.Ordinal)
+			if owner, exists := identities[key]; exists && owner != use.ID {
+				return nil, fmt.Errorf("project session tool use %s: identity belongs to %s", use.ID, owner)
+			}
+			identities[key] = use.ID
+		}
+		uses[use.ID] = use
+	}
+	out := make([]ToolUse, 0, len(uses))
+	for _, use := range uses {
+		out = append(out, use)
+	}
+	slices.SortFunc(out, func(a, b ToolUse) int {
+		if a.ProposedAt.Equal(b.ProposedAt) {
+			if a.Step == b.Step {
+				if a.Ordinal == b.Ordinal {
+					return strings.Compare(a.ID, b.ID)
+				}
+				return a.Ordinal - b.Ordinal
+			}
+			return a.Step - b.Step
+		}
+		if a.ProposedAt.Before(b.ProposedAt) {
+			return -1
+		}
+		return 1
+	})
+	return out, nil
+}
+
+func legalProjectedToolUseTransition(from, to string) bool {
+	return legalToolUseTransition(from, to)
+}
+
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
 		(from == SessionRunStatusRunning && isSessionRunTerminal(to))
@@ -715,6 +837,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: model call before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionModelCallSaved(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case EventSessionToolUseSaved:
+		if session == nil {
+			return nil, fmt.Errorf("project session %s: tool use before creation", event.Aggregate.ID)
+		}
+		if _, err := ProjectSessionToolUseSaved(event); err != nil {
 			return nil, err
 		}
 		projected := *session

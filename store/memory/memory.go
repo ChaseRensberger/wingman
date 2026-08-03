@@ -1605,6 +1605,9 @@ func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
 			use.UpdatedAt = now
 		}
 		cp := copyToolUse(&use)
+		if err := s.appendToolUseAggregateLocked(cp); err != nil {
+			return err
+		}
 		s.toolUses[use.ID] = &cp
 		return nil
 	}
@@ -1651,7 +1654,32 @@ func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
 		use.CompletedAt = now
 	}
 	cp := copyToolUse(&use)
+	if err := s.appendToolUseAggregateLocked(cp); err != nil {
+		return err
+	}
 	s.toolUses[use.ID] = &cp
+	return nil
+}
+
+func (s *Store) appendToolUseAggregateLocked(use store.ToolUse) error {
+	session, ok := s.sessions[use.SessionID]
+	if !ok {
+		return store.ErrSessionNotFound
+	}
+	event, err := store.NewSessionToolUseSavedEvent(use)
+	if err != nil {
+		return err
+	}
+	events := s.aggregates[event.Aggregate]
+	event.Version = session.AggregateVersion + 1
+	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	if err != nil {
+		return err
+	}
+	s.globalSeq++
+	event.GlobalSequence = s.globalSeq
+	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.sessions[use.SessionID] = copySession(projected)
 	return nil
 }
 
@@ -1688,11 +1716,16 @@ func (s *Store) InterruptActiveToolUses(ctx context.Context) error {
 	now := time.Now().UTC()
 	for _, use := range s.toolUses {
 		if use.Status == store.ToolUseStatusProposed || use.Status == store.ToolUseStatusAuthorized || use.Status == store.ToolUseStatusStarted {
-			use.Status = store.ToolUseStatusInterrupted
-			use.ErrorType = "process_interrupted"
-			use.ErrorMessage = "tool use interrupted because the process stopped"
-			use.CompletedAt = now
-			use.UpdatedAt = now
+			updated := copyToolUse(use)
+			updated.Status = store.ToolUseStatusInterrupted
+			updated.ErrorType = "process_interrupted"
+			updated.ErrorMessage = "tool use interrupted because the process stopped"
+			updated.CompletedAt = now
+			updated.UpdatedAt = now
+			if err := s.appendToolUseAggregateLocked(updated); err != nil {
+				return err
+			}
+			*use = updated
 		}
 	}
 	return nil

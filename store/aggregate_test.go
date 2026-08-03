@@ -302,6 +302,68 @@ func TestSQLiteMessageSnapshotsProjectFromAggregateHistory(t *testing.T) {
 	}
 }
 
+func TestSQLiteToolUseSnapshotsProjectFromAggregateHistory(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_tool_events"}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.AdmitSessionRun(ctx, SessionRun{ID: "run_tool_events", SessionID: "ses_tool_events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := ToolUse{ID: "tlu_events", SessionID: "ses_tool_events", RunID: run.Run.ID, Step: 1, Ordinal: 0, CallID: "call_events", Name: "shell", Status: ToolUseStatusProposed, InputJSON: []byte(`{"command":"pwd"}`)}
+	for _, status := range []string{ToolUseStatusProposed, ToolUseStatusAuthorized, ToolUseStatusStarted, ToolUseStatusCompleted} {
+		use.Status = status
+		if status == ToolUseStatusAuthorized {
+			use.InputJSON = []byte(`not json, intentionally opaque`)
+		}
+		if status == ToolUseStatusCompleted {
+			use.Output = "ok"
+			use.StructuredJSON = []byte(`also opaque`)
+			use.MetadataJSON = []byte(`metadata bytes`)
+		}
+		if err := data.SaveToolUse(ctx, use); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := data.ListAggregateEvents(ctx, AggregateRef{Type: AggregateSession, ID: use.SessionID}, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := ProjectSessionToolUses(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := data.ListToolUses(ctx, use.SessionID)
+	if err != nil || !reflect.DeepEqual(projected, stored) {
+		t.Fatalf("projected = %#v, stored = %#v, error = %v", projected, stored, err)
+	}
+}
+
+func TestSQLiteToolUseSnapshotRollsBackWithAggregateEvent(t *testing.T) {
+	data := newTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_tool_rollback"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.db.Exec(`CREATE TRIGGER fail_tool_event BEFORE INSERT ON aggregate_events WHEN NEW.event_type = 'session.tool_use.saved' BEGIN SELECT RAISE(ABORT, 'reject'); END`); err != nil {
+		t.Fatal(err)
+	}
+	err := data.SaveToolUse(ctx, ToolUse{ID: "tlu_rollback", SessionID: "ses_tool_rollback", Name: "read", Status: ToolUseStatusProposed})
+	if err == nil {
+		t.Fatal("SaveToolUse succeeded")
+	}
+	uses, err := data.ListToolUses(ctx, "ses_tool_rollback")
+	if err != nil || len(uses) != 0 {
+		t.Fatalf("tool uses = %#v, error = %v", uses, err)
+	}
+	session, err := data.GetSession("ses_tool_rollback")
+	if err != nil || session.AggregateVersion != 1 {
+		t.Fatalf("session = %#v, error = %v", session, err)
+	}
+}
+
 func TestSQLiteMessageSnapshotRollsBackWithAggregateEvent(t *testing.T) {
 	data := newTestSQLiteStore(t)
 	ctx := context.Background()
@@ -423,7 +485,7 @@ func TestSQLitePurgeSessionRemovesAllDurableState(t *testing.T) {
 	if err := data.PurgeSession(ctx, session.ID, 1); !errors.Is(err, ErrAggregateVersionConflict) {
 		t.Fatalf("stale purge error = %v, want version conflict", err)
 	}
-	if err := data.PurgeSession(ctx, session.ID, 4); err != nil {
+	if err := data.PurgeSession(ctx, session.ID, 5); err != nil {
 		t.Fatal(err)
 	}
 
