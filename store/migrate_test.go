@@ -37,6 +37,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"tool_uses":           {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "structured_json", "proposed_at"},
 		"permission_requests": {"session_id", "run_id", "tool_use_id", "resources_json", "resolved_at"},
 		"permission_grants":   {"session_id", "action", "resource"},
+		"session_events":      {"schema_version"},
 		"aggregate_events":    {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
 	} {
 		for _, column := range columns {

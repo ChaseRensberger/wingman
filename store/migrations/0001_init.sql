@@ -228,6 +228,7 @@ CREATE TABLE session_events (
     id         TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     seq        INTEGER NOT NULL,
+    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
     type       TEXT NOT NULL,
     data_json  TEXT NOT NULL,
     created_at TEXT NOT NULL,

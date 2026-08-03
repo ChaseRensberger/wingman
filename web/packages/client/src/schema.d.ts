@@ -1602,6 +1602,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["RunEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.run.queued" | "session.run.started" | "session.run.completed" | "session.run.failed" | "session.run.aborted";
@@ -1609,6 +1611,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["StepEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.step.started" | "session.step.completed";
@@ -1616,6 +1620,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["ContentDeltaEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.text.delta" | "session.reasoning.delta" | "session.tool.input.delta";
@@ -1623,6 +1629,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["ContentCompletedEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.text.completed" | "session.reasoning.completed";
@@ -1630,6 +1638,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["MessageCreatedEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.message.created";
@@ -1637,6 +1647,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["ToolEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.tool.called" | "session.tool.updated" | "session.tool.progress" | "session.tool.completed" | "session.tool.failed";
@@ -1644,6 +1656,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["PermissionEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.permission.requested" | "session.permission.resolved";
@@ -1651,6 +1665,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["StructuredOutputEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.structured_output.completed";
@@ -1658,6 +1674,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["EventsSynchronizedEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.events.synchronized";
@@ -1665,6 +1683,8 @@ export interface components {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["EventsResyncRequiredEventData"];
             id: string;
+            /** @constant */
+            schema_version: 1;
             time?: string;
             /** @enum {string} */
             type: "session.events.resync_required";

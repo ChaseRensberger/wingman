@@ -2260,8 +2260,8 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	if err := tx.QueryRowContext(ctx, `SELECT MAX(seq) FROM session_events WHERE session_id = ?`, run.SessionID).Scan(&maxSeq); err != nil {
 		return SessionRunAdmission{}, err
 	}
-	queued := SessionEvent{ID: NewID(PrefixEvent), Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq.Int64 + 1, DataJSON: queuedData, Data: queuedData}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, queued.ID, queued.SessionID, queued.Seq, queued.Type, string(queued.DataJSON), now.Format(time.RFC3339Nano)); err != nil {
+	queued := SessionEvent{ID: NewID(PrefixEvent), SchemaVersion: 1, Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq.Int64 + 1, DataJSON: queuedData, Data: queuedData}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, schema_version, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, queued.ID, queued.SessionID, queued.Seq, queued.SchemaVersion, queued.Type, string(queued.DataJSON), now.Format(time.RFC3339Nano)); err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("insert queued session event: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -2496,8 +2496,8 @@ func appendRunEventTx(ctx context.Context, tx *immediateTx, run SessionRun, typ 
 	if err := tx.QueryRowContext(ctx, `SELECT MAX(seq) FROM session_events WHERE session_id = ?`, run.SessionID).Scan(&max); err != nil {
 		return SessionEvent{}, err
 	}
-	event := SessionEvent{ID: NewID(PrefixEvent), Type: typ, Time: now, SessionID: run.SessionID, Seq: max.Int64 + 1, DataJSON: payload, Data: payload}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, event.ID, event.SessionID, event.Seq, event.Type, string(payload), now.Format(time.RFC3339Nano)); err != nil {
+	event := SessionEvent{ID: NewID(PrefixEvent), SchemaVersion: 1, Type: typ, Time: now, SessionID: run.SessionID, Seq: max.Int64 + 1, DataJSON: payload, Data: payload}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, schema_version, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, event.ID, event.SessionID, event.Seq, event.SchemaVersion, event.Type, string(payload), now.Format(time.RFC3339Nano)); err != nil {
 		return SessionEvent{}, fmt.Errorf("insert run session event: %w", err)
 	}
 	return event, nil
@@ -2546,6 +2546,9 @@ func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	}
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = 1
+	}
 	if len(event.DataJSON) == 0 && len(event.Data) > 0 {
 		event.DataJSON = []byte(event.Data)
 	}
@@ -2578,9 +2581,9 @@ func (s *SQLiteStore) AppendSessionEvent(ctx context.Context, event SessionEvent
 	}
 	createdAt := event.Time.UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO session_events (id, session_id, seq, type, data_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, event.ID, event.SessionID, event.Seq, event.Type, string(event.DataJSON), createdAt); err != nil {
+		INSERT INTO session_events (id, session_id, seq, schema_version, type, data_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, event.ID, event.SessionID, event.Seq, event.SchemaVersion, event.Type, string(event.DataJSON), createdAt); err != nil {
 		return SessionEvent{}, fmt.Errorf("insert session event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -2599,7 +2602,7 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, seq, type, data_json, created_at
+		SELECT id, session_id, seq, schema_version, type, data_json, created_at
 		FROM session_events
 		WHERE session_id = ? AND seq > ?
 		ORDER BY seq ASC
@@ -2614,7 +2617,7 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 	for rows.Next() {
 		var ev SessionEvent
 		var dataJSON, createdAt string
-		if err := rows.Scan(&ev.ID, &ev.SessionID, &ev.Seq, &ev.Type, &dataJSON, &createdAt); err != nil {
+		if err := rows.Scan(&ev.ID, &ev.SessionID, &ev.Seq, &ev.SchemaVersion, &ev.Type, &dataJSON, &createdAt); err != nil {
 			return nil, err
 		}
 		ev.DataJSON = []byte(dataJSON)
@@ -2725,8 +2728,8 @@ func appendPermissionEventTx(ctx context.Context, tx *immediateTx, request Permi
 	if max.Valid {
 		seq = max.Int64 + 1
 	}
-	event := SessionEvent{ID: NewID(PrefixEvent), Type: typ, Time: now, SessionID: request.SessionID, Seq: seq, DataJSON: payload, Data: payload}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`, event.ID, event.SessionID, event.Seq, event.Type, string(payload), now.UTC().Format(time.RFC3339Nano)); err != nil {
+	event := SessionEvent{ID: NewID(PrefixEvent), SchemaVersion: 1, Type: typ, Time: now, SessionID: request.SessionID, Seq: seq, DataJSON: payload, Data: payload}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, schema_version, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, event.ID, event.SessionID, event.Seq, event.SchemaVersion, event.Type, string(payload), now.UTC().Format(time.RFC3339Nano)); err != nil {
 		return SessionEvent{}, fmt.Errorf("insert permission session event: %w", err)
 	}
 	return event, nil

@@ -241,9 +241,10 @@ func discriminatedEventSchema(registry huma.Registry, title string, variants []e
 		required := []string{"type", "data"}
 		if session {
 			properties["id"] = &huma.Schema{Type: huma.TypeString}
+			properties["schema_version"] = &huma.Schema{Type: huma.TypeInteger, Const: api.CurrentSessionEventSchemaVersion}
 			properties["time"] = &huma.Schema{Type: huma.TypeString}
 			properties["cursor"] = registry.Schema(reflect.TypeFor[api.SessionEventCursor](), true, "")
-			required = append(required, "id")
+			required = append(required, "id", "schema_version")
 		} else {
 			properties["version"] = &huma.Schema{Type: huma.TypeInteger}
 			required = append(required, "version")

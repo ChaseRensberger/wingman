@@ -187,15 +187,19 @@ func apiPermissionGrants(values []store.PermissionGrant) []api.PermissionGrant {
 }
 
 func apiSessionEvent(value store.SessionEvent) (api.SessionEvent, error) {
+	schemaVersion := value.SchemaVersion
+	if schemaVersion == 0 {
+		schemaVersion = api.CurrentSessionEventSchemaVersion
+	}
 	raw := value.Data
 	if len(raw) == 0 {
 		raw = value.DataJSON
 	}
-	data, err := api.DecodeSessionEventData(api.SessionEventType(value.Type), raw)
+	data, err := api.DecodeSessionEventDataForSchemaVersion(schemaVersion, api.SessionEventType(value.Type), raw)
 	if err != nil {
 		return api.SessionEvent{}, err
 	}
-	result := api.SessionEvent{ID: value.ID, Type: api.SessionEventType(value.Type), Data: data}
+	result := api.SessionEvent{ID: value.ID, SchemaVersion: schemaVersion, Type: api.SessionEventType(value.Type), Data: data}
 	if !value.Time.IsZero() {
 		result.Time = value.Time.UTC().Format(time.RFC3339Nano)
 	}

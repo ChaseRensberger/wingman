@@ -163,12 +163,13 @@ func newSessionEvent(sessionID, typ string, data any) (store.SessionEvent, error
 		return store.SessionEvent{}, err
 	}
 	return store.SessionEvent{
-		ID:        store.NewID(store.PrefixEvent),
-		Type:      typ,
-		Time:      time.Now().UTC(),
-		SessionID: sessionID,
-		DataJSON:  b,
-		Data:      json.RawMessage(b),
+		ID:            store.NewID(store.PrefixEvent),
+		SchemaVersion: api.CurrentSessionEventSchemaVersion,
+		Type:          typ,
+		Time:          time.Now().UTC(),
+		SessionID:     sessionID,
+		DataJSON:      b,
+		Data:          json.RawMessage(b),
 	}, nil
 }
 

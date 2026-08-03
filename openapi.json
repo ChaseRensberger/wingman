@@ -2723,6 +2723,10 @@
               "id": {
                 "type": "string"
               },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
               "time": {
                 "type": "string"
               },
@@ -2740,7 +2744,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2754,6 +2759,10 @@
               },
               "id": {
                 "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
               },
               "time": {
                 "type": "string"
@@ -2769,7 +2778,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2783,6 +2793,10 @@
               },
               "id": {
                 "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
               },
               "time": {
                 "type": "string"
@@ -2799,7 +2813,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2813,6 +2828,10 @@
               },
               "id": {
                 "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
               },
               "time": {
                 "type": "string"
@@ -2828,7 +2847,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2843,6 +2863,10 @@
               "id": {
                 "type": "string"
               },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
               "time": {
                 "type": "string"
               },
@@ -2856,7 +2880,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2870,6 +2895,10 @@
               },
               "id": {
                 "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
               },
               "time": {
                 "type": "string"
@@ -2888,7 +2917,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2902,6 +2932,10 @@
               },
               "id": {
                 "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
               },
               "time": {
                 "type": "string"
@@ -2917,7 +2951,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2932,6 +2967,10 @@
               "id": {
                 "type": "string"
               },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
               "time": {
                 "type": "string"
               },
@@ -2945,7 +2984,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2960,6 +3000,10 @@
               "id": {
                 "type": "string"
               },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
               "time": {
                 "type": "string"
               },
@@ -2973,7 +3017,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           },
@@ -2988,6 +3033,10 @@
               "id": {
                 "type": "string"
               },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
               "time": {
                 "type": "string"
               },
@@ -3001,7 +3050,8 @@
             "required": [
               "type",
               "data",
-              "id"
+              "id",
+              "schema_version"
             ],
             "type": "object"
           }

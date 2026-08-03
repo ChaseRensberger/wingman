@@ -229,13 +229,14 @@ type StoredMessage struct {
 // a session-scoped Seq and are stored for replay. Live-only events use the
 // same wire shape but are not persisted.
 type SessionEvent struct {
-	ID        string          `json:"id"`
-	Type      string          `json:"type"`
-	Time      time.Time       `json:"-"`
-	SessionID string          `json:"session_id,omitempty"`
-	Seq       int64           `json:"seq,omitempty"`
-	DataJSON  []byte          `json:"-"`
-	Data      json.RawMessage `json:"data"`
+	ID            string          `json:"id"`
+	SchemaVersion int             `json:"schema_version"`
+	Type          string          `json:"type"`
+	Time          time.Time       `json:"-"`
+	SessionID     string          `json:"session_id,omitempty"`
+	Seq           int64           `json:"seq,omitempty"`
+	DataJSON      []byte          `json:"-"`
+	Data          json.RawMessage `json:"data"`
 }
 
 type sessionEventCursor struct {
@@ -260,17 +261,19 @@ func (e SessionEvent) MarshalJSON() ([]byte, error) {
 		cursor = &sessionEventCursor{SessionID: e.SessionID, Seq: e.Seq}
 	}
 	return json.Marshal(struct {
-		ID     string              `json:"id"`
-		Type   string              `json:"type"`
-		Time   string              `json:"time,omitempty"`
-		Cursor *sessionEventCursor `json:"cursor,omitempty"`
-		Data   json.RawMessage     `json:"data"`
+		ID            string              `json:"id"`
+		SchemaVersion int                 `json:"schema_version"`
+		Type          string              `json:"type"`
+		Time          string              `json:"time,omitempty"`
+		Cursor        *sessionEventCursor `json:"cursor,omitempty"`
+		Data          json.RawMessage     `json:"data"`
 	}{
-		ID:     e.ID,
-		Type:   e.Type,
-		Time:   timeValue,
-		Cursor: cursor,
-		Data:   data,
+		ID:            e.ID,
+		SchemaVersion: e.SchemaVersion,
+		Type:          e.Type,
+		Time:          timeValue,
+		Cursor:        cursor,
+		Data:          data,
 	})
 }
 

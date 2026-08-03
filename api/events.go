@@ -11,6 +11,13 @@ import (
 type SessionEventType string
 
 const (
+	// SessionEventSchemaVersionV1 is the first public durable session-event envelope schema.
+	SessionEventSchemaVersionV1 = 1
+	// CurrentSessionEventSchemaVersion is the schema used for newly emitted session events.
+	CurrentSessionEventSchemaVersion = SessionEventSchemaVersionV1
+)
+
+const (
 	SessionEventRunQueued                 SessionEventType = "session.run.queued"
 	SessionEventRunStarted                SessionEventType = "session.run.started"
 	SessionEventRunCompleted              SessionEventType = "session.run.completed"
@@ -44,11 +51,54 @@ type SessionEventCursor struct {
 
 // SessionEvent is the canonical persistent-session SSE and history envelope.
 type SessionEvent struct {
-	ID     string              `json:"id"`
-	Type   SessionEventType    `json:"type"`
-	Time   string              `json:"time,omitempty"`
-	Cursor *SessionEventCursor `json:"cursor,omitempty"`
-	Data   SessionEventData    `json:"data"`
+	ID            string              `json:"id"`
+	SchemaVersion int                 `json:"schema_version"`
+	Type          SessionEventType    `json:"type"`
+	Time          string              `json:"time,omitempty"`
+	Cursor        *SessionEventCursor `json:"cursor,omitempty"`
+	Data          SessionEventData    `json:"data"`
+}
+
+// MarshalJSON emits the current schema version when callers leave it unset.
+func (e SessionEvent) MarshalJSON() ([]byte, error) {
+	if e.SchemaVersion == 0 {
+		e.SchemaVersion = CurrentSessionEventSchemaVersion
+	}
+	return json.Marshal(struct {
+		ID            string              `json:"id"`
+		SchemaVersion int                 `json:"schema_version"`
+		Type          SessionEventType    `json:"type"`
+		Time          string              `json:"time,omitempty"`
+		Cursor        *SessionEventCursor `json:"cursor,omitempty"`
+		Data          SessionEventData    `json:"data"`
+	}{
+		ID: e.ID, SchemaVersion: e.SchemaVersion, Type: e.Type, Time: e.Time, Cursor: e.Cursor, Data: e.Data,
+	})
+}
+
+// UnmarshalJSON decodes known v1 payloads and preserves unknown v1 event types.
+// Versions newer than this build supports are rejected rather than decoded as v1.
+func (e *SessionEvent) UnmarshalJSON(value []byte) error {
+	var raw struct {
+		ID            string              `json:"id"`
+		SchemaVersion int                 `json:"schema_version"`
+		Type          SessionEventType    `json:"type"`
+		Time          string              `json:"time,omitempty"`
+		Cursor        *SessionEventCursor `json:"cursor,omitempty"`
+		Data          json.RawMessage     `json:"data"`
+	}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if raw.SchemaVersion == 0 {
+		raw.SchemaVersion = CurrentSessionEventSchemaVersion
+	}
+	data, err := DecodeSessionEventDataForSchemaVersion(raw.SchemaVersion, raw.Type, raw.Data)
+	if err != nil {
+		return err
+	}
+	*e = SessionEvent{ID: raw.ID, SchemaVersion: raw.SchemaVersion, Type: raw.Type, Time: raw.Time, Cursor: raw.Cursor, Data: data}
+	return nil
 }
 
 // SessionEventPage is one page of durable session events.
@@ -191,6 +241,18 @@ func (d UnknownSessionEventData) MarshalJSON() ([]byte, error) {
 // DecodeSessionEventData decodes a payload according to its event discriminator.
 // Unknown discriminators remain opaque for forward-compatible replay.
 func DecodeSessionEventData(eventType SessionEventType, raw json.RawMessage) (SessionEventData, error) {
+	return DecodeSessionEventDataForSchemaVersion(CurrentSessionEventSchemaVersion, eventType, raw)
+}
+
+// DecodeSessionEventDataForSchemaVersion decodes a session-event payload for a
+// supported public envelope schema version.
+func DecodeSessionEventDataForSchemaVersion(schemaVersion int, eventType SessionEventType, raw json.RawMessage) (SessionEventData, error) {
+	if schemaVersion == 0 {
+		schemaVersion = CurrentSessionEventSchemaVersion
+	}
+	if schemaVersion != SessionEventSchemaVersionV1 {
+		return nil, fmt.Errorf("unsupported session event schema version %d", schemaVersion)
+	}
 	if len(raw) == 0 {
 		raw = json.RawMessage(`{}`)
 	}

@@ -32,7 +32,7 @@ func TestUnknownSessionEventDataRoundTripsVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(encoded) != `{"id":"evt_1","type":"plugin.custom","data":{"plugin":"value","count":2}}` {
+	if string(encoded) != `{"id":"evt_1","schema_version":1,"type":"plugin.custom","data":{"plugin":"value","count":2}}` {
 		t.Fatalf("event = %s", encoded)
 	}
 }
@@ -47,7 +47,28 @@ func TestSessionEventKnownPayloadMarshalsWithoutWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(encoded) != `{"id":"evt_1","type":"session.run.completed","cursor":{"session_id":"ses_1","seq":4},"data":{"run_id":"run_1","status":"completed","steps":2}}` {
+	if string(encoded) != `{"id":"evt_1","schema_version":1,"type":"session.run.completed","cursor":{"session_id":"ses_1","seq":4},"data":{"run_id":"run_1","status":"completed","steps":2}}` {
 		t.Fatalf("event = %s", encoded)
+	}
+}
+
+func TestSessionEventUnmarshalDecodesV1AndPreservesUnknownType(t *testing.T) {
+	var event SessionEvent
+	if err := json.Unmarshal([]byte(`{"id":"evt_1","schema_version":1,"type":"plugin.custom","data":{"plugin":"value"}}`), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.SchemaVersion != SessionEventSchemaVersionV1 {
+		t.Fatalf("schema version = %d", event.SchemaVersion)
+	}
+	if _, ok := event.Data.(UnknownSessionEventData); !ok {
+		t.Fatalf("payload type = %T", event.Data)
+	}
+}
+
+func TestSessionEventUnmarshalRejectsUnsupportedSchemaVersion(t *testing.T) {
+	var event SessionEvent
+	err := json.Unmarshal([]byte(`{"id":"evt_1","schema_version":2,"type":"session.text.delta","data":{"run_id":"run_1","delta":"hello"}}`), &event)
+	if err == nil || err.Error() != "unsupported session event schema version 2" {
+		t.Fatalf("unmarshal error = %v", err)
 	}
 }

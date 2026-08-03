@@ -117,7 +117,7 @@ func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (stor
 			maxSeq = existing.Seq
 		}
 	}
-	queued := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq + 1, DataJSON: queuedData, Data: queuedData}
+	queued := store.SessionEvent{ID: store.NewID(store.PrefixEvent), SchemaVersion: 1, Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq + 1, DataJSON: queuedData, Data: queuedData}
 	cp := copySessionRun(&run)
 	s.runs[run.ID] = &cp
 	ref := store.AggregateRef{Type: store.AggregateSession, ID: run.SessionID}
@@ -333,7 +333,7 @@ func (s *Store) appendRunEventLocked(run *store.SessionRun, typ string, extra ma
 			max = event.Seq
 		}
 	}
-	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: typ, Time: now, SessionID: run.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
+	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), SchemaVersion: 1, Type: typ, Time: now, SessionID: run.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
 	cp := copySessionEvent(&event)
 	s.events[event.ID] = &cp
 	return cp, nil
@@ -1735,7 +1735,7 @@ func (s *Store) newPermissionEventLocked(request *store.PermissionRequest, typ s
 			max = event.Seq
 		}
 	}
-	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), Type: typ, Time: now, SessionID: request.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
+	event := store.SessionEvent{ID: store.NewID(store.PrefixEvent), SchemaVersion: 1, Type: typ, Time: now, SessionID: request.SessionID, Seq: max + 1, DataJSON: payload, Data: payload}
 	return event, nil
 }
 
@@ -1980,6 +1980,9 @@ func (s *Store) AppendSessionEvent(ctx context.Context, event store.SessionEvent
 	}
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
+	}
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = 1
 	}
 	if len(event.DataJSON) == 0 && len(event.Data) > 0 {
 		event.DataJSON = []byte(event.Data)

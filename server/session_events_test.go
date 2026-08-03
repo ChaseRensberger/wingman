@@ -86,8 +86,9 @@ func awaitEvent(t *testing.T, recorder *streamRecorder, typ string) {
 }
 
 type recordedSessionEvent struct {
-	Type   string `json:"type"`
-	Cursor *struct {
+	Type          string `json:"type"`
+	SchemaVersion int    `json:"schema_version"`
+	Cursor        *struct {
 		Seq int64 `json:"seq"`
 	} `json:"cursor"`
 }
@@ -141,9 +142,12 @@ func TestSessionEventsReplaysAllPagesBeforeSynchronized(t *testing.T) {
 		t.Fatalf("events boundary = len %d last %#v", len(events), events[len(events)-1])
 	}
 	for i, event := range events[:1001] {
-		if event.Cursor == nil || event.Cursor.Seq != int64(i+1) {
+		if event.SchemaVersion != 1 || event.Cursor == nil || event.Cursor.Seq != int64(i+1) {
 			t.Fatalf("event %d cursor = %#v", i, event.Cursor)
 		}
+	}
+	if events[1001].SchemaVersion != 1 {
+		t.Fatalf("synchronized schema version = %d", events[1001].SchemaVersion)
 	}
 }
 
@@ -292,12 +296,18 @@ func TestSessionEventHistoryHasMoreUsesWatermark(t *testing.T) {
 	server.router.ServeHTTP(response, streamRequest(context.Background(), session.ID, "/history?after=0&limit=2"))
 	var page struct {
 		HasMore bool `json:"has_more"`
+		Data    []struct {
+			SchemaVersion int `json:"schema_version"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&page); err != nil {
 		t.Fatal(err)
 	}
 	if page.HasMore {
 		t.Fatal("exact final page reports has_more")
+	}
+	if len(page.Data) != 2 || page.Data[0].SchemaVersion != 1 || page.Data[1].SchemaVersion != 1 {
+		t.Fatalf("history schema versions = %#v", page.Data)
 	}
 	if _, err := data.AppendSessionEvent(context.Background(), store.SessionEvent{SessionID: session.ID, Type: "stored"}); err != nil {
 		t.Fatal(err)
