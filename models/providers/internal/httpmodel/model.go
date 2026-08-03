@@ -562,7 +562,7 @@ func (s *parseState) message() *models.Message {
 	if text := s.text.String(); text != "" {
 		content = append(content, models.TextPart{Text: text})
 	}
-	if reasoning := s.reason.String(); reasoning != "" {
+	if reasoning := s.reason.String(); reasoning != "" || s.sig != "" {
 		part := models.ReasoningPart{Reasoning: reasoning, Encrypted: s.sig}
 		if s.api == models.APIOpenAIResponses && (s.reasonID != "" || s.sig != "") {
 			part.ProviderMetadata = models.Meta{"openai": map[string]any{"item_id": s.reasonID, "reasoning_encrypted_content": s.sig}}
@@ -1120,12 +1120,20 @@ func openAIResponsesTextContent(content models.Content, typ string) []openAIResp
 }
 
 type openAIResponsesContent struct {
-	Type             string `json:"type"`
-	Text             string `json:"text,omitempty"`
-	ImageURL         string `json:"image_url,omitempty"`
-	ID               string `json:"id,omitempty"`
-	Summary          []any  `json:"summary,omitempty"`
-	EncryptedContent string `json:"encrypted_content,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+}
+
+type openAIResponsesReasoning struct {
+	Type             string                            `json:"type"`
+	Summary          []openAIResponsesReasoningSummary `json:"summary"`
+	EncryptedContent string                            `json:"encrypted_content"`
+}
+
+type openAIResponsesReasoningSummary struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 func openAIResponsesReasoningContent(content models.Content) []any {
@@ -1139,11 +1147,14 @@ func openAIResponsesReasoningContent(content models.Content) []any {
 		if !ok || stringValue(openAI["reasoning_encrypted_content"]) != reasoning.Encrypted {
 			continue
 		}
-		itemID := stringValue(openAI["item_id"])
-		if itemID == "" {
+		if stringValue(openAI["item_id"]) == "" {
 			continue
 		}
-		out = append(out, openAIResponsesContent{Type: "reasoning", ID: itemID, Summary: []any{}, EncryptedContent: reasoning.Encrypted})
+		summary := []openAIResponsesReasoningSummary{}
+		if reasoning.Reasoning != "" {
+			summary = append(summary, openAIResponsesReasoningSummary{Type: "summary_text", Text: reasoning.Reasoning})
+		}
+		out = append(out, openAIResponsesReasoning{Type: "reasoning", Summary: summary, EncryptedContent: reasoning.Encrypted})
 	}
 	return out
 }

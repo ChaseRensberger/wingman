@@ -422,25 +422,59 @@ func TestParseOpenAIResponsesKeepsReasoningSummary(t *testing.T) {
 	}
 }
 
-func TestOpenAIResponsesBodyRoundsTripEncryptedReasoning(t *testing.T) {
-	model := &Model{Protocol: OpenAIResponses, Info_: models.ModelInfo{ID: "test"}}
+func TestParseOpenAIResponsesKeepsEncryptedReasoningWithoutSummary(t *testing.T) {
+	state := parseState{api: models.APIOpenAIResponses}
+	stream := models.NewEventStream[models.StreamPart, *models.Message](2)
+	parseOpenAIResponses(openAIResponsesEvent{Type: "response.output_item.done", Item: openAIResponsesOutputItem{Type: "reasoning", ID: "rs_1", EncryptedContent: "encrypted-state"}}, &state, stream)
+	if got := state.message().Content; len(got) != 1 {
+		t.Fatalf("content = %#v, want reasoning part", got)
+	} else if reasoning, ok := got[0].(models.ReasoningPart); !ok || reasoning.Reasoning != "" || reasoning.Encrypted != "encrypted-state" {
+		t.Fatalf("content = %#v", got)
+	} else if openAI, ok := reasoning.ProviderMetadata["openai"].(map[string]any); !ok || openAI["item_id"] != "rs_1" || openAI["reasoning_encrypted_content"] != "encrypted-state" {
+		t.Fatalf("provider metadata = %#v", reasoning.ProviderMetadata)
+	}
+}
+
+func TestOpenAIResponsesBodyReplaysEncryptedReasoningWithToolOutput(t *testing.T) {
+	model := &Model{Protocol: OpenAIResponses, Info_: models.ModelInfo{ID: "test"}, ForceStoreFalse: true}
 	body, err := model.body(models.Request{Messages: []models.Message{{
 		Role: models.RoleAssistant,
-		Content: models.Content{models.ReasoningPart{
-			Reasoning:        "summary",
-			Encrypted:        "encrypted-state",
-			ProviderMetadata: models.Meta{"openai": map[string]any{"item_id": "rs_1", "reasoning_encrypted_content": "encrypted-state"}},
-		}},
+		Content: models.Content{
+			models.ReasoningPart{
+				Reasoning:        "summary",
+				Encrypted:        "encrypted-state",
+				ProviderMetadata: models.Meta{"openai": map[string]any{"item_id": "rs_1", "reasoning_encrypted_content": "encrypted-state"}},
+			},
+			models.ToolPart{CallID: "call_1", Name: "lookup", State: models.ToolStateCompleted, Input: map[string]any{"query": "weather"}, Output: "sunny"},
+		},
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if body["store"] != false {
+		t.Fatalf("store = %#v, want false", body["store"])
+	}
 	input := body["input"].([]any)
-	if len(input) != 1 {
+	if len(input) != 3 {
 		t.Fatalf("input = %#v", input)
 	}
 	reasoning := input[0].(map[string]any)
-	if reasoning["type"] != "reasoning" || reasoning["id"] != "rs_1" || reasoning["encrypted_content"] != "encrypted-state" {
+	if reasoning["type"] != "reasoning" || reasoning["encrypted_content"] != "encrypted-state" {
 		t.Fatalf("reasoning = %#v", reasoning)
+	}
+	if _, exists := reasoning["id"]; exists {
+		t.Fatalf("stateless reasoning retained provider item ID: %#v", reasoning)
+	}
+	summary := reasoning["summary"].([]any)
+	if len(summary) != 1 || summary[0].(map[string]any)["text"] != "summary" {
+		t.Fatalf("summary = %#v", summary)
+	}
+	call := input[1].(map[string]any)
+	if call["type"] != "function_call" || call["call_id"] != "call_1" || call["name"] != "lookup" {
+		t.Fatalf("function call = %#v", call)
+	}
+	result := input[2].(map[string]any)
+	if result["type"] != "function_call_output" || result["call_id"] != "call_1" || result["output"] != "sunny" {
+		t.Fatalf("function output = %#v", result)
 	}
 }
