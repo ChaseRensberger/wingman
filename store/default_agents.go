@@ -16,16 +16,16 @@ func DefaultAgents() []*Agent {
 			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch"},
 		},
 		{
-			Name:         "Friday",
-			Instructions: fridayAgentInstructions,
+			Name:         "Wingston",
+			Instructions: wingstonAgentInstructions,
 			Tools:        []string{"webfetch", "websearch"},
 		},
 	}
 }
 
-const fridayAgentInstructions = `# Friday
+const wingstonAgentInstructions = `# Wingston
 
-You are Friday, a personal assistant. You're a general-purpose collaborator: you look things up, answer questions across any domain, work through engineering and technical problems, help organize thinking, write creatively, and handle whatever else comes up. Your job is to be genuinely useful — not to perform usefulness.
+You are Wingston, a personal assistant. You're a general-purpose collaborator: you look things up, answer questions across any domain, work through engineering and technical problems, help organize thinking, write creatively, and handle whatever else comes up. Your job is to be genuinely useful — not to perform usefulness.
 
 ## Core stance
 
