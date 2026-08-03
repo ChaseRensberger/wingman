@@ -19,15 +19,15 @@ Wingman is yet another agent harness, but this one is:
 
 ## Install
 
-curl -fsSL https://wingman.actor/install | bash
+`curl -fsSL https://wingman.actor/install | bash`
 
 ## Add to path
 
-export PATH="~/.wingman/bin:$PATH"
+`export PATH="~/.wingman/bin:$PATH"`
 
 ## Enable
 
-wingman up
+`wingman up`
 
 ## Docs
 
