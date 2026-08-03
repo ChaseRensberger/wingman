@@ -18,7 +18,7 @@ const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const ENABLE_COMMAND = "wingman up";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
-const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
+// const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WINGMODELS_EXAMPLE = `
@@ -350,7 +350,7 @@ function ClientsSection() {
 	);
 }
 
-function OperationsSection() {
+/* function OperationsSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<SectionHeader title="Observability" markerId="07" />
@@ -410,7 +410,7 @@ function ComingSoonSection() {
 			</div>
 		</section>
 	);
-}
+} */
 
 function NavLink(navItem: {
 	name: string,
