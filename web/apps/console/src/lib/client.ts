@@ -5,6 +5,10 @@ import type { SessionSummary } from "./types";
 export const api = createWingmanClient({ credentials: "same-origin" });
 export const daemonConnectionFailureEvent = "wingman:connection-failed";
 
+export function isDaemonConnectionFailure(status: number): boolean {
+  return status >= 500;
+}
+
 function reportConnectionFailure() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(daemonConnectionFailureEvent));
 }
@@ -65,7 +69,7 @@ export async function apiData<T>(request: Promise<APIResult<T>>): Promise<T> {
   }
   const { data, error, response } = result;
   if (error || !response.ok) {
-    if (response.status >= 500 && typeof error === "string") reportConnectionFailure();
+    if (isDaemonConnectionFailure(response.status)) reportConnectionFailure();
     const detail = error && typeof error === "object" && "error" in error
       ? (error as ErrorResponse).error
       : undefined;

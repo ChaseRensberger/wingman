@@ -83,7 +83,7 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
             const tool = part as ToolPart;
             const call = { type: "tool_call" as const, tool_use_id: tool.tool_use_id, call_id: tool.call_id, name: tool.name, input: tool.input };
             const result = tool.state === "completed" || tool.state === "error"
-              ? { type: "tool_result" as const, tool_use_id: tool.tool_use_id, call_id: tool.call_id, name: tool.name, output: tool.output ? [{ type: "text" as const, text: tool.output }] : [], is_error: tool.state === "error", metadata: tool.metadata }
+				? { type: "tool_result" as const, tool_use_id: tool.tool_use_id, call_id: tool.call_id, name: tool.name, output: tool.output_parts ?? (tool.output ? [{ type: "text" as const, text: tool.output }] : []), structured: tool.structured, is_error: tool.state === "error", metadata: tool.metadata }
               : undefined;
 				return <div key={tool.id ?? tool.tool_use_id ?? tool.call_id} className={compactBottom ? "mt-0" : "mt-1"}><ToolActivityItem call={call} result={result} activity={{ tool_use_id: tool.tool_use_id, call_id: tool.call_id, tool: tool.name, status: tool.state, input: tool.input, output: tool.output, metadata: tool.metadata, error: tool.error }} compact={compactBottom} /></div>;
           }

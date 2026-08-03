@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { APIError, apiData } from "./client";
+import { APIError, apiData, isDaemonConnectionFailure } from "./client";
 
 describe("generated API adapter", () => {
   test("returns generated response data", async () => {
@@ -35,5 +35,11 @@ describe("generated API adapter", () => {
     }));
     const error = await request.catch((value) => value);
     expect(error).toMatchObject({ status: 503, message: "Wingman daemon is unavailable" });
+  });
+
+  test("treats structured and plain server failures as daemon outages", () => {
+    expect(isDaemonConnectionFailure(503)).toBe(true);
+    expect(isDaemonConnectionFailure(500)).toBe(true);
+    expect(isDaemonConnectionFailure(401)).toBe(false);
   });
 });

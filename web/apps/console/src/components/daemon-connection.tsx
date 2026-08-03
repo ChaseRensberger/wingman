@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { api, apiData, daemonConnectionFailureEvent } from "@/lib/client";
-import { daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay, type DaemonConnectionPhase } from "@/lib/connection";
+import { daemonConnectionFailureMessage, daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay, type DaemonConnectionPhase } from "@/lib/connection";
 
 type DaemonConnection = {
   phase: DaemonConnectionPhase;
   revision: number;
   hasConnected: boolean;
+  failure?: string;
 };
 
 const DaemonConnectionContext = createContext<DaemonConnection>({ phase: "connecting", revision: 0, hasConnected: false });
@@ -65,7 +66,8 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
         if (stopped || (error as Error).name === "AbortError") return;
         disconnected.current = hasBeenLive.current;
         attempt += 1;
-        setConnection((current) => ({ ...current, phase: daemonFailurePhase(attempt) }));
+        const failure = daemonConnectionFailureMessage(error);
+        setConnection((current) => ({ ...current, phase: daemonFailurePhase(attempt), failure }));
         schedule(daemonRetryDelay(attempt - 1));
       } finally {
         if (request === controller) request = undefined;
@@ -115,11 +117,11 @@ export function useDaemonConnection(): DaemonConnection {
 }
 
 export function DaemonConnectionBanner() {
-  const { phase } = useDaemonConnection();
+  const { phase, failure } = useDaemonConnection();
   if (phase === "live") return null;
   return (
     <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-800 dark:text-amber-200" role="status">
-      {daemonConnectionMessage(phase)}
+      {daemonConnectionMessage(phase, failure)}
     </div>
   );
 }

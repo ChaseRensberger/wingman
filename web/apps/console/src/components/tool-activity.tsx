@@ -3,7 +3,7 @@ import { CheckCircleIcon, CircleNotchIcon, CodeIcon, FileTextIcon, GlobeIcon, Ma
 
 import { ToolDiff } from "@/components/tool-diff";
 import { collapseOutput, compactInput, formatDuration, humanizeToolName, parseReadOutput, patchFiles, stripAnsi, toolSummary, toolText } from "@/lib/tool-display";
-import type { ToolActivity, ToolCallPart, ToolResultPart } from "@/lib/types";
+import type { ImagePart, Part, ToolActivity, ToolCallPart, ToolResultPart } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@wingman/core/components/core/collapsible";
 
@@ -17,6 +17,8 @@ type ToolView = {
 	call: ToolCallPart;
 	status: ToolActivity["status"];
 	output: string;
+	outputParts: Part[];
+	structured: unknown;
 	error: string;
 	metadata: Record<string, unknown>;
 	startedAt?: string;
@@ -33,6 +35,8 @@ function normalizeTool({ call, result, activity }: Props): ToolView {
 		call: { ...call, input },
 		status,
 		output: stripAnsi(output),
+		outputParts: result?.output ?? [],
+		structured: result?.structured ?? result?.metadata?.structured_content ?? activity?.metadata?.structured_content,
 		error: stripAnsi(activity?.error ?? legacyError),
 		metadata: { ...(result?.metadata ?? {}), ...(activity?.metadata ?? {}) },
 		startedAt: activity?.started_at,
@@ -112,6 +116,7 @@ function BashTool({ view }: { view: ToolView }) {
 			</div>
 			{workDir && <div className="border-b border-[var(--console-command-border)] px-3 py-1 font-mono text-[10px] text-[var(--console-command-muted)]">{workDir}</div>}
 			{(output || view.error) && <pre data-scrollable tabIndex={0} className="max-h-96 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-5"><code>{visibleOutput}{view.error && view.error !== output ? `${output ? "\n" : ""}${view.error}` : ""}</code></pre>}
+			<ToolOutputParts parts={view.outputParts} structured={view.structured} />
 			{collapsed.overflow && <button type="button" onClick={() => setExpanded((value) => !value)} className="w-full border-t border-[var(--console-command-border)] px-3 py-1.5 text-left text-[11px] text-[var(--console-command-muted)] hover:text-[var(--console-command-foreground)]">{expanded ? "Collapse output" : "Show full output"}</button>}
 		</div>
 	);
@@ -125,6 +130,7 @@ function FileMutationTool({ view }: { view: ToolView }) {
 			<div className="flex min-h-7 items-center"><ToolHeader view={view} title={toolSummary(view.call)} changes={files.length > 0 ? changes : undefined} /></div>
 			{files.length > 0 && <ToolDiff files={files} />}
 			{files.length === 0 && <OutputPreview view={view} />}
+			<ToolOutputParts parts={view.outputParts} structured={view.structured} />
 			{view.error && <ErrorText error={view.error} />}
 		</div>
 	);
@@ -137,14 +143,14 @@ function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
 	const count = view.call.name === "grep" ? view.metadata.matches : view.call.name === "glob" ? view.metadata.count : view.call.name === "websearch" ? view.metadata.numResults : undefined;
 	const countLabel = typeof count === "number" ? `${count} ${count === 1 ? "result" : "results"}` : "";
 	const title = countLabel ? `${baseTitle} (${countLabel})` : baseTitle;
-	return <div className={compact ? "my-0" : "my-1.5"}><div className="flex min-h-7 items-center"><ToolHeader view={view} title={title} /></div>{view.error && <ErrorText error={view.error} />}</div>;
+	return <div className={compact ? "my-0" : "my-1.5"}><div className="flex min-h-7 items-center"><ToolHeader view={view} title={title} /></div><ToolOutputParts parts={view.outputParts} structured={view.structured} />{view.error && <ErrorText error={view.error} />}</div>;
 }
 
 function CompactTool({ view }: { view: ToolView }) {
 	const read = view.call.name === "read" ? parseReadOutput(view.output) : undefined;
 	const output = read?.body || view.output;
 	const preview = collapseOutput(output.trimEnd(), 3, 420);
-	const structured = view.metadata.structured_content;
+	const structured = view.structured;
 	const hasDetails = Boolean(output || view.error || structured || Object.keys(view.call.input).length > 0);
 	const defaultOpen = view.status === "error";
 	const baseTitle = typeof view.metadata.remote_name === "string" ? humanizeToolName(view.metadata.remote_name) : toolSummary(view.call);
@@ -165,7 +171,7 @@ function CompactTool({ view }: { view: ToolView }) {
 				<div className="ml-8 mt-1 grid gap-2 border-l pl-3">
 					{read?.path && <div className="break-all font-mono text-xs text-muted-foreground">{read.path}</div>}
 					{output && <DetailBlock label="Output">{output}</DetailBlock>}
-					{structured !== undefined && <DetailBlock label="Structured output">{JSON.stringify(structured, null, 2)}</DetailBlock>}
+					<ToolOutputParts parts={view.outputParts} structured={structured} />
 					{Object.keys(view.call.input).length > 0 && <DetailBlock label="Input">{JSON.stringify(view.call.input, null, 2)}</DetailBlock>}
 					{sourceLabel(view) && <div className="text-[11px] text-muted-foreground">{sourceLabel(view)}</div>}
 				</div>
@@ -178,6 +184,23 @@ function OutputPreview({ view }: { view: ToolView }) {
 	const text = view.output || compactInput(view.call.input);
 	if (!text) return null;
 	return <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-muted-foreground">{collapseOutput(text, 4, 500).output}</pre>;
+}
+
+function ToolOutputParts({ parts, structured }: { parts: Part[]; structured: unknown }) {
+	const images = parts.filter((part): part is ImagePart => part.type === "image");
+	const unsupported = parts.filter((part) => part.type !== "text" && part.type !== "image");
+	if (images.length === 0 && unsupported.length === 0 && structured === undefined) return null;
+	return (
+		<div className="grid gap-2 px-3 py-2">
+			{images.map((image, index) => {
+				const source = image.url || (image.base64 && image.media_type ? `data:${image.media_type};base64,${image.base64}` : "");
+				if (!source) return <div key={image.id ?? index} className="text-xs text-muted-foreground">Tool returned an image without a displayable source.</div>;
+				return <a key={image.id ?? index} href={source} target="_blank" rel="noreferrer" className="w-fit"><img src={source} alt="Tool result" loading="lazy" className="max-h-80 max-w-full rounded-md border" /></a>;
+			})}
+			{structured !== undefined && <DetailBlock label="Structured output">{JSON.stringify(structured, null, 2)}</DetailBlock>}
+			{unsupported.length > 0 && <details className="text-xs text-muted-foreground"><summary>Unsupported result parts ({unsupported.length})</summary><pre data-scrollable tabIndex={0} className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/45 p-2 font-mono text-xs">{JSON.stringify(unsupported, null, 2)}</pre></details>}
+		</div>
+	);
 }
 
 function ErrorText({ error }: { error: string }) {

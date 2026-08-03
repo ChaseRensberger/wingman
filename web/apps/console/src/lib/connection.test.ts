@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay } from "./connection";
+import { daemonConnectionFailureMessage, daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay } from "./connection";
 
 describe("daemon connection recovery", () => {
   test("caps exponential retry delays", () => {
@@ -21,5 +21,11 @@ describe("daemon connection recovery", () => {
     expect(daemonConnectionMessage("paused")).toContain("paused");
     expect(daemonConnectionMessage("failed")).toContain("unavailable");
     expect(daemonConnectionMessage("live")).toContain("Connected");
+  });
+
+  test("explains actionable readiness failures", () => {
+    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("credential");
+    expect(daemonConnectionFailureMessage({ status: 503 })).toContain("recovering");
+    expect(daemonConnectionMessage("failed", "Wingman rejected the Console credential (401).")).toContain("credential");
   });
 });

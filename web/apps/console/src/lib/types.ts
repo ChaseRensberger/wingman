@@ -318,9 +318,10 @@ export interface ReasoningPart {
 export interface ImagePart {
   id?: string;
   type: "image";
-  data: string;
-  mime_type: string;
-  provider_options?: unknown;
+  url?: string;
+  base64?: string;
+  media_type?: string;
+  provider_metadata?: Record<string, unknown>;
 }
 
 export interface ToolCallPart {
@@ -344,6 +345,8 @@ export interface ToolPart {
   input: Record<string, unknown>;
   input_raw?: string;
   output?: string;
+	output_parts?: Part[];
+	structured?: unknown;
   metadata?: Record<string, unknown>;
   error?: string;
   started_at?: number;
@@ -373,6 +376,7 @@ export interface ToolResultPart {
 	call_id: string;
 	name?: string;
   output: Part[];
+	structured?: unknown;
   is_error?: boolean;
   metadata?: Record<string, unknown>;
   provider_options?: unknown;

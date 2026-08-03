@@ -10,15 +10,17 @@ test("readSSE preserves SSE event ids", async () => {
 });
 
 test("parseSessionEvent discriminates known and unknown payloads", () => {
-	const known = parseSessionEvent({ id: "evt-1", type: "session.text.delta", data: { run_id: "run-1", delta: "hi" } });
+	const known = parseSessionEvent({ id: "evt-1", type: "session.text.delta", schema_version: 1, data: { run_id: "run-1", delta: "hi" } });
 	if (!known?.known) throw new Error("known event was not classified");
 	expect(known.event.type).toBe("session.text.delta");
 	expect(known.event.data).toEqual({ run_id: "run-1", delta: "hi" });
 
-	const unknown = parseSessionEvent({ id: "evt-2", type: "plugin.custom", data: { value: 1 } });
-	expect(unknown).toEqual({ known: false, event: { id: "evt-2", type: "plugin.custom", data: { value: 1 } } });
-	expect(parseSessionEvent({ type: "session.text.delta", data: {} })).toBeUndefined();
-	expect(parseSessionEvent({ id: "evt-3", type: "session.text.delta", data: null })).toBeUndefined();
+	const unknown = parseSessionEvent({ id: "evt-2", type: "plugin.custom", schema_version: 1, data: { value: 1 } });
+	expect(unknown).toEqual({ known: false, event: { id: "evt-2", type: "plugin.custom", schema_version: 1, data: { value: 1 } } });
+	expect(parseSessionEvent({ type: "session.text.delta", schema_version: 1, data: {} })).toBeUndefined();
+	expect(parseSessionEvent({ id: "evt-3", type: "session.text.delta", schema_version: 1, data: null })).toBeUndefined();
+	expect(parseSessionEvent({ id: "evt-4", type: "session.text.delta", data: { run_id: "run-1", delta: "hi" } })).toBeUndefined();
+	expect(parseSessionEvent({ id: "evt-5", type: "session.text.delta", schema_version: 2, data: { run_id: "run-1", delta: "hi" } })).toBeUndefined();
 });
 
 test("parseRunStreamEvent discriminates known and unknown payloads", () => {

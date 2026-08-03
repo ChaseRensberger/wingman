@@ -5,6 +5,7 @@ import { APIError, apiErrorFromResponse } from "./client";
 export type SessionEventEnvelope<T extends string = string, D = unknown> = {
 	id: string;
 	type: T;
+	schema_version?: number;
 	time?: string;
 	cursor?: {
 		session_id: string;
@@ -31,7 +32,7 @@ const sessionEventTypes = new Set<SessionEventType>([
 export function parseSessionEvent(value: unknown): ParsedSessionEvent | undefined {
 	if (!value || typeof value !== "object") return;
 	const event = value as Record<string, unknown>;
-	if (typeof event.id !== "string" || typeof event.type !== "string" || !("data" in event)) return;
+	if (typeof event.id !== "string" || typeof event.type !== "string" || event.schema_version !== 1 || !("data" in event)) return;
 	const envelope = event as UnknownSessionEvent;
 	if (!sessionEventTypes.has(envelope.type as SessionEventType)) return { known: false, event: envelope };
 	if (!envelope.data || typeof envelope.data !== "object" || Array.isArray(envelope.data)) return;
