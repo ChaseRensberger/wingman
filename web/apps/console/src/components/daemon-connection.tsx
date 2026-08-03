@@ -49,7 +49,9 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      setConnection((current) => ({ ...current, phase: attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying" }));
+      if (!hasBeenLive.current || attempt > 0 || disconnected.current) {
+        setConnection((current) => ({ ...current, phase: attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying" }));
+      }
       const controller = new AbortController();
       request = controller;
       try {
