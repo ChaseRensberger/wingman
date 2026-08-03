@@ -6,7 +6,7 @@ order: 2
 
 # Quick Start
 
-This will walk you through basic Wingman usage from a CLI perspective. If you like a UI, check out the [console](/use-wingman/console).
+This guide uses the CLI and HTTP API. For the bundled browser UI, see [Use the Console](/use-wingman/web-ui).
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ This will walk you through basic Wingman usage from a CLI perspective. If you li
 
 ## Install & Enable
 
-For now Wingman is not available on any package managers so the best way to install it is to install it to
+Install Wingman with the release installer:
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
@@ -25,15 +25,15 @@ curl -fsSL https://wingman.actor/install | bash
 The installer downloads the matching GitHub release archive and verifies it
 against the release `checksums.txt` before it extracts the binary.
 
-```
-export PATH="~/.wingman/bin:$PATH"
+```bash
+export PATH="$HOME/.wingman/bin:$PATH"
 ```
 
-```
+```bash
 wingman up
 ```
 
-If you don't want to register Wingman as a service you can also just run `wingman serve`.
+To run it in the foreground instead, use `wingman serve`.
 
 Load the private API token for the commands in this guide:
 
@@ -41,7 +41,7 @@ Load the private API token for the commands in this guide:
 export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
 ```
 
-## Check that it's running:
+## Check that it is running
 
 ```bash
 curl -sS http://localhost:2323/health
@@ -55,9 +55,9 @@ Expected response:
 
 ## Configure provider auth
 
-Store your Anthropic API key in Wingman's local auth store:
+Store your Anthropic API key in Wingman's local auth store. Replace `{key}` with your key:
 
-```
+```bash
 export ANTHROPIC_API_KEY={key}
 ```
 
@@ -113,7 +113,7 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response confirms durable admission. Use the session event stream below for progress and completion:
+The response confirms that the server accepted the message. Use the session event stream for progress and completion:
 
 ```json
 {

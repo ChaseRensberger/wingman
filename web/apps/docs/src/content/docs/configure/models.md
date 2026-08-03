@@ -5,7 +5,7 @@ description: "Choose models with model refs and custom routes."
 
 # Models
 
-Wingman selects models with provider-qualified model refs.
+Wingman selects models with provider-qualified references.
 
 ```text
 provider/model
@@ -23,7 +23,7 @@ opencode/claude-sonnet-5
 opencode-go/kimi-k3
 ```
 
-The provider part selects the provider catalog entry. The model part selects a model under that provider.
+The provider selects a catalog entry. The model selects a model in that entry.
 
 ## Agent Default Model
 
@@ -39,7 +39,8 @@ Agents can define a default `model_ref`:
 }
 ```
 
-The model belongs to the agent definition, not the session. A session can use different agents or models on different turns.
+The model belongs to the agent definition, not the session. A session can use
+different agents or models on different turns.
 
 ## Per-Message Model Override
 
@@ -83,7 +84,9 @@ Agents still use normal refs:
 }
 ```
 
-Use provider route overlays when a known provider should go through a proxy, local gateway, or provider-compatible endpoint. See [Providers](/configure/providers) for auth and route details.
+Use a provider route overlay when a known provider should use a proxy, local
+gateway, or compatible endpoint. See [Providers](/configure/providers) for auth
+and route details.
 
 ## Custom Model Routes
 
@@ -127,7 +130,7 @@ Agents can then use the custom ref directly:
 }
 ```
 
-Use `model_route` for one-off uncataloged routes that should remain part of the agent/request payload:
+Use `model_route` for an uncataloged route that belongs in an agent or request:
 
 ```json
 {
@@ -148,7 +151,8 @@ Use `model_route` for one-off uncataloged routes that should remain part of the 
 }
 ```
 
-If `model_ref` is already known through the embedded catalog or config-defined models, that metadata wins. Use `model_route` for one-off uncataloged models and explicit custom deployments.
+If `model_ref` is known through the embedded catalog or config-defined models,
+that metadata wins. Use `model_route` for uncataloged models and custom deployments.
 
 ## Supported Protocols
 

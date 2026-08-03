@@ -7,9 +7,9 @@ description: "Connect Model Context Protocol servers and use their tools in Wing
 
 Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json` to make their tools available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
-Wingman supports local stdio servers and remote servers. The daemon rejects an
-invalid type, missing local command, invalid remote URL, or negative timeout at
-startup. Enabled servers connect when Wingman creates an execution scope.
+Wingman supports local stdio servers and remote HTTP servers. It validates MCP
+configuration when it starts. Enabled servers connect when Wingman creates an
+execution scope.
 
 ## Add A Local Server
 
@@ -32,9 +32,7 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 
 `command` runs directly, without shell expansion. Put the executable and every argument in a separate array item. `cwd` supports `~` and `~/...` paths.
 
-## Chrome DevTools
-
-(as an example)
+## Chrome DevTools example
 
 ```json
 {
@@ -49,7 +47,8 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 
 ## Add A Remote Server
 
-Use `type: "remote"` for a remote MCP endpoint. Currently remote MCPs need an authorization header and you can't run like `wingman mcp auth {name}` to use OAuth for a remote MCP but this is coming soon.
+Use `type: "remote"` for a remote MCP endpoint. Configure any required
+credentials in `headers`; Wingman does not provide an MCP OAuth login command.
 
 ```json
 {
@@ -69,7 +68,8 @@ Use `type: "remote"` for a remote MCP endpoint. Currently remote MCPs need an au
 
 ## Use MCP Tools In An Agent
 
-Restart Wingman after changing `wingman.json`. It connects enabled MCP servers at startup and lists their tools through the Console's Tools page or `GET /tools`.
+Restart Wingman after changing `wingman.json`. It lists connected tools on the
+Console's Tools page and at `GET /tools`.
 
 Wingman prefixes each MCP tool with its server name. For example, a remote tool named `search` from `company-tools` becomes `company_tools_search`.
 
@@ -84,13 +84,11 @@ Add that name to an agent's `tools` allow-list:
 }
 ```
 
-Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2323/console/tools` to inspect the directoryless scope.
+Only connected MCP tools are available to agents. Use the Console at
+`http://127.0.0.1:2323/console/tools` to inspect the directoryless scope.
 
-Agent writes reject disconnected or unknown MCP tool names. If two sanitized MCP
-names collide with each other or another tool source, catalog composition fails
-explicitly. MCP input and output schemas are preserved; successful
-`structuredContent` is validated against the advertised output schema and stored
-separately from model-facing text and client metadata.
+Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP
+tool names collide, tool catalog creation fails.
 
 To inspect the daemon directly:
 
@@ -104,15 +102,6 @@ curl -sS http://127.0.0.1:2323/tools \
 ```
 
 `/mcp` lists every configured server and its connection status. `/tools` lists the MCP tools currently available to agents.
-
-Each execution scope owns separate MCP connections. Sessions in one canonical
-working directory share those connections. Reconnect and disconnect operations
-on `/mcp` apply to the directoryless scope.
-
-An MCP reconnect stages the connection and tool discovery before publication.
-If the candidate fails, the current healthy connection stays active. A
-successful replacement rejects new calls through stale tools, drains active
-calls for a bounded period, and then closes the old connection.
 
 `discovery_timeout` bounds connecting and listing a server's tools.
 `execution_timeout` bounds each MCP tool call. Both values are milliseconds and

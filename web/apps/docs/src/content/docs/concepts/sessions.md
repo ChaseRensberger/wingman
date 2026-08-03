@@ -27,7 +27,7 @@ Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a sav
 
 ## Create Then Send
 
-Wingman's session API follows the same split as OpenCode: create a session first, then send messages to that session.
+Create a session first, then send messages to it.
 
 The commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
@@ -90,12 +90,11 @@ curl -sS -X DELETE \
   "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
 ```
 
-Wingman atomically removes the session, aggregate history, public event
-history, queued and completed runs, messages, parts, and model-call records. It
-retains no deletion event or tombstone. Active event streams close, active
-execution is canceled, and the worker settles before the endpoint returns
-success. A stale version returns `409 Conflict` without deleting the session or
-canceling its work.
+Wingman atomically removes the session, its aggregate and public event history,
+runs, messages, parts, model calls, tool uses, and permission records. It keeps
+no deletion event or tombstone. Active event streams close and active execution
+is canceled before the endpoint returns success. A stale version returns `409
+Conflict` without deleting the session or canceling its work.
 
 ## Admit Work
 

@@ -59,10 +59,10 @@ curl -sS -X POST http://localhost:2323/agents \
       }'
 ```
 
-Agent creation and tool-list updates reject unknown or duplicate names. Dynamic
-plugin and MCP tools must be connected and present in `GET /tools` when the Agent
-is written. If one later becomes unavailable, session construction fails
-explicitly instead of silently removing it.
+Agent creation and tool-list updates reject unknown or duplicate names. The
+server checks names against its directoryless tool catalog. A session still fails
+to start if an allowed tool is unavailable in that session's execution scope;
+Wingman never silently removes it.
 
 ## Web Search Configuration
 

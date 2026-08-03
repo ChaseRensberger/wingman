@@ -66,9 +66,9 @@ subsystem and a recovery action; inspect `/logs` before restarting the daemon.
 | `GET` | `/provider/auth` | Get configured credential status |
 | `PUT` | `/provider/auth` | Set credentials for one or more providers |
 | `DELETE` | `/provider/auth/{provider}` | Remove credentials for a provider |
-| `POST` | `/provider/openai/oauth/authorize` | Begin browser or device OAuth authorization |
-| `GET` | `/provider/openai/oauth/{attempt}` | Read OAuth authorization status |
-| `DELETE` | `/provider/openai/oauth/{attempt}` | Cancel OAuth authorization |
+| `POST` | `/provider/{name}/oauth/authorize` | Begin browser or device OAuth authorization |
+| `GET` | `/provider/{name}/oauth/{attempt}` | Read OAuth authorization status |
+| `DELETE` | `/provider/{name}/oauth/{attempt}` | Cancel OAuth authorization |
 
 ### Set auth
 
@@ -79,10 +79,6 @@ subsystem and a recovery action; inspect `/logs` before restarting the daemon.
   }
 }
 ```
-
-`tools` must contain unique names from the currently available `GET /tools`
-catalog. Create and update return `400 Bad Request` for unknown or duplicate
-names.
 
 ### Auth response
 
@@ -125,6 +121,9 @@ returned by these endpoints.
 | `GET` | `/agents/{id}` | Get agent |
 | `PUT` | `/agents/{id}` | Update agent (omitted fields unchanged) |
 | `DELETE` | `/agents/{id}` | Delete agent |
+
+`tools` must contain unique names from the current `GET /tools` catalog. Create
+and update return `400 Bad Request` for unknown or duplicate names.
 
 ### Create request
 

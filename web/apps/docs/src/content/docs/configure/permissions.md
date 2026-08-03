@@ -5,14 +5,14 @@ description: "Control which tool actions run automatically, ask for approval, or
 
 # Permissions
 
-Permissions control what happens when a model calls a tool.
+Permissions control what happens when an agent calls a tool.
 
 Wingman has two layers:
 
 | Layer | Purpose |
 |---|---|
 | Agent `tools` | Which tools the model can see and call. |
-| Permission rules | Whether a specific tool call is allowed, asks for approval, or is denied. |
+| Permission rules | Whether a tool call is allowed, asks for approval, or is denied. |
 
 ## Effects
 
@@ -68,7 +68,7 @@ Global permissions are runtime policy. They are not written into SQLite and do n
 
 ## Agent Overrides In Config
 
-Use `agent_permissions` for daemon-local overlays that apply to one stored agent.
+Use `agent_permissions` for daemon-local rules that apply to one stored agent.
 
 Keys may be an agent ID or an agent name. If both match, the ID-specific rules run last.
 
@@ -143,9 +143,9 @@ choices:
   error.
 
 Remembered grants are stored separately from authored Agent and daemon rules.
-They satisfy later `ask` decisions in the same session, but cannot override an
-authored `deny`. Pending requests time out after five minutes. Canceling the run
-or stopping the daemon interrupts them without executing the tool.
+They satisfy later `ask` decisions in the same session, but cannot override a
+`deny`. Pending requests time out after five minutes. Canceling the run or
+stopping the daemon interrupts them without running the tool.
 
 API clients can list and answer requests through the session permission
 endpoints. A non-interactive Go `run.Config` without a `PermissionPrompter`
@@ -203,7 +203,7 @@ Effective permissions are assembled at run time:
 3. Name-matched `agent_permissions` from `wingman.json`.
 4. ID-matched `agent_permissions` from `wingman.json`.
 
-This means daemon-local config can restrict or refine stored agents without rewriting them.
+Daemon-local config can restrict or refine stored agents without rewriting them.
 
 ## Supported Syntax
 

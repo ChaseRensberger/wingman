@@ -268,11 +268,10 @@ later queued runs for the session.
 
 ## One-Shot `/run` Stream
 
-`POST /run` returns a separate, non-persistent SSE stream. It uses the session
-stream event names, including `stream_part`, but the HTTP boundary converts each
-payload to the public lower-case JSON contract. Its JSON `data:` value is an
-envelope with `type`, `version`, and event-specific `data`. These events are not
-rewritten into `session.*` events and cannot be replayed. Treat `type` as a
+`POST /run` returns a separate, non-persistent SSE stream with its own event
+vocabulary, including `stream_part`. Its JSON `data:` value is a public
+lower-case envelope with `type`, `version`, and event-specific `data`. These
+events are not `session.*` events and cannot be replayed. Treat `type` as a
 discriminator and ignore unknown event types.
 
 On success, `/run` sends a terminal `done` event containing usage and step

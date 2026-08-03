@@ -5,9 +5,9 @@ description: "Start Wingman as a foreground process or system service."
 
 # Run the Server
 
-Wingman runs as a local HTTP server. By default, it listens on
-`127.0.0.1:2323`. It stores persistent data in
-`~/.local/share/wingman/wingman.db`. The API requires a private bearer token.
+Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2323`
+and stores persistent data in `~/.local/share/wingman/wingman.db`. API routes
+other than `GET /health` require a private bearer token.
 
 ## Foreground Server
 
@@ -89,7 +89,7 @@ Change the bind address with `--host` and `--port`:
 wingman serve --host 127.0.0.1 --port 2424
 ```
 
-Wingman does not enable cross-origin browser access by default. The bundled console UI is served from `/console` on the same origin as the API.
+Wingman does not enable cross-origin browser access by default. The bundled Console is served from `/console` on the same origin as the API.
 
 ## API Authentication
 
@@ -102,14 +102,8 @@ curl -sS http://localhost:2323/ready \
   -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
-The loopback Console receives an HttpOnly, `SameSite=Strict` session cookie.
-Wingman does not issue this cookie on a non-loopback listener. Native clients
-must read the private credential and send the bearer token.
-
-The bundled Desktop client reads the managed registration and credential before
-proxying each API request. It verifies authenticated readiness, instance ID, and
-version. A not-ready daemon, stale registration, or proxied `401`/`503` clears
-its short-lived discovery cache so the next request rereads current daemon state.
+The Console receives an HttpOnly, `SameSite=Strict` session cookie only when
+the request host is loopback. Other clients must send the bearer token.
 
 ## Ephemeral Mode
 
@@ -119,4 +113,5 @@ Run without persistence:
 wingman serve --ephemeral
 ```
 
-In ephemeral mode, use `POST /run` with inline agent specs. Persistent resources such as agents, sessions, clients, and provider auth are unavailable.
+In ephemeral mode, use `POST /run` with an inline agent spec. Persistent
+resources, including agents, sessions, clients, and provider auth, are unavailable.

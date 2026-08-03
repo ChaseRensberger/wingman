@@ -6,20 +6,18 @@ order: 3
 
 # Global Config
 
-Wingman is configured per local user. By default, global files live under:
+Wingman uses per-user configuration. By default, files live under:
 
 ```text
 ~/.config/wingman/
 ```
 
-Use global config for daemon-wide settings that apply across clients and projects.
+Use this file for daemon-wide settings.
 
-> **Security:** (Currently) Wingman is a trusted-local control surface, not an authenticated multi-tenant service. Anyone who can reach it can use configured providers, inspect local directories, manage plugins or MCP connections, and start agents with enabled tools. Keep the server on a trusted local interface; `X-Wingman-Client` provides attribution only, not isolation.
+> **Security:** Keep Wingman on a trusted local interface and keep its bearer token private. A client with the token can use configured providers and enabled tools. `X-Wingman-Client` provides attribution, not isolation.
 
 Set `XDG_CONFIG_HOME` to use a different config root. For example,
-`XDG_CONFIG_HOME=~/settings` makes the global config file
-`~/settings/wingman/wingman.json`. This behavior is the same on Linux and
-macOS.
+`XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.
 
 ## Configuration Surfaces
 
@@ -83,7 +81,7 @@ Example:
 }
 ```
 
-CLI flags passed to `wingman serve` or `wingman up` override config file values.
+Flags passed to `wingman serve` or `wingman up` override config values.
 
 For exact fields, see [Config Schema](/reference/config-schema).
 

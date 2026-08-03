@@ -6,9 +6,12 @@ order: 104
 
 # Plugins
 
-Plugins extend a Wingman session. They can add tools, observe lifecycle events, transform model context, change tool calls, and teach Wingman about custom message parts.
+Plugins extend a Wingman session. They can add tools, observe lifecycle events,
+transform model context, change tool calls, and add custom message parts.
 
-Plugins are session-scoped. They do not create sessions, list other sessions, or orchestrate multi-agent workflows. If you need orchestration, build a client that uses the Wingman HTTP API.
+Plugins are session-scoped. They cannot create sessions, list other sessions, or
+orchestrate multi-agent work. For orchestration, build a client on the Wingman
+HTTP API.
 
 ## Plugin Forms
 

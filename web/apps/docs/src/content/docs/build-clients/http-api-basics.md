@@ -12,7 +12,7 @@ Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI
 Most clients follow this sequence:
 
 1. Check health with `GET /health`.
-2. Read the private daemon token and check readiness with `GET /ready`.
+2. Load the private daemon token, then check readiness with `GET /ready`.
 3. Configure provider auth with `PUT /provider/auth`.
 4. Create or reuse an agent with `/agents`.
 5. Create or reuse a Workspace with `/workspaces` if the session needs a saved context.
@@ -61,7 +61,7 @@ contract.
 
 ## Client Identity
 
-Clients can register themselves with `/clients` and then pass `X-Wingman-Client` when creating sessions. This lets different clients organize their own sessions without treating client identity as an auth boundary.
+Clients can register with `/clients` and pass `X-Wingman-Client` on requests for client-scoped resources. This keeps each client's sessions and Workspaces organized. It is not an auth boundary.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \

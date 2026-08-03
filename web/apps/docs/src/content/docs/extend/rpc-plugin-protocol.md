@@ -26,7 +26,7 @@ Wingman loads global plugins from:
 
 Add global directories with configuration or CLI flags:
 
-```jsonc
+```json
 {
   "plugins": {
     "dirs": ["/home/me/wingman-plugins"]
@@ -177,7 +177,7 @@ Wingman can send concurrent `tool.execute` requests to one plugin process.
       "call_id": "call_123",
       "message_id": "msg_123",
       "part_id": "prt_123",
-      "model_call_id": "mdl_123",
+      "model_call_id": "mcl_123",
       "work_dir": "/home/chase/project"
     }
   }
@@ -310,10 +310,8 @@ active. After a successful atomic swap, it retires the previous generation.
 
 ## Inspect Plugins
 
-List status, negotiated capabilities, health, process data, contributions, and
-bounded diagnostics:
-
-These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+List plugin status, capabilities, health, process data, contributions, and
+recent diagnostics. These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \

@@ -6,7 +6,9 @@ order: 105
 
 # Storage
 
-Storage persists agents, clients, Workspaces, sessions, message history, content parts, and provider auth credentials. Session history is durable by default when the server runs with storage enabled.
+Storage persists agents, clients, Workspaces, sessions, message history, tool
+execution, and provider credentials. Session history is durable by default when
+the server runs with storage enabled.
 
 ## Default Store
 
@@ -189,60 +191,10 @@ SQLite is the durable store provided by Wingman. Embedded Go applications can pr
 
 ## Store Interface
 
-Embedding applications can provide their own implementation of `store.Store`:
-
-```go
-type Store interface {
-    CreateAgent(agent *Agent) error
-    GetAgent(id string) (*Agent, error)
-    ListAgents() ([]*Agent, error)
-    UpdateAgent(agent *Agent) error
-    DeleteAgent(id string) error
-
-    CreateSession(session *Session) error
-    GetSession(id string) (*Session, error)
-    ListSessions() ([]*Session, error)
-    ListSessionsByClient(clientID string) ([]*Session, error)
-    ListSessionsByWorkspace(workspaceID string) ([]*Session, error)
-    RenameSession(ctx context.Context, id, title string, expectedVersion int64) (*Session, error)
-    MoveSession(ctx context.Context, id, workDir, workspaceID string, expectedVersion int64) (*Session, error)
-    PurgeSession(ctx context.Context, id string, expectedVersion int64) error
-
-    AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error)
-    ClaimNextSessionRun(ctx context.Context, sessionID string) (*SessionRun, error)
-    CompleteSessionRun(ctx context.Context, id, status, errorMessage string) error
-    ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
-    AbortRunningSessionRuns(ctx context.Context) error
-
-    UpsertMessage(ctx context.Context, msg StoredMessage) error
-    UpsertPart(ctx context.Context, part StoredPart) error
-    ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
-
-    UpsertModelCall(ctx context.Context, call ModelCall) error
-    LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
-    ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
-
-    AppendSessionEvent(ctx context.Context, event SessionEvent) (SessionEvent, error)
-    ListSessionEvents(ctx context.Context, sessionID string, after int64, limit int) ([]SessionEvent, error)
-
-    CreateClient(name string) (*Client, error)
-    EnsureDefaultClient() (*Client, error)
-    GetClient(id string) (*Client, error)
-    ListClients() ([]*Client, error)
-
-    CreateWorkspace(workspace *Workspace) error
-    GetWorkspace(id string) (*Workspace, error)
-    ListWorkspaces() ([]*Workspace, error)
-    ListWorkspacesByClient(clientID string) ([]*Workspace, error)
-    UpdateWorkspace(workspace *Workspace) error
-    DeleteWorkspace(id string) error
-
-    GetAuth() (*Auth, error)
-    SetAuth(auth *Auth) error
-
-    Close() error
-}
-```
+Embedding applications can provide `store.Store`. Its Go contract includes
+agents, clients, Workspaces, session metadata and runs, messages, model calls,
+tool uses, permissions, public events, and credentials. Consult the exported
+`store.Store` interface in the source for the current method set.
 
 `store/memory` provides an in-memory implementation used by tests and embedding scenarios.
 

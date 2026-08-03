@@ -16,7 +16,8 @@ Each scope owns:
 - An external RPC plugin process generation.
 - MCP client connections and their discovered tools.
 - A composed tool catalog.
-- The immutable provider and model catalog generation for the daemon.
+
+All scopes share the daemon's immutable provider and model catalog.
 
 Wingman resolves absolute paths and symbolic links before it selects a scope.
 Two paths that identify the same directory share resources. A missing path or a
@@ -36,10 +37,10 @@ scope stays active for daemon management APIs.
 
 ## Catalog Generations
 
-Provider configuration produces a new immutable provider and model catalog when
-the application starts. It does not mutate the embedded WingModels catalog.
-Separate embedded applications can use different provider configurations in one
-process without leaking models or routes between applications.
+Provider configuration produces an immutable provider and model catalog when the
+application starts. It does not change the embedded WingModels catalog.
+Separate embedded applications can use different provider configurations without
+sharing models or routes.
 
 Plugin and MCP tools bind to the process or connection generation that supplied
 them. Replacement publishes a complete candidate before it retires the old

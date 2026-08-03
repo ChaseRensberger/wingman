@@ -6,7 +6,9 @@ order: 100
 
 # Agents
 
-An agent is a reusable definition for how a task should be completed (in the context of a [session](/concepts/sessions)). It describes the runtime configuration for a turn.
+An agent is a reusable definition for a [session](/concepts/sessions) turn. It
+holds the instructions, allowed tools, model default, and optional output
+schema for that turn.
 
 This command uses `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
 

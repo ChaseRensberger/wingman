@@ -49,7 +49,7 @@ func (p *Plugin) sink(event run.Event) {
 }
 ```
 
-`Name` should stay stable across versions. Wingman uses it for attribution in errors and observability.
+Keep `Name` stable across versions. Wingman uses it to identify the plugin in errors.
 
 ## 2. Install The Plugin
 

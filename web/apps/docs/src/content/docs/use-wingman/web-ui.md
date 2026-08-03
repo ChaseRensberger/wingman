@@ -9,16 +9,14 @@ Wingman includes a local console UI served by the same HTTP server as the API.
 On a loopback listener, opening the Console sets an HttpOnly,
 `SameSite=Strict` session cookie. JavaScript cannot read the daemon token.
 
-Once you start Wingman open:
+After starting Wingman, open:
 
 ```text
 http://localhost:2323/console
 ```
 
-Wingman does not set this cookie on a non-loopback listener. Use a native client
-or trusted reverse proxy that sends the bearer token for remote access.
+Wingman does not set this cookie for a non-loopback request host. For remote
+access, use a client or reverse proxy that sends the bearer token.
 
-The Console displays connection loss and retries readiness checks with bounded
-backoff. After the daemon returns, the Console reloads the active page from
-durable API state. An active session then rediscovers queued or running work and
-resumes its event stream.
+If the connection drops, the Console retries its readiness check. When the
+daemon returns, it reloads the active page from the API.

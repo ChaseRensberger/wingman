@@ -6,7 +6,8 @@ order: 103
 
 # Workspaces
 
-A Workspace is a saved session context. It can point at a directory, or it can have no directory and act only as a label/filter.
+A Workspace is a saved session context. It can point to a directory or work only
+as a label and filter.
 
 Each Workspace stores:
 
@@ -21,7 +22,11 @@ Workspaces are user-created. If you omit `X-Wingman-Client`, `GET /workspaces` l
 
 Workspace names are trimmed and must be non-empty. They are unique per owning client, case-insensitively. When creating a Workspace with a path and no name, Wingman uses the path's final directory name; a dirless Workspace must provide a name.
 
-Paths are resolved and validated by the Wingman server: surrounding whitespace is removed, `~` expands to that server process's home directory, and relative paths are made absolute from that process's current working directory. The path must already exist and be a directory. It is not a browser-local path, and Wingman does not resolve symlinks to a canonical path. Run the server on a machine that can access the directory you intend to use.
+The Wingman server resolves and validates paths. It trims whitespace, expands
+`~` from the server process's home directory, and resolves relative paths from
+that process's current directory. The path must already exist and be a
+directory. It is not a browser-local path. Run the server where it can access
+the directory.
 
 ## Create A Session In A Workspace
 
