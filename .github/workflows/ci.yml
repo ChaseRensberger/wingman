@@ -42,6 +42,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test installer
+        run: ./scripts/test-install.sh
+
   macos:
     runs-on: macos-latest
     steps:

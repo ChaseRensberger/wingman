@@ -14,20 +14,13 @@ This guide uses the CLI and HTTP API. For the bundled browser UI, see [Use the C
 - `jq`
 - An Anthropic API key
 
-## Install & Enable
-
-Install Wingman with the release installer:
+## Install
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
 ```
 
-The installer downloads the matching GitHub release archive and verifies it
-against the release `checksums.txt` before it extracts the binary.
-
-```bash
-export PATH="$HOME/.wingman/bin:$PATH"
-```
+## Enable
 
 ```bash
 wingman up

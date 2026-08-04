@@ -68,3 +68,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published installer
+        run: |
+          WINGMAN_INSTALL_DIR="$RUNNER_TEMP/wingman/bin" ./install --version "$GITHUB_REF_NAME" --no-modify-path --yes
+          "$RUNNER_TEMP/wingman/bin/wingman" version

@@ -21,9 +21,7 @@ Wingman is yet another agent harness, but this one is:
 
 `curl -fsSL https://wingman.actor/install | bash`
 
-## Add to path
-
-`export PATH="~/.wingman/bin:$PATH"`
+It adds Wingman to your shell `PATH` when it finds a suitable shell config. Pass `--no-modify-path` to skip that step.
 
 ## Enable
 
@@ -34,4 +32,3 @@ Wingman is yet another agent harness, but this one is:
 [Introduction](https://docs.wingman.actor/)
 
 [Quick Start](https://docs.wingman.actor/start-here/quickstart)
-

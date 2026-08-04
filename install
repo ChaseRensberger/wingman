@@ -10,6 +10,8 @@ binary_path=""
 install_dir="${WINGMAN_INSTALL_DIR:-$HOME/.wingman/bin}"
 no_modify_path=false
 assume_yes=false
+os=""
+arch=""
 
 usage() {
   cat <<'EOF'
@@ -21,8 +23,8 @@ Options:
   -h, --help              Show help
   -v, --version <version> Install a specific stable or prerelease version (default: latest stable release)
   -b, --binary <path>     Install from a local binary
-      --install-dir <dir> Set install directory (default: ~/.wingman/bin)
-      --no-modify-path    Do not modify shell config files
+  --install-dir <dir> Set install directory (default: ~/.wingman/bin)
+  --no-modify-path    Do not modify shell config files
   -y, --yes               Accept default install choices
 
 Examples:
@@ -101,16 +103,6 @@ confirm() {
   fi
 }
 
-if is_interactive; then
-  echo "Wingman will install to: ${install_dir}"
-  if ! confirm "Continue?" yes; then
-    echo "Install cancelled"
-    exit 0
-  fi
-fi
-
-mkdir -p "$install_dir"
-
 detect_os() {
   case "$(uname -s)" in
     Linux*) echo "linux" ;;
@@ -133,6 +125,46 @@ detect_arch() {
       ;;
   esac
 }
+
+os=$(detect_os)
+arch=$(detect_arch)
+
+print_locations() {
+  local config_dir data_dir state_dir service_path
+  config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wingman"
+  data_dir="$HOME/.local/share/wingman"
+  state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/wingman"
+
+  case "$os" in
+    linux) service_path="/etc/systemd/system/wingman.service" ;;
+    darwin) service_path="$HOME/Library/LaunchAgents/actor.wingman.plist" ;;
+    windows) service_path="not supported; use wingman serve" ;;
+  esac
+
+  echo "Wingman locations:"
+  echo "  Binary (created now): ${install_dir}/${APP}"
+  echo "  Config (created when saved): ${config_dir}/wingman.json"
+  echo "  Plugins (created by you): $HOME/.config/wingman/plugins"
+  echo "  Database (created when the server starts): ${data_dir}/wingman.db"
+  echo "  Daemon state (created by serve or up): ${state_dir}"
+  if [[ "$os" == "windows" ]]; then
+    echo "  Managed service: ${service_path}"
+  else
+    echo "  Service file (created by up): ${service_path}"
+  fi
+  echo
+}
+
+print_locations
+
+if is_interactive; then
+  if ! confirm "Continue?" yes; then
+    echo "Install cancelled"
+    exit 0
+  fi
+fi
+
+mkdir -p "$install_dir"
 
 resolve_version() {
   if [[ -n "$requested_version" ]]; then
@@ -159,7 +191,7 @@ resolve_asset_url() {
 
 resolve_release_asset_url() {
   local tag="$1" version="$2" os="$3" arch="$4" ext="$5"
-  local api url name candidate="" fallback=""
+  local api url name candidate=""
   api="https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${tag}"
 
   while IFS= read -r url; do
@@ -175,15 +207,6 @@ resolve_release_asset_url() {
       candidate="$url"
       break
     fi
-
-    if [[ "$name" == "${APP}_.${version}_.${os}_.${arch}.${ext}" ]]; then
-      candidate="$url"
-      break
-    fi
-
-    if [[ -z "$fallback" ]]; then
-      fallback="$url"
-    fi
   done < <(curl -fsSL "$api" 2>/dev/null | sed -n 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
   if [[ -n "$candidate" ]]; then
@@ -191,19 +214,12 @@ resolve_release_asset_url() {
     return
   fi
 
-  if [[ -n "$fallback" ]]; then
-    echo "$fallback"
-    return
-  fi
-
   echo ""
 }
 
 install_from_archive() {
-  local os arch version ext filename url archive_name tmp_dir archive checksums bin_name
+  local version ext filename url archive_name tmp_dir archive checksums bin_name
   local line expected_checksum actual_checksum checksum_candidate archive_candidate checksum_entry_found=false
-  os=$(detect_os)
-  arch=$(detect_arch)
   version=$(resolve_version)
 
   ext="tar.gz"
@@ -316,25 +332,63 @@ install_from_binary() {
 }
 
 add_path() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    if [[ -z "${GITHUB_PATH:-}" ]]; then
+      echo "GITHUB_PATH is not set; cannot add ${install_dir} to GitHub Actions PATH" >&2
+    else
+      printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+      echo "Added ${install_dir} to GitHub Actions PATH"
+    fi
+    return
+  fi
+
   if [[ ":$PATH:" == *":${install_dir}:"* ]]; then
     return
   fi
 
-  local line file
-  line="export PATH=\"${install_dir}:\$PATH\""
+  local current_shell line file config_found=false
+  local -a config_files
+  current_shell=$(basename "${SHELL:-sh}")
 
-  for file in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+  case "$current_shell" in
+    fish)
+      config_files=("${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish")
+      line="fish_add_path \"${install_dir}\""
+      ;;
+    zsh)
+      config_files=("${ZDOTDIR:-$HOME}/.zshrc" "${ZDOTDIR:-$HOME}/.zshenv" "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/.zshrc" "${XDG_CONFIG_HOME:-$HOME/.config}/zsh/.zshenv")
+      line="export PATH=\"${install_dir}:\$PATH\""
+      ;;
+    bash)
+      config_files=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "${XDG_CONFIG_HOME:-$HOME/.config}/bash/.bashrc" "${XDG_CONFIG_HOME:-$HOME/.config}/bash/.bash_profile")
+      line="export PATH=\"${install_dir}:\$PATH\""
+      ;;
+    *)
+      config_files=("$HOME/.profile")
+      line="export PATH=\"${install_dir}:\$PATH\""
+      ;;
+  esac
+
+  for file in "${config_files[@]}"; do
     if [[ -f "$file" ]]; then
+      config_found=true
       if ! grep -Fxq "$line" "$file"; then
-        printf "\n# wingman\n%s\n" "$line" >> "$file"
-        echo "Added ${install_dir} to PATH in ${file}"
+        if [[ -w "$file" ]]; then
+          printf "\n# wingman\n%s\n" "$line" >> "$file"
+          echo "Added ${install_dir} to PATH in ${file}"
+        else
+          echo "Cannot write ${file}. Add this to use ${APP}:"
+          echo "  ${line}"
+        fi
       fi
-      return
+      [[ "$current_shell" == "bash" ]] || return
     fi
   done
 
-  echo "Add this to your shell config to use ${APP}:"
-  echo "  ${line}"
+  if [[ "$config_found" == false ]]; then
+    echo "No shell config found for ${current_shell}. Add this to use ${APP}:"
+    echo "  ${line}"
+  fi
 }
 
 if [[ -n "$binary_path" ]]; then
@@ -343,15 +397,21 @@ else
   install_from_archive
 fi
 
-if [[ "$no_modify_path" == false ]] && confirm "Add ${install_dir} to PATH in your shell config?" yes; then
+if [[ "$no_modify_path" == false ]]; then
   add_path
 fi
 
 echo
 echo "Installed ${APP} to ${install_dir}"
-if [[ ":$PATH:" != *":${install_dir}:"* ]]; then
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "$no_modify_path" == false ]]; then
+  echo "Wingman is available in subsequent GitHub Actions steps."
+elif [[ ":$PATH:" != *":${install_dir}:"* ]]; then
   echo "Add ${install_dir} to your PATH:"
-  echo "  export PATH=\"${install_dir}:\$PATH\""
+  if [[ "$(basename "${SHELL:-sh}")" == "fish" ]]; then
+    echo "  fish_add_path \"${install_dir}\""
+  else
+    echo "  export PATH=\"${install_dir}:\$PATH\""
+  fi
 fi
 echo "Run '${APP} version' to verify"
 echo
