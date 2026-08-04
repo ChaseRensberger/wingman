@@ -20,6 +20,8 @@ import (
 
 const (
 	systemdServicePath = "/etc/systemd/system/wingman.service"
+	systemdStateDir    = "/var/lib/wingman"
+	systemdStateDirEnv = "${STATE_DIRECTORY}"
 	launchdLabel       = "actor.wingman"
 )
 
@@ -100,8 +102,7 @@ func runLinuxUp(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	stateDir := stateDirForHome(homeDir)
-	if err := os.WriteFile(systemdServicePath, []byte(systemdUnit(exe, serviceUser, homeDir, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
+	if err := os.WriteFile(systemdServicePath, []byte(systemdUnit(exe, serviceUser, homeDir, serveArgs(exe, cmd, systemdStateDirEnv))), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", systemdServicePath, err)
 	}
 	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
@@ -113,7 +114,7 @@ func runLinuxUp(ctx context.Context, cmd *cli.Command) error {
 	if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
 		return err
 	}
-	if err := waitForServiceReady(ctx, stateDir); err != nil {
+	if err := waitForServiceReady(ctx, systemdStateDir); err != nil {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
@@ -254,6 +255,9 @@ func stateDirForHome(home string) string {
 }
 
 func managedStateDir() (string, error) {
+	if runtime.GOOS == "linux" {
+		return systemdStateDir, nil
+	}
 	_, home, err := serviceAccount()
 	if err != nil {
 		return "", err
@@ -291,7 +295,7 @@ func printDaemonStatus(ctx context.Context, state *daemonstate.State) {
 }
 
 func systemdUnit(exe, serviceUser, homeDir string, args []string) string {
-	return fmt.Sprintf("[Unit]\nDescription=Wingman agent harness\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser=%s\nEnvironment=%s\nExecStart=%s\nRestart=on-failure\nRestartSec=2s\n\n[Install]\nWantedBy=multi-user.target\n", serviceUser, strconv.Quote("HOME="+homeDir), systemdCommand(args))
+	return fmt.Sprintf("[Unit]\nDescription=Wingman agent harness\n\n[Service]\nType=simple\nUser=%s\nEnvironment=%s\nStateDirectory=wingman\nStateDirectoryMode=0700\nExecStart=%s\nRestart=on-failure\nRestartSec=2s\n\n[Install]\nWantedBy=multi-user.target\n", serviceUser, strconv.Quote("HOME="+homeDir), systemdCommand(args))
 }
 
 func systemdCommand(args []string) string {

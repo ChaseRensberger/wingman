@@ -47,8 +47,10 @@ wingman up
 
 On Linux, `wingman up` re-executes itself through `sudo` when required. It
 installs `/etc/systemd/system/wingman.service` and runs the service as the
-invoking user. On macOS, it installs a per-user LaunchAgent. Both service forms
-wait for authenticated readiness before the command returns.
+invoking user. Systemd manages its private daemon state at `/var/lib/wingman`.
+The default SQLite database remains at `~/.local/share/wingman/wingman.db`.
+On macOS, it installs a per-user LaunchAgent. Both service forms wait for
+authenticated readiness before the command returns.
 
 `wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
 

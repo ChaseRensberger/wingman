@@ -12,6 +12,7 @@ no_modify_path=false
 assume_yes=false
 os=""
 arch=""
+path_source_file=""
 
 usage() {
   cat <<'EOF'
@@ -146,7 +147,10 @@ print_locations() {
   echo "  Config (created when saved): ${config_dir}/wingman.json"
   echo "  Plugins (created by you): $HOME/.config/wingman/plugins"
   echo "  Database (created when the server starts): ${data_dir}/wingman.db"
-  echo "  Daemon state (created by serve or up): ${state_dir}"
+  echo "  Daemon state (created by serve): ${state_dir}"
+  if [[ "$os" == "linux" ]]; then
+    echo "  Managed daemon state (created by up): /var/lib/wingman"
+  fi
   if [[ "$os" == "windows" ]]; then
     echo "  Managed service: ${service_path}"
   else
@@ -373,10 +377,13 @@ add_path() {
   for file in "${config_files[@]}"; do
     if [[ -f "$file" ]]; then
       config_found=true
-      if ! grep -Fxq "$line" "$file"; then
+      if grep -Fxq "$line" "$file"; then
+        [[ -n "$path_source_file" ]] || path_source_file="$file"
+      else
         if [[ -w "$file" ]]; then
           printf "\n# wingman\n%s\n" "$line" >> "$file"
           echo "Added ${install_dir} to PATH in ${file}"
+          [[ -n "$path_source_file" ]] || path_source_file="$file"
         else
           echo "Cannot write ${file}. Add this to use ${APP}:"
           echo "  ${line}"
@@ -413,14 +420,17 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" && "$no_modify_path" == false ]]; then
   echo "Wingman is available in subsequent GitHub Actions steps."
 elif [[ ":$PATH:" != *":${install_dir}:"* ]]; then
   if [[ "$path_configured" == true ]]; then
-    echo "Restart your shell to use ${APP}, or run:"
+    echo "Start a new shell to use ${APP}, or run:"
+    if [[ -n "$path_source_file" ]]; then
+      printf '  source "%s"\n' "$path_source_file"
+    fi
   else
     echo "Add ${install_dir} to your PATH:"
-  fi
-  if [[ "$(basename "${SHELL:-sh}")" == "fish" ]]; then
-    echo "  fish_add_path \"${install_dir}\""
-  else
-    echo "  export PATH=\"${install_dir}:\$PATH\""
+    if [[ "$(basename "${SHELL:-sh}")" == "fish" ]]; then
+      echo "  fish_add_path \"${install_dir}\""
+    else
+      echo "  export PATH=\"${install_dir}:\$PATH\""
+    fi
   fi
 fi
 echo "Run '${APP} version' to verify"

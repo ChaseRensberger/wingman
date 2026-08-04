@@ -1,17 +1,38 @@
 package main
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestSystemdUnitQuotesServiceArguments(t *testing.T) {
-	unit := systemdUnit("/opt/wing man/wingman", "chase", "/home/chase", []string{"/opt/wing man/wingman", "serve", "--db", "/tmp/wing man.db"})
+	unit := systemdUnit("/opt/wing man/wingman", "chase", "/home/chase", []string{"/opt/wing man/wingman", "serve", "--state-dir", systemdStateDirEnv, "--db", "/tmp/wing man.db"})
 	if !strings.Contains(unit, `User=chase`) {
 		t.Fatalf("unit missing service user: %s", unit)
 	}
-	if !strings.Contains(unit, `ExecStart="/opt/wing man/wingman" "serve" "--db" "/tmp/wing man.db"`) {
+	if !strings.Contains(unit, `ExecStart="/opt/wing man/wingman" "serve" "--state-dir" "${STATE_DIRECTORY}" "--db" "/tmp/wing man.db"`) {
 		t.Fatalf("unit does not quote arguments: %s", unit)
+	}
+	for _, want := range []string{
+		"StateDirectory=wingman",
+		"StateDirectoryMode=0700",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit missing %q: %s", want, unit)
+		}
+	}
+	if strings.Contains(unit, "network-online.target") {
+		t.Fatalf("unit unexpectedly waits for network availability: %s", unit)
+	}
+}
+
+func TestManagedStateDir(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux systemd state directory only")
+	}
+	if got, err := managedStateDir(); err != nil || got != systemdStateDir {
+		t.Fatalf("managedStateDir() = %q, %v; want %q, nil", got, err, systemdStateDir)
 	}
 }
 
