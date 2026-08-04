@@ -149,6 +149,32 @@
         ],
         "type": "object"
       },
+      "AuthSession": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "AuthType": {
         "additionalProperties": false,
         "properties": {
@@ -409,6 +435,15 @@
         "required": [
           "name"
         ],
+        "type": "object"
+      },
+      "CreatePairingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "CreateSessionRequest": {
@@ -1272,6 +1307,26 @@
         ],
         "type": "object"
       },
+      "PairingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "pairing_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential",
+          "expires_at",
+          "pairing_path"
+        ],
+        "type": "object"
+      },
       "Part": {
         "anyOf": [
           {
@@ -1727,6 +1782,40 @@
         "required": [
           "reasoning",
           "type"
+        ],
+        "type": "object"
+      },
+      "RedeemPairingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "cookie",
+              "bearer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential"
+        ],
+        "type": "object"
+      },
+      "RedeemPairingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/AuthSession"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session"
         ],
         "type": "object"
       },
@@ -3826,6 +3915,11 @@
         "in": "cookie",
         "name": "wingman_session",
         "type": "apiKey"
+      },
+      "rootBearer": {
+        "description": "Daemon root credential",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -3870,6 +3964,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Describe the Wingman service"
       }
     },
@@ -3914,6 +4016,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List agents"
       },
       "post": {
@@ -3960,6 +4070,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Create an agent"
       }
     },
@@ -4006,6 +4124,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Delete an agent"
       },
       "get": {
@@ -4050,6 +4176,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get an agent"
       },
       "put": {
@@ -4104,7 +4238,225 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Update an agent"
+      }
+    },
+    "/auth/pairings": {
+      "post": {
+        "operationId": "createPairing",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePairingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "rootBearer": []
+          }
+        ],
+        "summary": "Create a one-time pairing credential"
+      }
+    },
+    "/auth/pairings/redeem": {
+      "post": {
+        "operationId": "redeemPairing",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemPairingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedeemPairingResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [],
+        "summary": "Redeem a one-time pairing credential"
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "operationId": "listAuthSessions",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Client identity",
+            "in": "query",
+            "name": "client_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuthSession"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "rootBearer": []
+          }
+        ],
+        "summary": "List auth sessions"
+      }
+    },
+    "/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "revokeAuthSession",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "rootBearer": []
+          }
+        ],
+        "summary": "Revoke an auth session"
       }
     },
     "/catalog": {
@@ -4142,6 +4494,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get the model catalog"
       }
     },
@@ -4190,6 +4550,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a catalog lab logo"
       }
     },
@@ -4234,6 +4602,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List API clients"
       },
       "post": {
@@ -4280,6 +4656,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Create an API client"
       }
     },
@@ -4326,6 +4710,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get an API client"
       }
     },
@@ -4364,6 +4756,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get bounded daemon operational diagnostics"
       }
     },
@@ -4410,6 +4810,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List filesystem directories"
       }
     },
@@ -4493,6 +4901,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List recent daemon logs"
       }
     },
@@ -4531,6 +4947,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List MCP server status"
       }
     },
@@ -4567,6 +4991,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Remove MCP authorization"
       },
       "post": {
@@ -4601,6 +5033,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Authorize an MCP server"
       }
     },
@@ -4647,6 +5087,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Connect an MCP server"
       }
     },
@@ -4693,6 +5141,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Disconnect an MCP server"
       }
     },
@@ -4731,6 +5187,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List plugin status"
       }
     },
@@ -4769,6 +5233,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Reload plugins"
       }
     },
@@ -4813,6 +5285,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List model providers"
       }
     },
@@ -4851,6 +5331,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get provider credential status"
       },
       "put": {
@@ -4897,6 +5385,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Set provider credentials"
       }
     },
@@ -4943,6 +5439,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Delete provider credentials"
       }
     },
@@ -4989,6 +5493,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a model provider"
       }
     },
@@ -5038,6 +5550,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List provider models"
       }
     },
@@ -5092,6 +5612,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a provider model"
       }
     },
@@ -5148,6 +5676,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Start provider OAuth"
       }
     },
@@ -5202,6 +5738,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Cancel provider OAuth"
       },
       "get": {
@@ -5254,6 +5798,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get provider OAuth status"
       }
     },
@@ -5302,6 +5854,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Check daemon readiness"
       }
     },
@@ -5343,6 +5903,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Run one ephemeral agent turn"
       }
     },
@@ -5387,6 +5955,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List sessions"
       },
       "post": {
@@ -5433,6 +6009,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Create a session"
       }
     },
@@ -5488,6 +6072,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Delete a session"
       },
       "get": {
@@ -5532,6 +6124,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a session"
       }
     },
@@ -5578,6 +6178,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Abort active session runs"
       }
     },
@@ -5652,6 +6260,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Stream session events"
       }
     },
@@ -5714,6 +6330,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List durable session events"
       }
     },
@@ -5770,6 +6394,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Admit a session message"
       }
     },
@@ -5822,6 +6454,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List session model calls"
       }
     },
@@ -5878,6 +6518,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Move a session"
       }
     },
@@ -5930,6 +6578,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List session permission grants"
       }
     },
@@ -5982,6 +6638,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List session permission requests"
       }
     },
@@ -6046,6 +6710,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Reply to a permission request"
       }
     },
@@ -6102,6 +6774,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Rename a session"
       }
     },
@@ -6154,6 +6834,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List session runs"
       }
     },
@@ -6208,6 +6896,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a session run"
       }
     },
@@ -6272,6 +6968,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Abort a session run"
       }
     },
@@ -6324,6 +7028,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List session tool uses"
       }
     },
@@ -6362,6 +7074,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List available tools"
       }
     },
@@ -6406,6 +7126,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List Workspaces"
       },
       "post": {
@@ -6452,6 +7180,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Create a Workspace"
       }
     },
@@ -6498,6 +7234,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Delete a Workspace"
       },
       "get": {
@@ -6542,6 +7286,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Get a Workspace"
       },
       "put": {
@@ -6596,6 +7348,14 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "Update a Workspace"
       }
     },
@@ -6648,16 +7408,16 @@
             "description": "Request failed"
           }
         },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
         "summary": "List Workspace sessions"
       }
     }
-  },
-  "security": [
-    {
-      "bearerAuth": []
-    },
-    {
-      "consoleSession": []
-    }
-  ]
+  }
 }

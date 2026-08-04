@@ -24,6 +24,18 @@ VALUES ('cli_wingman', 'Wingman', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
 
 CREATE UNIQUE INDEX idx_clients_name_nocase ON clients(name COLLATE NOCASE);
 
+CREATE TABLE auth_sessions (
+    id          TEXT PRIMARY KEY,
+    client_id   TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    token_hash  TEXT NOT NULL UNIQUE,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT,
+    revoked_at  TEXT
+);
+
+CREATE INDEX idx_auth_sessions_client_created_at
+ON auth_sessions(client_id, created_at DESC, id DESC);
+
 CREATE TABLE workspaces (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,

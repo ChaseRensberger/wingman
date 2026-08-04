@@ -1,0 +1,31 @@
+import { apiErrorFromResponse } from "./client";
+
+export function pairingCredentialFromFragment(fragment: string): { credential?: string; fragment: string } {
+  const parameters = new URLSearchParams(fragment.startsWith("#") ? fragment.slice(1) : fragment);
+  const credential = parameters.get("pairing") || undefined;
+  if (!credential) return { fragment };
+
+  parameters.delete("pairing");
+  const remaining = parameters.toString();
+  return { credential, fragment: remaining ? `#${remaining}` : "" };
+}
+
+export function pairingCredentialFromInput(value: string): string {
+  const input = value.trim();
+  try {
+    const url = new URL(input);
+    return pairingCredentialFromFragment(url.hash).credential ?? "";
+  } catch {
+    return input;
+  }
+}
+
+export async function redeemPairingCredential(credential: string): Promise<void> {
+  const response = await fetch("/auth/pairings/redeem", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, mode: "cookie" }),
+  });
+  if (!response.ok) throw await apiErrorFromResponse(response);
+}

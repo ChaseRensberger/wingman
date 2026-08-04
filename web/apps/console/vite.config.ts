@@ -33,6 +33,7 @@ export default defineConfig({
     proxy: {
       "/health": daemonProxy(),
       "/ready": daemonProxy(),
+      "/auth": daemonProxy(),
       "/provider": daemonProxy(),
       "/agents": daemonProxy(),
       "/clients": daemonProxy(),

@@ -6,9 +6,9 @@ order: 105
 
 # Storage
 
-Storage persists agents, clients, Workspaces, sessions, message history, tool
-execution, and provider credentials. Session history is durable by default when
-the server runs with storage enabled.
+Storage persists agents, clients, auth sessions, Workspaces, session history,
+tool execution, and provider credentials. Session history is durable by default
+when the server uses storage.
 
 ## Default Store
 
@@ -42,6 +42,7 @@ The SQLite schema stores:
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
+| `auth_sessions` | Hashed, expiring, and revocable browser or native client sessions. |
 | `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
 | `sessions` | Session metadata projection: title, working directory, client ID, optional Workspace ID, timestamps, aggregate version. |
 | `session_runs` | Durably admitted session work, request identity, immutable execution snapshot, and status. |
@@ -166,8 +167,8 @@ SQLite is the durable store provided by Wingman. Embedded Go applications can pr
 
 Embedding applications can provide `store.Store`. Its Go contract includes
 agents, clients, Workspaces, session metadata and runs, messages, model calls,
-tool uses, permissions, public events, and credentials. Consult the exported
-`store.Store` interface in the source for the current method set.
+tool uses, permissions, public events, auth sessions, and provider credentials.
+Consult the exported `store.Store` interface for the current method set.
 
 `store/memory` provides an in-memory implementation used by tests and embedding scenarios.
 

@@ -27,7 +27,7 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
+	for _, path := range []string{"/health", "/auth/pairings", "/auth/pairings/redeem", "/auth/sessions", "/auth/sessions/{id}", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}
@@ -47,6 +47,37 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		if name != "ErrorResponse" && len(variants) == 0 {
 			t.Errorf("schema %s has no variants", name)
 		}
+	}
+}
+
+func TestOpenAPIAuthenticationContract(t *testing.T) {
+	document, err := OpenAPIDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	paths := decoded["paths"].(map[string]any)
+	operation := func(path, method string) map[string]any {
+		return paths[path].(map[string]any)[method].(map[string]any)
+	}
+	if security := operation("/auth/pairings/redeem", "post")["security"].([]any); len(security) != 0 {
+		t.Fatalf("pairing redemption security = %#v", security)
+	}
+	rootSecurity := operation("/auth/pairings", "post")["security"].([]any)
+	if len(rootSecurity) != 1 || rootSecurity[0].(map[string]any)["rootBearer"] == nil {
+		t.Fatalf("pairing creation security = %#v", rootSecurity)
+	}
+	readySecurity := operation("/ready", "get")["security"].([]any)
+	if len(readySecurity) != 2 {
+		t.Fatalf("readiness security = %#v", readySecurity)
+	}
+	schemas := decoded["components"].(map[string]any)["schemas"].(map[string]any)
+	mode := schemas["RedeemPairingRequest"].(map[string]any)["properties"].(map[string]any)["mode"].(map[string]any)
+	if !reflect.DeepEqual(mode["enum"], []any{"cookie", "bearer"}) {
+		t.Fatalf("pairing mode enum = %#v", mode["enum"])
 	}
 }
 

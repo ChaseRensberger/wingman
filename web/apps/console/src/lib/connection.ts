@@ -13,7 +13,7 @@ export function daemonFailurePhase(attempt: number): DaemonConnectionPhase {
 
 export function daemonConnectionFailureMessage(error: unknown): string | undefined {
   const status = error && typeof error === "object" && "status" in error && typeof error.status === "number" ? error.status : undefined;
-  if (status === 401) return "Wingman rejected the Console credential (401). Open the daemon's loopback /console URL; if using Vite, restart it after Wingman.";
+  if (status === 401) return "This Console is not paired with Wingman (401). Paste a pairing link or credential below.";
   if (status === 503) return "Wingman is starting or recovering its durable state.";
 }
 

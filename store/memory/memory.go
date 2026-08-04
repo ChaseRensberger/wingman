@@ -24,6 +24,7 @@ type Store struct {
 	agents             map[string]*store.Agent
 	sessions           map[string]*store.Session
 	clients            map[string]*store.Client
+	authSessions       map[string]*store.AuthSession
 	workspaces         map[string]*store.Workspace
 	messages           map[string]*store.StoredMessage
 	parts              map[string]*store.StoredPart
@@ -44,6 +45,7 @@ func NewStore() *Store {
 		agents:             make(map[string]*store.Agent),
 		sessions:           make(map[string]*store.Session),
 		clients:            make(map[string]*store.Client),
+		authSessions:       make(map[string]*store.AuthSession),
 		workspaces:         make(map[string]*store.Workspace),
 		messages:           make(map[string]*store.StoredMessage),
 		parts:              make(map[string]*store.StoredPart),
@@ -392,6 +394,14 @@ func copyClient(c *store.Client) *store.Client {
 	return &cp
 }
 
+func copyAuthSession(session *store.AuthSession) *store.AuthSession {
+	if session == nil {
+		return nil
+	}
+	cp := *session
+	return &cp
+}
+
 func copyWorkspace(workspace *store.Workspace) *store.Workspace {
 	if workspace == nil {
 		return nil
@@ -619,6 +629,97 @@ func (s *Store) ListClients() ([]*store.Client, error) {
 		return out[i].CreatedAt > out[j].CreatedAt
 	})
 	return out, nil
+}
+
+func (s *Store) CreateAuthSession(session *store.AuthSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if session.ClientID == "" {
+		return fmt.Errorf("auth session client ID is required")
+	}
+	if session.TokenHash == "" {
+		return fmt.Errorf("auth session token hash is required")
+	}
+	if session.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339Nano, session.ExpiresAt); err != nil {
+			return fmt.Errorf("parse auth session expiry: %w", err)
+		}
+	}
+	if session.ID == "" {
+		session.ID = store.NewID(store.PrefixAuthSession)
+	}
+	if session.CreatedAt == "" {
+		session.CreatedAt = store.Now()
+	}
+	if _, ok := s.clients[session.ClientID]; !ok {
+		return fmt.Errorf("client not found: %s", session.ClientID)
+	}
+	if _, ok := s.authSessions[session.ID]; ok {
+		return fmt.Errorf("insert auth session: duplicate ID")
+	}
+	for _, existing := range s.authSessions {
+		if existing.TokenHash == session.TokenHash {
+			return fmt.Errorf("insert auth session: duplicate token hash")
+		}
+	}
+	s.authSessions[session.ID] = copyAuthSession(session)
+	return nil
+}
+
+func (s *Store) AuthenticateAuthSession(tokenHash string) (*store.AuthSession, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, session := range s.authSessions {
+		if session.TokenHash == tokenHash && session.RevokedAt == "" && !authSessionExpired(session.ExpiresAt) {
+			return publicAuthSession(session), nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *Store) ListAuthSessions(clientID string) ([]*store.AuthSession, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sessions := []*store.AuthSession{}
+	for _, session := range s.authSessions {
+		if session.ClientID == clientID {
+			sessions = append(sessions, publicAuthSession(session))
+		}
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].CreatedAt == sessions[j].CreatedAt {
+			return sessions[i].ID > sessions[j].ID
+		}
+		return sessions[i].CreatedAt > sessions[j].CreatedAt
+	})
+	return sessions, nil
+}
+
+func (s *Store) RevokeAuthSession(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if session, ok := s.authSessions[id]; ok && session.RevokedAt == "" {
+		session.RevokedAt = store.Now()
+	}
+	return nil
+}
+
+func authSessionExpired(expiresAt string) bool {
+	if expiresAt == "" {
+		return false
+	}
+	expires, err := time.Parse(time.RFC3339Nano, expiresAt)
+	return err != nil || !expires.After(time.Now().UTC())
+}
+
+func publicAuthSession(session *store.AuthSession) *store.AuthSession {
+	result := copyAuthSession(session)
+	result.TokenHash = ""
+	return result
 }
 
 // ---- workspaces ---------------------------------------------------------------

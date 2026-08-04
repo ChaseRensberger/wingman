@@ -109,6 +109,10 @@ type Store interface {
 	EnsureDefaultClient() (*Client, error)
 	GetClient(id string) (*Client, error)
 	ListClients() ([]*Client, error)
+	CreateAuthSession(session *AuthSession) error
+	AuthenticateAuthSession(tokenHash string) (*AuthSession, error)
+	ListAuthSessions(clientID string) ([]*AuthSession, error)
+	RevokeAuthSession(id string) error
 
 	CreateWorkspace(workspace *Workspace) error
 	GetWorkspace(id string) (*Workspace, error)

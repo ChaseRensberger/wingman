@@ -30,11 +30,14 @@ import (
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
+	"github.com/chaserensberger/wingman/store/memory"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
 )
 
 type Server struct {
 	store              store.Store
+	authStore          store.Store
+	pairings           *pairingManager
 	router             *chi.Mux
 	protocol           huma.API
 	runs               *sessionRunManager
@@ -107,8 +110,17 @@ func New(cfg Config) *Server {
 	if providers == nil {
 		providers, _ = provider.NewRegistry(nil)
 	}
+	authStore := cfg.Store
+	if authStore == nil {
+		authStore = memory.NewStore()
+	}
+	if _, err := authStore.EnsureDefaultClient(); err != nil {
+		logger.Error("ensure default auth client", "error", err)
+	}
 	s := &Server{
 		store:            cfg.Store,
+		authStore:        authStore,
+		pairings:         newPairingManager(),
 		router:           chi.NewRouter(),
 		events:           newSessionEventBroker(),
 		webDevURL:        cfg.WebDevURL,
@@ -154,34 +166,135 @@ func (s *Server) setupMiddleware() {
 
 const consoleSessionCookie = "wingman_session"
 
+var errAuthenticationRequired = errors.New("authentication required")
+
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.credential == "" || r.URL.Path == "/health" || r.URL.Path == "/console" || strings.HasPrefix(r.URL.Path, "/console/") {
+		if s.credential == "" || publicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		credential := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if credential == r.Header.Get("Authorization") {
-			if cookie, err := r.Cookie(consoleSessionCookie); err == nil {
-				credential = cookie.Value
-			}
-		}
-		if subtle.ConstantTimeCompare([]byte(credential), []byte(s.credential)) != 1 {
+		principal, err := s.authenticateRequest(r)
+		if errors.Is(err, errAuthenticationRequired) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="wingman"`)
 			s.writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}
-		next.ServeHTTP(w, r)
+		if err != nil {
+			s.logger.Error("authenticate request", "error", err)
+			s.writeError(w, http.StatusInternalServerError, "authentication unavailable")
+			return
+		}
+		if principal.cookie && !cookieRequestAllowed(r) {
+			s.writeError(w, http.StatusForbidden, "cookie-authenticated request origin is not allowed")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
 	})
+}
+
+func publicPath(path string) bool {
+	return path == "/health" || path == "/auth/pairings/redeem" || path == "/console" || strings.HasPrefix(path, "/console/")
+}
+
+func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
+	if token, ok := bearerToken(r); ok {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.credential)) == 1 {
+			return authPrincipal{kind: rootPrincipal}, nil
+		}
+		session, err := s.authStore.AuthenticateAuthSession(tokenHash(token))
+		if err != nil {
+			return authPrincipal{}, err
+		}
+		if session == nil {
+			return authPrincipal{}, errAuthenticationRequired
+		}
+		if clientID := r.Header.Get("X-Wingman-Client"); clientID != "" && clientID != session.ClientID {
+			return authPrincipal{}, errAuthenticationRequired
+		}
+		return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID}, nil
+	}
+	cookie, err := r.Cookie(consoleSessionCookie)
+	if err != nil {
+		return authPrincipal{}, errAuthenticationRequired
+	}
+	session, err := s.authStore.AuthenticateAuthSession(tokenHash(cookie.Value))
+	if err != nil {
+		return authPrincipal{}, err
+	}
+	if session == nil {
+		return authPrincipal{}, errAuthenticationRequired
+	}
+	if clientID := r.Header.Get("X-Wingman-Client"); clientID != "" && clientID != session.ClientID {
+		return authPrincipal{}, errAuthenticationRequired
+	}
+	return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID, cookie: true}, nil
+}
+
+func bearerToken(r *http.Request) (string, bool) {
+	const prefix = "Bearer "
+	value := r.Header.Get("Authorization")
+	if len(value) <= len(prefix) || !strings.EqualFold(value[:len(prefix)], prefix) {
+		return "", false
+	}
+	token := value[len(prefix):]
+	if strings.TrimSpace(token) != token {
+		return "", false
+	}
+	return token, true
+}
+
+func cookieRequestAllowed(r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return true
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return r.Header.Get("Sec-Fetch-Site") == "same-origin"
+	}
+	parsed, err := url.Parse(origin)
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && strings.EqualFold(parsed.Host, r.Host)
 }
 
 func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
 	if !s.consoleCookie || s.credential == "" || !requestHostIsLoopback(r.Host) {
 		return
 	}
+	if cookie, err := r.Cookie(consoleSessionCookie); err == nil {
+		if session, err := s.authStore.AuthenticateAuthSession(tokenHash(cookie.Value)); err == nil && session != nil {
+			return
+		}
+	}
+	token, _, err := s.createAuthSession(store.DefaultClientID)
+	if err != nil {
+		s.logger.Error("create console auth session", "error", err)
+		return
+	}
+	s.setAuthSessionCookie(w, r, token)
+}
+
+func (s *Server) createAuthSession(clientID string) (string, *store.AuthSession, error) {
+	token, err := randomCredential()
+	if err != nil {
+		return "", nil, err
+	}
+	session := &store.AuthSession{ClientID: clientID, TokenHash: tokenHash(token), ExpiresAt: time.Now().UTC().Add(authSessionLifetime).Format(time.RFC3339Nano)}
+	if err := s.authStore.CreateAuthSession(session); err != nil {
+		return "", nil, err
+	}
+	return token, session, nil
+}
+
+func (s *Server) setAuthSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	expiresAt := time.Now().UTC().Add(authSessionLifetime)
 	http.SetCookie(w, &http.Cookie{
-		Name: s.consoleSessionCookieName(), Value: s.credential, Path: "/",
+		Name: s.consoleSessionCookieName(), Value: token, Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		Secure:  r.TLS != nil || !requestHostIsLoopback(r.Host),
+		Expires: expiresAt, MaxAge: int(authSessionLifetime.Seconds()),
 	})
 }
 
@@ -296,6 +409,10 @@ func shouldBypassTimeout(r *http.Request) bool {
 func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
+	s.registerJSON(http.MethodPost, "/auth/pairings", "createPairing", "Create a one-time pairing credential", api.CreatePairingRequest{}, http.StatusCreated, api.PairingResponse{}, s.handleCreatePairing)
+	s.registerJSON(http.MethodPost, "/auth/pairings/redeem", "redeemPairing", "Redeem a one-time pairing credential", api.RedeemPairingRequest{}, http.StatusOK, api.RedeemPairingResponse{}, s.handleRedeemPairing)
+	s.registerJSONWithParameters(http.MethodGet, "/auth/sessions", "listAuthSessions", "List auth sessions", nil, http.StatusOK, []api.AuthSession{}, []*huma.Param{queryParameter("client_id", huma.TypeString, "Client identity")}, s.handleListAuthSessions)
+	s.registerJSON(http.MethodDelete, "/auth/sessions/{id}", "revokeAuthSession", "Revoke an auth session", nil, http.StatusOK, api.StatusResponse{}, s.handleRevokeAuthSession)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
 	s.registerJSON(http.MethodGet, "/diagnostics", "getDiagnostics", "Get bounded daemon operational diagnostics", nil, http.StatusOK, api.DiagnosticsResponse{}, s.handleDiagnostics)

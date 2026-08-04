@@ -17,19 +17,31 @@ The daemon publishes the authoritative OpenAPI 3.1 document at
 `@wingman-actor/client` TypeScript package are derived from the same server-owned Go
 route and schema registrations.
 
-> **Authenticated control surface:** Wingman requires its private daemon token
-> for all API routes except `GET /health`. A token holder can use providers,
-> inspect directories, manage extensions, and run enabled tools. Wingman does
-> not provide tenant isolation. `X-Wingman-Client` is attribution, not
-> authentication. See [Run the Server](/use-wingman/run-server#api-authentication).
+> **Authenticated control surface:** Protected routes accept the owner credential
+> or an auth session. An authenticated client can use providers, inspect
+> directories, manage extensions, and run enabled tools. Wingman does not
+> provide tenant isolation. See [Authentication](/concepts/authentication).
 
 ## Conventions
 
 - Request bodies are JSON.
-- Send `Authorization: Bearer <token>` on all routes except `GET /health`.
+- Send `Authorization: Bearer <token>` on protected routes from native clients.
 - Standard request timeout is 60 seconds.
 - Session event endpoints and `POST /run` bypass the standard timeout; `/sessions/{id}/events` and `/run` return `text/event-stream`.
-- ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
+- ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ats_` (auth session), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
+
+## Authentication endpoints
+
+| Method | Path | Authentication | Description |
+|---|---|---|---|
+| `POST` | `/auth/pairings` | Owner bearer | Create a five-minute, one-use pairing credential |
+| `POST` | `/auth/pairings/redeem` | Pairing credential in body | Create a cookie or bearer auth session |
+| `GET` | `/auth/sessions` | Owner bearer | List auth sessions |
+| `DELETE` | `/auth/sessions/{id}` | Owner bearer | Revoke an auth session |
+
+Pairing and redemption responses use `Cache-Control: no-store`. A bearer-mode
+redemption returns the session token once. A cookie-mode redemption sets an
+`HttpOnly` cookie and omits the token from the response body.
 
 ## Health
 

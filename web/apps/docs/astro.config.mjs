@@ -81,18 +81,19 @@ export default defineConfig({
           label: "Concepts",
           items: [
             { label: "Clients", slug: "concepts/clients" },
-            { label: "Execution Scopes", slug: "concepts/execution-scopes" },
             { label: "Sessions", slug: "concepts/sessions" },
-            {
-              label: "Durable Events and Projections",
-              slug: "concepts/durable-events",
-            },
             { label: "Workspaces", slug: "concepts/workspaces" },
             { label: "Agents", slug: "concepts/agents" },
             { label: "Tools", slug: "concepts/tools" },
             { label: "Plugins", slug: "concepts/plugins" },
             { label: "WingModels", slug: "concepts/wingmodels" },
+            { label: "Authentication", slug: "concepts/authentication" },
             { label: "Storage", slug: "concepts/storage" },
+            { label: "Execution Scopes", slug: "concepts/execution-scopes" },
+            {
+              label: "Durable Events and Projections",
+              slug: "concepts/durable-events",
+            },
           ],
         },
         {

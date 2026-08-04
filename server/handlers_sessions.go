@@ -42,24 +42,22 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		title = defaultSessionTitle
 	}
 
-	workDir, workspaceID, err := s.resolveSessionLocation(req.WorkingDirectory, req.WorkspaceID)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	sess := &store.Session{
-		Title:       title,
-		WorkDir:     workDir,
-		WorkspaceID: workspaceID,
-	}
-
 	clientID, err := s.resolveClientID(r)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sess.ClientID = clientID
+	workDir, workspaceID, err := s.resolveSessionLocation(clientID, req.WorkingDirectory, req.WorkspaceID)
+	if err != nil {
+		if errors.Is(err, errWorkspaceBelongsToAnotherClient) {
+			s.writeError(w, http.StatusForbidden, err.Error())
+		} else {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	sess := &store.Session{Title: title, WorkDir: workDir, WorkspaceID: workspaceID, ClientID: clientID}
 
 	if err := s.store.CreateSession(sess); err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
@@ -97,9 +95,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 
-	sess, err := s.store.GetSession(id)
-	if err != nil {
-		s.writeError(w, http.StatusNotFound, err.Error())
+	sess, ok := s.authorizeSessionForRequest(w, r, id)
+	if !ok {
 		return
 	}
 
@@ -229,7 +226,8 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+	sess, ok := s.authorizeSessionForRequest(w, r, id)
+	if !ok {
 		return
 	}
 	var req api.MoveSessionRequest
@@ -252,12 +250,16 @@ func (s *Server) handleMoveSession(w http.ResponseWriter, r *http.Request) {
 	if req.WorkspaceID != nil {
 		workspaceID = *req.WorkspaceID
 	}
-	workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(workingDirectory, workspaceID)
+	workDir, resolvedWorkspaceID, err := s.resolveSessionLocation(sess.ClientID, workingDirectory, workspaceID)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, errWorkspaceBelongsToAnotherClient) {
+			s.writeError(w, http.StatusForbidden, err.Error())
+		} else {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
-	sess, err := s.store.MoveSession(r.Context(), id, workDir, resolvedWorkspaceID, req.ExpectedVersion)
+	sess, err = s.store.MoveSession(r.Context(), id, workDir, resolvedWorkspaceID, req.ExpectedVersion)
 	if s.writeSessionCommandError(w, err) {
 		return
 	}
@@ -280,12 +282,12 @@ func (s *Server) writeSessionCommandError(w http.ResponseWriter, err error) bool
 	return true
 }
 
-func (s *Server) resolveSessionLocation(workingDirectory, workspaceID string) (workDir string, resolvedWorkspaceID string, err error) {
+func (s *Server) resolveSessionLocation(clientID, workingDirectory, workspaceID string) (workDir string, resolvedWorkspaceID string, err error) {
 	if workspaceID != "" {
 		if workingDirectory != "" {
 			return "", "", fmt.Errorf("working_directory and workspace_id cannot both be set")
 		}
-		workspace, err := s.store.GetWorkspace(workspaceID)
+		workspace, err := s.workspaceForClient(clientID, workspaceID)
 		if err != nil {
 			return "", "", err
 		}
@@ -304,6 +306,9 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
 	expectedVersion, err := strconv.ParseInt(r.URL.Query().Get("expected_version"), 10, 64)
 	if err != nil || expectedVersion <= 0 {
 		s.writeError(w, http.StatusBadRequest, "expected_version must be a positive integer")

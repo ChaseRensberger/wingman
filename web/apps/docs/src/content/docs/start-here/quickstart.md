@@ -35,7 +35,7 @@ wingman up
 
 To run it in the foreground instead, use `wingman serve`.
 
-Load the private API token for the commands in this guide:
+Load the owner credential for the local administration commands in this guide:
 
 ```bash
 export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")

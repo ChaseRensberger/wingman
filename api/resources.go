@@ -58,6 +58,47 @@ type CreateClientRequest struct {
 	Name string `json:"name"`
 }
 
+// CreatePairingRequest creates a one-time credential for a registered client.
+type CreatePairingRequest struct {
+	ClientID string `json:"client_id,omitempty"`
+}
+
+// PairingResponse contains a one-time credential. The credential is returned only once.
+type PairingResponse struct {
+	Credential  string `json:"credential"`
+	ExpiresAt   string `json:"expires_at"`
+	PairingPath string `json:"pairing_path"`
+}
+
+// RedeemPairingRequest exchanges a one-time pairing credential for an auth session.
+type RedeemPairingRequest struct {
+	Credential string          `json:"credential"`
+	Mode       AuthSessionMode `json:"mode,omitempty" enum:"cookie,bearer"`
+}
+
+// AuthSessionMode selects browser-cookie or native-bearer session delivery.
+type AuthSessionMode string
+
+const (
+	AuthSessionModeCookie AuthSessionMode = "cookie"
+	AuthSessionModeBearer AuthSessionMode = "bearer"
+)
+
+// AuthSession is a client-bound API authorization session.
+type AuthSession struct {
+	ID        string `json:"id"`
+	ClientID  string `json:"client_id"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	RevokedAt string `json:"revoked_at,omitempty"`
+}
+
+// RedeemPairingResponse is returned after a pairing credential is redeemed.
+type RedeemPairingResponse struct {
+	Session AuthSession `json:"session"`
+	Token   string      `json:"token,omitempty"`
+}
+
 // Workspace is one client-owned saved context.
 type Workspace struct {
 	ID        string `json:"id"`

@@ -40,9 +40,9 @@ func (s *Server) setupOpenAPI() {
 	config.CreateHooks = nil
 	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearerAuth":     {Type: "http", Scheme: "bearer"},
+		"rootBearer":     {Type: "http", Scheme: "bearer", Description: "Daemon root credential"},
 		"consoleSession": {Type: "apiKey", In: "cookie", Name: consoleSessionCookie},
 	}
-	config.Security = []map[string][]string{{"bearerAuth": {}}, {"consoleSession": {}}}
 	s.protocol = humachi.New(s.router, config)
 
 	registry := s.protocol.OpenAPI().Components.Schemas
@@ -69,9 +69,7 @@ func (s *Server) registerJSONWithParameters(method, path, operationID, summary s
 			"default":            jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
 		},
 	}
-	if path == "/health" {
-		op.Security = []map[string][]string{}
-	}
+	setOperationSecurity(op)
 	if request != nil {
 		op.RequestBody = &huma.RequestBody{
 			Required: true,
@@ -87,6 +85,7 @@ func (s *Server) registerJSONStatuses(method, path, operationID, summary string,
 	op := &huma.Operation{Method: method, Path: path, OperationID: operationID, Summary: summary, Parameters: operationParameters(path), Responses: map[string]*huma.Response{
 		"default": jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
 	}}
+	setOperationSecurity(op)
 	for status, response := range responses {
 		op.Responses[strconv.Itoa(status)] = jsonResponse(http.StatusText(status), schemaFor(s.protocol, response))
 	}
@@ -97,16 +96,31 @@ func (s *Server) registerJSONStatuses(method, path, operationID, summary string,
 }
 
 func (s *Server) registerErrorOnly(method, path, operationID, summary string, handler http.HandlerFunc) {
-	s.registerOperation(&huma.Operation{Method: method, Path: path, OperationID: operationID, Summary: summary, Parameters: operationParameters(path), Responses: map[string]*huma.Response{
+	op := &huma.Operation{Method: method, Path: path, OperationID: operationID, Summary: summary, Parameters: operationParameters(path), Responses: map[string]*huma.Response{
 		"default": jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
-	}}, handler)
+	}}
+	setOperationSecurity(op)
+	s.registerOperation(op, handler)
 }
 
 func (s *Server) registerBinary(method, path, operationID, summary, contentType string, handler http.HandlerFunc) {
-	s.registerOperation(&huma.Operation{Method: method, Path: path, OperationID: operationID, Summary: summary, Parameters: operationParameters(path), Responses: map[string]*huma.Response{
+	op := &huma.Operation{Method: method, Path: path, OperationID: operationID, Summary: summary, Parameters: operationParameters(path), Responses: map[string]*huma.Response{
 		"200":     {Description: http.StatusText(http.StatusOK), Content: map[string]*huma.MediaType{contentType: {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}},
 		"default": jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
-	}}, handler)
+	}}
+	setOperationSecurity(op)
+	s.registerOperation(op, handler)
+}
+
+func setOperationSecurity(op *huma.Operation) {
+	switch op.Path {
+	case "/health", "/auth/pairings/redeem":
+		op.Security = []map[string][]string{}
+	case "/auth/pairings", "/auth/sessions", "/auth/sessions/{id}":
+		op.Security = []map[string][]string{{"rootBearer": {}}}
+	default:
+		op.Security = []map[string][]string{{"bearerAuth": {}}, {"consoleSession": {}}}
+	}
 }
 
 func (s *Server) registerSessionEvents() {
@@ -125,6 +139,7 @@ func (s *Server) registerSessionEvents() {
 			"default": jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
 		},
 	}
+	setOperationSecurity(op)
 	s.registerOperation(op, s.handleSessionEvents)
 }
 
@@ -142,6 +157,7 @@ func (s *Server) registerRunStream() {
 			"default": jsonResponse("Request failed", schemaFor(s.protocol, api.ErrorResponse{})),
 		},
 	}
+	setOperationSecurity(op)
 	s.registerOperation(op, s.handleRun)
 }
 

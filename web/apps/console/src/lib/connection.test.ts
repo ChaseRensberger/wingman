@@ -24,8 +24,8 @@ describe("daemon connection recovery", () => {
   });
 
   test("explains actionable readiness failures", () => {
-    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("credential");
+    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("paired");
     expect(daemonConnectionFailureMessage({ status: 503 })).toContain("recovering");
-    expect(daemonConnectionMessage("failed", "Wingman rejected the Console credential (401).")).toContain("credential");
+    expect(daemonConnectionMessage("failed", "This Console is not paired with Wingman (401).")).toContain("paired");
   });
 });

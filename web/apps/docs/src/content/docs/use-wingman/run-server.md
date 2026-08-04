@@ -6,8 +6,8 @@ description: "Start Wingman as a foreground process or system service."
 # Run the Server
 
 Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2323`
-and stores persistent data in `~/.local/share/wingman/wingman.db`. API routes
-other than `GET /health` require a private bearer token.
+and stores persistent data in `~/.local/share/wingman/wingman.db`. Protected API
+routes require an owner credential or an auth session.
 
 ## Foreground Server
 
@@ -43,7 +43,7 @@ On Linux, `wingman up` prompts for `sudo` when it needs to write `/etc/systemd/s
 readiness check. The private state files are in
 `${XDG_STATE_HOME:-$HOME/.local/state}/wingman`:
 
-- `credential` contains the stable local API token.
+- `credential` contains the stable owner credential.
 - `registration.json` contains the instance ID, version, URL, PID, and creation time.
 - `daemon.lock` elects one managed daemon for this state directory.
 
@@ -91,10 +91,12 @@ wingman serve --host 127.0.0.1 --port 2424
 
 Wingman does not enable cross-origin browser access by default. The bundled Console is served from `/console` on the same origin as the API.
 
-## API Authentication
+## Authentication
 
-`GET /health` is public and reports process liveness. All other API routes
-require the bearer token:
+`GET /health`, Console assets, and pairing redemption are public. Other API
+routes require an owner credential or auth session.
+
+Load the owner credential for local administration:
 
 ```bash
 export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
@@ -102,8 +104,19 @@ curl -sS http://localhost:2323/ready \
   -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
-The Console receives an HttpOnly, `SameSite=Strict` session cookie only when
-the request host is loopback. Other clients must send the bearer token.
+The owner credential can create and revoke client sessions. It also remains a
+local recovery bearer. Do not distribute this credential to browsers or remote
+applications.
+
+The local Console receives a separate `HttpOnly` session cookie. For remote
+access, create a one-use pairing link:
+
+```bash
+wingman auth pair --url https://wingman.example.com
+```
+
+Native clients can redeem the pairing credential in `bearer` mode. See
+[Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ## Ephemeral Mode
 

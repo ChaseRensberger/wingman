@@ -50,7 +50,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	cmd := &cli.Command{
+	cmd := newCommand(cfg)
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func newCommand(cfg daemonconfig.Config) *cli.Command {
+	return &cli.Command{
 		Name:  "wingman",
 		Usage: "The open-source client-agnostic agent harness",
 		Commands: []*cli.Command{
@@ -95,12 +104,13 @@ func main() {
 				Flags:  updateFlags(),
 				Action: runUpdate,
 			},
+			authCommand(),
+			{
+				Name:   "console",
+				Usage:  "Open the managed daemon console",
+				Action: runConsole,
+			},
 		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
 	}
 }
 

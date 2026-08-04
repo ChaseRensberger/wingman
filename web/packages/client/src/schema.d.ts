@@ -58,6 +58,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a one-time pairing credential */
+        post: operations["createPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/pairings/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a one-time pairing credential */
+        post: operations["redeemPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List auth sessions */
+        get: operations["listAuthSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an auth session */
+        delete: operations["revokeAuthSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalog": {
         parameters: {
             query?: never;
@@ -863,6 +931,13 @@ export interface components {
             refresh?: string;
             type: string;
         };
+        AuthSession: {
+            client_id: string;
+            created_at: string;
+            expires_at?: string;
+            id: string;
+            revoked_at?: string;
+        };
         AuthType: {
             name?: string;
             type: string;
@@ -928,6 +1003,9 @@ export interface components {
         };
         CreateClientRequest: {
             name: string;
+        };
+        CreatePairingRequest: {
+            client_id?: string;
         };
         CreateSessionRequest: {
             title?: string;
@@ -1201,6 +1279,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        PairingResponse: {
+            credential: string;
+            expires_at: string;
+            pairing_path: string;
+        };
         /** Message part */
         Part: components["schemas"]["TextPart"] | components["schemas"]["ImagePart"] | components["schemas"]["ReasoningPart"] | components["schemas"]["ToolPart"] | components["schemas"]["ToolCallPart"] | components["schemas"]["ToolResultPart"] | ({
             type: string;
@@ -1321,6 +1404,15 @@ export interface components {
             reasoning: string;
             /** @constant */
             type: "reasoning";
+        };
+        RedeemPairingRequest: {
+            credential: string;
+            /** @enum {string} */
+            mode?: "cookie" | "bearer";
+        };
+        RedeemPairingResponse: {
+            session: components["schemas"]["AuthSession"];
+            token?: string;
         };
         RenameSessionRequest: {
             /** Format: int64 */
@@ -2134,6 +2226,147 @@ export interface operations {
         };
     };
     deleteAgent: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPairing: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePairingRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    redeemPairing: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemPairingRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedeemPairingResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listAuthSessions: {
+        parameters: {
+            query?: {
+                /** @description Client identity */
+                client_id?: string;
+            };
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revokeAuthSession: {
         parameters: {
             query?: never;
             header?: {

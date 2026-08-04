@@ -12,7 +12,7 @@ Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI
 Most clients follow this sequence:
 
 1. Check health with `GET /health`.
-2. Load the private daemon token, then check readiness with `GET /ready`.
+2. Load an owner or client session token, then check readiness with `GET /ready`.
 3. Configure provider auth with `PUT /provider/auth`.
 4. Create or reuse an agent with `/agents`.
 5. Create or reuse a Workspace with `/workspaces` if the session needs a saved context.
@@ -22,8 +22,10 @@ Most clients follow this sequence:
 
 ## Authentication
 
-`GET /health` is public. All other API routes require the private daemon token.
-Load the token from the local state directory:
+`GET /health` is public. Protected API routes accept an owner credential or a
+client bearer session.
+
+Trusted local administration can load the owner credential from daemon state:
 
 ```bash
 export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
@@ -35,9 +37,26 @@ Send it as a bearer token:
 Authorization: Bearer <token>
 ```
 
-The token authenticates the local daemon connection. `X-Wingman-Client`
-identifies the calling application for attribution and resource scoping. It is
-not an authentication credential.
+Do not copy the owner credential into a remote client. Create a pairing
+credential for a registered client, then redeem it in `bearer` mode:
+
+```bash
+curl -sS -X POST http://localhost:2323/auth/pairings/redeem \
+  -H "Content-Type: application/json" \
+  -d '{"credential":"<pairing-credential>","mode":"bearer"}'
+```
+
+The response returns the bearer token once. Store it in the client secret store.
+Wingman stores only its hash.
+
+An auth session is bound to one Wingman Client. A session-authenticated request
+cannot select another client with `X-Wingman-Client`.
+
+The owner credential can use `X-Wingman-Client` for local administration. The
+header is not an authentication credential.
+
+See [Authentication](/concepts/authentication) for pairing, browser cookies, and
+the current security boundary.
 
 ## OpenAPI and TypeScript
 
@@ -61,7 +80,8 @@ contract.
 
 ## Client Identity
 
-Clients can register with `/clients` and pass `X-Wingman-Client` on requests for client-scoped resources. This keeps each client's sessions and Workspaces organized. It is not an auth boundary.
+The owner can register clients with `/clients` and pass `X-Wingman-Client` on
+client-scoped requests. A paired auth session uses its bound client automatically.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \

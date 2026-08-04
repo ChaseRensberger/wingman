@@ -14,7 +14,8 @@ Wingman uses per-user configuration. By default, files live under:
 
 Use this file for daemon-wide settings.
 
-> **Security:** Keep Wingman on a trusted local interface and keep its bearer token private. A client with the token can use configured providers and enabled tools. `X-Wingman-Client` provides attribution, not isolation.
+> **Security:** Keep the owner credential private. Use pairing for browsers and
+> remote clients. Authentication does not provide tenant isolation.
 
 Set `XDG_CONFIG_HOME` to use a different config root. For example,
 `XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.

@@ -24,6 +24,10 @@ When working from the repository, replace `wingman` with `go run ./cmd/wingman`.
 | `down` | Stop and remove the Wingman background service. |
 | `restart` | Restart the Wingman background service. |
 | `status` | Show the Wingman background service status. |
+| `console` | Open the managed daemon Console. |
+| `auth pair` | Create a one-use Console or client pairing link. |
+| `auth sessions` | List browser and native auth sessions. |
+| `auth revoke` | Revoke one auth session. |
 | `update` | Check for or install a verified release update. |
 | `version` | Print version information. |
 
@@ -71,9 +75,37 @@ wingman serve --ephemeral
 wingman up --port 2424
 ```
 
-Wingman requires bearer authentication on loopback and non-loopback listeners.
-It does not provide tenant isolation. A valid daemon token grants control of
-providers, agents, sessions, extensions, and enabled tools.
+## Console and Auth Commands
+
+Open the Console for the managed daemon:
+
+```bash
+wingman console
+```
+
+Create a one-use link for a remote HTTPS origin:
+
+```bash
+wingman auth pair --url https://wingman.example.com
+```
+
+Use `--client cli_...` to bind the new session to a registered client.
+
+List auth sessions, or filter by client:
+
+```bash
+wingman auth sessions
+wingman auth sessions --client cli_...
+```
+
+Revoke one session:
+
+```bash
+wingman auth revoke ats_...
+```
+
+These commands target the verified daemon that `wingman up` registered. They do
+not scan ports or target an unregistered foreground server.
 
 ## Service Commands
 

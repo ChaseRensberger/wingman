@@ -3,8 +3,11 @@ package daemonclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,5 +87,66 @@ func TestInspectFutureRegistrationIsStale(t *testing.T) {
 	defer cancel()
 	if result := Inspect(ctx, state, "dev"); result.Status != StatusStale {
 		t.Fatalf("future Inspect() = %s, %v", result.Status, result.Err)
+	}
+}
+
+func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
+	const credential = "root-credential"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+credential {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
+		}
+		if r.URL.Path != "/auth/pairings" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		var request api.CreatePairingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.ClientID != "client_one" {
+			t.Fatalf("client ID = %q", request.ClientID)
+		}
+		_ = json.NewEncoder(w).Encode(api.PairingResponse{PairingPath: "/console#pairing=one"})
+	}))
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &Client{baseURL: baseURL, credential: credential, httpClient: server.Client()}
+	var pairing api.PairingResponse
+	if err := client.DoJSON(context.Background(), http.MethodPost, "/auth/pairings", api.CreatePairingRequest{ClientID: "client_one"}, &pairing); err != nil {
+		t.Fatal(err)
+	}
+	if pairing.PairingPath != "/console#pairing=one" {
+		t.Fatalf("pairing path = %q", pairing.PairingPath)
+	}
+}
+
+func TestClientDoJSONReturnsAPIErrorWithoutCredential(t *testing.T) {
+	const credential = "root-credential"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(api.ErrorResponse{Error: api.Error{Code: api.ErrorCodeForbidden, Message: "access denied"}})
+	}))
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &Client{baseURL: baseURL, credential: credential, httpClient: server.Client()}
+	err = client.DoJSON(context.Background(), http.MethodGet, "/auth/sessions", nil, nil)
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("error = %v, want APIError", err)
+	}
+	if apiError.StatusCode != http.StatusForbidden || !strings.Contains(err.Error(), "access denied") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), credential) {
+		t.Fatalf("error leaked credential: %v", err)
 	}
 }

@@ -27,9 +27,9 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("recorded initial migration = %d, want 1", count)
 	}
-
 	for table, columns := range map[string][]string{
 		"agents":              {"permissions_json"},
+		"auth_sessions":       {"client_id", "token_hash", "created_at", "expires_at", "revoked_at"},
 		"sessions":            {"aggregate_version"},
 		"messages":            {"run_id"},
 		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
@@ -46,7 +46,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "permission_requests", "permission_grants", "session_events", "aggregate_events", "auth"} {
+	for _, table := range []string{"agents", "clients", "auth_sessions", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "permission_requests", "permission_grants", "session_events", "aggregate_events", "auth"} {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("table %s count=%d error=%v", table, count, err)
 		}
@@ -58,6 +58,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		t.Fatalf("legacy schema objects = %d, want 0", count)
 	}
 	for _, index := range []string{
+		"idx_auth_sessions_client_created_at",
 		"idx_session_runs_session_request_id",
 		"idx_session_runs_one_running_per_session",
 		"idx_model_calls_session_started_at",

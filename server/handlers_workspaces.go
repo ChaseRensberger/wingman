@@ -27,6 +27,37 @@ type directoryEntry struct {
 	Path string `json:"path"`
 }
 
+var errWorkspaceBelongsToAnotherClient = errors.New("workspace belongs to another client")
+
+func (s *Server) workspaceForClient(clientID, workspaceID string) (*store.Workspace, error) {
+	workspace, err := s.store.GetWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if workspace.ClientID != clientID {
+		return nil, errWorkspaceBelongsToAnotherClient
+	}
+	return workspace, nil
+}
+
+func (s *Server) authorizeWorkspaceForRequest(w http.ResponseWriter, r *http.Request, workspaceID string) (*store.Workspace, bool) {
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return nil, false
+	}
+	workspace, err := s.workspaceForClient(clientID, workspaceID)
+	if err != nil {
+		if errors.Is(err, errWorkspaceBelongsToAnotherClient) {
+			s.writeError(w, http.StatusForbidden, err.Error())
+		} else {
+			s.writeError(w, http.StatusNotFound, err.Error())
+		}
+		return nil, false
+	}
+	return workspace, true
+}
+
 func (s *Server) handleListDirectories(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("path")
 	if dir == "" {
@@ -133,9 +164,8 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
-	if err != nil {
-		s.writeError(w, http.StatusNotFound, err.Error())
+	workspace, ok := s.authorizeWorkspaceForRequest(w, r, chi.URLParam(r, "id"))
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, apiWorkspace(workspace))
@@ -146,9 +176,8 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	workspace, err := s.store.GetWorkspace(chi.URLParam(r, "id"))
-	if err != nil {
-		s.writeError(w, http.StatusNotFound, err.Error())
+	workspace, ok := s.authorizeWorkspaceForRequest(w, r, chi.URLParam(r, "id"))
+	if !ok {
 		return
 	}
 
@@ -189,7 +218,11 @@ func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	if err := s.store.DeleteWorkspace(chi.URLParam(r, "id")); err != nil {
+	workspaceID := chi.URLParam(r, "id")
+	if _, ok := s.authorizeWorkspaceForRequest(w, r, workspaceID); !ok {
+		return
+	}
+	if err := s.store.DeleteWorkspace(workspaceID); err != nil {
 		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -202,8 +235,7 @@ func (s *Server) handleListWorkspaceSessions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	workspaceID := chi.URLParam(r, "id")
-	if _, err := s.store.GetWorkspace(workspaceID); err != nil {
-		s.writeError(w, http.StatusNotFound, err.Error())
+	if _, ok := s.authorizeWorkspaceForRequest(w, r, workspaceID); !ok {
 		return
 	}
 	sessions, err := s.store.ListSessionsByWorkspace(workspaceID)
