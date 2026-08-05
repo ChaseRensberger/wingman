@@ -689,9 +689,9 @@ func (s *SQLiteStore) CreateAuthSession(session *AuthSession) error {
 		return err
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO auth_sessions (id, client_id, token_hash, created_at, expires_at, revoked_at)
-		VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''))
-	`, session.ID, session.ClientID, session.TokenHash, session.CreatedAt, session.ExpiresAt, session.RevokedAt)
+		INSERT INTO auth_sessions (id, client_id, token_hash, owner, created_at, expires_at, revoked_at)
+		VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''))
+	`, session.ID, session.ClientID, session.TokenHash, session.Owner, session.CreatedAt, session.ExpiresAt, session.RevokedAt)
 	if err != nil {
 		return fmt.Errorf("insert auth session: %w", err)
 	}
@@ -704,10 +704,10 @@ func (s *SQLiteStore) AuthenticateAuthSession(tokenHash string) (*AuthSession, e
 	var session AuthSession
 	var expiresAt, revokedAt sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, client_id, created_at, expires_at, revoked_at
+		SELECT id, client_id, owner, created_at, expires_at, revoked_at
 		FROM auth_sessions
 		WHERE token_hash = ? AND revoked_at IS NULL
-	`, tokenHash).Scan(&session.ID, &session.ClientID, &session.CreatedAt, &expiresAt, &revokedAt)
+	`, tokenHash).Scan(&session.ID, &session.ClientID, &session.Owner, &session.CreatedAt, &expiresAt, &revokedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -724,7 +724,7 @@ func (s *SQLiteStore) AuthenticateAuthSession(tokenHash string) (*AuthSession, e
 // ListAuthSessions returns a client's sessions, newest first.
 func (s *SQLiteStore) ListAuthSessions(clientID string) ([]*AuthSession, error) {
 	rows, err := s.db.Query(`
-		SELECT id, client_id, created_at, expires_at, revoked_at
+		SELECT id, client_id, owner, created_at, expires_at, revoked_at
 		FROM auth_sessions
 		WHERE client_id = ?
 		ORDER BY created_at DESC, id DESC
@@ -738,7 +738,7 @@ func (s *SQLiteStore) ListAuthSessions(clientID string) ([]*AuthSession, error) 
 	for rows.Next() {
 		var session AuthSession
 		var expiresAt, revokedAt sql.NullString
-		if err := rows.Scan(&session.ID, &session.ClientID, &session.CreatedAt, &expiresAt, &revokedAt); err != nil {
+		if err := rows.Scan(&session.ID, &session.ClientID, &session.Owner, &session.CreatedAt, &expiresAt, &revokedAt); err != nil {
 			return nil, err
 		}
 		session.ExpiresAt, session.RevokedAt = expiresAt.String, revokedAt.String

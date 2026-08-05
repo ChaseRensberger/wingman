@@ -74,6 +74,7 @@ func TestLoopbackConsoleSessionCookieAuthenticates(t *testing.T) {
 
 	consoleRequest := httptest.NewRequest(http.MethodGet, "/console", nil)
 	consoleRequest.Host = "127.0.0.1:2323"
+	consoleRequest.RemoteAddr = "127.0.0.1:1234"
 	console := httptest.NewRecorder()
 	s.ServeHTTP(console, consoleRequest)
 	result := console.Result()
@@ -123,6 +124,7 @@ func TestRootCookieIsRejectedAndLocalCookieAuthenticates(t *testing.T) {
 	console := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/console", nil)
 	request.Host = "localhost:2323"
+	request.RemoteAddr = "127.0.0.1:1234"
 	s.ServeHTTP(console, request)
 	cookie := console.Result().Cookies()[0]
 	response = httptest.NewRecorder()
@@ -142,7 +144,7 @@ func TestAuthSessionBearerClientBindingAndRevocation(t *testing.T) {
 	}
 	s := New(Config{Credential: "secret", Store: data})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	token, _, err := s.createAuthSession(other.ID)
+	token, _, err := s.createAuthSession(other.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +199,7 @@ func TestAuthSessionCannotAccessAnotherClientResources(t *testing.T) {
 
 	s := New(Config{Credential: "secret", Store: data})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	token, _, err := s.createAuthSession(pairedClient.ID)
+	token, _, err := s.createAuthSession(pairedClient.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,36 +256,36 @@ func TestAuthSessionCannotAccessAnotherClientResources(t *testing.T) {
 	}
 }
 
-func TestPairingRoutes(t *testing.T) {
+func TestEnrollmentRoutes(t *testing.T) {
 	s := New(Config{Credential: "secret"})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
 	response := httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/pairings", api.CreatePairingRequest{}))
+	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{}))
 	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("public pairing status = %d", response.Code)
+		t.Fatalf("public enrollment status = %d", response.Code)
 	}
 
-	create := jsonRequest(http.MethodPost, "/auth/pairings", api.CreatePairingRequest{})
+	create := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
 	create.Header.Set("Authorization", "Bearer secret")
 	response = httptest.NewRecorder()
 	s.ServeHTTP(response, create)
 	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("create pairing status = %d, cache = %q", response.Code, response.Header().Get("Cache-Control"))
+		t.Fatalf("create enrollment status = %d, cache = %q", response.Code, response.Header().Get("Cache-Control"))
 	}
-	var pairing api.PairingResponse
-	if err := json.NewDecoder(response.Body).Decode(&pairing); err != nil {
+	var enrollment api.EnrollmentResponse
+	if err := json.NewDecoder(response.Body).Decode(&enrollment); err != nil {
 		t.Fatal(err)
 	}
 
-	redeem := jsonRequest(http.MethodPost, "/auth/pairings/redeem", api.RedeemPairingRequest{Credential: pairing.Credential})
+	redeem := jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential})
 	redeem.Host = "example.test"
 	response = httptest.NewRecorder()
 	s.ServeHTTP(response, redeem)
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("redeem status = %d", response.Code)
 	}
-	var cookieResponse api.RedeemPairingResponse
+	var cookieResponse api.RedeemEnrollmentResponse
 	if err := json.NewDecoder(response.Body).Decode(&cookieResponse); err != nil {
 		t.Fatal(err)
 	}
@@ -292,9 +294,32 @@ func TestPairingRoutes(t *testing.T) {
 	}
 
 	response = httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/pairings/redeem", api.RedeemPairingRequest{Credential: pairing.Credential}))
+	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential}))
 	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("reused pairing status = %d", response.Code)
+		t.Fatalf("reused enrollment status = %d", response.Code)
+	}
+}
+
+func TestLocalConsoleSessionCanManageAuthentication(t *testing.T) {
+	s := New(Config{Credential: "secret", ConsoleCookie: true})
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
+
+	console := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/console", nil)
+	request.Host = "localhost:2323"
+	request.RemoteAddr = "127.0.0.1:1234"
+	s.ServeHTTP(console, request)
+	cookie := console.Result().Cookies()[0]
+
+	request = jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
+	request.Host = "localhost:2323"
+	request.Header.Set("Origin", "http://localhost:2323")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("local owner Console enrollment status = %d", response.Code)
 	}
 }
 
@@ -305,6 +330,7 @@ func TestCookieAuthenticationRejectsSameSiteCrossOriginMutation(t *testing.T) {
 	console := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/console", nil)
 	request.Host = "localhost:2323"
+	request.RemoteAddr = "127.0.0.1:1234"
 	s.ServeHTTP(console, request)
 	cookie := console.Result().Cookies()[0]
 
@@ -345,10 +371,10 @@ func TestCookieRequestOriginPolicy(t *testing.T) {
 	}
 }
 
-func TestPairingRedemptionBodyIsBounded(t *testing.T) {
+func TestEnrollmentRedemptionBodyIsBounded(t *testing.T) {
 	s := New(Config{Credential: "secret"})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	request := httptest.NewRequest(http.MethodPost, "/auth/pairings/redeem", strings.NewReader(`{"credential":"`+strings.Repeat("x", 9<<10)+`"}`))
+	request := httptest.NewRequest(http.MethodPost, "/auth/enrollments/redeem", strings.NewReader(`{"credential":"`+strings.Repeat("x", 9<<10)+`"}`))
 	response := httptest.NewRecorder()
 	s.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
@@ -372,59 +398,59 @@ func (s *failCreateAuthStore) CreateAuthSession(session *store.AuthSession) erro
 	return s.Store.CreateAuthSession(session)
 }
 
-func TestPairingCanRetryAfterSessionPersistenceFailure(t *testing.T) {
+func TestEnrollmentCanRetryAfterSessionPersistenceFailure(t *testing.T) {
 	data := &failCreateAuthStore{Store: memory.NewStore(), failOnce: true}
 	s := New(Config{Credential: "secret", Store: data})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
-	create := jsonRequest(http.MethodPost, "/auth/pairings", api.CreatePairingRequest{})
+	create := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
 	create.Header.Set("Authorization", "Bearer secret")
 	response := httptest.NewRecorder()
 	s.ServeHTTP(response, create)
-	var pairing api.PairingResponse
-	if response.Code != http.StatusCreated || json.NewDecoder(response.Body).Decode(&pairing) != nil {
-		t.Fatalf("create pairing status = %d", response.Code)
+	var enrollment api.EnrollmentResponse
+	if response.Code != http.StatusCreated || json.NewDecoder(response.Body).Decode(&enrollment) != nil {
+		t.Fatalf("create enrollment status = %d", response.Code)
 	}
 
 	for attempt, want := range []int{http.StatusInternalServerError, http.StatusOK} {
 		response = httptest.NewRecorder()
-		s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/pairings/redeem", api.RedeemPairingRequest{Credential: pairing.Credential, Mode: api.AuthSessionModeBearer}))
+		s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: api.AuthSessionModeBearer}))
 		if response.Code != want {
 			t.Fatalf("redemption attempt %d status = %d, want %d", attempt+1, response.Code, want)
 		}
 	}
 }
 
-func TestPairingBearerAndConcurrentRedeem(t *testing.T) {
+func TestEnrollmentBearerAndConcurrentRedeem(t *testing.T) {
 	s := New(Config{Credential: "secret"})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	createPairing := func() api.PairingResponse {
-		request := jsonRequest(http.MethodPost, "/auth/pairings", api.CreatePairingRequest{})
+	createEnrollment := func() api.EnrollmentResponse {
+		request := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
 		request.Header.Set("Authorization", "Bearer secret")
 		response := httptest.NewRecorder()
 		s.ServeHTTP(response, request)
 		if response.Code != http.StatusCreated {
 			t.Fatalf("create status = %d", response.Code)
 		}
-		var pairing api.PairingResponse
-		if err := json.NewDecoder(response.Body).Decode(&pairing); err != nil {
+		var enrollment api.EnrollmentResponse
+		if err := json.NewDecoder(response.Body).Decode(&enrollment); err != nil {
 			t.Fatal(err)
 		}
-		return pairing
+		return enrollment
 	}
-	pairing := createPairing()
+	enrollment := createEnrollment()
 	response := httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/pairings/redeem", api.RedeemPairingRequest{Credential: pairing.Credential, Mode: "bearer"}))
-	var redeemed api.RedeemPairingResponse
+	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: "bearer"}))
+	var redeemed api.RedeemEnrollmentResponse
 	if response.Code != http.StatusOK || json.NewDecoder(response.Body).Decode(&redeemed) != nil || redeemed.Token == "" || len(response.Result().Cookies()) != 0 {
 		t.Fatalf("bearer redemption status = %d, response = %#v", response.Code, redeemed)
 	}
-	sessionOnly := jsonRequest(http.MethodPost, "/auth/pairings", api.CreatePairingRequest{})
+	sessionOnly := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
 	sessionOnly.Header.Set("Authorization", "Bearer "+redeemed.Token)
 	response = httptest.NewRecorder()
 	s.ServeHTTP(response, sessionOnly)
 	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("session pairing status = %d", response.Code)
+		t.Fatalf("session enrollment status = %d", response.Code)
 	}
 	list := authenticatedRequest(http.MethodGet, "/auth/sessions", "secret")
 	response = httptest.NewRecorder()
@@ -439,7 +465,7 @@ func TestPairingBearerAndConcurrentRedeem(t *testing.T) {
 		t.Fatalf("revoke session status = %d", response.Code)
 	}
 
-	pairing = createPairing()
+	enrollment = createEnrollment()
 	var successes int
 	var successesMu sync.Mutex
 	var wg sync.WaitGroup
@@ -448,7 +474,7 @@ func TestPairingBearerAndConcurrentRedeem(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			response := httptest.NewRecorder()
-			s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/pairings/redeem", api.RedeemPairingRequest{Credential: pairing.Credential, Mode: "bearer"}))
+			s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: "bearer"}))
 			if response.Code == http.StatusOK {
 				successesMu.Lock()
 				successes++
@@ -462,14 +488,14 @@ func TestPairingBearerAndConcurrentRedeem(t *testing.T) {
 	}
 }
 
-func TestPairingExpiry(t *testing.T) {
-	manager := newPairingManager()
-	credential, _, err := manager.create(store.DefaultClientID, time.Now().UTC().Add(-pairingLifetime))
+func TestEnrollmentExpiry(t *testing.T) {
+	manager := newEnrollmentManager()
+	credential, _, err := manager.create(store.DefaultClientID, time.Now().UTC().Add(-enrollmentLifetime))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := manager.consume(credential, time.Now().UTC()); ok {
-		t.Fatal("expired pairing was accepted")
+		t.Fatal("expired enrollment was accepted")
 	}
 }
 
@@ -493,6 +519,22 @@ func TestConsoleDoesNotBootstrapCookieForUntrustedHost(t *testing.T) {
 	}
 }
 
+func TestConsoleDoesNotBootstrapOwnerCookieFromForwardedLoopback(t *testing.T) {
+	s := New(Config{Credential: "secret", ConsoleCookie: true})
+	request := httptest.NewRequest(http.MethodGet, "/console", nil)
+	request.Host = "localhost:2323"
+	request.RemoteAddr = "192.0.2.1:1234"
+	request.Header.Set("X-Forwarded-For", "127.0.0.1")
+	request.Header.Set("X-Real-IP", "127.0.0.1")
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, request)
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == consoleSessionCookie {
+			t.Fatal("console owner cookie was set for a forwarded loopback address")
+		}
+	}
+}
+
 func TestRequestHostIsLoopback(t *testing.T) {
 	for _, host := range []string{"localhost", "localhost:2323", "127.0.0.1:2323", "[::1]:2323"} {
 		if !requestHostIsLoopback(host) {
@@ -503,6 +545,21 @@ func TestRequestHostIsLoopback(t *testing.T) {
 		if requestHostIsLoopback(host) {
 			t.Errorf("requestHostIsLoopback(%q) = true", host)
 		}
+	}
+}
+
+func TestRequestIsLoopback(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/console", nil)
+	request.Host = "localhost:2323"
+	request.RemoteAddr = "127.0.0.1:1234"
+	request = request.WithContext(context.WithValue(request.Context(), socketPeerContextKey{}, request.RemoteAddr))
+	if !requestIsLoopback(request) {
+		t.Fatal("loopback request was rejected")
+	}
+	request.RemoteAddr = "192.0.2.1:1234"
+	request = request.WithContext(context.WithValue(request.Context(), socketPeerContextKey{}, request.RemoteAddr))
+	if requestIsLoopback(request) {
+		t.Fatal("remote request with a loopback Host was accepted")
 	}
 }
 

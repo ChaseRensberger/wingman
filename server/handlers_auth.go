@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,58 +18,58 @@ import (
 )
 
 const (
-	pairingLifetime     = 5 * time.Minute
+	enrollmentLifetime  = 5 * time.Minute
 	authSessionLifetime = 30 * 24 * time.Hour
 )
 
-type pairingManager struct {
-	mu       sync.Mutex
-	pairings map[string]pairing
+type enrollmentManager struct {
+	mu          sync.Mutex
+	enrollments map[string]enrollment
 }
 
-type pairing struct {
+type enrollment struct {
 	clientID  string
 	expiresAt time.Time
 }
 
-func newPairingManager() *pairingManager {
-	return &pairingManager{pairings: make(map[string]pairing)}
+func newEnrollmentManager() *enrollmentManager {
+	return &enrollmentManager{enrollments: make(map[string]enrollment)}
 }
 
-func (m *pairingManager) create(clientID string, now time.Time) (string, time.Time, error) {
+func (m *enrollmentManager) create(clientID string, now time.Time) (string, time.Time, error) {
 	credential, err := randomCredential()
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	expiresAt := now.Add(pairingLifetime)
+	expiresAt := now.Add(enrollmentLifetime)
 	m.mu.Lock()
-	m.pairings[tokenHash(credential)] = pairing{clientID: clientID, expiresAt: expiresAt}
+	m.enrollments[tokenHash(credential)] = enrollment{clientID: clientID, expiresAt: expiresAt}
 	m.mu.Unlock()
 	return credential, expiresAt, nil
 }
 
-func (m *pairingManager) consume(credential string, now time.Time) (string, bool) {
+func (m *enrollmentManager) consume(credential string, now time.Time) (string, bool) {
 	clientID, _, ok := m.consumeForRedemption(credential, now)
 	return clientID, ok
 }
 
-func (m *pairingManager) consumeForRedemption(credential string, now time.Time) (string, time.Time, bool) {
+func (m *enrollmentManager) consumeForRedemption(credential string, now time.Time) (string, time.Time, bool) {
 	hash := tokenHash(credential)
 	m.mu.Lock()
-	pairing, ok := m.pairings[hash]
+	enrollment, ok := m.enrollments[hash]
 	if ok {
-		delete(m.pairings, hash)
+		delete(m.enrollments, hash)
 	}
 	m.mu.Unlock()
-	return pairing.clientID, pairing.expiresAt, ok && pairing.expiresAt.After(now)
+	return enrollment.clientID, enrollment.expiresAt, ok && enrollment.expiresAt.After(now)
 }
 
-func (m *pairingManager) restore(credential, clientID string, expiresAt time.Time, now time.Time) {
+func (m *enrollmentManager) restore(credential, clientID string, expiresAt time.Time, now time.Time) {
 	if !expiresAt.After(now) {
 		return
 	}
 	m.mu.Lock()
-	m.pairings[tokenHash(credential)] = pairing{clientID: clientID, expiresAt: expiresAt}
+	m.enrollments[tokenHash(credential)] = enrollment{clientID: clientID, expiresAt: expiresAt}
 	m.mu.Unlock()
 }
 
@@ -88,15 +87,15 @@ func tokenHash(token string) string {
 }
 
 func apiAuthSession(session *store.AuthSession) api.AuthSession {
-	return api.AuthSession{ID: session.ID, ClientID: session.ClientID, CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, RevokedAt: session.RevokedAt}
+	return api.AuthSession{ID: session.ID, ClientID: session.ClientID, Owner: session.Owner, CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, RevokedAt: session.RevokedAt}
 }
 
-func (s *Server) handleCreatePairing(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateEnrollment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireRoot(w, r) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	var req api.CreatePairingRequest
+	var req api.CreateEnrollmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -109,18 +108,18 @@ func (s *Server) handleCreatePairing(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "client not found: "+clientID)
 		return
 	}
-	credential, expiresAt, err := s.pairings.create(clientID, time.Now().UTC())
+	credential, expiresAt, err := s.enrollments.create(clientID, time.Now().UTC())
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusCreated, api.PairingResponse{Credential: credential, ExpiresAt: expiresAt.Format(time.RFC3339Nano), PairingPath: "/console#pairing=" + url.QueryEscape(credential)})
+	writeJSON(w, http.StatusCreated, api.EnrollmentResponse{Credential: credential, ClientID: clientID, ExpiresAt: expiresAt.Format(time.RFC3339Nano)})
 }
 
-func (s *Server) handleRedeemPairing(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRedeemEnrollment(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	var req api.RedeemPairingRequest
+	var req api.RedeemEnrollmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -134,19 +133,19 @@ func (s *Server) handleRedeemPairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
-	clientID, expiresAt, ok := s.pairings.consumeForRedemption(req.Credential, now)
+	clientID, expiresAt, ok := s.enrollments.consumeForRedemption(req.Credential, now)
 	if !ok {
-		s.writeError(w, http.StatusUnauthorized, "invalid or expired pairing credential")
+		s.writeError(w, http.StatusUnauthorized, "invalid or expired enrollment credential")
 		return
 	}
-	token, session, err := s.createAuthSession(clientID)
+	token, session, err := s.createAuthSession(clientID, false)
 	if err != nil {
-		s.pairings.restore(req.Credential, clientID, expiresAt, now)
+		s.enrollments.restore(req.Credential, clientID, expiresAt, now)
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	response := api.RedeemPairingResponse{Session: apiAuthSession(session)}
+	response := api.RedeemEnrollmentResponse{Session: apiAuthSession(session)}
 	if mode == api.AuthSessionModeCookie {
 		s.setAuthSessionCookie(w, r, token)
 	} else {

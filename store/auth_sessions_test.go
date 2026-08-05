@@ -30,7 +30,7 @@ func TestAuthSessionLifecycleParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			active := &store.AuthSession{ClientID: client.ID, TokenHash: "active-hash"}
+			active := &store.AuthSession{ClientID: client.ID, Owner: true, TokenHash: "active-hash"}
 			if err := data.CreateAuthSession(active); err != nil {
 				t.Fatal(err)
 			}
@@ -39,7 +39,7 @@ func TestAuthSessionLifecycleParity(t *testing.T) {
 			}
 
 			authenticated, err := data.AuthenticateAuthSession("active-hash")
-			if err != nil || authenticated == nil || authenticated.ID != active.ID || authenticated.ClientID != client.ID || authenticated.TokenHash != "" {
+			if err != nil || authenticated == nil || authenticated.ID != active.ID || authenticated.ClientID != client.ID || !authenticated.Owner || authenticated.TokenHash != "" {
 				t.Fatalf("authenticate = %#v, %v", authenticated, err)
 			}
 			listed, err := data.ListAuthSessions(client.ID)

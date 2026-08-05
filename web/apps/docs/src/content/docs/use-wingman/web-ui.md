@@ -1,6 +1,6 @@
 ---
 title: "Use the Console"
-description: "Open the local Console or pair a remote browser."
+description: "Open the local Console or enroll a remote browser."
 ---
 
 # Use the Console
@@ -27,15 +27,15 @@ wingman console
 
 ## Remote Console
 
-Expose the Console and API through one HTTPS origin. Then create a one-use link
-on the machine that runs the managed daemon:
+Expose the Console and API through one HTTPS origin. Create a one-use enrollment
+credential on the machine that runs the managed daemon:
 
 ```bash
-wingman auth pair --url https://wingman.example.com
+wingman auth enroll
 ```
 
-Open the printed link in the remote browser. The link expires after five minutes
-and works one time.
+Paste the printed credential into the Console connection banner. It expires
+after five minutes and works one time.
 
 The reverse proxy must:
 
@@ -48,8 +48,8 @@ The reverse proxy must:
 Do not rewrite `Host` to `localhost`. Do not inject the owner credential into
 browser requests.
 
-If a link is not available, paste the link or raw pairing credential into the
-pairing form in the Console connection banner.
+The Console can redeem only a raw enrollment credential. It does not need the
+owner credential.
 
 ## Revoke Access
 

@@ -114,10 +114,10 @@ func (s *Server) registerBinary(method, path, operationID, summary, contentType 
 
 func setOperationSecurity(op *huma.Operation) {
 	switch op.Path {
-	case "/health", "/auth/pairings/redeem":
+	case "/health", "/auth/enrollments/redeem":
 		op.Security = []map[string][]string{}
-	case "/auth/pairings", "/auth/sessions", "/auth/sessions/{id}":
-		op.Security = []map[string][]string{{"rootBearer": {}}}
+	case "/auth/enrollments", "/auth/sessions", "/auth/sessions/{id}":
+		op.Security = []map[string][]string{{"rootBearer": {}}, {"consoleSession": {}}}
 	default:
 		op.Security = []map[string][]string{{"bearerAuth": {}}, {"consoleSession": {}}}
 	}

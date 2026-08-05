@@ -37,13 +37,13 @@ Send it as a bearer token:
 Authorization: Bearer <token>
 ```
 
-Do not copy the owner credential into a remote client. Create a pairing
+Do not copy the owner credential into a remote client. Create an enrollment
 credential for a registered client, then redeem it in `bearer` mode:
 
 ```bash
-curl -sS -X POST http://localhost:2323/auth/pairings/redeem \
+curl -sS -X POST http://localhost:2323/auth/enrollments/redeem \
   -H "Content-Type: application/json" \
-  -d '{"credential":"<pairing-credential>","mode":"bearer"}'
+  -d '{"credential":"<enrollment-credential>","mode":"bearer"}'
 ```
 
 The response returns the bearer token once. Store it in the client secret store.
@@ -55,7 +55,7 @@ cannot select another client with `X-Wingman-Client`.
 The owner credential can use `X-Wingman-Client` for local administration. The
 header is not an authentication credential.
 
-See [Authentication](/concepts/authentication) for pairing, browser cookies, and
+See [Authentication](/concepts/authentication) for enrollment, browser cookies, and
 the current security boundary.
 
 ## OpenAPI and TypeScript

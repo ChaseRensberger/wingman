@@ -350,6 +350,7 @@ type Client struct {
 type AuthSession struct {
 	ID        string `json:"id"`
 	ClientID  string `json:"client_id"`
+	Owner     bool   `json:"owner"`
 	TokenHash string `json:"-"`
 	CreatedAt string `json:"created_at"`
 	ExpiresAt string `json:"expires_at,omitempty"`

@@ -58,20 +58,20 @@ type CreateClientRequest struct {
 	Name string `json:"name"`
 }
 
-// CreatePairingRequest creates a one-time credential for a registered client.
-type CreatePairingRequest struct {
+// CreateEnrollmentRequest creates a one-time credential for a registered client.
+type CreateEnrollmentRequest struct {
 	ClientID string `json:"client_id,omitempty"`
 }
 
-// PairingResponse contains a one-time credential. The credential is returned only once.
-type PairingResponse struct {
-	Credential  string `json:"credential"`
-	ExpiresAt   string `json:"expires_at"`
-	PairingPath string `json:"pairing_path"`
+// EnrollmentResponse contains a one-time credential. The credential is returned only once.
+type EnrollmentResponse struct {
+	Credential string `json:"credential"`
+	ClientID   string `json:"client_id"`
+	ExpiresAt  string `json:"expires_at"`
 }
 
-// RedeemPairingRequest exchanges a one-time pairing credential for an auth session.
-type RedeemPairingRequest struct {
+// RedeemEnrollmentRequest exchanges a one-time enrollment credential for an auth session.
+type RedeemEnrollmentRequest struct {
 	Credential string          `json:"credential"`
 	Mode       AuthSessionMode `json:"mode,omitempty" enum:"cookie,bearer"`
 }
@@ -88,13 +88,14 @@ const (
 type AuthSession struct {
 	ID        string `json:"id"`
 	ClientID  string `json:"client_id"`
+	Owner     bool   `json:"owner"`
 	CreatedAt string `json:"created_at"`
 	ExpiresAt string `json:"expires_at,omitempty"`
 	RevokedAt string `json:"revoked_at,omitempty"`
 }
 
-// RedeemPairingResponse is returned after a pairing credential is redeemed.
-type RedeemPairingResponse struct {
+// RedeemEnrollmentResponse is returned after an enrollment credential is redeemed.
+type RedeemEnrollmentResponse struct {
 	Session AuthSession `json:"session"`
 	Token   string      `json:"token,omitempty"`
 }

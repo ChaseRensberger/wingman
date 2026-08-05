@@ -14,7 +14,7 @@ Wingman uses per-user configuration. By default, files live under:
 
 Use this file for daemon-wide settings.
 
-> **Security:** Keep the owner credential private. Use pairing for browsers and
+> **Security:** Keep the owner credential private. Use enrollment for browsers and
 > remote clients. Authentication does not provide tenant isolation.
 
 Set `XDG_CONFIG_HOME` to use a different config root. For example,

@@ -27,7 +27,7 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/auth/pairings", "/auth/pairings/redeem", "/auth/sessions", "/auth/sessions/{id}", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
+	for _, path := range []string{"/health", "/auth/enrollments", "/auth/enrollments/redeem", "/auth/sessions", "/auth/sessions/{id}", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}
@@ -63,21 +63,21 @@ func TestOpenAPIAuthenticationContract(t *testing.T) {
 	operation := func(path, method string) map[string]any {
 		return paths[path].(map[string]any)[method].(map[string]any)
 	}
-	if security := operation("/auth/pairings/redeem", "post")["security"].([]any); len(security) != 0 {
-		t.Fatalf("pairing redemption security = %#v", security)
+	if security := operation("/auth/enrollments/redeem", "post")["security"].([]any); len(security) != 0 {
+		t.Fatalf("enrollment redemption security = %#v", security)
 	}
-	rootSecurity := operation("/auth/pairings", "post")["security"].([]any)
-	if len(rootSecurity) != 1 || rootSecurity[0].(map[string]any)["rootBearer"] == nil {
-		t.Fatalf("pairing creation security = %#v", rootSecurity)
+	rootSecurity := operation("/auth/enrollments", "post")["security"].([]any)
+	if len(rootSecurity) != 2 || rootSecurity[0].(map[string]any)["rootBearer"] == nil || rootSecurity[1].(map[string]any)["consoleSession"] == nil {
+		t.Fatalf("enrollment creation security = %#v", rootSecurity)
 	}
 	readySecurity := operation("/ready", "get")["security"].([]any)
 	if len(readySecurity) != 2 {
 		t.Fatalf("readiness security = %#v", readySecurity)
 	}
 	schemas := decoded["components"].(map[string]any)["schemas"].(map[string]any)
-	mode := schemas["RedeemPairingRequest"].(map[string]any)["properties"].(map[string]any)["mode"].(map[string]any)
+	mode := schemas["RedeemEnrollmentRequest"].(map[string]any)["properties"].(map[string]any)["mode"].(map[string]any)
 	if !reflect.DeepEqual(mode["enum"], []any{"cookie", "bearer"}) {
-		t.Fatalf("pairing mode enum = %#v", mode["enum"])
+		t.Fatalf("enrollment mode enum = %#v", mode["enum"])
 	}
 }
 

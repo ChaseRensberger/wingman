@@ -35,13 +35,13 @@ var runBrowserCommand = func(ctx context.Context, name, target string) error {
 func authCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "auth",
-		Usage: "Manage console authorization",
+		Usage: "Manage client authentication",
 		Commands: []*cli.Command{
 			{
-				Name:   "pair",
-				Usage:  "Create a console pairing link",
-				Flags:  authPairFlags(),
-				Action: runAuthPair,
+				Name:   "enroll",
+				Usage:  "Create a one-time client enrollment credential",
+				Flags:  authEnrollFlags(),
+				Action: runAuthEnroll,
 			},
 			{
 				Name:   "sessions",
@@ -59,10 +59,9 @@ func authCommand() *cli.Command {
 	}
 }
 
-func authPairFlags() []cli.Flag {
+func authEnrollFlags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{Name: "client", Usage: "Client identity (defaults to the default client)"},
-		&cli.StringFlag{Name: "url", Usage: "Public console base URL"},
 	}
 }
 
@@ -70,29 +69,16 @@ func authSessionsFlags() []cli.Flag {
 	return []cli.Flag{&cli.StringFlag{Name: "client", Usage: "Filter by client identity"}}
 }
 
-func runAuthPair(ctx context.Context, cmd *cli.Command) error {
-	baseURL := cmd.String("url")
-	if baseURL != "" {
-		if _, err := validatePublicURL(baseURL); err != nil {
-			return err
-		}
-	}
+func runAuthEnroll(ctx context.Context, cmd *cli.Command) error {
 	client, err := discoverManagedDaemon(ctx)
 	if err != nil {
 		return err
 	}
-	var pairing api.PairingResponse
-	if err := client.DoJSON(ctx, "POST", "/auth/pairings", api.CreatePairingRequest{ClientID: cmd.String("client")}, &pairing); err != nil {
+	var enrollment api.EnrollmentResponse
+	if err := client.DoJSON(ctx, "POST", "/auth/enrollments", api.CreateEnrollmentRequest{ClientID: cmd.String("client")}, &enrollment); err != nil {
 		return err
 	}
-	if baseURL == "" {
-		baseURL = client.URL()
-	}
-	pairingURL, err := resolvePairingURL(baseURL, pairing.PairingPath)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(commandWriter(cmd), "Pairing link valid until %s\n%s\n", pairing.ExpiresAt, pairingURL)
+	fmt.Fprintf(commandWriter(cmd), "Enrollment credential for %s valid until %s\n%s\n", enrollment.ClientID, enrollment.ExpiresAt, enrollment.Credential)
 	return nil
 }
 
@@ -134,7 +120,7 @@ func runConsole(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	consoleURL, err := resolvePairingURL(client.URL(), "/console")
+	consoleURL, err := resolveURL(client.URL(), "/console")
 	if err != nil {
 		return err
 	}
@@ -167,14 +153,14 @@ func hostIsLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func resolvePairingURL(base, pairingPath string) (string, error) {
+func resolveURL(base, pathValue string) (string, error) {
 	parsedBase, err := validatePublicURL(base)
 	if err != nil {
 		return "", err
 	}
-	path, err := url.Parse(pairingPath)
+	path, err := url.Parse(pathValue)
 	if err != nil {
-		return "", fmt.Errorf("parse pairing path: %w", err)
+		return "", fmt.Errorf("parse URL path: %w", err)
 	}
 	return parsedBase.ResolveReference(path).String(), nil
 }

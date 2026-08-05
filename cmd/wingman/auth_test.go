@@ -22,7 +22,7 @@ func TestAuthCommandHierarchy(t *testing.T) {
 	if auth == nil {
 		t.Fatal("auth command is missing")
 	}
-	for _, name := range []string{"pair", "sessions", "revoke"} {
+	for _, name := range []string{"enroll", "sessions", "revoke"} {
 		if auth.Command(name) == nil {
 			t.Errorf("auth %s command is missing", name)
 		}
@@ -32,7 +32,7 @@ func TestAuthCommandHierarchy(t *testing.T) {
 	}
 }
 
-func TestPairingURLValidationAndResolution(t *testing.T) {
+func TestPublicURLValidationAndResolution(t *testing.T) {
 	for _, raw := range []string{"/console", "ftp://example.test", "https:///console", "example.test", "http://example.test"} {
 		if _, err := validatePublicURL(raw); err == nil {
 			t.Errorf("validatePublicURL(%q) succeeded", raw)
@@ -43,12 +43,12 @@ func TestPairingURLValidationAndResolution(t *testing.T) {
 			t.Errorf("validatePublicURL(%q) error = %v", raw, err)
 		}
 	}
-	got, err := resolvePairingURL("https://console.example/base/", "/console#pairing=abc")
+	got, err := resolveURL("https://console.example/base/", "/console#view=sessions")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "https://console.example/console#pairing=abc"; got != want {
-		t.Fatalf("pairing URL = %q, want %q", got, want)
+	if want := "https://console.example/console#view=sessions"; got != want {
+		t.Fatalf("resolved URL = %q, want %q", got, want)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestAuthPairOutputDoesNotLeakRootCredential(t *testing.T) {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
 		if r.URL.Path != "/ready" {
-			_ = json.NewEncoder(w).Encode(api.PairingResponse{ExpiresAt: "2026-08-03T00:05:00Z", PairingPath: "/console#pairing=pairing-credential"})
+			_ = json.NewEncoder(w).Encode(api.EnrollmentResponse{Credential: "enrollment-credential", ClientID: "cli_wingman", ExpiresAt: "2026-08-03T00:05:00Z"})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(api.ReadinessResponse{Ready: true, InstanceID: "one", Version: version})
@@ -84,10 +84,10 @@ func TestAuthPairOutputDoesNotLeakRootCredential(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newCommand(daemonconfig.Config{})
 	cmd.Writer = &output
-	if err := cmd.Run(context.Background(), []string{"wingman", "auth", "pair", "--url", "https://public.example"}); err != nil {
+	if err := cmd.Run(context.Background(), []string{"wingman", "auth", "enroll"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := output.String(); !strings.Contains(got, "https://public.example/console#pairing=pairing-credential") || strings.Contains(got, credential) {
+	if got := output.String(); !strings.Contains(got, "Enrollment credential for cli_wingman valid until 2026-08-03T00:05:00Z\nenrollment-credential") || strings.Contains(got, credential) {
 		t.Fatalf("unexpected output: %q", got)
 	}
 }

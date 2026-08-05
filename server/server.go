@@ -37,7 +37,7 @@ import (
 type Server struct {
 	store              store.Store
 	authStore          store.Store
-	pairings           *pairingManager
+	enrollments        *enrollmentManager
 	router             *chi.Mux
 	protocol           huma.API
 	runs               *sessionRunManager
@@ -120,7 +120,7 @@ func New(cfg Config) *Server {
 	s := &Server{
 		store:            cfg.Store,
 		authStore:        authStore,
-		pairings:         newPairingManager(),
+		enrollments:      newEnrollmentManager(),
 		router:           chi.NewRouter(),
 		events:           newSessionEventBroker(),
 		webDevURL:        cfg.WebDevURL,
@@ -157,11 +157,20 @@ func New(cfg Config) *Server {
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(requestIDHeader)
+	s.router.Use(preserveSocketPeer)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(s.requestLogger)
 	s.router.Use(s.recoverer)
 	s.router.Use(s.timeoutWithBypass(60*time.Second, shouldBypassTimeout))
 	s.router.Use(s.authenticate)
+}
+
+type socketPeerContextKey struct{}
+
+func preserveSocketPeer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), socketPeerContextKey{}, r.RemoteAddr)))
+	})
 }
 
 const consoleSessionCookie = "wingman_session"
@@ -194,7 +203,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/health" || path == "/auth/pairings/redeem" || path == "/console" || strings.HasPrefix(path, "/console/")
+	return path == "/health" || path == "/auth/enrollments/redeem" || path == "/console" || strings.HasPrefix(path, "/console/")
 }
 
 func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
@@ -212,7 +221,7 @@ func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
 		if clientID := r.Header.Get("X-Wingman-Client"); clientID != "" && clientID != session.ClientID {
 			return authPrincipal{}, errAuthenticationRequired
 		}
-		return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID}, nil
+		return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID, owner: session.Owner}, nil
 	}
 	cookie, err := r.Cookie(consoleSessionCookie)
 	if err != nil {
@@ -228,7 +237,7 @@ func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
 	if clientID := r.Header.Get("X-Wingman-Client"); clientID != "" && clientID != session.ClientID {
 		return authPrincipal{}, errAuthenticationRequired
 	}
-	return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID, cookie: true}, nil
+	return authPrincipal{kind: sessionPrincipal, clientID: session.ClientID, owner: session.Owner, cookie: true}, nil
 }
 
 func bearerToken(r *http.Request) (string, bool) {
@@ -260,7 +269,7 @@ func cookieRequestAllowed(r *http.Request) bool {
 }
 
 func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
-	if !s.consoleCookie || s.credential == "" || !requestHostIsLoopback(r.Host) {
+	if !s.consoleCookie || s.credential == "" || !requestIsLoopback(r) {
 		return
 	}
 	if cookie, err := r.Cookie(consoleSessionCookie); err == nil {
@@ -268,7 +277,7 @@ func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	token, _, err := s.createAuthSession(store.DefaultClientID)
+	token, _, err := s.createAuthSession(store.DefaultClientID, true)
 	if err != nil {
 		s.logger.Error("create console auth session", "error", err)
 		return
@@ -276,12 +285,12 @@ func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
 	s.setAuthSessionCookie(w, r, token)
 }
 
-func (s *Server) createAuthSession(clientID string) (string, *store.AuthSession, error) {
+func (s *Server) createAuthSession(clientID string, owner bool) (string, *store.AuthSession, error) {
 	token, err := randomCredential()
 	if err != nil {
 		return "", nil, err
 	}
-	session := &store.AuthSession{ClientID: clientID, TokenHash: tokenHash(token), ExpiresAt: time.Now().UTC().Add(authSessionLifetime).Format(time.RFC3339Nano)}
+	session := &store.AuthSession{ClientID: clientID, Owner: owner, TokenHash: tokenHash(token), ExpiresAt: time.Now().UTC().Add(authSessionLifetime).Format(time.RFC3339Nano)}
 	if err := s.authStore.CreateAuthSession(session); err != nil {
 		return "", nil, err
 	}
@@ -308,6 +317,19 @@ func requestHostIsLoopback(host string) bool {
 	}
 	if strings.EqualFold(host, "localhost") {
 		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func requestIsLoopback(r *http.Request) bool {
+	if !requestHostIsLoopback(r.Host) {
+		return false
+	}
+	peer, _ := r.Context().Value(socketPeerContextKey{}).(string)
+	host, _, err := net.SplitHostPort(peer)
+	if err != nil {
+		return false
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
@@ -409,8 +431,8 @@ func shouldBypassTimeout(r *http.Request) bool {
 func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
-	s.registerJSON(http.MethodPost, "/auth/pairings", "createPairing", "Create a one-time pairing credential", api.CreatePairingRequest{}, http.StatusCreated, api.PairingResponse{}, s.handleCreatePairing)
-	s.registerJSON(http.MethodPost, "/auth/pairings/redeem", "redeemPairing", "Redeem a one-time pairing credential", api.RedeemPairingRequest{}, http.StatusOK, api.RedeemPairingResponse{}, s.handleRedeemPairing)
+	s.registerJSON(http.MethodPost, "/auth/enrollments", "createEnrollment", "Create a one-time client enrollment credential", api.CreateEnrollmentRequest{}, http.StatusCreated, api.EnrollmentResponse{}, s.handleCreateEnrollment)
+	s.registerJSON(http.MethodPost, "/auth/enrollments/redeem", "redeemEnrollment", "Redeem a one-time client enrollment credential", api.RedeemEnrollmentRequest{}, http.StatusOK, api.RedeemEnrollmentResponse{}, s.handleRedeemEnrollment)
 	s.registerJSONWithParameters(http.MethodGet, "/auth/sessions", "listAuthSessions", "List auth sessions", nil, http.StatusOK, []api.AuthSession{}, []*huma.Param{queryParameter("client_id", huma.TypeString, "Client identity")}, s.handleListAuthSessions)
 	s.registerJSON(http.MethodDelete, "/auth/sessions/{id}", "revokeAuthSession", "Revoke an auth session", nil, http.StatusOK, api.StatusResponse{}, s.handleRevokeAuthSession)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)

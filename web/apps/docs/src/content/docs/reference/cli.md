@@ -23,7 +23,7 @@ wingman <command> [flags]
 | `restart` | Restart the Wingman background service. |
 | `status` | Show the Wingman background service status. |
 | `console` | Open the managed daemon Console. |
-| `auth pair` | Create a one-use Console or client pairing link. |
+| `auth enroll` | Create a one-use client enrollment credential. |
 | `auth sessions` | List browser and native auth sessions. |
 | `auth revoke` | Revoke one auth session. |
 | `update` | Check for or install a verified release update. |
@@ -85,7 +85,7 @@ wingman console
 Create a one-use link for a remote HTTPS origin:
 
 ```bash
-wingman auth pair --url https://wingman.example.com
+wingman auth enroll
 ```
 
 Use `--client cli_...` to bind the new session to a registered client.

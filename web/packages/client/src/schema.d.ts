@@ -58,7 +58,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/pairings": {
+    "/auth/enrollments": {
         parameters: {
             query?: never;
             header?: never;
@@ -67,15 +67,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a one-time pairing credential */
-        post: operations["createPairing"];
+        /** Create a one-time client enrollment credential */
+        post: operations["createEnrollment"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/auth/pairings/redeem": {
+    "/auth/enrollments/redeem": {
         parameters: {
             query?: never;
             header?: never;
@@ -84,8 +84,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Redeem a one-time pairing credential */
-        post: operations["redeemPairing"];
+        /** Redeem a one-time client enrollment credential */
+        post: operations["redeemEnrollment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -936,6 +936,7 @@ export interface components {
             created_at: string;
             expires_at?: string;
             id: string;
+            owner: boolean;
             revoked_at?: string;
         };
         AuthType: {
@@ -1004,7 +1005,7 @@ export interface components {
         CreateClientRequest: {
             name: string;
         };
-        CreatePairingRequest: {
+        CreateEnrollmentRequest: {
             client_id?: string;
         };
         CreateSessionRequest: {
@@ -1050,6 +1051,11 @@ export interface components {
             entries: components["schemas"]["DirectoryEntry"][] | null;
             parent?: string;
             path: string;
+        };
+        EnrollmentResponse: {
+            client_id: string;
+            credential: string;
+            expires_at: string;
         };
         Error: {
             code: string;
@@ -1279,11 +1285,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        PairingResponse: {
-            credential: string;
-            expires_at: string;
-            pairing_path: string;
-        };
         /** Message part */
         Part: components["schemas"]["TextPart"] | components["schemas"]["ImagePart"] | components["schemas"]["ReasoningPart"] | components["schemas"]["ToolPart"] | components["schemas"]["ToolCallPart"] | components["schemas"]["ToolResultPart"] | ({
             type: string;
@@ -1405,12 +1406,12 @@ export interface components {
             /** @constant */
             type: "reasoning";
         };
-        RedeemPairingRequest: {
+        RedeemEnrollmentRequest: {
             credential: string;
             /** @enum {string} */
             mode?: "cookie" | "bearer";
         };
-        RedeemPairingResponse: {
+        RedeemEnrollmentResponse: {
             session: components["schemas"]["AuthSession"];
             token?: string;
         };
@@ -2259,7 +2260,7 @@ export interface operations {
             };
         };
     };
-    createPairing: {
+    createEnrollment: {
         parameters: {
             query?: never;
             header?: {
@@ -2271,7 +2272,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreatePairingRequest"];
+                "application/json": components["schemas"]["CreateEnrollmentRequest"];
             };
         };
         responses: {
@@ -2281,7 +2282,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PairingResponse"];
+                    "application/json": components["schemas"]["EnrollmentResponse"];
                 };
             };
             /** @description Request failed */
@@ -2295,7 +2296,7 @@ export interface operations {
             };
         };
     };
-    redeemPairing: {
+    redeemEnrollment: {
         parameters: {
             query?: never;
             header?: {
@@ -2307,7 +2308,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RedeemPairingRequest"];
+                "application/json": components["schemas"]["RedeemEnrollmentRequest"];
             };
         };
         responses: {
@@ -2317,7 +2318,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RedeemPairingResponse"];
+                    "application/json": components["schemas"]["RedeemEnrollmentResponse"];
                 };
             };
             /** @description Request failed */

@@ -31,12 +31,12 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
 | Method | Path | Authentication | Description |
 |---|---|---|---|
-| `POST` | `/auth/pairings` | Owner bearer | Create a five-minute, one-use pairing credential |
-| `POST` | `/auth/pairings/redeem` | Pairing credential in body | Create a cookie or bearer auth session |
-| `GET` | `/auth/sessions` | Owner bearer | List auth sessions |
-| `DELETE` | `/auth/sessions/{id}` | Owner bearer | Revoke an auth session |
+| `POST` | `/auth/enrollments` | Owner credential or local owner Console | Create a five-minute, one-use enrollment credential |
+| `POST` | `/auth/enrollments/redeem` | Enrollment credential in body | Create a cookie or bearer auth session |
+| `GET` | `/auth/sessions` | Owner credential or local owner Console | List auth sessions |
+| `DELETE` | `/auth/sessions/{id}` | Owner credential or local owner Console | Revoke an auth session |
 
-Pairing and redemption responses use `Cache-Control: no-store`. A bearer-mode
+Enrollment and redemption responses use `Cache-Control: no-store`. A bearer-mode
 redemption returns the session token once. A cookie-mode redemption sets an
 `HttpOnly` cookie and omits the token from the response body.
 

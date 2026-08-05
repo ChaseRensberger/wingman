@@ -16,6 +16,7 @@ const (
 type authPrincipal struct {
 	kind     principalKind
 	clientID string
+	owner    bool
 	cookie   bool
 }
 
@@ -31,7 +32,8 @@ func principalFromRequest(r *http.Request) authPrincipal {
 }
 
 func (s *Server) requireRoot(w http.ResponseWriter, r *http.Request) bool {
-	if principalFromRequest(r).kind == rootPrincipal {
+	principal := principalFromRequest(r)
+	if principal.kind == rootPrincipal || principal.owner {
 		return true
 	}
 	w.Header().Set("WWW-Authenticate", `Bearer realm="wingman"`)
