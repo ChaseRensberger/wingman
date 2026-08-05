@@ -47,9 +47,9 @@ export function getTheme(id: string | null | undefined): Theme {
 }
 
 export function supportsColorMode(theme: Theme, mode: ColorMode) {
-  return mode === "system" ? theme.modes.length === 2 : theme.modes.includes(mode);
+	return mode === "system" || theme.modes.includes(mode);
 }
 
-export function normalizeColorMode(theme: Theme, mode: ColorMode): ColorMode {
-  return supportsColorMode(theme, mode) ? mode : theme.modes[0];
+export function normalizeColorMode(_theme: Theme, mode: ColorMode): ColorMode {
+	return mode;
 }

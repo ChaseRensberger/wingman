@@ -85,7 +85,6 @@ export function ThemePreviewSwitcher() {
               )
             })}
           </RadioGroup>
-          <p className="text-sm text-muted-foreground">Themes recolor the interface, including code blocks and status colors. Dracula uses dark mode only.</p>
         </CardContent>
       </Card>
     </div>

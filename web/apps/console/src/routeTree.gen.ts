@@ -11,8 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as LogsRouteImport } from './routes/logs'
-import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIndexRouteImport } from './routes/sessions/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
@@ -29,16 +27,6 @@ const ToolsRoute = ToolsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LogsRoute = LogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClientsRoute = ClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,8 +67,6 @@ const AgentsAgentIdRoute = AgentsAgentIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/clients': typeof ClientsRoute
-  '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
   '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
@@ -92,8 +78,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/clients': typeof ClientsRoute
-  '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
   '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
@@ -106,8 +90,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/clients': typeof ClientsRoute
-  '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
   '/tools': typeof ToolsRoute
   '/agents/$agentId': typeof AgentsAgentIdRoute
@@ -121,8 +103,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/clients'
-    | '/logs'
     | '/settings'
     | '/tools'
     | '/agents/$agentId'
@@ -134,8 +114,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/clients'
-    | '/logs'
     | '/settings'
     | '/tools'
     | '/agents/$agentId'
@@ -147,8 +125,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/clients'
-    | '/logs'
     | '/settings'
     | '/tools'
     | '/agents/$agentId'
@@ -161,8 +137,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ClientsRoute: typeof ClientsRoute
-  LogsRoute: typeof LogsRoute
   SettingsRoute: typeof SettingsRoute
   ToolsRoute: typeof ToolsRoute
   AgentsAgentIdRoute: typeof AgentsAgentIdRoute
@@ -187,20 +161,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/logs': {
-      id: '/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof LogsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/clients': {
-      id: '/clients'
-      path: '/clients'
-      fullPath: '/clients'
-      preLoaderRoute: typeof ClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,8 +217,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ClientsRoute: ClientsRoute,
-  LogsRoute: LogsRoute,
   SettingsRoute: SettingsRoute,
   ToolsRoute: ToolsRoute,
   AgentsAgentIdRoute: AgentsAgentIdRoute,

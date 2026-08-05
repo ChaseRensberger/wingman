@@ -77,9 +77,9 @@ export function CommandPalette() {
 							{theme.id === option.id && <CheckIcon className="ml-auto size-4" weight="bold" />}
 						</Command.Item>
 					))}
-					{[...theme.modes, ...(theme.modes.length === 2 ? ["system" as const] : [])].map((mode) => (
+					{[...theme.modes, "system" as const].map((mode) => (
 						<Command.Item key={mode} value={`change color mode ${mode}`} onSelect={() => selectColorMode(mode)}>
-							<span>Change color mode &gt; {mode}</span>
+							<span>Change color mode &gt; {mode[0].toUpperCase()}{mode.slice(1)}</span>
 							{colorMode === mode && <CheckIcon className="ml-auto size-4" weight="bold" />}
 						</Command.Item>
 					))}

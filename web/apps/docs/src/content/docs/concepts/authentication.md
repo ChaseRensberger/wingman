@@ -37,7 +37,7 @@ Authorization: Bearer <client-token>
 ```
 
 Wingman stores only the token hash. Rotate a client's token from the local
-Console **Clients** page or with `POST /clients/{id}/token`. Rotation invalidates
+Console **Settings** page or with `POST /clients/{id}/token`. Rotation invalidates
 the previous token.
 
 ## Local Console Session

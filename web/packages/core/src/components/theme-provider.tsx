@@ -45,7 +45,8 @@ export function ThemeProvider({
 	const [theme, setThemeState] = useState(() => getTheme(localStorage.getItem(storageKey) ?? defaultTheme))
 	const [colorMode, setColorModeState] = useState<ColorMode>(() => normalizeColorMode(theme, (localStorage.getItem(`${storageKey}-mode`) as ColorMode) || defaultColorMode))
 	const [systemColorMode, setSystemColorMode] = useState<ResolvedColorMode>(() => window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-	const resolvedColorMode = colorMode === "system" ? systemColorMode : colorMode
+	const preferredColorMode = colorMode === "system" ? systemColorMode : colorMode
+	const resolvedColorMode = theme.modes.includes(preferredColorMode) ? preferredColorMode : theme.modes[0]
 
 	useEffect(() => {
 		if (colorMode !== "system") return

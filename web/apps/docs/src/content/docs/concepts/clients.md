@@ -18,7 +18,7 @@ logs, plugins, or filesystem access.
 
 Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client named `Wingman` with ID `cli_wingman`, so manual `curl` calls and local scripts still work without setup.
 
-Client IDs are explicit and stable. They must start with `cli_`; display names are unique case-insensitively. Creating a client returns one opaque access token, which Wingman stores only as a hash. Rotate the token from the local Console **Clients** page or with `POST /clients/{id}/token` when it must be replaced.
+Client IDs are explicit and stable. They must start with `cli_`; display names are unique case-insensitively. Creating a client returns one opaque access token, which Wingman stores only as a hash. Rotate the token from the local Console **Settings** page or with `POST /clients/{id}/token` when it must be replaced.
 
 If the owner makes a request in a client context, send the client ID with
 `X-Wingman-Client`:

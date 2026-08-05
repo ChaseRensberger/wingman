@@ -2,6 +2,7 @@ import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import WingmanIcon from "@/assets/icon-128.png";
 import { Button } from "@wingman/core/components/core/button";
+import { Badge } from "@wingman/core/components/core/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@wingman/core/components/core/sheet";
 import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
@@ -65,7 +66,7 @@ export default function App() {
 							<img src={WingmanIcon} className="size-8" alt="Wingman logo" />
 							<span className="text-sm font-medium">{activeNavItem?.label ?? "Wingman"}</span>
 						</Link>
-						<Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+						<div className="flex items-center gap-2"><Badge variant="ghost" title="Current Wingman client">Client: cli_wingman</Badge><Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
 							<SheetTrigger
 								render={<Button variant="outline" size="icon" aria-label="Open navigation"><ListIcon /></Button>}
 							/>
@@ -79,7 +80,7 @@ export default function App() {
 									))}
 								</nav>
 							</SheetContent>
-						</Sheet>
+						</Sheet></div>
 					</header>
 					<header className="hidden items-center justify-between gap-4 border-b px-4 py-3 sm:flex">
 						<div className="flex items-center gap-5">
@@ -90,6 +91,7 @@ export default function App() {
 								{navItems.map((item) => <NavLink key={item.to} {...item} />)}
 							</nav>
 						</div>
+						<Badge variant="ghost" title="Current Wingman client">Client: cli_wingman</Badge>
 					</header>
 				</>
 			)}
