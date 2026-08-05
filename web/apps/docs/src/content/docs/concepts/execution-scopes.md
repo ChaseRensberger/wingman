@@ -35,17 +35,10 @@ After the last session releases a directory scope, Wingman keeps it idle for one
 minute. It then closes MCP connections and plugin processes. The directoryless
 scope stays active for daemon management APIs.
 
-## Catalog Generations
+## Configuration
 
-Provider configuration produces an immutable provider and model catalog when the
-application starts. It does not change the embedded WingModels catalog.
-Separate embedded applications can use different provider configurations without
-sharing models or routes.
-
-Plugin and MCP tools bind to the process or connection generation that supplied
-them. Replacement publishes a complete candidate before it retires the old
-generation. Calls that already started can drain. New calls through stale tools
-fail instead of moving silently to a new process or connection.
+Provider configuration is loaded when the application starts. Plugin and MCP
+tool changes apply to new calls; in-progress calls can finish.
 
 Project configuration files and live configuration watching are not supported.
 The global `wingman.json` file remains the only authored daemon configuration.

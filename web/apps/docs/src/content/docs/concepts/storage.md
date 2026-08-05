@@ -44,10 +44,9 @@ The SQLite schema stores:
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
 | `auth_sessions` | Hashed, expiring, and revocable browser or native client sessions. |
 | `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
-| `sessions` | Session metadata projection: title, working directory, client ID, optional Workspace ID, timestamps, aggregate version. |
+| `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps. |
 | `session_runs` | Durably admitted session work, request identity, immutable execution snapshot, and status. |
 | `session_events` | Public session event history used for SSE replay. |
-| `aggregate_events` | Internal append-only session creation, metadata, and run-admission facts used to rebuild critical projections. |
 | `messages` | Ordered message rows for each session. |
 | `model_calls` | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness. |
 | `tool_uses` | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, model-facing text, structured content, client metadata, error, and timing. |
@@ -61,18 +60,13 @@ Sessions do not store `agent_id` or `model_ref`. Agents and models are selected 
 
 Sessions created with `workspace_id` store the Workspace relationship and, when the Workspace has a path, a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
-Session creation, rename, move, and run admission are event-sourced. Admission
-commits `session.run.admitted`, the run projection, the advanced session
-version, and the public queued event in one transaction. The run records the
-prompt, effective Agent and model, output schema, client, and placement used by
-execution. Messages, model calls, and tool calls remain direct state records.
-Hard purge deletes the session projection, aggregate stream, and all
-session-owned table rows in one transaction. See [Durable Events and
-Projections](/concepts/durable-events).
+Each admitted run records the prompt, effective Agent and model, output schema,
+client, working directory, and status. Deleting a session permanently removes
+its associated data.
 
 ## Model Calls
 
-`model_calls` stores normalized accounting for each upstream model request:
+`model_calls` stores each upstream model request:
 
 - Stable call ID, durable run ID, loop step, and physical attempt number.
 - Provider, API, model ID, and requested model ref.
@@ -81,22 +75,8 @@ Projections](/concepts/durable-events).
 - Input, output, reasoning, cached-input, cache-write, total, and context token counts.
 - Context window and computed context percentage.
 
-Wingman writes `started` immediately before dispatch and updates that same call
-ID when the provider stream completes, fails, or is canceled. A successful model
-call is settled before requested tools execute, so a later tool failure does not
-misclassify the upstream attempt. Calls are associated with their assistant
-message after that message is persisted.
-
-Each durable attempt is unique within its `run_id`, step, and attempt number.
-Steps restart at one for each run without overwriting earlier history. Wingman
-retries explicitly retryable failures only when dispatch fails before a stream
-is established. Each failed physical request settles before backoff and before
-the next attempt starts. Once a stream exists, Wingman does not retry because
-output may already have reached the caller or caused provider-side work.
-
-The latest model call with usage for a session lets clients show token count and
-context-window fullness after a page reload without estimating from transcript
-text. Lists are returned in physical start-time order across runs.
+Calls include their status, timing, usage, and any provider request ID. Lists
+are returned in start-time order across runs.
 
 ## Tool Uses
 
@@ -117,8 +97,6 @@ become `declined` without running. Interactive `ask` requests remain proposed
 while they wait and can proceed only after approval. Startup interrupts pending
 permission requests and unfinished tool rows before queued work resumes.
 
-The started record is a durability fence, not an exactly-once guarantee. A hard
-crash can leave it ambiguous whether an external side effect completed, so
 Wingman does not automatically replay interrupted tool uses.
 
 ## Message Parts
@@ -136,43 +114,12 @@ The store treats part payloads as opaque JSON. Interpretation belongs to the mod
 
 ## Migrations
 
-Schema migrations live in `store/migrations` and are embedded into the Go
-binary. `NewSQLiteStore` validates the applied migration history and runs
-pending migrations when the store opens.
-
-The runner applies migrations in order. Every migration and its journal record
-commit in the same SQLite transaction, so a failed migration is rolled back and
-remains pending for the next startup.
-
-The journal must be a contiguous prefix of the migrations embedded in the
-binary. Each record must have the expected name and SQL checksum. Wingman
-refuses to start when it finds a missing, renamed, unknown, or modified applied
-migration rather than guessing how to repair the database.
-
-## SQLite Settings
-
-Wingman configures SQLite for local daemon use:
-
-| Setting | Value | Why |
-|---|---|---|
-| `journal_mode` | `WAL` | Allows readers while a writer is active. |
-| `synchronous` | `NORMAL` | Good developer-tool performance with acceptable durability. |
-| `foreign_keys` | `ON` | Enforces cascade behavior in the schema. |
-| `busy_timeout` | `5000` | Waits briefly on lock contention. |
-| `MaxOpenConns` | `1` | Serializes writes through one connection. |
+Pending schema migrations run when the store opens. Wingman does not start if
+the applied migration history is invalid.
 
 SQLite is the durable store provided by Wingman. Embedded Go applications can provide a different store implementation.
 
-## Store Interface
+## Embedding
 
-Embedding applications can provide `store.Store`. Its Go contract includes
-agents, clients, Workspaces, session metadata and runs, messages, model calls,
-tool uses, permissions, public events, auth sessions, and provider credentials.
-Consult the exported `store.Store` interface for the current method set.
-
-`store/memory` provides an in-memory implementation used by tests and embedding scenarios.
-
-SQLite and the memory store additionally implement the optional
-`store.AggregateEventReader` interface for internal replay and diagnostics. It
-is separate from `Store` so adapters that do not expose aggregate history are
-not forced to implement a runtime capability Wingman does not yet require.
+Embedded Go applications can provide a different store implementation. See the
+exported `store.Store` interface for its current contract.

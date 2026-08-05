@@ -12,10 +12,7 @@ All endpoints accept and return JSON unless noted. Non-success JSON responses
 contain `error.code`, `error.message`, and `error.request_id`. The same request
 ID is returned in the `X-Request-ID` header. See [HTTP API Basics](/build-clients/http-api-basics#handle-errors).
 
-The daemon publishes the authoritative OpenAPI 3.1 document at
-`GET /openapi.json`. The checked-in `openapi.json` and generated
-`@wingman-actor/client` TypeScript package are derived from the same server-owned Go
-route and schema registrations.
+The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
 > **Authenticated control surface:** Protected routes accept the owner credential
 > or an auth session. An authenticated client can use providers, inspect
@@ -179,10 +176,6 @@ a metrics feed. Use it to identify queue buildup, disconnected event clients, or
 aggregate plugin failures. Use `/plugins` for per-plugin detail and the session
 and run APIs for authoritative per-run state.
 
-Session projections update in the same transaction as their aggregate events, so
-they have no asynchronous projection lag. The endpoint reports live subscriber
-backlog instead; a full subscriber buffer becomes an explicit resync overflow.
-
 ## Session endpoints
 
 | Method | Path | Description |
@@ -221,10 +214,6 @@ shape with both fields. An empty detail history is `[]`, not `null`.
 The response includes the canonical run ID, current run status, and aggregate
 version after admission. Read `/sessions/{id}/runs/{runID}` for authoritative
 status and `/sessions/{id}/events` for execution progress.
-
-Run, tool-use, permission-request, permission-grant, event-history, and abort
-responses are public API resources. Their JSON shape is independent of the
-database projection structs used to persist them.
 
 ### Create request
 
@@ -352,16 +341,10 @@ endpoints enforce the session's client scope.
 }
 ```
 
-Claim and settlement update the run and append the matching durable
-`session.run.started`, `session.run.completed`, `session.run.failed`, or
-`session.run.aborted` event in one transaction. On startup, Wingman interrupts
-unfinished tool uses and model calls, preserves failed partial messages, settles
-running runs as aborted, and only then resumes queued runs. It does not replay
-ambiguous provider calls or tool side effects.
-
-If a terminal settlement temporarily fails while the daemon is still running,
-Wingman retries it before that session can claim later queued work. This retry
-does not repeat provider dispatch or tool execution.
+On startup, running runs are recorded as aborted. Unfinished tool uses are
+interrupted, partial messages are retained as failed, and queued runs resume.
+Wingman does not replay provider calls or tool side effects that may already
+have run.
 
 ### Model-call response
 
@@ -541,8 +524,7 @@ Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-
 `POST /run` creates an in-memory session, streams the run, and does not persist
 the session or its messages. Unlike persistent session SSE, it uses the one-shot
 run event vocabulary (including `stream_part`) and ends with `done` on success
-or `error` on a terminal failure; it cannot be replayed. Event payload fields use
-the public lower-case JSON contract rather than internal Go field names.
+or `error` on a terminal failure; it cannot be replayed.
 
 In normal persistent mode, pass either `agent_id` or an inline `agent`:
 

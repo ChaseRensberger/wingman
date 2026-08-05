@@ -5,11 +5,11 @@ order: 1
 
 # Introduction
 
-Wingman is an open-source client-agnostic agent harness. At the moment Wingman is not production ready and I make no guarantee about easy migration between versions as I iterate on schemas/contracts.
+Wingman is an open-source, client-agnostic agent harness.
 
 ## What does client-agnostic mean?
 
-Wingman isn't coupled to any specific problem (like a coding agent or answer engine). It's a portable agentic runtime that lets you build arbitrary clients on top of it.
+Wingman is not coupled to a specific use case such as coding or answer generation. Build clients on top of its portable agent runtime.
 
 So whether you're:
 
@@ -18,7 +18,7 @@ So whether you're:
 - Classifying emails
 - Doing research
 
-and any other LLM adjacent problem. Wingman is designed to make it as simple as possible.
+or solving another LLM-adjacent problem.
 
 [Quick Start](/start-here/quickstart)
 

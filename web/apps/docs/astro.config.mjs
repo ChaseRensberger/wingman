@@ -90,10 +90,7 @@ export default defineConfig({
             { label: "Authentication", slug: "concepts/authentication" },
             { label: "Storage", slug: "concepts/storage" },
             { label: "Execution Scopes", slug: "concepts/execution-scopes" },
-            {
-              label: "Durable Events and Projections",
-              slug: "concepts/durable-events",
-            },
+            { label: "Durable Events", slug: "concepts/durable-events" },
           ],
         },
         {

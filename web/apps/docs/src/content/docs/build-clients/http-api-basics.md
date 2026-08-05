@@ -64,20 +64,6 @@ The running daemon publishes its OpenAPI 3.1 contract at `/openapi.json`. The
 contract includes canonical errors, request and response resources, and typed
 unions for persistent-session and one-shot run events.
 
-The repository also contains the generated `@wingman-actor/client` fetch client. To
-regenerate its checked-in contract artifacts after an API change, run these
-commands from the repository root:
-
-```bash
-go run ./cmd/openapi -output openapi.json
-cd web
-bun run generate:client
-```
-
-Run `./scripts/check-api-contract.sh` to verify that the published OpenAPI
-document and generated TypeScript schema have not drifted from the Go route
-contract.
-
 ## Client Identity
 
 The owner can register clients with `/clients` and pass `X-Wingman-Client` on

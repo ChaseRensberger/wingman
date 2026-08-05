@@ -13,8 +13,6 @@ The `wingman` binary runs the local Wingman HTTP server, manages its background 
 wingman <command> [flags]
 ```
 
-When working from the repository, replace `wingman` with `go run ./cmd/wingman`.
-
 ## Commands
 
 | Command | Description |
@@ -64,7 +62,6 @@ authenticated readiness before the command returns.
 | `--ephemeral` | `false` | Run without persistence. |
 | `--log-format` | `json` | Log format: `json` or `text`. |
 | `--log-level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. |
-| `--ui-dev` | none | Proxy `/console` to a Vite dev server URL. |
 | `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
 | `--no-plugins` | `false` | Disable out-of-process plugin loading. |
 
@@ -133,16 +130,6 @@ Stop and remove the service:
 ```bash
 wingman down
 ```
-
-## Development Proxy
-
-Proxy the embedded web route to a local Vite server while developing the web UI:
-
-```bash
-wingman serve --ui-dev http://localhost:5173
-```
-
-Normal users do not need `--ui-dev`.
 
 ## Version
 

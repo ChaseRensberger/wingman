@@ -84,9 +84,8 @@ func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 ```
 
 Hooks compose in activation order. Transform hooks receive the previous hook's
-output. Sinks fan out with bounded callback time. If activation fails, Wingman
-rolls back already activated plugins and leaves the prior session generation
-unchanged.
+output. Sinks use a bounded callback time. If activation fails, existing plugins
+remain active.
 
 ## When To Use Go Plugins
 

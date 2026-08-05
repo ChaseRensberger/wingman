@@ -41,11 +41,10 @@ if err := application.Serve(ctx, listener); err != nil {
 }
 ```
 
-`app.New` completes startup recovery before it returns. If startup fails, it
-closes each constructed resource in reverse order.
+`app.New` completes startup recovery before it returns.
 
-`App.Serve` stops HTTP acceptance when the context ends. It drains or closes
-HTTP requests before it closes daemon resources in dependency order.
+`App.Serve` stops accepting HTTP requests when the context ends and then closes
+daemon resources.
 
 ## Use the Handler Without a Listener
 
@@ -74,9 +73,8 @@ does not need daemon HTTP behavior.
 
 ## Shutdown Contract
 
-`App.Close` first cancels application work and waits for the server domain. It
-then closes execution scopes and storage. Scope closure stops MCP connections
-before external plugin processes.
+`App.Close` cancels application work, waits for the server to stop, then closes
+daemon resources.
 
 If the supplied context ends before server work drains, dependencies remain
 open. Call `App.Close` again with a new context to continue shutdown.

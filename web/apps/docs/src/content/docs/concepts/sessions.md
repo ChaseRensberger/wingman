@@ -18,10 +18,7 @@ A session stores runtime state, while an agent provides reusable configuration:
 
 One session can hand off between agents or models without creating a new conversation record.
 
-Creating, renaming, moving, or admitting work to a persisted session atomically
-appends a durable aggregate event and updates its critical projections. See
-[Durable Events and Projections](/concepts/durable-events) for the persistence
-model and its current scope.
+Changes to a persisted session and newly admitted work are durable.
 
 Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions and can optionally seed their working directory.
 
@@ -90,11 +87,11 @@ curl -sS -X DELETE \
   "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
 ```
 
-Wingman atomically removes the session, its aggregate and public event history,
-runs, messages, parts, model calls, tool uses, and permission records. It keeps
-no deletion event or tombstone. Active event streams close and active execution
-is canceled before the endpoint returns success. A stale version returns `409
-Conflict` without deleting the session or canceling its work.
+Wingman permanently removes the session, its event history, runs, messages,
+parts, model calls, tool uses, and permission records. Active event streams
+close and active execution is canceled before the endpoint returns success. A
+stale version returns `409 Conflict` without deleting the session or canceling
+its work.
 
 ## Admit Work
 
@@ -155,9 +152,6 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
 
 The response is server-sent events. Each `data:` payload is a Wingman event envelope containing `id`, `type`, and `data`. Durable events also include `cursor`.
 
-The public SSE history is separate from the internal aggregate event log used
-to rebuild database projections.
-
 Each accepted message emits `session.run.queued`, then `session.run.started` when execution begins. Terminal events are `session.run.completed`, `session.run.failed`, and `session.run.aborted`; all carry the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run and leaves later queued messages intact.
 
 ## Run Status And Recovery
@@ -172,15 +166,7 @@ curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..." \
 ```
 
 A run moves from `queued` to `running`, then to `completed`, `failed`, or
-`aborted`. A queued run can also be aborted before it starts. Wingman commits
-each claim or terminal settlement together with its matching durable event, so
-the status resource and event history do not disagree.
-
-If a terminal settlement write fails after provider or tool work returns, the
-daemon retries that write while keeping the session worker on the same run. It
-does not claim later queued work or repeat the provider request or tool call. A
-daemon shutdown before settlement completes leaves recovery to conservatively
-abort the running run on its next start.
+`aborted`. A queued run can also be aborted before it starts.
 
 Abort a specific queued or running run with:
 
@@ -196,10 +182,6 @@ calls become `aborted`, unfinished tool uses become `interrupted`, and an
 in-progress message becomes `failed` while retaining its checkpointed content.
 Only runs that never started remain queued and resume automatically. If any
 recovery write fails, the server does not begin serving requests.
-
-The `started` tool-use record is a safety fence: it is committed before a tool
-function runs. If a process stops after entering that function, Wingman records
-the tool as interrupted on recovery and does not automatically invoke it again.
 
 ## Ephemeral Sessions
 

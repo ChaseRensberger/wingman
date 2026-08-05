@@ -13,7 +13,7 @@ A session is bound to a single client. The client cannot select another client
 with `X-Wingman-Client`. The owner credential can select a registered client for
 local administration.
 
-Client isolation is not tenant isolation (coming later). It does not isolate providers, tools,
+Client identity is not tenant isolation. It does not isolate providers, tools,
 logs, plugins, or filesystem access.
 
 Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client named `Wingman` with ID `cli_wingman`, so manual `curl` calls and local scripts still work without setup.

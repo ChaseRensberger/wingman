@@ -41,7 +41,7 @@ For repeated work in the same directory, prefer a [Workspace](/concepts/workspac
 
 `bash` defaults to a two-minute timeout. Its optional `timeout` is parsed as a Go duration (for example, `30s` or `5m`); invalid values fall back to the default, and Wingman does not impose a separate maximum. It streams combined standard output and standard error while the command runs.
 
-`webfetch` performs an HTTP(S) `GET` only. It defaults to a 30-second timeout, clamps a supplied timeout to 120 seconds, accepts only `200 OK`, and rejects responses larger than 5 MiB. Markdown is the default output format; HTML conversion is intentionally basic.
+`webfetch` performs an HTTP(S) `GET` only. It defaults to a 30-second timeout, clamps a supplied timeout to 120 seconds, accepts only `200 OK`, and rejects responses larger than 5 MiB. Markdown is the default output format; HTML conversion is basic.
 
 ## Allow Tools On An Agent
 

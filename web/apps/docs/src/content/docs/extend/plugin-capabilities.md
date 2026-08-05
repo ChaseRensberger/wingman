@@ -50,15 +50,8 @@ Go plugins register hooks with `plugin.Registry`.
 | `RegisterPart` | Register a custom message-part decoder. |
 
 Hooks compose in activation order. Transform hooks receive the previous hook's
-output. Runtime hooks, tools, and sinks belong to one immutable session
-generation. Custom part decoders are rebuilt from the built-in decoder base and
-are scoped to that generation.
-
-`Activate` may return context-aware cleanup. `Session.SetPlugins` stages
-replacement, waits for active work before swapping, and cleans the previous
-generation in reverse order. `Session.Close` performs terminal cleanup. Sink
-dispatch waits one second by default, permits one callback in flight, and drops
-events while a timed-out callback remains blocked.
+output. `Activate` may return context-aware cleanup. Sink dispatch waits one
+second by default and drops events while a callback remains blocked.
 
 ## RPC Plugin Support
 
@@ -69,12 +62,8 @@ run concurrently and receive session, run, agent, call, message, part, model-cal
 and working-directory identity.
 
 RPC plugins can negotiate request cancellation, progress notifications, and
-health checks. Wingman captures bounded stderr and structured diagnostics,
-tracks process exit and health, and performs bounded graceful shutdown. Reloads
-stage and validate a complete generation before atomic publication; a failed
-candidate leaves the previous generation active.
+health checks.
 
-Protocol version 1 activates tools only. Other contribution domains remain
-deferred until their daemon-owned generation APIs exist.
+Protocol version 1 supports tool contributions only.
 
 The RPC protocol page defines the exact wire contract exposed by the stock server.
