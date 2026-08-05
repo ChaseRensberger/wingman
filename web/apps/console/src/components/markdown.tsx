@@ -1,10 +1,8 @@
-import { type ComponentProps, useEffect, useState } from "react";
+import { lazy, Suspense, type ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { getSingletonHighlighter } from "shiki";
-import { useTheme } from "@wingman/core/components/theme-provider";
 import {
   Table,
   TableBody,
@@ -14,74 +12,10 @@ import {
   TableRow,
 } from "@wingman/core/components/core/table";
 
-function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const { theme, resolvedColorMode } = useTheme();
-  const [html, setHtml] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    async function run() {
-      const highlighter = await getSingletonHighlighter({
-        themes: ["github-dark", "github-light", "gruvbox-dark-medium", "gruvbox-light-medium", "dracula", "nord", "rose-pine", "rose-pine-dawn"],
-        langs: [
-          "javascript",
-          "typescript",
-          "go",
-          "python",
-          "bash",
-          "json",
-          "markdown",
-          "text",
-          "html",
-          "css",
-          "yaml",
-          "rust",
-          "java",
-          "sql",
-        ],
-      });
-      const syntaxTheme = theme.shiki[resolvedColorMode] ?? theme.shiki.dark ?? "github-dark";
-      const result = highlighter.codeToHtml(code, {
-        lang: lang || "text",
-        theme: syntaxTheme,
-      });
-      if (mounted) setHtml(result);
-    }
-    run();
-    return () => {
-      mounted = false;
-    };
-  }, [code, lang, resolvedColorMode, theme]);
-
-  if (!html) {
-    return (
-      <div className="my-3 overflow-hidden rounded-xl border bg-card shadow-sm shadow-primary/5">
-        {lang && (
-          <div className="border-b bg-muted/45 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {lang}
-          </div>
-        )}
-        <pre className="overflow-x-auto p-4 text-[0.82rem] leading-6">
-          <code>{code}</code>
-        </pre>
-      </div>
-    );
-  }
-
-  return (
-    <div className="my-3 overflow-hidden rounded-xl border bg-card shadow-sm shadow-primary/5">
-      {lang && (
-        <div className="border-b bg-muted/45 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {lang}
-        </div>
-      )}
-      <div
-        className="[&_.shiki]:m-0 [&_.shiki]:overflow-x-auto [&_.shiki]:bg-transparent! [&_.shiki]:p-4 [&_.shiki]:text-[0.82rem] [&_.shiki]:leading-6 [&_.shiki_code]:font-mono"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
-}
+const HighlightedCodeBlock = lazy(async () => {
+  const { HighlightedCodeBlock } = await import("./highlighted-code-block");
+  return { default: HighlightedCodeBlock };
+});
 
 function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
@@ -145,7 +79,11 @@ export function Markdown({ text, isStreaming = false }: { text: string; isStream
             if (isStreaming) {
               return <PlainCodeBlock code={code} lang={match[1]} />;
             }
-            return <CodeBlock code={code} lang={match[1]} />;
+            return (
+              <Suspense fallback={<PlainCodeBlock code={code} lang={match[1]} />}>
+                <HighlightedCodeBlock code={code} lang={match[1]} />
+              </Suspense>
+            );
           },
           table: MarkdownTable,
           thead: MarkdownTableHeader,

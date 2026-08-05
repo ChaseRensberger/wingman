@@ -1,8 +1,13 @@
 import { CircleNotchIcon } from "@phosphor-icons/react";
+import { lazy, Suspense } from "react";
 
-import { Markdown } from "@/components/markdown";
 import { reasoningSummary } from "@/lib/session-detail";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@wingman/core/components/core/collapsible";
+
+const Markdown = lazy(async () => {
+	const { Markdown } = await import("@/components/markdown");
+	return { default: Markdown };
+});
 
 export function ReasoningPart({ reasoning, isStreaming = false }: { reasoning: string; isStreaming?: boolean }) {
 	const { title, body } = reasoningSummary(reasoning);
@@ -20,7 +25,7 @@ export function ReasoningPart({ reasoning, isStreaming = false }: { reasoning: s
 			<CollapsibleTrigger className="min-h-7 py-0.5 text-left hover:no-underline">
 				{header}
 			</CollapsibleTrigger>
-			{body && <CollapsibleContent className="mt-1 text-sm text-muted-foreground"><Markdown text={body} isStreaming={isStreaming} /></CollapsibleContent>}
+			{body && <CollapsibleContent className="mt-1 text-sm text-muted-foreground"><Suspense fallback={<div className="whitespace-pre-wrap">{body}</div>}><Markdown text={body} isStreaming={isStreaming} /></Suspense></CollapsibleContent>}
 		</Collapsible>
 	);
 }

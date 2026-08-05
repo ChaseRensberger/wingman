@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 
 import type { Message, ModelCall, ToolActivity, ToolCallPart, ToolPart, ToolResultPart } from "@/lib/types";
@@ -7,7 +7,11 @@ import { ToolActivityItem } from "@/components/tool-activity";
 import { lookupToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { formatDuration } from "@/lib/tool-display";
 import { Button } from "@wingman/core/components/core/button";
-import { Markdown } from "./markdown";
+
+const Markdown = lazy(async () => {
+  const { Markdown } = await import("./markdown");
+  return { default: Markdown };
+});
 
 function AssistantMeta({ message, call, agentName }: { message: Message; call?: ModelCall; agentName?: string }) {
 	const [copied, setCopied] = useState(false);
@@ -58,7 +62,11 @@ export function ChatMessage({ message, isStreaming = false, toolCallsById, toolR
           if (part.type === "text") {
             const textPart = part as { id?: string; text: string };
             if (isAssistant) {
-              return <Markdown key={textPart.id ?? idx} text={textPart.text} isStreaming={isStreaming} />;
+              return (
+                <Suspense key={textPart.id ?? idx} fallback={<div className="whitespace-pre-wrap text-sm">{textPart.text}</div>}>
+                  <Markdown text={textPart.text} isStreaming={isStreaming} />
+                </Suspense>
+              );
             }
             return (
               <div key={textPart.id ?? idx} className="whitespace-pre-wrap text-sm">

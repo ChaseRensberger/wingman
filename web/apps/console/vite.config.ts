@@ -19,7 +19,7 @@ const daemonProxy = () => ({
 export default defineConfig({
   base: "/console/",
   plugins: [
-    tanstackRouter({ target: "react" }),
+    tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
     tailwindcss(),
     babel({ presets: [reactCompilerPreset()] }),
