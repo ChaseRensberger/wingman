@@ -432,22 +432,37 @@
       "CreateClientRequest": {
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           }
         },
         "required": [
+          "id",
           "name"
         ],
         "type": "object"
       },
-      "CreateEnrollmentRequest": {
+      "CreateClientResponse": {
         "additionalProperties": false,
         "properties": {
-          "client_id": {
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSession"
+          },
+          "token": {
             "type": "string"
           }
         },
+        "required": [
+          "client",
+          "session",
+          "token"
+        ],
         "type": "object"
       },
       "CreateSessionRequest": {
@@ -587,26 +602,6 @@
         "required": [
           "path",
           "entries"
-        ],
-        "type": "object"
-      },
-      "EnrollmentResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "client_id": {
-            "type": "string"
-          },
-          "credential": {
-            "type": "string"
-          },
-          "expires_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "credential",
-          "client_id",
-          "expires_at"
         ],
         "type": "object"
       },
@@ -1786,40 +1781,6 @@
         "required": [
           "reasoning",
           "type"
-        ],
-        "type": "object"
-      },
-      "RedeemEnrollmentRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "credential": {
-            "type": "string"
-          },
-          "mode": {
-            "enum": [
-              "cookie",
-              "bearer"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "credential"
-        ],
-        "type": "object"
-      },
-      "RedeemEnrollmentResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "session": {
-            "$ref": "#/components/schemas/AuthSession"
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "session"
         ],
         "type": "object"
       },
@@ -4253,111 +4214,6 @@
         "summary": "Update an agent"
       }
     },
-    "/auth/enrollments": {
-      "post": {
-        "operationId": "createEnrollment",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateEnrollmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnrollmentResponse"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
-        },
-        "security": [
-          {
-            "rootBearer": []
-          },
-          {
-            "consoleSession": []
-          }
-        ],
-        "summary": "Create a one-time client enrollment credential"
-      }
-    },
-    "/auth/enrollments/redeem": {
-      "post": {
-        "operationId": "redeemEnrollment",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemEnrollmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RedeemEnrollmentResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
-        },
-        "security": [],
-        "summary": "Redeem a one-time client enrollment credential"
-      }
-    },
     "/auth/sessions": {
       "get": {
         "operationId": "listAuthSessions",
@@ -4617,7 +4473,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "rootBearer": []
           },
           {
             "consoleSession": []
@@ -4652,7 +4508,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Client"
+                  "$ref": "#/components/schemas/CreateClientResponse"
                 }
               }
             },
@@ -4671,13 +4527,13 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "rootBearer": []
           },
           {
             "consoleSession": []
           }
         ],
-        "summary": "Create an API client"
+        "summary": "Create an API client and access token"
       }
     },
     "/clients/{id}": {
@@ -4725,13 +4581,67 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "rootBearer": []
           },
           {
             "consoleSession": []
           }
         ],
         "summary": "Get an API client"
+      }
+    },
+    "/clients/{id}/token": {
+      "post": {
+        "operationId": "rotateClientToken",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateClientResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "rootBearer": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
+        "summary": "Rotate an API client access token"
       }
     },
     "/diagnostics": {

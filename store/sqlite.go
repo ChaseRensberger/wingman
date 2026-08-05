@@ -580,6 +580,11 @@ func (s *SQLiteStore) DeleteAgent(id string) error {
 // CreateClient inserts a new Wingman API client row with a fresh KSUID and the
 // current RFC3339 timestamp.
 func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
+	return s.CreateClientWithID(NewID(PrefixClient), name)
+}
+
+// CreateClientWithID inserts a client with its caller-provided stable ID.
+func (s *SQLiteStore) CreateClientWithID(id, name string) (*Client, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("client name is required")
@@ -598,7 +603,7 @@ func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
 	}
 
 	client := &Client{
-		ID:        NewID(PrefixClient),
+		ID:        id,
 		Name:      name,
 		CreatedAt: Now(),
 	}
@@ -606,6 +611,9 @@ func (s *SQLiteStore) CreateClient(name string) (*Client, error) {
 		INSERT INTO clients (id, name, created_at) VALUES (?, ?, ?)
 	`, client.ID, client.Name, client.CreatedAt)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "clients.id") {
+			return nil, ErrClientIDExists
+		}
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return nil, ErrClientNameExists
 		}

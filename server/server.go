@@ -37,7 +37,6 @@ import (
 type Server struct {
 	store              store.Store
 	authStore          store.Store
-	enrollments        *enrollmentManager
 	router             *chi.Mux
 	protocol           huma.API
 	runs               *sessionRunManager
@@ -120,7 +119,6 @@ func New(cfg Config) *Server {
 	s := &Server{
 		store:            cfg.Store,
 		authStore:        authStore,
-		enrollments:      newEnrollmentManager(),
 		router:           chi.NewRouter(),
 		events:           newSessionEventBroker(),
 		webDevURL:        cfg.WebDevURL,
@@ -203,7 +201,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 }
 
 func publicPath(path string) bool {
-	return path == "/health" || path == "/auth/enrollments/redeem" || path == "/console" || strings.HasPrefix(path, "/console/")
+	return path == "/health" || path == "/console" || strings.HasPrefix(path, "/console/")
 }
 
 func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
@@ -277,7 +275,7 @@ func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	token, _, err := s.createAuthSession(store.DefaultClientID, true)
+	token, _, err := s.createAuthSession(store.DefaultClientID, true, "")
 	if err != nil {
 		s.logger.Error("create console auth session", "error", err)
 		return
@@ -285,12 +283,15 @@ func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
 	s.setAuthSessionCookie(w, r, token)
 }
 
-func (s *Server) createAuthSession(clientID string, owner bool) (string, *store.AuthSession, error) {
+func (s *Server) createAuthSession(clientID string, owner bool, expiresAt string) (string, *store.AuthSession, error) {
 	token, err := randomCredential()
 	if err != nil {
 		return "", nil, err
 	}
-	session := &store.AuthSession{ClientID: clientID, Owner: owner, TokenHash: tokenHash(token), ExpiresAt: time.Now().UTC().Add(authSessionLifetime).Format(time.RFC3339Nano)}
+	if expiresAt == "" && owner {
+		expiresAt = time.Now().UTC().Add(authSessionLifetime).Format(time.RFC3339Nano)
+	}
+	session := &store.AuthSession{ClientID: clientID, Owner: owner, TokenHash: tokenHash(token), ExpiresAt: expiresAt}
 	if err := s.authStore.CreateAuthSession(session); err != nil {
 		return "", nil, err
 	}
@@ -431,8 +432,6 @@ func shouldBypassTimeout(r *http.Request) bool {
 func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
-	s.registerJSON(http.MethodPost, "/auth/enrollments", "createEnrollment", "Create a one-time client enrollment credential", api.CreateEnrollmentRequest{}, http.StatusCreated, api.EnrollmentResponse{}, s.handleCreateEnrollment)
-	s.registerJSON(http.MethodPost, "/auth/enrollments/redeem", "redeemEnrollment", "Redeem a one-time client enrollment credential", api.RedeemEnrollmentRequest{}, http.StatusOK, api.RedeemEnrollmentResponse{}, s.handleRedeemEnrollment)
 	s.registerJSONWithParameters(http.MethodGet, "/auth/sessions", "listAuthSessions", "List auth sessions", nil, http.StatusOK, []api.AuthSession{}, []*huma.Param{queryParameter("client_id", huma.TypeString, "Client identity")}, s.handleListAuthSessions)
 	s.registerJSON(http.MethodDelete, "/auth/sessions/{id}", "revokeAuthSession", "Revoke an auth session", nil, http.StatusOK, api.StatusResponse{}, s.handleRevokeAuthSession)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
@@ -467,8 +466,9 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodDelete, "/agents/{id}", "deleteAgent", "Delete an agent", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteAgent)
 
 	s.registerJSON(http.MethodGet, "/clients", "listClients", "List API clients", nil, http.StatusOK, []api.Client{}, s.handleListClients)
-	s.registerJSON(http.MethodPost, "/clients", "createClient", "Create an API client", api.CreateClientRequest{}, http.StatusCreated, api.Client{}, s.handleCreateClient)
+	s.registerJSON(http.MethodPost, "/clients", "createClient", "Create an API client and access token", api.CreateClientRequest{}, http.StatusCreated, api.CreateClientResponse{}, s.handleCreateClient)
 	s.registerJSON(http.MethodGet, "/clients/{id}", "getClient", "Get an API client", nil, http.StatusOK, api.Client{}, s.handleGetClient)
+	s.registerJSON(http.MethodPost, "/clients/{id}/token", "rotateClientToken", "Rotate an API client access token", nil, http.StatusOK, api.CreateClientResponse{}, s.handleRotateClientToken)
 
 	s.registerJSON(http.MethodGet, "/workspaces", "listWorkspaces", "List Workspaces", nil, http.StatusOK, []api.Workspace{}, s.handleListWorkspaces)
 	s.registerJSON(http.MethodPost, "/workspaces", "createWorkspace", "Create a Workspace", api.CreateWorkspaceRequest{}, http.StatusCreated, api.Workspace{}, s.handleCreateWorkspace)

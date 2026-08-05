@@ -3,17 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chaserensberger/wingman/api"
 	daemonconfig "github.com/chaserensberger/wingman/internal/config"
-	"github.com/chaserensberger/wingman/internal/daemonclient"
-	"github.com/chaserensberger/wingman/internal/daemonstate"
 )
 
 func TestAuthCommandHierarchy(t *testing.T) {
@@ -22,10 +17,13 @@ func TestAuthCommandHierarchy(t *testing.T) {
 	if auth == nil {
 		t.Fatal("auth command is missing")
 	}
-	for _, name := range []string{"enroll", "sessions", "revoke"} {
+	for _, name := range []string{"sessions", "revoke"} {
 		if auth.Command(name) == nil {
 			t.Errorf("auth %s command is missing", name)
 		}
+	}
+	if auth.Command("enroll") != nil {
+		t.Error("auth enroll command is present")
 	}
 	if auth.Command("revoke").ArgsUsage != "<session-id>" {
 		t.Errorf("revoke ArgsUsage = %q", auth.Command("revoke").ArgsUsage)
@@ -49,46 +47,6 @@ func TestPublicURLValidationAndResolution(t *testing.T) {
 	}
 	if want := "https://console.example/console#view=sessions"; got != want {
 		t.Fatalf("resolved URL = %q, want %q", got, want)
-	}
-}
-
-func TestAuthPairOutputDoesNotLeakRootCredential(t *testing.T) {
-	state := daemonstate.New(t.TempDir())
-	if _, err := state.Credential(); err != nil {
-		t.Fatal(err)
-	}
-	credential, err := state.ReadCredential()
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+credential {
-			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
-		}
-		if r.URL.Path != "/ready" {
-			_ = json.NewEncoder(w).Encode(api.EnrollmentResponse{Credential: "enrollment-credential", ClientID: "cli_wingman", ExpiresAt: "2026-08-03T00:05:00Z"})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(api.ReadinessResponse{Ready: true, InstanceID: "one", Version: version})
-	}))
-	defer server.Close()
-	if err := state.WriteRegistration(daemonstate.Registration{InstanceID: "one", Version: version, URL: server.URL, PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
-		t.Fatal(err)
-	}
-	oldDiscover := discoverManagedDaemon
-	discoverManagedDaemon = func(ctx context.Context) (*daemonclient.Client, error) {
-		return daemonclient.New(ctx, state, version)
-	}
-	defer func() { discoverManagedDaemon = oldDiscover }()
-
-	var output bytes.Buffer
-	cmd := newCommand(daemonconfig.Config{})
-	cmd.Writer = &output
-	if err := cmd.Run(context.Background(), []string{"wingman", "auth", "enroll"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := output.String(); !strings.Contains(got, "Enrollment credential for cli_wingman valid until 2026-08-03T00:05:00Z\nenrollment-credential") || strings.Contains(got, credential) {
-		t.Fatalf("unexpected output: %q", got)
 	}
 }
 

@@ -38,12 +38,6 @@ func authCommand() *cli.Command {
 		Usage: "Manage client authentication",
 		Commands: []*cli.Command{
 			{
-				Name:   "enroll",
-				Usage:  "Create a one-time client enrollment credential",
-				Flags:  authEnrollFlags(),
-				Action: runAuthEnroll,
-			},
-			{
 				Name:   "sessions",
 				Usage:  "List authorization sessions",
 				Flags:  authSessionsFlags(),
@@ -59,27 +53,8 @@ func authCommand() *cli.Command {
 	}
 }
 
-func authEnrollFlags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{Name: "client", Usage: "Client identity (defaults to the default client)"},
-	}
-}
-
 func authSessionsFlags() []cli.Flag {
 	return []cli.Flag{&cli.StringFlag{Name: "client", Usage: "Filter by client identity"}}
-}
-
-func runAuthEnroll(ctx context.Context, cmd *cli.Command) error {
-	client, err := discoverManagedDaemon(ctx)
-	if err != nil {
-		return err
-	}
-	var enrollment api.EnrollmentResponse
-	if err := client.DoJSON(ctx, "POST", "/auth/enrollments", api.CreateEnrollmentRequest{ClientID: cmd.String("client")}, &enrollment); err != nil {
-		return err
-	}
-	fmt.Fprintf(commandWriter(cmd), "Enrollment credential for %s valid until %s\n%s\n", enrollment.ClientID, enrollment.ExpiresAt, enrollment.Credential)
-	return nil
 }
 
 func runAuthSessions(ctx context.Context, cmd *cli.Command) error {

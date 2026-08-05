@@ -565,6 +565,10 @@ func (s *Store) DeleteAgent(id string) error {
 // ---- clients -------------------------------------------------------------
 
 func (s *Store) CreateClient(name string) (*store.Client, error) {
+	return s.CreateClientWithID(store.NewID(store.PrefixClient), name)
+}
+
+func (s *Store) CreateClientWithID(id, name string) (*store.Client, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -580,9 +584,12 @@ func (s *Store) CreateClient(name string) (*store.Client, error) {
 			return nil, store.ErrClientNameExists
 		}
 	}
+	if _, ok := s.clients[id]; ok {
+		return nil, store.ErrClientIDExists
+	}
 
 	client := &store.Client{
-		ID:        store.NewID(store.PrefixClient),
+		ID:        id,
 		Name:      name,
 		CreatedAt: store.Now(),
 	}

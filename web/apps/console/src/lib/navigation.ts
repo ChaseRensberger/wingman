@@ -1,6 +1,7 @@
-import { FileTextIcon, GearIcon, LightningIcon, SolarRoofIcon, StackIcon, WrenchIcon } from "@phosphor-icons/react";
+import { FileTextIcon, GearIcon, LightningIcon, SolarRoofIcon, StackIcon, UsersIcon, WrenchIcon } from "@phosphor-icons/react";
 
 export const navItems = [
+	{ to: "/clients", icon: UsersIcon, label: "Clients" },
 	{ to: "/sessions", icon: StackIcon, label: "Sessions" },
 	{ to: "/agents", icon: LightningIcon, label: "Agents" },
 	{ to: "/tools", icon: WrenchIcon, label: "Tools" },

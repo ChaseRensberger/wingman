@@ -55,36 +55,18 @@ type Client struct {
 
 // CreateClientRequest registers an API client identity.
 type CreateClientRequest struct {
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-// CreateEnrollmentRequest creates a one-time credential for a registered client.
-type CreateEnrollmentRequest struct {
-	ClientID string `json:"client_id,omitempty"`
+// CreateClientResponse returns a client and its access token once.
+type CreateClientResponse struct {
+	Client  Client      `json:"client"`
+	Session AuthSession `json:"session"`
+	Token   string      `json:"token"`
 }
 
-// EnrollmentResponse contains a one-time credential. The credential is returned only once.
-type EnrollmentResponse struct {
-	Credential string `json:"credential"`
-	ClientID   string `json:"client_id"`
-	ExpiresAt  string `json:"expires_at"`
-}
-
-// RedeemEnrollmentRequest exchanges a one-time enrollment credential for an auth session.
-type RedeemEnrollmentRequest struct {
-	Credential string          `json:"credential"`
-	Mode       AuthSessionMode `json:"mode,omitempty" enum:"cookie,bearer"`
-}
-
-// AuthSessionMode selects browser-cookie or native-bearer session delivery.
-type AuthSessionMode string
-
-const (
-	AuthSessionModeCookie AuthSessionMode = "cookie"
-	AuthSessionModeBearer AuthSessionMode = "bearer"
-)
-
-// AuthSession is a client-bound API authorization session.
+// AuthSession is a client access token or local Console session record.
 type AuthSession struct {
 	ID        string `json:"id"`
 	ClientID  string `json:"client_id"`
@@ -92,12 +74,6 @@ type AuthSession struct {
 	CreatedAt string `json:"created_at"`
 	ExpiresAt string `json:"expires_at,omitempty"`
 	RevokedAt string `json:"revoked_at,omitempty"`
-}
-
-// RedeemEnrollmentResponse is returned after an enrollment credential is redeemed.
-type RedeemEnrollmentResponse struct {
-	Session AuthSession `json:"session"`
-	Token   string      `json:"token,omitempty"`
 }
 
 // Workspace is one client-owned saved context.

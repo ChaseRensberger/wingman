@@ -105,6 +105,7 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 				Action: runUpdate,
 			},
 			authCommand(),
+			clientsCommand(),
 			{
 				Name:   "console",
 				Usage:  "Open the managed daemon console",

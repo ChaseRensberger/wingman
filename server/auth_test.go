@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/store"
@@ -144,7 +141,7 @@ func TestAuthSessionBearerClientBindingAndRevocation(t *testing.T) {
 	}
 	s := New(Config{Credential: "secret", Store: data})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	token, _, err := s.createAuthSession(other.ID, false)
+	token, _, err := s.createAuthSession(other.ID, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +196,7 @@ func TestAuthSessionCannotAccessAnotherClientResources(t *testing.T) {
 
 	s := New(Config{Credential: "secret", Store: data})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	token, _, err := s.createAuthSession(pairedClient.ID, false)
+	token, _, err := s.createAuthSession(pairedClient.ID, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,70 +253,36 @@ func TestAuthSessionCannotAccessAnotherClientResources(t *testing.T) {
 	}
 }
 
-func TestEnrollmentRoutes(t *testing.T) {
-	s := New(Config{Credential: "secret"})
+func TestRotateClientTokenRevokesPreviousToken(t *testing.T) {
+	s := New(Config{Credential: "secret", Store: memory.NewStore()})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
-	response := httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{}))
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("public enrollment status = %d", response.Code)
-	}
-
-	create := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
+	create := jsonRequest(http.MethodPost, "/clients", api.CreateClientRequest{ID: "cli_rotate", Name: "Rotate"})
 	create.Header.Set("Authorization", "Bearer secret")
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, create)
-	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("create enrollment status = %d, cache = %q", response.Code, response.Header().Get("Cache-Control"))
-	}
-	var enrollment api.EnrollmentResponse
-	if err := json.NewDecoder(response.Body).Decode(&enrollment); err != nil {
-		t.Fatal(err)
-	}
-
-	redeem := jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential})
-	redeem.Host = "example.test"
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, redeem)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("redeem status = %d", response.Code)
-	}
-	var cookieResponse api.RedeemEnrollmentResponse
-	if err := json.NewDecoder(response.Body).Decode(&cookieResponse); err != nil {
-		t.Fatal(err)
-	}
-	if cookieResponse.Token != "" || len(response.Result().Cookies()) != 1 || !response.Result().Cookies()[0].Secure {
-		t.Fatalf("cookie response = %#v, cookies = %#v", cookieResponse, response.Result().Cookies())
-	}
-
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential}))
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("reused enrollment status = %d", response.Code)
-	}
-}
-
-func TestLocalConsoleSessionCanManageAuthentication(t *testing.T) {
-	s := New(Config{Credential: "secret", ConsoleCookie: true})
-	t.Cleanup(func() { _ = s.Close(context.Background()) })
-
-	console := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/console", nil)
-	request.Host = "localhost:2323"
-	request.RemoteAddr = "127.0.0.1:1234"
-	s.ServeHTTP(console, request)
-	cookie := console.Result().Cookies()[0]
-
-	request = jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
-	request.Host = "localhost:2323"
-	request.Header.Set("Origin", "http://localhost:2323")
-	request.Header.Set("Sec-Fetch-Site", "same-origin")
-	request.AddCookie(cookie)
 	response := httptest.NewRecorder()
-	s.ServeHTTP(response, request)
-	if response.Code != http.StatusCreated {
-		t.Fatalf("local owner Console enrollment status = %d", response.Code)
+	s.ServeHTTP(response, create)
+	var original api.CreateClientResponse
+	if response.Code != http.StatusCreated || json.NewDecoder(response.Body).Decode(&original) != nil {
+		t.Fatalf("create client status = %d", response.Code)
+	}
+
+	rotate := authenticatedRequest(http.MethodPost, "/clients/cli_rotate/token", "secret")
+	response = httptest.NewRecorder()
+	s.ServeHTTP(response, rotate)
+	var rotated api.CreateClientResponse
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || json.NewDecoder(response.Body).Decode(&rotated) != nil || rotated.Token == "" || rotated.Token == original.Token {
+		t.Fatalf("rotate client token status = %d", response.Code)
+	}
+
+	response = httptest.NewRecorder()
+	s.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/ready", original.Token))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("previous token status = %d", response.Code)
+	}
+	response = httptest.NewRecorder()
+	s.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/ready", rotated.Token))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("rotated token status = %d", response.Code)
 	}
 }
 
@@ -368,134 +331,6 @@ func TestCookieRequestOriginPolicy(t *testing.T) {
 				t.Fatalf("cookieRequestAllowed() = %v, want %v", got, test.allowed)
 			}
 		})
-	}
-}
-
-func TestEnrollmentRedemptionBodyIsBounded(t *testing.T) {
-	s := New(Config{Credential: "secret"})
-	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	request := httptest.NewRequest(http.MethodPost, "/auth/enrollments/redeem", strings.NewReader(`{"credential":"`+strings.Repeat("x", 9<<10)+`"}`))
-	response := httptest.NewRecorder()
-	s.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("oversized redemption status = %d", response.Code)
-	}
-}
-
-type failCreateAuthStore struct {
-	store.Store
-	mu       sync.Mutex
-	failOnce bool
-}
-
-func (s *failCreateAuthStore) CreateAuthSession(session *store.AuthSession) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.failOnce {
-		s.failOnce = false
-		return errors.New("database unavailable")
-	}
-	return s.Store.CreateAuthSession(session)
-}
-
-func TestEnrollmentCanRetryAfterSessionPersistenceFailure(t *testing.T) {
-	data := &failCreateAuthStore{Store: memory.NewStore(), failOnce: true}
-	s := New(Config{Credential: "secret", Store: data})
-	t.Cleanup(func() { _ = s.Close(context.Background()) })
-
-	create := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
-	create.Header.Set("Authorization", "Bearer secret")
-	response := httptest.NewRecorder()
-	s.ServeHTTP(response, create)
-	var enrollment api.EnrollmentResponse
-	if response.Code != http.StatusCreated || json.NewDecoder(response.Body).Decode(&enrollment) != nil {
-		t.Fatalf("create enrollment status = %d", response.Code)
-	}
-
-	for attempt, want := range []int{http.StatusInternalServerError, http.StatusOK} {
-		response = httptest.NewRecorder()
-		s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: api.AuthSessionModeBearer}))
-		if response.Code != want {
-			t.Fatalf("redemption attempt %d status = %d, want %d", attempt+1, response.Code, want)
-		}
-	}
-}
-
-func TestEnrollmentBearerAndConcurrentRedeem(t *testing.T) {
-	s := New(Config{Credential: "secret"})
-	t.Cleanup(func() { _ = s.Close(context.Background()) })
-	createEnrollment := func() api.EnrollmentResponse {
-		request := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
-		request.Header.Set("Authorization", "Bearer secret")
-		response := httptest.NewRecorder()
-		s.ServeHTTP(response, request)
-		if response.Code != http.StatusCreated {
-			t.Fatalf("create status = %d", response.Code)
-		}
-		var enrollment api.EnrollmentResponse
-		if err := json.NewDecoder(response.Body).Decode(&enrollment); err != nil {
-			t.Fatal(err)
-		}
-		return enrollment
-	}
-	enrollment := createEnrollment()
-	response := httptest.NewRecorder()
-	s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: "bearer"}))
-	var redeemed api.RedeemEnrollmentResponse
-	if response.Code != http.StatusOK || json.NewDecoder(response.Body).Decode(&redeemed) != nil || redeemed.Token == "" || len(response.Result().Cookies()) != 0 {
-		t.Fatalf("bearer redemption status = %d, response = %#v", response.Code, redeemed)
-	}
-	sessionOnly := jsonRequest(http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{})
-	sessionOnly.Header.Set("Authorization", "Bearer "+redeemed.Token)
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, sessionOnly)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("session enrollment status = %d", response.Code)
-	}
-	list := authenticatedRequest(http.MethodGet, "/auth/sessions", "secret")
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, list)
-	if response.Code != http.StatusOK {
-		t.Fatalf("list sessions status = %d", response.Code)
-	}
-	revoke := authenticatedRequest(http.MethodDelete, "/auth/sessions/"+redeemed.Session.ID, "secret")
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, revoke)
-	if response.Code != http.StatusOK {
-		t.Fatalf("revoke session status = %d", response.Code)
-	}
-
-	enrollment = createEnrollment()
-	var successes int
-	var successesMu sync.Mutex
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			response := httptest.NewRecorder()
-			s.ServeHTTP(response, jsonRequest(http.MethodPost, "/auth/enrollments/redeem", api.RedeemEnrollmentRequest{Credential: enrollment.Credential, Mode: "bearer"}))
-			if response.Code == http.StatusOK {
-				successesMu.Lock()
-				successes++
-				successesMu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-	if successes != 1 {
-		t.Fatalf("concurrent redemption successes = %d", successes)
-	}
-}
-
-func TestEnrollmentExpiry(t *testing.T) {
-	manager := newEnrollmentManager()
-	credential, _, err := manager.create(store.DefaultClientID, time.Now().UTC().Add(-enrollmentLifetime))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := manager.consume(credential, time.Now().UTC()); ok {
-		t.Fatal("expired enrollment was accepted")
 	}
 }
 

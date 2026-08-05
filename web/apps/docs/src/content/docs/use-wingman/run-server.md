@@ -93,8 +93,8 @@ Wingman does not enable cross-origin browser access by default. The bundled Cons
 
 ## Authentication
 
-`GET /health`, Console assets, and enrollment redemption are public. Other API
-routes require an owner credential or auth session.
+`GET /health` and Console assets are public. Other API routes require an owner
+credential, local Console session, or client bearer token.
 
 Load the owner credential for local administration:
 
@@ -104,19 +104,14 @@ curl -sS http://localhost:2323/ready \
   -H "Authorization: Bearer ${WINGMAN_TOKEN}"
 ```
 
-The owner credential can create and revoke client sessions. It also remains a
+The owner credential can create clients, rotate client tokens, and revoke auth
+sessions. It also remains a
 local recovery bearer. Do not distribute this credential to browsers or remote
 applications.
 
-The local Console receives a separate `HttpOnly` session cookie. For remote
-access, create a one-use enrollment credential:
-
-```bash
-wingman auth enroll
-```
-
-Native clients can redeem the enrollment credential in `bearer` mode. See
-[Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
+The local Console receives a separate `HttpOnly` owner session cookie. Native
+clients use the bearer token returned when their client is created or rotated.
+See [Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ## Ephemeral Mode
 

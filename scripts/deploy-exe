@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/deploy-exe <vm-name> [port]
+
+Builds Wingman for Linux amd64, installs it on the exe.dev VM, starts the
+managed service, and directs the VM HTTPS proxy to the selected port.
+
+Set WINGMAN_EXE_ARCH to arm64 for an arm64 VM.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+vm="${1:-}"
+port="${2:-2323}"
+if [[ ! "$vm" =~ ^[a-z0-9-]+$ ]]; then
+  usage >&2
+  exit 1
+fi
+if [[ ! "$port" =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then
+  echo "port must be between 1 and 65535" >&2
+  exit 1
+fi
+
+arch="${WINGMAN_EXE_ARCH:-amd64}"
+if [[ "$arch" != "amd64" && "$arch" != "arm64" ]]; then
+  echo "WINGMAN_EXE_ARCH must be amd64 or arm64" >&2
+  exit 1
+fi
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+binary="$tmp_dir/wingman"
+host="${vm}.exe.xyz"
+
+GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o "$binary" ./cmd/wingman
+scp -o StrictHostKeyChecking=accept-new "$binary" "${host}:/tmp/wingman"
+ssh -o StrictHostKeyChecking=accept-new "$host" "sudo install -m 0755 /tmp/wingman /usr/local/bin/wingman && rm /tmp/wingman && wingman up --host 127.0.0.1 --port $port"
+ssh exe.dev share port "$vm" "$port"
+
+printf 'Wingman is running behind https://%s\n' "$host"

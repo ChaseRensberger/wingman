@@ -58,40 +58,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/enrollments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create a one-time client enrollment credential */
-        post: operations["createEnrollment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/enrollments/redeem": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Redeem a one-time client enrollment credential */
-        post: operations["redeemEnrollment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -170,7 +136,7 @@ export interface paths {
         /** List API clients */
         get: operations["listClients"];
         put?: never;
-        /** Create an API client */
+        /** Create an API client and access token */
         post: operations["createClient"];
         delete?: never;
         options?: never;
@@ -189,6 +155,23 @@ export interface paths {
         get: operations["getClient"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clients/{id}/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate an API client access token */
+        post: operations["rotateClientToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1003,10 +986,13 @@ export interface components {
             tools?: string[] | null;
         };
         CreateClientRequest: {
+            id: string;
             name: string;
         };
-        CreateEnrollmentRequest: {
-            client_id?: string;
+        CreateClientResponse: {
+            client: components["schemas"]["Client"];
+            session: components["schemas"]["AuthSession"];
+            token: string;
         };
         CreateSessionRequest: {
             title?: string;
@@ -1051,11 +1037,6 @@ export interface components {
             entries: components["schemas"]["DirectoryEntry"][] | null;
             parent?: string;
             path: string;
-        };
-        EnrollmentResponse: {
-            client_id: string;
-            credential: string;
-            expires_at: string;
         };
         Error: {
             code: string;
@@ -1405,15 +1386,6 @@ export interface components {
             reasoning: string;
             /** @constant */
             type: "reasoning";
-        };
-        RedeemEnrollmentRequest: {
-            credential: string;
-            /** @enum {string} */
-            mode?: "cookie" | "bearer";
-        };
-        RedeemEnrollmentResponse: {
-            session: components["schemas"]["AuthSession"];
-            token?: string;
         };
         RenameSessionRequest: {
             /** Format: int64 */
@@ -2260,78 +2232,6 @@ export interface operations {
             };
         };
     };
-    createEnrollment: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client identity for resource attribution and scoping */
-                "X-Wingman-Client"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateEnrollmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnrollmentResponse"];
-                };
-            };
-            /** @description Request failed */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    redeemEnrollment: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client identity for resource attribution and scoping */
-                "X-Wingman-Client"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RedeemEnrollmentRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RedeemEnrollmentResponse"];
-                };
-            };
-            /** @description Request failed */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     listAuthSessions: {
         parameters: {
             query?: {
@@ -2521,7 +2421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Client"];
+                    "application/json": components["schemas"]["CreateClientResponse"];
                 };
             };
             /** @description Request failed */
@@ -2556,6 +2456,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Client"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rotateClientToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateClientResponse"];
                 };
             };
             /** @description Request failed */

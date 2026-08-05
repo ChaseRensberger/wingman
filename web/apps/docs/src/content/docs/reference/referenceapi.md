@@ -31,14 +31,10 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
 | Method | Path | Authentication | Description |
 |---|---|---|---|
-| `POST` | `/auth/enrollments` | Owner credential or local owner Console | Create a five-minute, one-use enrollment credential |
-| `POST` | `/auth/enrollments/redeem` | Enrollment credential in body | Create a cookie or bearer auth session |
 | `GET` | `/auth/sessions` | Owner credential or local owner Console | List auth sessions |
 | `DELETE` | `/auth/sessions/{id}` | Owner credential or local owner Console | Revoke an auth session |
 
-Enrollment and redemption responses use `Cache-Control: no-store`. A bearer-mode
-redemption returns the session token once. A cookie-mode redemption sets an
-`HttpOnly` cookie and omits the token from the response body.
+Client bearer tokens are returned once when a client is created or rotated.
 
 ## Health
 
@@ -163,6 +159,7 @@ and update return `400 Bad Request` for unknown or duplicate names.
 | `GET` | `/clients` | List registered clients. |
 | `POST` | `/clients` | Register a client by name. |
 | `GET` | `/clients/{id}` | Get a registered client. |
+| `POST` | `/clients/{id}/token` | Rotate a client bearer token. |
 | `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
 | `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
 | `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |

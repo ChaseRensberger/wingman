@@ -99,17 +99,17 @@ func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
 		}
-		if r.URL.Path != "/auth/enrollments" {
+		if r.URL.Path != "/clients" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
-		var request api.CreateEnrollmentRequest
+		var request api.CreateClientRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatal(err)
 		}
-		if request.ClientID != "client_one" {
-			t.Fatalf("client ID = %q", request.ClientID)
+		if request.ID != "cli_one" || request.Name != "One" {
+			t.Fatalf("client = %#v", request)
 		}
-		_ = json.NewEncoder(w).Encode(api.EnrollmentResponse{Credential: "credential", ClientID: "client_one"})
+		_ = json.NewEncoder(w).Encode(api.CreateClientResponse{Client: api.Client{ID: "cli_one", Name: "One"}, Token: "token"})
 	}))
 	defer server.Close()
 	baseURL, err := url.Parse(server.URL)
@@ -117,12 +117,12 @@ func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &Client{baseURL: baseURL, credential: credential, httpClient: server.Client()}
-	var enrollment api.EnrollmentResponse
-	if err := client.DoJSON(context.Background(), http.MethodPost, "/auth/enrollments", api.CreateEnrollmentRequest{ClientID: "client_one"}, &enrollment); err != nil {
+	var created api.CreateClientResponse
+	if err := client.DoJSON(context.Background(), http.MethodPost, "/clients", api.CreateClientRequest{ID: "cli_one", Name: "One"}, &created); err != nil {
 		t.Fatal(err)
 	}
-	if enrollment.Credential != "credential" {
-		t.Fatalf("credential = %q", enrollment.Credential)
+	if created.Token != "token" {
+		t.Fatalf("token = %q", created.Token)
 	}
 }
 

@@ -24,8 +24,8 @@ describe("daemon connection recovery", () => {
   });
 
   test("explains actionable readiness failures", () => {
-    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("paired");
+    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("local Console");
     expect(daemonConnectionFailureMessage({ status: 503 })).toContain("recovering");
-    expect(daemonConnectionMessage("failed", "This Console is not paired with Wingman (401).")).toContain("paired");
+    expect(daemonConnectionMessage("failed", "This Console session is not authorized (401).")).toContain("authorized");
   });
 });
