@@ -156,6 +156,7 @@ and update return `400 Bad Request` for unknown or duplicate names.
 | `GET` | `/mcp` | List configured MCP servers and their status. |
 | `POST` | `/mcp/{name}/connect` | Connect a configured MCP server. |
 | `POST` | `/mcp/{name}/disconnect` | Disconnect a configured MCP server. |
+| `GET` | `/client` | Get the client for the current request. |
 | `GET` | `/clients` | List registered clients. |
 | `POST` | `/clients` | Register a client by name. |
 | `GET` | `/clients/{id}` | Get a registered client. |
@@ -514,7 +515,7 @@ returns `202`; terminal runs or a running run not owned by this server return
 
 Use an empty `path` for a Workspace that should not provide a working directory.
 
-Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `Wingman` client (`cli_wingman`).
+Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `WingClient` client (`cli_wingclient`).
 
 ## Ephemeral run endpoint
 

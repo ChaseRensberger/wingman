@@ -4430,6 +4430,52 @@
         "summary": "Get a catalog lab logo"
       }
     },
+    "/client": {
+      "get": {
+        "operationId": "getCurrentClient",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "consoleSession": []
+          }
+        ],
+        "summary": "Get the current API client"
+      }
+    },
     "/clients": {
       "get": {
         "operationId": "listClients",

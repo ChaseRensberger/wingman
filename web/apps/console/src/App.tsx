@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import WingmanIcon from "@/assets/icon-128.png";
 import { Button } from "@wingman/core/components/core/button";
 import { Badge } from "@wingman/core/components/core/badge";
@@ -8,7 +8,30 @@ import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
 import { DaemonConnectionBanner, useDaemonConnection } from "@/components/daemon-connection";
 import { navItems } from "@/lib/navigation";
+import { api, apiData } from "@/lib/client";
 import { cn } from "@/lib/utils";
+
+type Client = { id: string; name: string };
+
+function useCurrentClient(hasConnected: boolean, revision: number) {
+	const [client, setClient] = useState<Client>();
+
+	useEffect(() => {
+		if (!hasConnected) return;
+		let cancelled = false;
+		void apiData(api.GET("/client"))
+			.then((current) => { if (!cancelled) setClient(current); })
+			.catch(() => {});
+		return () => { cancelled = true; };
+	}, [hasConnected, revision]);
+
+	return client;
+}
+
+function CurrentClientBadge({ client, variant }: { client?: Client; variant: "ghost" | "secondary" }) {
+	const label = client?.name ?? client?.id ?? "Client";
+	return <Badge className="h-8 px-2.5 sm:h-9" variant={variant} title={client ? `Current Wingman client: ${client.id}` : "Current Wingman client"}>Client: {label}</Badge>;
+}
 
 function NavLink({
 	to,
@@ -50,6 +73,7 @@ export default function App() {
 	const { location } = useRouterState();
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const { revision, hasConnected } = useDaemonConnection();
+	const client = useCurrentClient(hasConnected, revision);
 	const isSessionDetail = /^\/sessions\/[^/]+$/.test(location.pathname);
 	const activeNavItem = navItems.find(
 		({ to }) => location.pathname === to || location.pathname.startsWith(to + "/"),
@@ -66,7 +90,7 @@ export default function App() {
 							<img src={WingmanIcon} className="size-8" alt="Wingman logo" />
 							<span className="text-sm font-medium">{activeNavItem?.label ?? "Wingman"}</span>
 						</Link>
-						<div className="flex items-center gap-2"><Badge variant="ghost" title="Current Wingman client">Client: cli_wingman</Badge><Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+						<div className="flex items-center gap-2"><CurrentClientBadge client={client} variant="secondary" /><Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
 							<SheetTrigger
 								render={<Button variant="outline" size="icon" aria-label="Open navigation"><ListIcon /></Button>}
 							/>
@@ -91,7 +115,7 @@ export default function App() {
 								{navItems.map((item) => <NavLink key={item.to} {...item} />)}
 							</nav>
 						</div>
-						<Badge variant="ghost" title="Current Wingman client">Client: cli_wingman</Badge>
+						<CurrentClientBadge client={client} variant="ghost" />
 					</header>
 				</>
 			)}

@@ -465,6 +465,7 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodPut, "/agents/{id}", "updateAgent", "Update an agent", api.UpdateAgentRequest{}, http.StatusOK, api.Agent{}, s.handleUpdateAgent)
 	s.registerJSON(http.MethodDelete, "/agents/{id}", "deleteAgent", "Delete an agent", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteAgent)
 
+	s.registerJSON(http.MethodGet, "/client", "getCurrentClient", "Get the current API client", nil, http.StatusOK, api.Client{}, s.handleGetCurrentClient)
 	s.registerJSON(http.MethodGet, "/clients", "listClients", "List API clients", nil, http.StatusOK, []api.Client{}, s.handleListClients)
 	s.registerJSON(http.MethodPost, "/clients", "createClient", "Create an API client and access token", api.CreateClientRequest{}, http.StatusCreated, api.CreateClientResponse{}, s.handleCreateClient)
 	s.registerJSON(http.MethodGet, "/clients/{id}", "getClient", "Get an API client", nil, http.StatusOK, api.Client{}, s.handleGetClient)

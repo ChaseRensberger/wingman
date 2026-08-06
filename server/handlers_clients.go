@@ -104,6 +104,24 @@ func validClientID(id string) bool {
 	return true
 }
 
+func (s *Server) handleGetCurrentClient(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	clientID, err := s.resolveClientID(r)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	client, err := s.store.GetClient(clientID)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, apiClient(client))
+}
+
 func (s *Server) handleListClients(w http.ResponseWriter, r *http.Request) {
 	if !s.requireRoot(w, r) {
 		return

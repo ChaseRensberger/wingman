@@ -16,7 +16,7 @@ Each Workspace stores:
 - An optional filesystem path.
 - The owning Wingman client.
 
-Workspaces are user-created. If you omit `X-Wingman-Client`, `GET /workspaces` lists Workspaces for the built-in `Wingman` client, but it does not create a default Workspace.
+Workspaces are user-created. If you omit `X-Wingman-Client`, `GET /workspaces` lists Workspaces for the built-in `WingClient` client, but it does not create a default Workspace.
 
 ## Names and Paths
 

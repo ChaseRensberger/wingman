@@ -16,7 +16,7 @@ local administration.
 Client identity is not tenant isolation. It does not isolate providers, tools,
 logs, plugins, or filesystem access.
 
-Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client named `Wingman` with ID `cli_wingman`, so manual `curl` calls and local scripts still work without setup.
+Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client named `WingClient` with ID `cli_wingclient`, so manual `curl` calls and local scripts still work without setup.
 
 Client IDs are explicit and stable. They must start with `cli_`; display names are unique case-insensitively. Creating a client returns one opaque access token, which Wingman stores only as a hash. Rotate the token from the local Console **Settings** page or with `POST /clients/{id}/token` when it must be replaced.
 
@@ -33,6 +33,6 @@ curl -sS -X POST http://localhost:2323/sessions \
   -d '{"title":"From my app"}'
 ```
 
-Omitting the header is equivalent to using `X-Wingman-Client: cli_wingman`.
+Omitting the header is equivalent to using `X-Wingman-Client: cli_wingclient`.
 
 Client identity also scopes Workspaces. `GET /workspaces` returns the Workspaces for the active client; it does not create any Workspaces automatically.

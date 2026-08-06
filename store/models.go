@@ -358,8 +358,8 @@ type AuthSession struct {
 }
 
 const (
-	DefaultClientID   = "cli_wingman"
-	DefaultClientName = "Wingman"
+	DefaultClientID   = "cli_wingclient"
+	DefaultClientName = "WingClient"
 )
 
 // Fleet and Formation types are archived; their definitions live in

@@ -20,7 +20,7 @@ CREATE TABLE clients (
 );
 
 INSERT INTO clients (id, name, created_at)
-VALUES ('cli_wingman', 'Wingman', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+VALUES ('cli_wingclient', 'WingClient', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
 
 CREATE UNIQUE INDEX idx_clients_name_nocase ON clients(name COLLATE NOCASE);
 

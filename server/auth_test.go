@@ -171,6 +171,44 @@ func TestAuthSessionBearerClientBindingAndRevocation(t *testing.T) {
 	}
 }
 
+func TestCurrentClientUsesAuthenticatedClient(t *testing.T) {
+	data := memory.NewStore()
+	client, err := data.CreateClient("paired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{Credential: "secret", Store: data})
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
+	token, _, err := s.createAuthSession(client.ID, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/client", token))
+	if response.Code != http.StatusOK {
+		t.Fatalf("current client status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var got api.Client
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != client.ID || got.Name != client.Name {
+		t.Fatalf("current client = %#v, want %#v", got, client)
+	}
+}
+
+func TestCurrentClientIsUnavailableInEphemeralMode(t *testing.T) {
+	s := New(Config{Credential: "secret"})
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
+
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/client", "secret"))
+	if response.Code != http.StatusNotImplemented {
+		t.Fatalf("current client status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
 func TestAuthSessionCannotAccessAnotherClientResources(t *testing.T) {
 	data := memory.NewStore()
 	owner, err := data.EnsureDefaultClient()
