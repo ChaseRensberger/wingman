@@ -438,7 +438,7 @@ function Hero() {
 				</div>
 			</nav>
 			<div className="border-b bg-primary/10 px-6 py-3 text-sm text-primary sm:px-12">
-				<strong>Wingman is not production ready.</strong> Expect frequent changes to apis and data models as I receive feedback and iterate over the next couple weeks.
+				<strong>Wingman is not production ready.</strong> Expect frequent changes to apis and data models for the time being.
 			</div>
 			<section className="border-b p-12 py-24 space-y-8">
 				<div className="space-y-2">
