@@ -150,7 +150,7 @@ func serveFlags(cfg daemonconfig.Config) []cli.Flag {
 			Usage: "Database path (default: ~/.local/share/wingman/wingman.db)",
 		},
 		&cli.StringFlag{
-			Name:  "ui-dev",
+			Name:  "console-dev-url",
 			Usage: "Proxy /console to a Vite dev server URL",
 		},
 		&cli.BoolFlag{
@@ -224,7 +224,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		}
 		application, err := app.New(sigCtx, app.Config{
 			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
-			WebDevURL: cmd.String("ui-dev"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
+			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			MCP: effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,

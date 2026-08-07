@@ -14,7 +14,7 @@ Run the Vite dev server, then proxy `/console` from the Go server:
 
 ```sh
 bun --filter @wingman/console dev
-wingman serve --ui-dev http://127.0.0.1:5173
+wingman serve --console-dev-url http://127.0.0.1:5173
 ```
 
 Open the proxied app at `http://127.0.0.1:2323/console/`, or the Vite app directly at `http://127.0.0.1:5173/console/`.

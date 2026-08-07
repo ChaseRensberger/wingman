@@ -36,7 +36,7 @@ const defaultShutdownTimeout = 30 * time.Second
 type Config struct {
 	Ephemeral         bool
 	DBPath            string
-	WebDevURL         string
+	ConsoleDevURL     string
 	LogFormat         string
 	LogLevel          string
 	LogWriter         io.Writer
@@ -173,7 +173,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 	}
 	rollback = append(rollback, func() error { return a.scopes.close(context.Background()) })
 	a.server = f.newServer(server.Config{
-		RootContext: root, Store: a.store.store, WebDevURL: cfg.WebDevURL,
+		RootContext: root, Store: a.store.store, ConsoleDevURL: cfg.ConsoleDevURL,
 		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
 		Credential: cfg.Credential, InstanceID: cfg.InstanceID, Version: cfg.Version, ConsoleCookie: cfg.ConsoleCookie,

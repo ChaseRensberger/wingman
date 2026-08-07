@@ -42,7 +42,7 @@ type Server struct {
 	runs               *sessionRunManager
 	permissionRequests *permissionRequestManager
 	events             *sessionEventBroker
-	webDevURL          string
+	consoleDevURL      string
 	logger             *slog.Logger
 	logs               *observability.LogBuffer
 	scopes             *execution.Manager
@@ -76,7 +76,7 @@ type Config struct {
 	// context.Background.
 	RootContext      context.Context
 	Store            store.Store
-	WebDevURL        string
+	ConsoleDevURL    string
 	Logger           *slog.Logger
 	Logs             *observability.LogBuffer
 	Scopes           *execution.Manager
@@ -121,7 +121,7 @@ func New(cfg Config) *Server {
 		authStore:        authStore,
 		router:           chi.NewRouter(),
 		events:           newSessionEventBroker(),
-		webDevURL:        cfg.WebDevURL,
+		consoleDevURL:    cfg.ConsoleDevURL,
 		logger:           logger,
 		logs:             cfg.Logs,
 		scopes:           cfg.Scopes,
@@ -525,10 +525,10 @@ func (s *Server) allowedMethods(routePath string) []string {
 }
 
 func (s *Server) mountWebUI() {
-	if s.webDevURL != "" {
-		devURL, err := url.Parse(s.webDevURL)
+	if s.consoleDevURL != "" {
+		devURL, err := url.Parse(s.consoleDevURL)
 		if err != nil {
-			s.logger.Error("invalid web dev url", "url", s.webDevURL, "error", err)
+			s.logger.Error("invalid console dev url", "url", s.consoleDevURL, "error", err)
 			return
 		}
 		proxy := httputil.NewSingleHostReverseProxy(devURL)
@@ -880,14 +880,14 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
-		Health string `json:"health"`
-		Web    string `json:"web"`
+		Name    string `json:"name"`
+		Status  string `json:"status"`
+		Health  string `json:"health"`
+		Console string `json:"console"`
 	}{
-		Name:   "wingman",
-		Status: "ok",
-		Health: "/health",
-		Web:    "/console",
+		Name:    "wingman",
+		Status:  "ok",
+		Health:  "/health",
+		Console: "/console",
 	})
 }

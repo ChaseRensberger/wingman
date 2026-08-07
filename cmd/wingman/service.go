@@ -232,8 +232,8 @@ func serveArgs(exe string, cmd *cli.Command, stateDir string) []string {
 	if db := cmd.String("db"); db != "" {
 		args = append(args, "--db", db)
 	}
-	if uiDev := cmd.String("ui-dev"); uiDev != "" {
-		args = append(args, "--ui-dev", uiDev)
+	if consoleDevURL := cmd.String("console-dev-url"); consoleDevURL != "" {
+		args = append(args, "--console-dev-url", consoleDevURL)
 	}
 	if cmd.Bool("ephemeral") {
 		args = append(args, "--ephemeral")

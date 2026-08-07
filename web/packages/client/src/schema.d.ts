@@ -1410,10 +1410,10 @@ export interface components {
             title: string;
         };
         RootResponse: {
+            console: string;
             health: string;
             name: string;
             status: string;
-            web: string;
         };
         RouteInfo: {
             api?: string;

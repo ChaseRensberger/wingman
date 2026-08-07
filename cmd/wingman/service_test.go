@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"runtime"
 	"strings"
 	"testing"
+
+	daemonconfig "github.com/chaserensberger/wingman/internal/config"
+	"github.com/urfave/cli/v3"
 )
 
 func TestSystemdUnitQuotesServiceArguments(t *testing.T) {
@@ -33,6 +37,23 @@ func TestManagedStateDir(t *testing.T) {
 	}
 	if got, err := managedStateDir(); err != nil || got != systemdStateDir {
 		t.Fatalf("managedStateDir() = %q, %v; want %q, nil", got, err, systemdStateDir)
+	}
+}
+
+func TestConsoleDevURLFlagAndServiceForwarding(t *testing.T) {
+	var args []string
+	cmd := &cli.Command{
+		Flags: serveFlags(daemonconfig.Config{}),
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			args = serveArgs("wingman", cmd, "/state")
+			return nil
+		},
+	}
+	if err := cmd.Run(context.Background(), []string{"wingman", "--console-dev-url", "http://127.0.0.1:5173"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(args, " "), "--console-dev-url http://127.0.0.1:5173") {
+		t.Fatalf("service arguments = %q", args)
 	}
 }
 

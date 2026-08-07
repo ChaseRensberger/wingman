@@ -1804,6 +1804,9 @@
       "RootResponse": {
         "additionalProperties": false,
         "properties": {
+          "console": {
+            "type": "string"
+          },
           "health": {
             "type": "string"
           },
@@ -1812,16 +1815,13 @@
           },
           "status": {
             "type": "string"
-          },
-          "web": {
-            "type": "string"
           }
         },
         "required": [
           "name",
           "status",
           "health",
-          "web"
+          "console"
         ],
         "type": "object"
       },

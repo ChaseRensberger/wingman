@@ -50,6 +50,22 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 	}
 }
 
+func TestRootResponseMatchesContract(t *testing.T) {
+	s := New(Config{})
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var root rootResponse
+	if err := json.NewDecoder(response.Body).Decode(&root); err != nil {
+		t.Fatal(err)
+	}
+	if root.Name != "wingman" || root.Status != "ok" || root.Health != "/health" || root.Console != "/console" {
+		t.Fatalf("root response = %#v", root)
+	}
+}
+
 func TestOpenAPIAuthenticationContract(t *testing.T) {
 	document, err := OpenAPIDocument()
 	if err != nil {
