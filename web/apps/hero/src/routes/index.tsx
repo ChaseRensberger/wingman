@@ -319,7 +319,7 @@ function ProvidersSection() {
 				</ul>
 
 				<p className='text-sm text-muted-foreground'>
-					I tend to only support the most recent models. This will probably change in the future. If you want a new provider/model not available, create an issue on GitHub.
+					I tend to only support the most recent models. This will probably change in the future. If you want a new provider/model that is not available, create an issue on GitHub.
 				</p>
 			</div>
 		</section>
