@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -25,6 +26,11 @@ jobs:
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
       - name: Set up deno
         uses: denoland/setup-deno@v2
 
@@ -42,6 +48,12 @@ jobs:
       - name: Check browser client boundaries
         working-directory: web
         run: bun --filter @wingman-actor/client test
+
+      - name: Verify client release version
+        run: bash scripts/check-client-version.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Test npm package artifact
+        run: bash scripts/test-client-package.sh
 
       - name: Vet
         run: go vet ./...
@@ -73,3 +85,10 @@ jobs:
         run: |
           WINGMAN_INSTALL_DIR="$RUNNER_TEMP/wingman/bin" ./install --version "$GITHUB_REF_NAME" --no-modify-path --yes
           "$RUNNER_TEMP/wingman/bin/wingman" version
+
+      - name: Publish npm package
+        working-directory: web/packages/client
+        run: npm publish --provenance
+
+      - name: Verify published npm package
+        run: test "$(npm view @wingman-actor/client version)" = "${GITHUB_REF_NAME#v}"

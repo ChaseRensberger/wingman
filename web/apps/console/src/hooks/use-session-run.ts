@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { streamSessionEvents, type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
 
 import { api, apiData } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
-import { parseSessionEvent, readSSE, type SessionEvent, type SessionEventEnvelope } from "@/lib/session-stream";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
 import type { Message, PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
 
@@ -154,7 +154,7 @@ async function latestSessionEventSeq(sessionId: string): Promise<number> {
 	for (;;) {
 		const page = await apiData(api.GET("/sessions/{id}/events/history", {
 			params: { path: { id: sessionId }, query: { after, limit: 500 } },
-		})) as { data?: SessionEventEnvelope[] | null; has_more?: boolean };
+		})) as { data?: UnknownSessionEvent[] | null; has_more?: boolean };
 		const events = page.data ?? [];
 		if (events.length === 0) return after;
 		after = events.at(-1)?.cursor?.seq ?? after;
@@ -322,16 +322,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 	async function subscribe(id: string, signal: AbortSignal): Promise<SessionStreamResult> {
 		const after = lastEventSeqRef.current;
-		const headers = after > 0 ? { "Last-Event-ID": String(after) } : undefined;
-		const response = await fetch(`/sessions/${id}/events?after=${after}`, { signal, headers });
-		if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
 		let synchronized = false;
-		for await (const event of readSSE(response)) {
+		for await (const parsed of streamSessionEvents(id, { after, lastEventID: after || undefined, signal })) {
 			if (signal.aborted || activeRunRef.current?.sessionId !== id) return { resync: false, synchronized };
-			if (!event.event || event.event.startsWith(":")) continue;
-			const parsed = parseSessionEvent(event.data);
-			if (!parsed) continue;
-			const control = sessionStreamControl(event.event) ?? sessionStreamControl(parsed.event.type);
+			const control = sessionStreamControl(parsed.event.type);
 			if (control === "synchronized") {
 				synchronized = true;
 				continue;
