@@ -36,7 +36,10 @@ Install and start Wingman in the background:
 wingman service start
 ```
 
-On Linux, `wingman service start` prompts for `sudo` when it needs to write `/etc/systemd/system/wingman.service`. On macOS, it writes the per-user LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist` and does not need `sudo`.
+On Linux, `wingman service start` prompts for `sudo` before it writes
+`/etc/systemd/system/wingman.service`. On macOS, it writes the per-user
+LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist`. It does not need
+`sudo`.
 
 `wingman service start` returns after the registered daemon passes its readiness check. The
 private state files are in
@@ -66,7 +69,12 @@ Update a release installation to the latest stable release:
 wingman update
 ```
 
-Wingman downloads the archive for the current Linux or macOS architecture, verifies it against the release's `checksums.txt`, and atomically replaces the resolved executable. A running systemd service or LaunchAgent is restarted after the replacement. The executable's directory must be writable; package-manager-managed or system-wide installations may need to be updated through their original installer instead.
+Wingman downloads the archive for the current Linux or macOS architecture. It
+compares the archive with the release's `checksums.txt`. It then replaces the
+resolved executable atomically. Wingman restarts a running systemd service or
+LaunchAgent after replacement. The executable directory must be writable. Use
+the original installer to update a package-manager-managed or system-wide
+installation.
 
 Check for an update without changing anything:
 
@@ -104,8 +112,9 @@ curl -sS http://localhost:2323/ready \
   -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
-The Console asks for the password and stores only a separate signed `HttpOnly`
-session cookie. Use TLS or an SSH tunnel before sending a password to a remote machine. See
+The Console asks for the password. It stores a separate signed `HttpOnly`
+session cookie. Before you send a password to a remote machine, use TLS or an
+SSH tunnel. See
 [Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ## Ephemeral Mode

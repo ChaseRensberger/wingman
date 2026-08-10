@@ -5,7 +5,7 @@ description: "Connect Model Context Protocol servers and use their tools in Wing
 
 # Configure MCP Servers
 
-Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json` to make their tools available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
+Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json`. Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
 Wingman supports local stdio servers and remote HTTP servers. It validates MCP
 configuration when it starts. Enabled servers connect when Wingman creates an
@@ -30,7 +30,7 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 }
 ```
 
-`command` runs directly, without shell expansion. Put the executable and every argument in a separate array item. `cwd` supports `~` and `~/...` paths.
+`command` runs directly without shell expansion. Put the executable in one array item. Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths.
 
 ## Chrome DevTools example
 
@@ -68,10 +68,11 @@ credentials in `headers`; Wingman does not provide an MCP OAuth login command.
 
 ## Use MCP Tools In An Agent
 
-Restart Wingman after changing `wingman.json`. It lists connected tools on the
-Console's Tools page and at `GET /tools`.
+Restart Wingman after you change `wingman.json`. After restart, Wingman lists
+connected tools on the Console's Tools page and at `GET /tools`.
 
-Wingman prefixes each MCP tool with its server name. For example, a remote tool named `search` from `company-tools` becomes `company_tools_search`.
+Wingman prefixes each MCP tool with its server name. For example, the remote
+`search` tool from `company-tools` becomes `company_tools_search`.
 
 Add that name to an agent's `tools` allow-list:
 
@@ -103,9 +104,9 @@ curl -sS http://127.0.0.1:2323/tools \
 
 `/mcp` lists every configured server and its connection status. `/tools` lists the MCP tools currently available to agents.
 
-`discovery_timeout` bounds connecting and listing a server's tools.
-`execution_timeout` bounds each MCP tool call. Both values are milliseconds and
-default to `30000` when omitted.
+`discovery_timeout` limits connection and tool discovery. `execution_timeout`
+limits each MCP tool call. Both values are in milliseconds. They default to
+`30000` when omitted.
 
 ## Enable And Disable Servers
 

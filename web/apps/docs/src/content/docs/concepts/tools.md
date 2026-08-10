@@ -6,7 +6,11 @@ order: 106
 
 # Tools
 
-Tools are functions the model can call during a session turn. An agent stores an allow-list of tool names. When a session runs, Wingman resolves those names into live `tool.Tool` implementations, sends their JSON Schema definitions to the model provider, and dispatches any tool calls the model emits.
+Tools are functions that the model can call during a session turn. An agent
+stores an allow-list of tool names. When a session runs, Wingman resolves these
+names into live `tool.Tool` implementations. It sends their JSON Schema
+definitions to the model provider. It dispatches each tool call that the model
+emits.
 
 ## Built-In Tools
 
@@ -24,7 +28,9 @@ Wingman ships these built-ins:
 | `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
 | `websearch` | Search the web for current information through a configured search provider. | No |
 
-Directory-scoped tools require the session to have a working directory. Create the session with `working_directory` or `workspace_id`, or move it with `POST /sessions/{id}/move`, before allowing file or shell tools.
+Directory-scoped tools require the session to have a working directory. Before
+you allow file or shell tools, create the session with `working_directory` or
+`workspace_id`. You can also move it with `POST /sessions/{id}/move`.
 
 These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
@@ -37,11 +43,21 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 
 For repeated work in the same directory, prefer a [Workspace](/concepts/workspaces) and create sessions with `workspace_id`.
 
-`DirectoryScopedTool` is a session-start requirement, not a security sandbox. It ensures a non-empty working directory is present; it does not confine a tool's process, network access, or every filesystem operation to that directory. In particular, `bash` runs with that directory as its starting directory and can run arbitrary shell commands. Treat enabled tools and the Wingman process's OS permissions as the security boundary.
+`DirectoryScopedTool` is a session-start requirement, not a security sandbox.
+It requires a non-empty working directory. It does not confine a tool process,
+network access, or every filesystem operation to that directory. In particular,
+`bash` starts in that directory and can run arbitrary shell commands. Enabled
+tools and the Wingman process's OS permissions are the security boundary.
 
-`bash` defaults to a two-minute timeout. Its optional `timeout` is parsed as a Go duration (for example, `30s` or `5m`); invalid values fall back to the default, and Wingman does not impose a separate maximum. It streams combined standard output and standard error while the command runs.
+`bash` defaults to a two-minute timeout. Its optional `timeout` is a Go
+duration, for example `30s` or `5m`. Invalid values use the default. Wingman
+does not impose a separate maximum. It streams combined standard output and
+standard error while the command runs.
 
-`webfetch` performs an HTTP(S) `GET` only. It defaults to a 30-second timeout, clamps a supplied timeout to 120 seconds, accepts only `200 OK`, and rejects responses larger than 5 MiB. Markdown is the default output format; HTML conversion is basic.
+`webfetch` performs an HTTP(S) `GET` only. It defaults to a 30-second timeout.
+It limits a supplied timeout to 120 seconds. It accepts only `200 OK`. It
+rejects responses larger than 5 MiB. Markdown is the default output format.
+HTML conversion is basic.
 
 ## Allow Tools On An Agent
 
@@ -60,13 +76,16 @@ curl -sS -X POST http://localhost:2323/agents \
 ```
 
 Agent creation and tool-list updates reject unknown or duplicate names. The
-server checks names against its directoryless tool catalog. A session still fails
-to start if an allowed tool is unavailable in that session's execution scope;
-Wingman never silently removes it.
+server checks names against its directoryless tool catalog. A session fails to
+start if an allowed tool is unavailable in its execution scope. Wingman never
+silently removes a tool.
 
 ## Web Search Configuration
 
-`websearch` uses Exa by default. The provider is read from the environment of the Wingman server process when the tool runs, not from the browser or the model environment. Set `WINGMAN_WEBSEARCH_PROVIDER` to `exa` or `parallel`; any other value fails the tool call.
+`websearch` uses Exa by default. The provider comes from the Wingman server
+process environment when the tool runs. It does not come from the browser or
+the model environment. Set `WINGMAN_WEBSEARCH_PROVIDER` to `exa` or `parallel`.
+Any other value fails the tool call.
 
 For Exa, Wingman includes `EXA_API_KEY` when it is set:
 
@@ -82,7 +101,13 @@ export WINGMAN_WEBSEARCH_PROVIDER=parallel
 export PARALLEL_API_KEY=your_parallel_key
 ```
 
-The tool accepts a required `query` plus optional `numResults`, `livecrawl`, `type`, and `contextMaxCharacters` fields. Exa receives those optional search controls. Parallel currently receives the query only, so its service may ignore those controls and return results with different behavior. Both providers are external services: availability, authentication requirements, result quality, and live-crawl support are determined by the selected service. Use `websearch` when the model needs current or discoverable information; use `webfetch` when you already have a specific URL.
+The tool accepts a required `query` and optional `numResults`, `livecrawl`,
+`type`, and `contextMaxCharacters` fields. Exa receives the optional search
+controls. Parallel receives only the query. Its service can ignore the controls
+and return different results. Both providers are external services. The selected
+service determines availability, authentication requirements, result quality,
+and live-crawl support. Use `websearch` for current or discoverable information.
+Use `webfetch` when you have a specific URL.
 
 ## Runtime Contract
 
