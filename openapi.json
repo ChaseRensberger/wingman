@@ -149,36 +149,6 @@
         ],
         "type": "object"
       },
-      "AuthSession": {
-        "additionalProperties": false,
-        "properties": {
-          "client_id": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "expires_at": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "owner": {
-            "type": "boolean"
-          },
-          "revoked_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "client_id",
-          "owner",
-          "created_at"
-        ],
-        "type": "object"
-      },
       "AuthType": {
         "additionalProperties": false,
         "properties": {
@@ -450,18 +420,10 @@
         "properties": {
           "client": {
             "$ref": "#/components/schemas/Client"
-          },
-          "session": {
-            "$ref": "#/components/schemas/AuthSession"
-          },
-          "token": {
-            "type": "string"
           }
         },
         "required": [
-          "client",
-          "session",
-          "token"
+          "client"
         ],
         "type": "object"
       },
@@ -773,6 +735,18 @@
         },
         "required": [
           "raw"
+        ],
+        "type": "object"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
         ],
         "type": "object"
       },
@@ -3872,19 +3846,15 @@
       }
     },
     "securitySchemes": {
-      "bearerAuth": {
-        "scheme": "bearer",
+      "basicAuth": {
+        "description": "Daemon password with username wingman",
+        "scheme": "basic",
         "type": "http"
       },
       "consoleSession": {
         "in": "cookie",
         "name": "wingman_session",
         "type": "apiKey"
-      },
-      "rootBearer": {
-        "description": "Daemon root credential",
-        "scheme": "bearer",
-        "type": "http"
       }
     }
   },
@@ -3931,7 +3901,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -3983,7 +3953,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4037,7 +4007,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4091,7 +4061,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4143,7 +4113,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4205,7 +4175,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4214,9 +4184,9 @@
         "summary": "Update an agent"
       }
     },
-    "/auth/sessions": {
-      "get": {
-        "operationId": "listAuthSessions",
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
         "parameters": [
           {
             "description": "Client identity for resource attribution and scoping",
@@ -4225,78 +4195,20 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "description": "Client identity",
-            "in": "query",
-            "name": "client_id",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AuthSession"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                }
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
               }
-            },
-            "description": "OK"
+            }
           },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
+          "required": true
         },
-        "security": [
-          {
-            "rootBearer": []
-          },
-          {
-            "consoleSession": []
-          }
-        ],
-        "summary": "List auth sessions"
-      }
-    },
-    "/auth/sessions/{id}": {
-      "delete": {
-        "operationId": "revokeAuthSession",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
-          "200": {
+          "204": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4304,7 +4216,7 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "No Content"
           },
           "default": {
             "content": {
@@ -4317,15 +4229,8 @@
             "description": "Request failed"
           }
         },
-        "security": [
-          {
-            "rootBearer": []
-          },
-          {
-            "consoleSession": []
-          }
-        ],
-        "summary": "Revoke an auth session"
+        "security": [],
+        "summary": "Create a Console session"
       }
     },
     "/catalog": {
@@ -4365,7 +4270,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4421,7 +4326,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4467,7 +4372,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4519,7 +4424,7 @@
         },
         "security": [
           {
-            "rootBearer": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4573,13 +4478,13 @@
         },
         "security": [
           {
-            "rootBearer": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
           }
         ],
-        "summary": "Create an API client and access token"
+        "summary": "Register an API client"
       }
     },
     "/clients/{id}": {
@@ -4627,67 +4532,13 @@
         },
         "security": [
           {
-            "rootBearer": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
           }
         ],
         "summary": "Get an API client"
-      }
-    },
-    "/clients/{id}/token": {
-      "post": {
-        "operationId": "rotateClientToken",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateClientResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
-        },
-        "security": [
-          {
-            "rootBearer": []
-          },
-          {
-            "consoleSession": []
-          }
-        ],
-        "summary": "Rotate an API client access token"
       }
     },
     "/diagnostics": {
@@ -4727,7 +4578,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4781,7 +4632,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4872,7 +4723,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4918,7 +4769,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -4962,7 +4813,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5004,7 +4855,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5058,7 +4909,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5112,7 +4963,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5158,7 +5009,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5204,7 +5055,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5256,7 +5107,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5302,7 +5153,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5356,7 +5207,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5410,7 +5261,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5464,7 +5315,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5521,7 +5372,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5583,7 +5434,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5647,7 +5498,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5709,7 +5560,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5769,7 +5620,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5825,7 +5676,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5874,7 +5725,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5926,7 +5777,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -5980,7 +5831,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6043,7 +5894,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6095,7 +5946,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6149,7 +6000,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6231,7 +6082,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6301,7 +6152,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6365,7 +6216,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6425,7 +6276,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6489,7 +6340,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6549,7 +6400,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6609,7 +6460,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6681,7 +6532,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6745,7 +6596,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6805,7 +6656,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6867,7 +6718,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6939,7 +6790,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -6999,7 +6850,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7045,7 +6896,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7097,7 +6948,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7151,7 +7002,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7205,7 +7056,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7257,7 +7108,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7319,7 +7170,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []
@@ -7379,7 +7230,7 @@
         },
         "security": [
           {
-            "bearerAuth": []
+            "basicAuth": []
           },
           {
             "consoleSession": []

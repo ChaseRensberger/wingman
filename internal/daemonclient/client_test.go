@@ -31,12 +31,13 @@ func TestInspect(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			state := daemonstate.New(t.TempDir())
-			credential, err := state.Credential()
+			password, err := state.Password()
 			if err != nil {
 				t.Fatal(err)
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer "+credential {
+				username, supplied, ok := r.BasicAuth()
+				if !ok || username != "wingman" || supplied != password {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
@@ -60,7 +61,7 @@ func TestInspectMissingAndStale(t *testing.T) {
 	if result := Inspect(context.Background(), state, "dev"); result.Status != StatusMissing {
 		t.Fatalf("missing Inspect() = %s", result.Status)
 	}
-	if _, err := state.Credential(); err != nil {
+	if _, err := state.Password(); err != nil {
 		t.Fatal(err)
 	}
 	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "http://127.0.0.1:1", PID: 1, CreatedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)}
@@ -76,7 +77,7 @@ func TestInspectMissingAndStale(t *testing.T) {
 
 func TestInspectFutureRegistrationIsStale(t *testing.T) {
 	state := daemonstate.New(t.TempDir())
-	if _, err := state.Credential(); err != nil {
+	if _, err := state.Password(); err != nil {
 		t.Fatal(err)
 	}
 	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "http://127.0.0.1:1", PID: 1, CreatedAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)}
@@ -91,9 +92,10 @@ func TestInspectFutureRegistrationIsStale(t *testing.T) {
 }
 
 func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
-	const credential = "root-credential"
+	const password = "root-password"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+credential {
+		username, supplied, ok := r.BasicAuth()
+		if !ok || username != "wingman" || supplied != password {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
 		if r.Header.Get("Content-Type") != "application/json" {
@@ -109,25 +111,25 @@ func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
 		if request.ID != "cli_one" || request.Name != "One" {
 			t.Fatalf("client = %#v", request)
 		}
-		_ = json.NewEncoder(w).Encode(api.CreateClientResponse{Client: api.Client{ID: "cli_one", Name: "One"}, Token: "token"})
+		_ = json.NewEncoder(w).Encode(api.CreateClientResponse{Client: api.Client{ID: "cli_one", Name: "One"}})
 	}))
 	defer server.Close()
 	baseURL, err := url.Parse(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &Client{baseURL: baseURL, credential: credential, httpClient: server.Client()}
+	client := &Client{baseURL: baseURL, password: password, httpClient: server.Client()}
 	var created api.CreateClientResponse
 	if err := client.DoJSON(context.Background(), http.MethodPost, "/clients", api.CreateClientRequest{ID: "cli_one", Name: "One"}, &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.Token != "token" {
-		t.Fatalf("token = %q", created.Token)
+	if created.Client.ID != "cli_one" {
+		t.Fatalf("client = %#v", created.Client)
 	}
 }
 
-func TestClientDoJSONReturnsAPIErrorWithoutCredential(t *testing.T) {
-	const credential = "root-credential"
+func TestClientDoJSONReturnsAPIErrorWithoutPassword(t *testing.T) {
+	const password = "root-password"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_ = json.NewEncoder(w).Encode(api.ErrorResponse{Error: api.Error{Code: api.ErrorCodeForbidden, Message: "access denied"}})
@@ -137,8 +139,8 @@ func TestClientDoJSONReturnsAPIErrorWithoutCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &Client{baseURL: baseURL, credential: credential, httpClient: server.Client()}
-	err = client.DoJSON(context.Background(), http.MethodGet, "/auth/sessions", nil, nil)
+	client := &Client{baseURL: baseURL, password: password, httpClient: server.Client()}
+	err = client.DoJSON(context.Background(), http.MethodGet, "/clients", nil, nil)
 	var apiError *APIError
 	if !errors.As(err, &apiError) {
 		t.Fatalf("error = %v, want APIError", err)
@@ -146,7 +148,7 @@ func TestClientDoJSONReturnsAPIErrorWithoutCredential(t *testing.T) {
 	if apiError.StatusCode != http.StatusForbidden || !strings.Contains(err.Error(), "access denied") {
 		t.Fatalf("error = %v", err)
 	}
-	if strings.Contains(err.Error(), credential) {
-		t.Fatalf("error leaked credential: %v", err)
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("error leaked password: %v", err)
 	}
 }

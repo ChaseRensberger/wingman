@@ -41,7 +41,7 @@ type Result struct {
 // Client is an authenticated transport to a verified managed daemon.
 type Client struct {
 	baseURL    *url.URL
-	credential string
+	password   string
 	httpClient *http.Client
 }
 
@@ -68,15 +68,15 @@ func New(ctx context.Context, state *daemonstate.State, expectedVersion string) 
 	if result.Status != StatusReady {
 		return nil, unavailableError(result)
 	}
-	credential, err := state.ReadCredential()
+	password, err := state.ReadPassword()
 	if err != nil {
-		return nil, fmt.Errorf("read managed daemon credential: %w", err)
+		return nil, fmt.Errorf("read managed daemon password: %w", err)
 	}
 	baseURL, err := url.Parse(result.Registration.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse managed daemon URL: %w", err)
 	}
-	return &Client{baseURL: baseURL, credential: credential, httpClient: http.DefaultClient}, nil
+	return &Client{baseURL: baseURL, password: password, httpClient: http.DefaultClient}, nil
 }
 
 // URL returns the registered daemon URL.
@@ -106,7 +106,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, requestBody, r
 	if err != nil {
 		return fmt.Errorf("create daemon API request: %w", err)
 	}
-	request.Header.Set("Authorization", "Bearer "+c.credential)
+	request.SetBasicAuth("wingman", c.password)
 	request.Header.Set("Accept", "application/json")
 	if requestBody != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -135,13 +135,13 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, requestBody, r
 func unavailableError(result Result) error {
 	switch result.Status {
 	case StatusMissing:
-		return errors.New("no managed Wingman daemon found; run 'wingman up'")
+		return errors.New("no managed Wingman daemon found; run 'wingman service start'")
 	case StatusStarting:
 		return errors.New("managed Wingman daemon is starting; wait a moment and try again")
 	case StatusIncompatible:
-		return daemonUnavailableError("managed Wingman daemon is incompatible; run 'wingman update' or restart it", result.Err)
+		return daemonUnavailableError("managed Wingman daemon is incompatible; run 'wingman update' or run 'wingman service restart'", result.Err)
 	default:
-		return daemonUnavailableError("managed Wingman daemon registration is stale or unreachable; run 'wingman restart'", result.Err)
+		return daemonUnavailableError("managed Wingman daemon registration is stale or unreachable; run 'wingman service restart'", result.Err)
 	}
 }
 
@@ -162,7 +162,7 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 		}
 		return Result{Status: status, Err: err}
 	}
-	credential, err := state.ReadCredential()
+	password, err := state.ReadPassword()
 	if err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
@@ -171,7 +171,7 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 	if err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
-	request.Header.Set("Authorization", "Bearer "+credential)
+	request.SetBasicAuth("wingman", password)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		status := StatusStale

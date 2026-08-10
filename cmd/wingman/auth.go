@@ -10,12 +10,9 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"text/tabwriter"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/internal/daemonclient"
 	"github.com/chaserensberger/wingman/internal/daemonstate"
 )
@@ -30,64 +27,6 @@ var discoverManagedDaemon = func(ctx context.Context) (*daemonclient.Client, err
 
 var runBrowserCommand = func(ctx context.Context, name, target string) error {
 	return exec.CommandContext(ctx, name, target).Run()
-}
-
-func authCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "auth",
-		Usage: "Manage client authentication",
-		Commands: []*cli.Command{
-			{
-				Name:   "sessions",
-				Usage:  "List authorization sessions",
-				Flags:  authSessionsFlags(),
-				Action: runAuthSessions,
-			},
-			{
-				Name:      "revoke",
-				Usage:     "Revoke an authorization session",
-				ArgsUsage: "<session-id>",
-				Action:    runAuthRevoke,
-			},
-		},
-	}
-}
-
-func authSessionsFlags() []cli.Flag {
-	return []cli.Flag{&cli.StringFlag{Name: "client", Usage: "Filter by client identity"}}
-}
-
-func runAuthSessions(ctx context.Context, cmd *cli.Command) error {
-	client, err := discoverManagedDaemon(ctx)
-	if err != nil {
-		return err
-	}
-	path := "/auth/sessions"
-	if clientID := cmd.String("client"); clientID != "" {
-		path += "?client_id=" + url.QueryEscape(clientID)
-	}
-	var sessions []api.AuthSession
-	if err := client.DoJSON(ctx, "GET", path, nil, &sessions); err != nil {
-		return err
-	}
-	writeAuthSessions(commandWriter(cmd), sessions)
-	return nil
-}
-
-func runAuthRevoke(ctx context.Context, cmd *cli.Command) error {
-	if cmd.Args().Len() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
-		return fmt.Errorf("expected exactly one session ID")
-	}
-	client, err := discoverManagedDaemon(ctx)
-	if err != nil {
-		return err
-	}
-	sessionID := cmd.Args().First()
-	if err := client.DoJSON(ctx, "DELETE", "/auth/sessions/"+url.PathEscape(sessionID), nil, nil); err != nil {
-		return err
-	}
-	fmt.Fprintf(commandWriter(cmd), "Revoked auth session %s\n", sessionID)
-	return nil
 }
 
 func runConsole(ctx context.Context, cmd *cli.Command) error {
@@ -156,23 +95,4 @@ func commandWriter(cmd *cli.Command) io.Writer {
 		return writer
 	}
 	return os.Stdout
-}
-
-func writeAuthSessions(writer io.Writer, sessions []api.AuthSession) {
-	if len(sessions) == 0 {
-		fmt.Fprintln(writer, "No auth sessions.")
-		return
-	}
-	table := tabwriter.NewWriter(writer, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(table, "ID\tCLIENT\tCREATED\tEXPIRES\tSTATUS")
-	for _, session := range sessions {
-		status := "active"
-		if session.RevokedAt != "" {
-			status = "revoked"
-		} else if expiresAt, err := time.Parse(time.RFC3339Nano, session.ExpiresAt); err == nil && !expiresAt.After(time.Now().UTC()) {
-			status = "expired"
-		}
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", session.ID, session.ClientID, session.CreatedAt, session.ExpiresAt, status)
-	}
-	_ = table.Flush()
 }

@@ -311,18 +311,18 @@ active. After a successful atomic swap, it retires the previous generation.
 ## Inspect Plugins
 
 List plugin status, capabilities, health, process data, contributions, and
-recent diagnostics. These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+recent diagnostics. These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
 Reload global and accepted project plugin directories:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
 Install plugins only from sources you trust.

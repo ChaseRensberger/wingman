@@ -18,7 +18,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(migrations) != 1 || migrations[0].version != 1 || migrations[0].name != "init" {
-		t.Fatalf("migrations = %#v, want only 0001_init", migrations)
+		t.Fatalf("migrations = %#v, want 0001_init", migrations)
 	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 1 AND name = 'init' AND checksum <> ''`).Scan(&count); err != nil {
@@ -29,7 +29,6 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	}
 	for table, columns := range map[string][]string{
 		"agents":              {"permissions_json"},
-		"auth_sessions":       {"client_id", "token_hash", "created_at", "expires_at", "revoked_at"},
 		"sessions":            {"aggregate_version"},
 		"messages":            {"run_id"},
 		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
@@ -46,7 +45,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"agents", "clients", "auth_sessions", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "permission_requests", "permission_grants", "session_events", "aggregate_events", "auth"} {
+	for _, table := range []string{"agents", "clients", "workspaces", "sessions", "messages", "parts", "session_runs", "model_calls", "tool_uses", "permission_requests", "permission_grants", "session_events", "aggregate_events", "auth"} {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatalf("table %s count=%d error=%v", table, count, err)
 		}
@@ -58,7 +57,6 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		t.Fatalf("legacy schema objects = %d, want 0", count)
 	}
 	for _, index := range []string{
-		"idx_auth_sessions_client_created_at",
 		"idx_session_runs_session_request_id",
 		"idx_session_runs_one_running_per_session",
 		"idx_model_calls_session_started_at",
@@ -151,7 +149,7 @@ func TestRunMigrationsRejectsUnknownHistory(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (2, 'removed', 'checksum', ?)`, Now()); err != nil {
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (3, 'removed', 'checksum', ?)`, Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := runMigrations(db); err == nil || !strings.Contains(err.Error(), "unknown version") {
@@ -167,6 +165,13 @@ CREATE TABLE schema_migrations (
     name TEXT NOT NULL,
     applied_at TEXT NOT NULL
 )`); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(migrations[0].sql); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'init', ?)`, Now()); err != nil {

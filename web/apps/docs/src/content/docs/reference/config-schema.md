@@ -25,7 +25,7 @@ Configuration is resolved in this order:
 
 1. Built-in defaults.
 2. `~/.config/wingman/wingman.json`.
-3. CLI flags passed to `wingman serve` or `wingman up`.
+3. CLI flags passed to `wingman serve` or `wingman service start`.
 
 CLI flags always win.
 
@@ -80,7 +80,7 @@ The file is parsed as strict JSON:
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
-| `server` | object | no | Server defaults used by `wingman serve` and `wingman up`. |
+| `server` | object | no | Server defaults used by `wingman serve` and `wingman service start`. |
 | `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
 | `mcp` | object | no | Configured Model Context Protocol servers. |
 | `plugins` | object | no | External plugin discovery defaults. |

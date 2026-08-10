@@ -2,67 +2,51 @@
 title: "Authentication"
 group: "Core"
 order: 102
-description: "Understand owner and client bearer tokens."
+description: "Authenticate to the Wingman daemon."
 ---
 
 # Authentication
 
 All about authenticating with the Wingman server.
 
-## Credential Types
+## Daemon Password
 
-| Credential | Purpose | Lifetime | Storage |
-|---|---|---|---|
-| Owner credential | Local administration and recovery | Stable | Private daemon state file |
-| Local Console session | Authenticates the bundled Console | Local browser session | HttpOnly cookie |
-| Client bearer token | Authenticates one client | Until rotated or revoked | Client secret storage |
+Wingman always requires a daemon password. `wingman serve` uses
+`WINGMAN_PASSWORD` when it is set; otherwise, it creates or reuses the private
+`password` file in its state directory. The managed service always uses its own
+private `password` file.
 
-The owner credential is located at `${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential`.
+Native clients must obtain the daemon password through a secure channel and use
+HTTP Basic authentication with the username `wingman`. For a local managed
+service, set `WINGMAN_DAEMON_PASSWORD` with `export
+WINGMAN_DAEMON_PASSWORD="$(wingman service password)"`. For a foreground server
+started with `WINGMAN_PASSWORD`, the client uses the same value but must set
+`WINGMAN_DAEMON_PASSWORD` itself:
 
-The owner credential has two uses:
-
-- It authenticates trusted local administration and recovery clients.
-- It manages clients and auth sessions.
-
-Do not send the owner credential to a browser or remote client.
-
-## Client Bearer Tokens
-
-Create a client from the local owner Console or with `POST /clients`. The response
-returns one opaque bearer token. Transfer it through a trusted channel and store it
-as a client secret:
-
-```text
-Authorization: Bearer <client-token>
+```bash
+curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" http://localhost:2323/ready
 ```
 
-Wingman stores only the token hash. Rotate a client's token from the local
-Console **Settings** page or with `POST /clients/{id}/token`. Rotation invalidates
-the previous token.
+Use TLS or an SSH tunnel before sending the password to a remote daemon. The
+password is not a multi-user authorization system.
 
-## Local Console Session
+## Console Session
 
-On a loopback host, Wingman creates an owner Console session and sets a host-only
-cookie with these properties:
+The Console asks for the daemon password and sets a signed cookie with these
+properties:
 
 - `HttpOnly`
 - `SameSite=Strict`
 - `Path=/`
-- `Secure` for a non-loopback host or a TLS connection
+- `Secure` over TLS
 
-The cookie does not contain the owner credential. Do not expose the owner Console
-session to remote browsers.
-
-Use `wingman auth sessions` and `wingman auth revoke` to inspect or revoke
-sessions when needed.
+The cookie does not contain the daemon password. Restart the Console session
+after changing the password.
 
 ## Client Identity
 
-A client bearer token belongs to one registered Wingman Client. This binding
-prevents a client from selecting another client with `X-Wingman-Client`.
-
-The owner credential can still select a registered client with that header.
-This behavior supports local administration and client provisioning.
+Any caller with daemon access can register a client and select a registered client
+with `X-Wingman-Client`.
 
 Client binding organizes sessions and Workspaces. It does not isolate providers,
 tools, logs, plugins, or the filesystem.

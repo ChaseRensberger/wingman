@@ -90,60 +90,74 @@ func TestRegistrationOwnershipCleanup(t *testing.T) {
 	}
 }
 
-func TestCredentialIsStableAndPrivate(t *testing.T) {
+func TestPasswordIsStableAndPrivate(t *testing.T) {
 	state := New(t.TempDir())
-	first, err := state.Credential()
+	first, err := state.Password()
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := state.Credential()
+	second, err := state.Password()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first != second {
-		t.Fatalf("Credential() = %q then %q", first, second)
+		t.Fatalf("Password() = %q then %q", first, second)
 	}
-	read, err := state.ReadCredential()
+	read, err := state.ReadPassword()
 	if err != nil || read != first {
-		t.Fatalf("ReadCredential() = %q, %v", read, err)
+		t.Fatalf("ReadPassword() = %q, %v", read, err)
 	}
 	decoded, err := base64.RawURLEncoding.Strict().DecodeString(first)
 	if err != nil || len(decoded) != 32 {
-		t.Fatalf("credential is not a 32-byte base64url value: %q", first)
+		t.Fatalf("password is not a 32-byte base64url value: %q", first)
 	}
-	assertPrivatePermissions(t, state.Dir(), credentialFile)
+	assertPrivatePermissions(t, state.Dir(), passwordFile)
 }
 
-func TestConcurrentCredentialCreation(t *testing.T) {
+func TestConcurrentPasswordCreation(t *testing.T) {
 	state := New(t.TempDir())
-	credentials := make(chan string, 16)
+	passwords := make(chan string, 16)
 	errs := make(chan error, 16)
 	var group sync.WaitGroup
 	for range 16 {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			credential, err := state.Credential()
+			password, err := state.Password()
 			if err != nil {
 				errs <- err
 				return
 			}
-			credentials <- credential
+			passwords <- password
 		}()
 	}
 	group.Wait()
-	close(credentials)
+	close(passwords)
 	close(errs)
 	for err := range errs {
 		t.Fatal(err)
 	}
 	var first string
-	for credential := range credentials {
+	for password := range passwords {
 		if first == "" {
-			first = credential
-		} else if credential != first {
-			t.Fatalf("Credential() values differ: %q and %q", first, credential)
+			first = password
+		} else if password != first {
+			t.Fatalf("Password() values differ: %q and %q", first, password)
 		}
+	}
+}
+
+func TestSetPassword(t *testing.T) {
+	state := New(t.TempDir())
+	if err := state.SetPassword("new-password"); err != nil {
+		t.Fatal(err)
+	}
+	password, err := state.ReadPassword()
+	if err != nil || password != "new-password" {
+		t.Fatalf("ReadPassword() = %q, %v", password, err)
+	}
+	if err := state.SetPassword(" "); err == nil {
+		t.Fatal("SetPassword accepted whitespace")
 	}
 }
 

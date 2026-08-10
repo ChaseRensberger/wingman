@@ -22,7 +22,7 @@ func TestDiagnosticsReportsBoundedOperationalState(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	server := New(Config{Store: data, Credential: "secret"})
+	server := New(Config{Store: data, Password: "secret"})
 	subscription, unsubscribe := server.events.subscribe("ses_diagnostics")
 	defer unsubscribe()
 	for i := 0; i < cap(subscription.events)+1; i++ {

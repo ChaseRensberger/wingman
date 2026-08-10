@@ -6,7 +6,7 @@ order: 105
 
 # Storage
 
-Storage persists agents, clients, auth sessions, Workspaces, session history,
+Storage persists agents, clients, Workspaces, session history,
 tool execution, and provider credentials. Session history is durable by default
 when the server uses storage.
 
@@ -42,7 +42,6 @@ The SQLite schema stores:
 |---|---|
 | `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
 | `clients` | API consumer identities, including the built-in `Wingman` default client. |
-| `auth_sessions` | Hashed, expiring, and revocable browser or native client sessions. |
 | `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
 | `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps. |
 | `session_runs` | Durably admitted session work, request identity, immutable execution snapshot, and status. |

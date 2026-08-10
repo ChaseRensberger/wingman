@@ -12,7 +12,14 @@ type DaemonReadiness = {
   version: string;
 };
 
-export type DaemonTransport = { origin: string; credential: string };
+export type DaemonTransport = { origin: string; password: string };
+
+function basicAuthorization(password: string): string {
+	const bytes = new TextEncoder().encode(`wingman:${password}`);
+	let value = "";
+	for (const byte of bytes) value += String.fromCharCode(byte);
+	return `Basic ${btoa(value)}`;
+}
 
 type Dependencies = {
   stateDir: () => string;
@@ -57,20 +64,20 @@ export class DaemonDiscovery {
 
   private async load(): Promise<DaemonTransport> {
     const state = this.deps.stateDir();
-    const [rawRegistration, rawCredential] = await Promise.all([
-      this.deps.readTextFile(`${state}/registration.json`),
-      this.deps.readTextFile(`${state}/credential`),
+		const [rawRegistration, rawPassword] = await Promise.all([
+			this.deps.readTextFile(`${state}/registration.json`),
+			this.deps.readTextFile(`${state}/password`),
     ]);
     const registration = JSON.parse(rawRegistration) as DaemonRegistration;
     const origin = new URL(registration.url);
     if ((origin.protocol !== "http:" && origin.protocol !== "https:") || !registration.instance_id) {
       throw new Error("invalid Wingman daemon registration");
     }
-    const credential = rawCredential.trim();
-    if (!credential) throw new Error("invalid Wingman daemon credential");
+		const password = rawPassword.trim();
+		if (!password) throw new Error("invalid Wingman daemon password");
 
     const response = await this.deps.fetch(`${origin.origin}/ready`, {
-      headers: { Authorization: `Bearer ${credential}` },
+			headers: { Authorization: basicAuthorization(password) },
       signal: this.timeoutSignal(),
     });
     if (response.status !== 200) throw new Error(`Wingman daemon is not ready: HTTP ${response.status}`);
@@ -79,7 +86,7 @@ export class DaemonDiscovery {
       throw new Error("Wingman daemon readiness does not match registration");
     }
 
-    const value = { origin: origin.origin, credential };
+		const value = { origin: origin.origin, password };
     this.cached = { value, expiresAt: this.now() + 1_000 };
     return value;
   }
@@ -89,7 +96,7 @@ export async function proxyDaemonRequest(discovery: DaemonDiscovery, request: Re
   const url = new URL(request.url);
   const transport = await discovery.transport();
   const target = new Request(`${transport.origin}${url.pathname}${url.search}`, request);
-  target.headers.set("Authorization", `Bearer ${transport.credential}`);
+	target.headers.set("Authorization", basicAuthorization(transport.password));
   try {
     const response = await fetchRequest(target);
     if (response.status === 401 || response.status === 503) discovery.invalidate();

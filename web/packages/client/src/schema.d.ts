@@ -58,24 +58,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List auth sessions */
-        get: operations["listAuthSessions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sessions/{id}": {
+    "/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -84,9 +67,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
-        /** Revoke an auth session */
-        delete: operations["revokeAuthSession"];
+        /** Create a Console session */
+        post: operations["login"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -153,7 +136,7 @@ export interface paths {
         /** List API clients */
         get: operations["listClients"];
         put?: never;
-        /** Create an API client and access token */
+        /** Register an API client */
         post: operations["createClient"];
         delete?: never;
         options?: never;
@@ -172,23 +155,6 @@ export interface paths {
         get: operations["getClient"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/clients/{id}/token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rotate an API client access token */
-        post: operations["rotateClientToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -931,14 +897,6 @@ export interface components {
             refresh?: string;
             type: string;
         };
-        AuthSession: {
-            client_id: string;
-            created_at: string;
-            expires_at?: string;
-            id: string;
-            owner: boolean;
-            revoked_at?: string;
-        };
         AuthType: {
             name?: string;
             type: string;
@@ -1008,8 +966,6 @@ export interface components {
         };
         CreateClientResponse: {
             client: components["schemas"]["Client"];
-            session: components["schemas"]["AuthSession"];
-            token: string;
         };
         CreateSessionRequest: {
             title?: string;
@@ -1105,6 +1061,9 @@ export interface components {
             msg?: string;
             raw: string;
             time?: string;
+        };
+        LoginRequest: {
+            password: string;
         };
         LoweredOptions: {
             reasoning_summary_auto?: boolean;
@@ -2249,12 +2208,9 @@ export interface operations {
             };
         };
     };
-    listAuthSessions: {
+    login: {
         parameters: {
-            query?: {
-                /** @description Client identity */
-                client_id?: string;
-            };
+            query?: never;
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -2262,44 +2218,14 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthSession"][] | null;
-                };
-            };
-            /** @description Request failed */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
             };
         };
-    };
-    revokeAuthSession: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client identity for resource attribution and scoping */
-                "X-Wingman-Client"?: string;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
-            /** @description OK */
-            200: {
+            /** @description No Content */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2505,40 +2431,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Client"];
-                };
-            };
-            /** @description Request failed */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    rotateClientToken: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client identity for resource attribution and scoping */
-                "X-Wingman-Client"?: string;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateClientResponse"];
                 };
             };
             /** @description Request failed */

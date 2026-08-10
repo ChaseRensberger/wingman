@@ -32,14 +32,14 @@ the directory.
 
 Create or reuse a Workspace, then create a session with `workspace_id`:
 
-These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" | jq -r '.[0].id')
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq -r '.[0].id')
 
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```

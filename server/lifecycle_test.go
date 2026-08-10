@@ -44,7 +44,7 @@ func TestStartRecoversOnlyOnce(t *testing.T) {
 }
 
 func TestReadinessIdentifiesFailedRecoverySubsystem(t *testing.T) {
-	server := New(Config{Store: &startupRecoveryStore{Store: memory.NewStore(), permissionErr: errors.New("database unavailable")}, Credential: "secret"})
+	server := New(Config{Store: &startupRecoveryStore{Store: memory.NewStore(), permissionErr: errors.New("database unavailable")}, Password: "secret"})
 	t.Cleanup(func() { _ = server.Close(context.Background()) })
 	if err := server.Start(context.Background()); err == nil {
 		t.Fatal("Start succeeded, want recovery failure")

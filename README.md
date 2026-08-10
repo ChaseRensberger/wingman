@@ -25,7 +25,7 @@ It adds Wingman to your shell `PATH` when it finds a suitable shell config. Pass
 
 ## Enable
 
-`wingman up`
+`wingman service start`
 
 ## Docs
 

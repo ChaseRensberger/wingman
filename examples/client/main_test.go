@@ -13,12 +13,13 @@ import (
 	"github.com/chaserensberger/wingman/api"
 )
 
-func TestConnectPersistsTokenAfterReadiness(t *testing.T) {
-	const token = "client-token"
+func TestConnectPersistsPasswordAfterReadiness(t *testing.T) {
+	const password = "client-password"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready":
-			if r.Header.Get("Authorization") != "Bearer "+token {
+			username, supplied, ok := r.BasicAuth()
+			if !ok || username != "wingman" || supplied != password {
 				t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 			}
 			_ = json.NewEncoder(w).Encode(api.ReadinessResponse{Ready: true, InstanceID: "instance_one", Version: "dev"})
@@ -28,18 +29,18 @@ func TestConnectPersistsTokenAfterReadiness(t *testing.T) {
 	}))
 	defer server.Close()
 
-	file := filepath.Join(t.TempDir(), "state", "token")
+	file := filepath.Join(t.TempDir(), "state", "password")
 	var output strings.Builder
-	if err := connect(context.Background(), []string{"--server", server.URL, "--token", token, "--token-file", file}, &output); err != nil {
+	if err := connect(context.Background(), []string{"--server", server.URL, "--password", password, "--password-file", file}, &output); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(file)
-	if err != nil || string(data) != token+"\n" {
-		t.Fatalf("token file = %q, %v", data, err)
+	if err != nil || string(data) != password+"\n" {
+		t.Fatalf("password file = %q, %v", data, err)
 	}
 	info, err := os.Stat(file)
 	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("token mode = %v, %v", info.Mode(), err)
+		t.Fatalf("password mode = %v, %v", info.Mode(), err)
 	}
 	if !strings.Contains(output.String(), "Instance: instance_one") {
 		t.Fatalf("output = %q", output.String())
@@ -60,11 +61,11 @@ func TestStatusReportsAuthenticationFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	file := filepath.Join(t.TempDir(), "token")
+	file := filepath.Join(t.TempDir(), "password")
 	if err := os.WriteFile(file, []byte("expired\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := status(context.Background(), []string{"--server", server.URL, "--token-file", file}, &strings.Builder{}); err == nil || !strings.Contains(err.Error(), "authentication required") {
+	if err := status(context.Background(), []string{"--server", server.URL, "--password-file", file}, &strings.Builder{}); err == nil || !strings.Contains(err.Error(), "authentication required") {
 		t.Fatalf("status error = %v", err)
 	}
 }

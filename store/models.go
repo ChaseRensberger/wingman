@@ -346,17 +346,6 @@ type Client struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// AuthSession authorizes a client using a hashed bearer token.
-type AuthSession struct {
-	ID        string `json:"id"`
-	ClientID  string `json:"client_id"`
-	Owner     bool   `json:"owner"`
-	TokenHash string `json:"-"`
-	CreatedAt string `json:"created_at"`
-	ExpiresAt string `json:"expires_at,omitempty"`
-	RevokedAt string `json:"revoked_at,omitempty"`
-}
-
 const (
 	DefaultClientID   = "cli_wingclient"
 	DefaultClientName = "WingClient"

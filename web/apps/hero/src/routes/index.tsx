@@ -15,7 +15,7 @@ function RouteComponent() {
 }
 
 const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
-const ENABLE_COMMAND = "wingman up";
+const ENABLE_COMMAND = "wingman service start";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
 // const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";

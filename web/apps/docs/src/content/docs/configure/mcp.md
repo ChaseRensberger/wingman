@@ -92,13 +92,13 @@ tool names collide, tool catalog creation fails.
 
 To inspect the daemon directly:
 
-These commands use `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl -sS http://127.0.0.1:2323/mcp \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" | jq
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq
 curl -sS http://127.0.0.1:2323/tools \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" | jq '.tools[] | select(.source == "mcp")'
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq '.tools[] | select(.source == "mcp")'
 ```
 
 `/mcp` lists every configured server and its connection status. `/tools` lists the MCP tools currently available to agents.

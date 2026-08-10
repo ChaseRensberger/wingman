@@ -149,12 +149,12 @@ print_locations() {
   echo "  Database (created when the server starts): ${data_dir}/wingman.db"
   echo "  Daemon state (created by serve): ${state_dir}"
   if [[ "$os" == "linux" ]]; then
-    echo "  Managed daemon state (created by up): /var/lib/wingman"
+    echo "  Managed daemon state (created by service start): /var/lib/wingman"
   fi
   if [[ "$os" == "windows" ]]; then
     echo "  Managed service: ${service_path}"
   else
-    echo "  Service file (created by up): ${service_path}"
+    echo "  Service file (created by service start): ${service_path}"
   fi
   echo
 }

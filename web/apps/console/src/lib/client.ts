@@ -1,4 +1,4 @@
-import { createWingmanClient, type components, type ErrorResponse } from "@wingman-actor/client";
+import { createWingmanClient, type ErrorResponse } from "@wingman-actor/client";
 
 import type { SessionSummary } from "./types";
 
@@ -83,19 +83,6 @@ export async function apiData<T>(request: Promise<APIResult<T>>): Promise<T> {
     );
   }
   return data as T;
-}
-
-export async function rotateClientToken(id: string): Promise<components["schemas"]["CreateClientResponse"]> {
-  const response = await fetch(`/clients/${encodeURIComponent(id)}/token`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    if (isDaemonConnectionFailure(response.status)) reportConnectionFailure();
-    throw await apiErrorFromResponse(response);
-  }
-  return response.json() as Promise<components["schemas"]["CreateClientResponse"]>;
 }
 
 export async function renameSession(session: Pick<SessionSummary, "id" | "version">, title: string): Promise<SessionSummary> {

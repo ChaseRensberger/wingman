@@ -8,7 +8,7 @@ function newDiscovery(fetchResponses: Response[]) {
 	return {
     discovery: new DaemonDiscovery({
       stateDir: () => "/state/wingman",
-      readTextFile: async (path) => path.endsWith("registration.json") ? registration() : "credential\n",
+		readTextFile: async (path) => path.endsWith("registration.json") ? registration() : "password\n",
       fetch: async () => fetchResponses.shift() ?? new Response(null, { status: 503 }),
       now: () => 0,
       timeoutSignal: () => AbortSignal.timeout(100),
@@ -28,7 +28,7 @@ Deno.test("Desktop discovery retries a daemon that becomes ready", async () => {
     },
   );
   const transport = await discovery.transport();
-  if (transport.origin !== "http://127.0.0.1:2323" || transport.credential !== "credential") {
+	if (transport.origin !== "http://127.0.0.1:2323" || transport.password !== "password") {
     throw new Error(`transport = ${JSON.stringify(transport)}`);
   }
 });
@@ -64,7 +64,7 @@ Deno.test("Desktop proxy rediscovers credentials after daemon authentication or 
       stateDir: () => "/state/wingman",
       readTextFile: async (path) => {
         if (path.endsWith("registration.json")) return registration(`ins_${generation}`);
-        return `credential_${generation}\n`;
+		return `password_${generation}\n`;
       },
       fetch: fetchMock,
       now: () => 0,
@@ -73,7 +73,7 @@ Deno.test("Desktop proxy rediscovers credentials after daemon authentication or 
     const request = new Request("http://127.0.0.1/health");
     const first = await proxyDaemonRequest(discovery, request, fetchMock);
     const second = await proxyDaemonRequest(discovery, request, fetchMock);
-    if (first.status !== failureStatus || second.status !== 200 || authorization.join(",") !== "Bearer credential_1,Bearer credential_2") {
+	if (first.status !== failureStatus || second.status !== 200 || authorization.join(",") !== `Basic ${btoa("wingman:password_1")},Basic ${btoa("wingman:password_2")}`) {
       throw new Error(`responses = ${first.status},${second.status}; authorization = ${authorization.join(",")}`);
     }
   }

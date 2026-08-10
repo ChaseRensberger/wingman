@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	credentialFile   = "credential"
-	credentialLock   = "credential.lock"
+	passwordFile     = "password"
+	passwordLock     = "password.lock"
 	registrationFile = "registration.json"
 	registrationLock = "registration.lock"
 	daemonLock       = "daemon.lock"
@@ -86,43 +86,53 @@ func (s *State) Dir() string {
 	return s.dir
 }
 
-// Credential returns the stable, randomly generated daemon credential.
-func (s *State) Credential() (string, error) {
-	var credential string
-	err := s.withLock(credentialLock, func() error {
-		path := s.path(credentialFile)
+// Password returns the stable, randomly generated daemon password.
+func (s *State) Password() (string, error) {
+	var password string
+	err := s.withLock(passwordLock, func() error {
+		path := s.path(passwordFile)
 		contents, err := os.ReadFile(path)
 		if err == nil {
-			credential, err = validateCredential(string(contents))
+			password, err = validatePassword(string(contents))
 			return err
 		}
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("read credential: %w", err)
+			return fmt.Errorf("read password: %w", err)
 		}
 
 		bytes := make([]byte, 32)
 		if _, err := rand.Read(bytes); err != nil {
-			return fmt.Errorf("generate credential: %w", err)
+			return fmt.Errorf("generate password: %w", err)
 		}
-		credential = base64.RawURLEncoding.EncodeToString(bytes)
-		if err := s.atomicWrite(credentialFile, []byte(credential)); err != nil {
-			return fmt.Errorf("write credential: %w", err)
+		password = base64.RawURLEncoding.EncodeToString(bytes)
+		if err := s.atomicWrite(passwordFile, []byte(password)); err != nil {
+			return fmt.Errorf("write password: %w", err)
 		}
 		return nil
 	})
-	return credential, err
+	return password, err
 }
 
-// ReadCredential reads the existing daemon credential without creating one.
-func (s *State) ReadCredential() (string, error) {
+// ReadPassword reads the existing daemon password without creating one.
+func (s *State) ReadPassword() (string, error) {
 	if err := s.ensureDir(); err != nil {
 		return "", err
 	}
-	contents, err := os.ReadFile(s.path(credentialFile))
+	contents, err := os.ReadFile(s.path(passwordFile))
 	if err != nil {
-		return "", fmt.Errorf("read credential: %w", err)
+		return "", fmt.Errorf("read password: %w", err)
 	}
-	return validateCredential(string(contents))
+	return validatePassword(string(contents))
+}
+
+// SetPassword replaces the daemon password.
+func (s *State) SetPassword(password string) error {
+	if _, err := validatePassword(password); err != nil {
+		return err
+	}
+	return s.withLock(passwordLock, func() error {
+		return s.atomicWrite(passwordFile, []byte(password))
+	})
 }
 
 // WriteRegistration atomically writes a validated daemon registration.
@@ -298,12 +308,11 @@ func ensurePrivateFile(path string) error {
 	return file.Close()
 }
 
-func validateCredential(credential string) (string, error) {
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(credential)
-	if err != nil || len(decoded) != 32 {
-		return "", errors.New("credential is not a 32-byte base64url value")
+func validatePassword(password string) (string, error) {
+	if password == "" || strings.TrimSpace(password) != password {
+		return "", errors.New("password must not be empty or contain surrounding whitespace")
 	}
-	return credential, nil
+	return password, nil
 }
 
 func decodeRegistration(contents []byte) (Registration, error) {

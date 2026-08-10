@@ -70,25 +70,37 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 				Action: runServe(cfg),
 			},
 			{
-				Name:   "up",
-				Usage:  "Install and start Wingman as a background service",
-				Flags:  serveFlags(cfg),
-				Action: runUp,
-			},
-			{
-				Name:   "down",
-				Usage:  "Stop and remove the Wingman background service",
-				Action: runDown,
-			},
-			{
-				Name:   "restart",
-				Usage:  "Restart the Wingman background service",
-				Action: runRestart,
-			},
-			{
-				Name:   "status",
-				Usage:  "Show Wingman's background service status",
-				Action: runStatus,
+				Name:  "service",
+				Usage: "Manage Wingman as a background service",
+				Commands: []*cli.Command{
+					{
+						Name:   "start",
+						Usage:  "Install and start Wingman as a background service",
+						Flags:  serveFlags(cfg),
+						Action: runServiceStart,
+					},
+					{
+						Name:   "stop",
+						Usage:  "Stop and remove the Wingman background service",
+						Action: runServiceStop,
+					},
+					{
+						Name:   "restart",
+						Usage:  "Restart the Wingman background service",
+						Action: runServiceRestart,
+					},
+					{
+						Name:   "status",
+						Usage:  "Show Wingman's background service status",
+						Action: runServiceStatus,
+					},
+					{
+						Name:      "password",
+						Usage:     "Show or set the background service password",
+						ArgsUsage: "[password]",
+						Action:    runServicePassword,
+					},
+				},
 			},
 			{
 				Name:  "version",
@@ -104,7 +116,6 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 				Flags:  updateFlags(),
 				Action: runUpdate,
 			},
-			authCommand(),
 			clientsCommand(),
 			{
 				Name:   "console",
@@ -190,6 +201,14 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			}
 		}
 		state := daemonstate.New(stateDir)
+		password := os.Getenv("WINGMAN_PASSWORD")
+		if password == "" {
+			var err error
+			password, err = state.Password()
+			if err != nil {
+				return fmt.Errorf("load daemon password: %w", err)
+			}
+		}
 		var lock *daemonstate.Lock
 		if cmd.Bool("register") {
 			var err error
@@ -198,10 +217,6 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 				return fmt.Errorf("acquire managed daemon ownership: %w", err)
 			}
 			defer func() { _ = lock.Release() }()
-		}
-		credential, err := state.Credential()
-		if err != nil {
-			return fmt.Errorf("load daemon credential: %w", err)
 		}
 		instanceID := "ins_" + ksuid.New().String()
 		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
@@ -228,8 +243,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			MCP: effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
-			Credential: credential, InstanceID: instanceID, Version: version,
-			ConsoleCookie: isLoopbackHost(effective.Server.Host),
+			Password: password, InstanceID: instanceID, Version: version,
 		})
 		if err != nil {
 			_ = listener.Close()

@@ -23,15 +23,19 @@ curl -fsSL https://wingman.actor/install | bash
 ## Enable
 
 ```bash
-wingman up
+wingman service start
 ```
 
 To run it in the foreground instead, use `wingman serve`.
 
-Load the owner credential for the local administration commands in this guide:
+Wingman always requires a daemon password. The managed service creates and uses
+its private password file. Set `WINGMAN_PASSWORD` only when you run
+`wingman serve` with a chosen foreground password.
+
+For the commands below, load the managed service password:
 
 ```bash
-export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
+export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
 ```
 
 ## Check that it is running
@@ -56,7 +60,7 @@ export ANTHROPIC_API_KEY={key}
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
@@ -69,7 +73,7 @@ An agent is a reusable definition: instructions, allowed tools, model, and model
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Quickstart Assistant",
@@ -88,7 +92,7 @@ A session is the running conversation. It owns the message history and optional 
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Quickstart\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 
@@ -101,7 +105,7 @@ The working directory must already exist. Directory-scoped tools such as `read`,
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
@@ -125,7 +129,7 @@ Subscribe to session events when you want lifecycle events as the agent runs:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Accept: text/event-stream"
 ```
 

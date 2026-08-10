@@ -14,8 +14,8 @@ Wingman uses per-user configuration. By default, files live under:
 
 Use this file for daemon-wide settings.
 
-> **Security:** Keep the owner credential private. Use client bearer tokens for
-> remote clients. Authentication does not provide tenant isolation.
+> **Security:** Wingman always requires a daemon password. Authentication does
+> not provide tenant isolation.
 
 Set `XDG_CONFIG_HOME` to use a different config root. For example,
 `XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.
@@ -82,7 +82,7 @@ Example:
 }
 ```
 
-Flags passed to `wingman serve` or `wingman up` override config values.
+Flags passed to `wingman serve` or `wingman service start` override config values.
 
 For exact fields, see [Config Schema](/reference/config-schema).
 

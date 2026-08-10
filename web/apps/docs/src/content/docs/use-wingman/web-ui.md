@@ -6,7 +6,7 @@ description: "Open the local Wingman Console."
 # Use the Console
 
 Wingman includes a local Console that uses the same HTTP origin as the API. It
-uses an owner browser session and never stores the owner credential.
+asks for the daemon password and stores only a signed browser session cookie.
 
 ## Local Console
 
@@ -16,8 +16,8 @@ After starting Wingman, open:
 http://localhost:2323/console
 ```
 
-On a loopback host, Wingman automatically creates the browser session. The
-session cookie is `HttpOnly` and `SameSite=Strict`.
+Enter the daemon password in the Console. The session cookie is `HttpOnly` and
+`SameSite=Strict`.
 
 You can also open the managed daemon from the CLI:
 
@@ -25,22 +25,7 @@ You can also open the managed daemon from the CLI:
 wingman console
 ```
 
-## Revoke Access
-
-List browser and native sessions:
-
-```bash
-wingman auth sessions
-```
-
-Revoke one session:
-
-```bash
-wingman auth revoke ats_...
-```
-
 If the connection drops, the Console retries its readiness check. When the
 daemon returns, it reloads the active page from the API.
 
-See [Authentication](/concepts/authentication) for the local Console session and
-client bearer token model.
+See [Authentication](/concepts/authentication) for the daemon password model.

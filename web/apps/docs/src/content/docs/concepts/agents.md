@@ -10,11 +10,11 @@ An agent is a reusable definition for a [session](/concepts/sessions) turn. It
 holds the instructions, allowed tools, model default, and optional output
 schema for that turn.
 
-This command uses `WINGMAN_TOKEN` from [HTTP API Basics](/build-clients/http-api-basics#authentication).
+This command uses `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl -sS -X POST http://localhost:2323/agents \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "Builder",

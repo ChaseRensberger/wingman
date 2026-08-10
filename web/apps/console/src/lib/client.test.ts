@@ -1,12 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { APIError, apiData, isDaemonConnectionFailure, rotateClientToken } from "./client";
-
-const originalFetch = globalThis.fetch;
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
+import { APIError, apiData, isDaemonConnectionFailure } from "./client";
 
 describe("generated API adapter", () => {
   test("returns generated response data", async () => {
@@ -49,14 +43,4 @@ describe("generated API adapter", () => {
     expect(isDaemonConnectionFailure(401)).toBe(false);
   });
 
-  test("rotates a client token with the local Console session", async () => {
-    let request: Request | undefined;
-    globalThis.fetch = async (input, init) => {
-      request = new Request(new URL(input.toString(), "http://localhost"), init);
-      return Response.json({ client: { id: "cli_one", name: "One" }, token: "token" });
-    };
-
-    await expect(rotateClientToken("cli_one")).resolves.toMatchObject({ token: "token" });
-    expect(request).toMatchObject({ method: "POST", url: "http://localhost/clients/cli_one/token" });
-  });
 });
