@@ -12,7 +12,7 @@ Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI
 Most clients follow this sequence:
 
 1. Check health with `GET /health`.
-2. Load an owner credential or client bearer token, then check readiness with `GET /ready`.
+2. Load the daemon password, then check readiness with `GET /ready`.
 3. Configure provider auth with `PUT /provider/auth`.
 4. Create or reuse an agent with `/agents`.
 5. Create or reuse a Workspace with `/workspaces` if the session needs a saved context.
@@ -22,40 +22,30 @@ Most clients follow this sequence:
 
 ## Authentication
 
-`GET /health` is public. Protected API routes accept an owner credential or a
-client bearer token.
+`GET /health` is public. Other API routes require the daemon password.
 
-Trusted local administration can load the owner credential from daemon state:
+Obtain the daemon password through a secure channel, then set it in your client
+environment. For a local managed service:
 
 ```bash
-export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
+export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
 ```
 
-Send it as a bearer token:
+For a foreground server started with `WINGMAN_PASSWORD`, the client uses the
+same value but must set `WINGMAN_DAEMON_PASSWORD` itself.
+
+Send it with HTTP Basic authentication and the username `wingman`:
 
 ```text
-Authorization: Bearer <token>
+Authorization: Basic <base64("wingman:<password>")>
 ```
 
-Do not copy the owner credential into a remote client. Create a registered client
-from the local owner Console or with `POST /clients`, then provide the returned
-token to that client:
+For example, `curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" http://localhost:2323/ready`
+sends the required credentials. Use TLS or an SSH tunnel before sending this
+password to a remote daemon. The
+`X-Wingman-Client` header is an attribution selector, not a credential.
 
-```text
-Authorization: Bearer <client-token>
-```
-
-Store the token in the client secret store. Wingman stores only its hash. Rotate
-it with `POST /clients/{id}/token` when it must be replaced.
-
-A client bearer token is bound to one Wingman Client. A client-authenticated
-request cannot select another client with `X-Wingman-Client`.
-
-The owner credential can use `X-Wingman-Client` for local administration. The
-header is not an authentication credential.
-
-See [Authentication](/concepts/authentication) for the local Console session and
-client bearer tokens.
+See [Authentication](/concepts/authentication) for Console sessions.
 
 ## Test a Remote Server
 
@@ -67,38 +57,21 @@ helper. Deploy the current checkout to a VM:
 ```
 
 The helper builds a Linux `amd64` binary, installs it on
-`ratchet-mews.exe.xyz`, starts `wingman up` on loopback port `2323`, and sets
+`ratchet-mews.exe.xyz`, starts `wingman service start` on loopback port `2323`, and sets
 the exe.dev HTTPS proxy port. Set `WINGMAN_EXE_ARCH=arm64` before the command
 for an arm64 VM.
 
-Create a client and print its access token on the VM:
+Use the managed service password to register a client on the VM:
 
 ```bash
 ssh ratchet-mews.exe.xyz 'wingman clients create --id cli_reference --name "Reference client"'
 ```
 
-Connect the reference client with the printed access token:
+Check the remote daemon with HTTP Basic authentication:
 
 ```bash
-go run ./examples/client connect \
-  --server https://ratchet-mews.exe.xyz \
-  --token '<access-token>' \
-  --token-file ./ratchet-mews.token
-```
-
-The client verifies `GET /ready` with the bearer token and writes it to the
-supplied `0600` file. Verify that the saved token remains valid later:
-
-```bash
-go run ./examples/client status \
-  --server https://ratchet-mews.exe.xyz \
-  --token-file ./ratchet-mews.token
-```
-
-Remove the local token when it is no longer needed:
-
-```bash
-go run ./examples/client disconnect --token-file ./ratchet-mews.token
+curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  https://ratchet-mews.exe.xyz/ready
 ```
 
 The deployment helper does not change the VM share's public/private setting.
@@ -111,12 +84,12 @@ unions for persistent-session and one-shot run events.
 
 ## Client Identity
 
-The owner can register clients with `/clients` and pass `X-Wingman-Client` on
-client-scoped requests. A bearer access token is bound to its client automatically.
+Any caller with daemon access can register clients with `/clients` and pass
+`X-Wingman-Client` on client-scoped requests.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"id":"cli_example","name":"Example client"}' | jq -r .client.id)
 ```
@@ -125,7 +98,7 @@ Create a session attributed to that client:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d '{"title":"Client session"}'
@@ -139,7 +112,7 @@ Create one when needed:
 
 ```bash
 WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "$(jq -n \
@@ -152,7 +125,7 @@ Or reuse an existing Workspace:
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "X-Wingman-Client: ${CLIENT_ID}" | jq -r '.[0].id')
 ```
 
@@ -160,7 +133,7 @@ Create a session in that Workspace:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"

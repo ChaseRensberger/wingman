@@ -90,7 +90,9 @@ and route details.
 
 ## Custom Model Routes
 
-Use config-defined providers for daemon-wide custom providers and models. Use `model_route` only when a specific agent/request needs explicit route metadata that should travel with that agent or request.
+Use configuration-defined providers for daemon-wide custom providers and
+models. Use `model_route` only when one agent or request needs explicit route
+metadata. This metadata travels with that agent or request.
 
 For example, a custom provider in `~/.config/wingman/wingman.json` can add `exe-openai/gpt-5.6-terra` to the normal provider and model APIs:
 

@@ -6,8 +6,7 @@ description: "Start Wingman as a foreground process or system service."
 # Run the Server
 
 Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2323`
-and stores persistent data in `~/.local/share/wingman/wingman.db`. Protected API
-routes require an owner credential or an auth session.
+and stores persistent data in `~/.local/share/wingman/wingman.db`.
 
 ## Foreground Server
 
@@ -29,34 +28,37 @@ Expected response:
 { "status": "ok" }
 ```
 
-## Background Service
+## Managed Service
 
 Install and start Wingman in the background:
 
 ```bash
-wingman up
+wingman service start
 ```
 
-On Linux, `wingman up` prompts for `sudo` when it needs to write `/etc/systemd/system/wingman.service`. On macOS, it writes the per-user LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist` and does not need `sudo`.
+On Linux, `wingman service start` prompts for `sudo` before it writes
+`/etc/systemd/system/wingman.service`. On macOS, it writes the per-user
+LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist`. It does not need
+`sudo`.
 
-`wingman up` returns after the registered daemon passes its authenticated
-readiness check. The private state files are in
+`wingman service start` returns after the registered daemon passes its readiness check. The
+private state files are in
 `${XDG_STATE_HOME:-$HOME/.local/state}/wingman`:
 
-- `credential` contains the stable owner credential.
-- `registration.json` contains the instance ID, version, URL, PID, and creation time.
+- `registration.json` contains the instance ID, version, URL, PID, and creation time. It has owner-only permissions.
+- `password` contains the managed service password and has owner-only permissions.
 - `daemon.lock` elects one managed daemon for this state directory.
 
 Inspect the service:
 
 ```bash
-wingman status
+wingman service status
 ```
 
 Stop and remove it:
 
 ```bash
-wingman down
+wingman service stop
 ```
 
 ## Updates
@@ -67,7 +69,12 @@ Update a release installation to the latest stable release:
 wingman update
 ```
 
-Wingman downloads the archive for the current Linux or macOS architecture, verifies it against the release's `checksums.txt`, and atomically replaces the resolved executable. A running systemd service or LaunchAgent is restarted after the replacement. The executable's directory must be writable; package-manager-managed or system-wide installations may need to be updated through their original installer instead.
+Wingman downloads the archive for the current Linux or macOS architecture. It
+compares the archive with the release's `checksums.txt`. It then replaces the
+resolved executable atomically. Wingman restarts a running systemd service or
+LaunchAgent after replacement. The executable directory must be writable. Use
+the original installer to update a package-manager-managed or system-wide
+installation.
 
 Check for an update without changing anything:
 
@@ -93,25 +100,22 @@ Wingman does not enable cross-origin browser access by default. The bundled Cons
 
 ## Authentication
 
-`GET /health` and Console assets are public. Other API routes require an owner
-credential, local Console session, or client bearer token.
+Wingman always requires a daemon password. `wingman serve` uses
+`WINGMAN_PASSWORD` when it is set; otherwise, it creates or reuses the private
+state `password` file. The managed service uses only its private password file.
+`GET /health` and Console assets remain public.
 
-Load the owner credential for local administration:
+Use HTTP Basic authentication for protected routes:
 
 ```bash
-export WINGMAN_TOKEN=$(cat "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/credential")
 curl -sS http://localhost:2323/ready \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}"
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
-The owner credential can create clients, rotate client tokens, and revoke auth
-sessions. It also remains a
-local recovery bearer. Do not distribute this credential to browsers or remote
-applications.
-
-The local Console receives a separate `HttpOnly` owner session cookie. Native
-clients use the bearer token returned when their client is created or rotated.
-See [Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
+The Console asks for the password. It stores a separate signed `HttpOnly`
+session cookie. Before you send a password to a remote machine, use TLS or an
+SSH tunnel. See
+[Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ## Ephemeral Mode
 

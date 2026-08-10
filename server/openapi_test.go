@@ -27,7 +27,7 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/auth/sessions", "/auth/sessions/{id}", "/client", "/clients", "/clients/{id}/token", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
+	for _, path := range []string{"/health", "/auth/login", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}
@@ -79,9 +79,9 @@ func TestOpenAPIAuthenticationContract(t *testing.T) {
 	operation := func(path, method string) map[string]any {
 		return paths[path].(map[string]any)[method].(map[string]any)
 	}
-	rootSecurity := operation("/clients/{id}/token", "post")["security"].([]any)
-	if len(rootSecurity) != 2 || rootSecurity[0].(map[string]any)["rootBearer"] == nil || rootSecurity[1].(map[string]any)["consoleSession"] == nil {
-		t.Fatalf("client token rotation security = %#v", rootSecurity)
+	loginSecurity := operation("/auth/login", "post")["security"].([]any)
+	if len(loginSecurity) != 0 {
+		t.Fatalf("login security = %#v", loginSecurity)
 	}
 	readySecurity := operation("/ready", "get")["security"].([]any)
 	if len(readySecurity) != 2 {

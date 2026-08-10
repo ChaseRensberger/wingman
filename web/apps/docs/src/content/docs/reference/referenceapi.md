@@ -14,27 +14,23 @@ ID is returned in the `X-Request-ID` header. See [HTTP API Basics](/build-client
 
 The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
-> **Authenticated control surface:** Protected routes accept the owner credential
-> or an auth session. An authenticated client can use providers, inspect
-> directories, manage extensions, and run enabled tools. Wingman does not
-> provide tenant isolation. See [Authentication](/concepts/authentication).
+> **Control surface:** Protected routes require the daemon password through HTTP
+> Basic authentication or a Console session. Wingman does not provide tenant
+> isolation. See [Authentication](/concepts/authentication).
 
 ## Conventions
 
 - Request bodies are JSON.
-- Send `Authorization: Bearer <token>` on protected routes from native clients.
+- Send HTTP Basic authentication as `wingman:<password>` on protected routes from native clients.
 - Standard request timeout is 60 seconds.
 - Session event endpoints and `POST /run` bypass the standard timeout; `/sessions/{id}/events` and `/run` return `text/event-stream`.
-- ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ats_` (auth session), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
+- ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Authentication endpoints
 
 | Method | Path | Authentication | Description |
 |---|---|---|---|
-| `GET` | `/auth/sessions` | Owner credential or local owner Console | List auth sessions |
-| `DELETE` | `/auth/sessions/{id}` | Owner credential or local owner Console | Revoke an auth session |
-
-Client bearer tokens are returned once when a client is created or rotated.
+| `POST` | `/auth/login` | None | Create a Console session from the daemon password |
 
 ## Health
 
@@ -160,7 +156,6 @@ and update return `400 Bad Request` for unknown or duplicate names.
 | `GET` | `/clients` | List registered clients. |
 | `POST` | `/clients` | Register a client by name. |
 | `GET` | `/clients/{id}` | Get a registered client. |
-| `POST` | `/clients/{id}/token` | Rotate a client bearer token. |
 | `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
 | `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
 | `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |
@@ -272,7 +267,7 @@ Deletion requires the current session version in `expected_version`. It returns
 
 ```bash
 curl -sS -X DELETE \
-  -H "Authorization: Bearer ${WINGMAN_TOKEN}" \
+  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
   "http://localhost:2323/sessions/ses_...?expected_version=2"
 ```
 

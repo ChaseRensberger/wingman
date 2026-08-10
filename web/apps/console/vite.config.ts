@@ -9,11 +9,11 @@ import path from "path";
 import { readDaemonProxy } from "./daemon-proxy";
 
 const stateDir = path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), "wingman");
-const { target: daemonTarget, credential: daemonCredential } = readDaemonProxy(stateDir);
+const { target: daemonTarget, password: daemonPassword } = readDaemonProxy(stateDir);
 const daemonProxy = () => ({
   target: daemonTarget,
   changeOrigin: true,
-  headers: daemonCredential ? { Authorization: `Bearer ${daemonCredential}` } : undefined,
+	headers: daemonPassword ? { Authorization: `Basic ${Buffer.from(`wingman:${daemonPassword}`).toString("base64")}` } : undefined,
 });
 
 export default defineConfig({

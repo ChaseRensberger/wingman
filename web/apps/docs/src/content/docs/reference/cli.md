@@ -18,13 +18,13 @@ wingman <command> [flags]
 | Command | Description |
 |---|---|
 | `serve` | Start the HTTP server in the foreground. |
-| `up` | Install, enable, and start Wingman as a background service. |
-| `down` | Stop and remove the Wingman background service. |
-| `restart` | Restart the Wingman background service. |
-| `status` | Show the Wingman background service status. |
+| `service start` | Install, enable, and start Wingman as a background service. |
+| `service stop` | Stop and remove the Wingman background service. |
+| `service restart` | Restart the Wingman background service. |
+| `service status` | Show the Wingman background service status. |
+| `service password [password]` | Show or set the managed service password. |
 | `console` | Open the managed daemon Console. |
-| `auth sessions` | List browser and native auth sessions. |
-| `auth revoke` | Revoke one auth session. |
+| `clients create` | Register an API client identity. |
 | `update` | Check for or install a verified release update. |
 | `version` | Print version information. |
 
@@ -36,20 +36,20 @@ wingman <command> [flags]
 wingman serve
 ```
 
-`wingman up` installs and starts a background service:
+`wingman service start` installs and starts a background service:
 
 ```bash
-wingman up
+wingman service start
 ```
 
-On Linux, `wingman up` re-executes itself through `sudo` when required. It
+On Linux, `wingman service start` re-executes itself through `sudo` when required. It
 installs `/etc/systemd/system/wingman.service` and runs the service as the
 invoking user. Systemd manages its private daemon state at `/var/lib/wingman`.
 The default SQLite database remains at `~/.local/share/wingman/wingman.db`.
 On macOS, it installs a per-user LaunchAgent. Both service forms wait for
-authenticated readiness before the command returns.
+readiness before the command returns.
 
-`wingman up` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
+`wingman service start` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
 
 ## Runtime Flags
 
@@ -70,10 +70,10 @@ Examples:
 wingman serve --host 127.0.0.1 --port 2424
 wingman serve --db ./wingman.db
 wingman serve --ephemeral
-wingman up --port 2424
+wingman service start --port 2424
 ```
 
-## Console and Auth Commands
+## Console Command
 
 Open the Console for the managed daemon:
 
@@ -81,28 +81,15 @@ Open the Console for the managed daemon:
 wingman console
 ```
 
-List auth sessions, or filter by client:
-
-```bash
-wingman auth sessions
-wingman auth sessions --client cli_...
-```
-
-Revoke one session:
-
-```bash
-wingman auth revoke ats_...
-```
-
-These commands target the verified daemon that `wingman up` registered. They do
-not scan ports or target an unregistered foreground server.
+The Console prompts for the daemon password and creates a signed `HttpOnly`
+session cookie.
 
 ## Service Commands
 
 Check the generated service:
 
 ```bash
-wingman status
+wingman service status
 ```
 
 The command reports discovery as `ready`, `starting`, `stale`, `incompatible`,
@@ -111,15 +98,24 @@ or missing. It then displays the systemd or launchd status.
 Restart the service after editing `~/.config/wingman/wingman.json`:
 
 ```bash
-wingman restart
+wingman service restart
 ```
 
-To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`, run `wingman up` again with the new flags.
+To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`, run `wingman service start` again with the new flags.
+
+Show the managed service password, or replace it by providing a new value:
+
+```bash
+wingman service password
+wingman service password 'new-password'
+```
+
+When you set a new password, Wingman stops the service. Run `wingman service start` to start it again.
 
 Stop and remove the service:
 
 ```bash
-wingman down
+wingman service stop
 ```
 
 ## Version

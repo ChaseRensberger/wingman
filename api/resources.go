@@ -59,21 +59,9 @@ type CreateClientRequest struct {
 	Name string `json:"name"`
 }
 
-// CreateClientResponse returns a client and its access token once.
+// CreateClientResponse returns a registered client.
 type CreateClientResponse struct {
-	Client  Client      `json:"client"`
-	Session AuthSession `json:"session"`
-	Token   string      `json:"token"`
-}
-
-// AuthSession is a client access token or local Console session record.
-type AuthSession struct {
-	ID        string `json:"id"`
-	ClientID  string `json:"client_id"`
-	Owner     bool   `json:"owner"`
-	CreatedAt string `json:"created_at"`
-	ExpiresAt string `json:"expires_at,omitempty"`
-	RevokedAt string `json:"revoked_at,omitempty"`
+	Client Client `json:"client"`
 }
 
 // Workspace is one client-owned saved context.

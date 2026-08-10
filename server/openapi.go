@@ -39,8 +39,7 @@ func (s *Server) setupOpenAPI() {
 	config.SchemasPath = ""
 	config.CreateHooks = nil
 	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"bearerAuth":     {Type: "http", Scheme: "bearer"},
-		"rootBearer":     {Type: "http", Scheme: "bearer", Description: "Daemon root credential"},
+		"basicAuth":      {Type: "http", Scheme: "basic", Description: "Daemon password with username wingman"},
 		"consoleSession": {Type: "apiKey", In: "cookie", Name: consoleSessionCookie},
 	}
 	s.protocol = humachi.New(s.router, config)
@@ -114,12 +113,10 @@ func (s *Server) registerBinary(method, path, operationID, summary, contentType 
 
 func setOperationSecurity(op *huma.Operation) {
 	switch op.Path {
-	case "/health":
+	case "/health", "/auth/login":
 		op.Security = []map[string][]string{}
-	case "/auth/sessions", "/auth/sessions/{id}", "/clients", "/clients/{id}", "/clients/{id}/token":
-		op.Security = []map[string][]string{{"rootBearer": {}}, {"consoleSession": {}}}
 	default:
-		op.Security = []map[string][]string{{"bearerAuth": {}}, {"consoleSession": {}}}
+		op.Security = []map[string][]string{{"basicAuth": {}}, {"consoleSession": {}}}
 	}
 }
 

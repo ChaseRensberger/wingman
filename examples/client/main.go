@@ -52,9 +52,9 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 
 func usage(output io.Writer) error {
 	_, err := fmt.Fprintln(output, `Usage:
-  client connect --server https://wingman.example --token <token> --token-file <path>
-  client status --server https://wingman.example --token-file <path>
-  client disconnect --token-file <path>`)
+  client connect --server https://wingman.example --password <password> --password-file <path>
+  client status --server https://wingman.example --password-file <path>
+  client disconnect --password-file <path>`)
 	return err
 }
 
@@ -62,13 +62,13 @@ func connect(ctx context.Context, args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("connect", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	server := flags.String("server", "", "Wingman server URL")
-	token := flags.String("token", "", "Client access token")
-	tokenFile := flags.String("token-file", "", "Client access token file")
+	password := flags.String("password", "", "Wingman password")
+	passwordFile := flags.String("password-file", "", "Wingman password file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *token == "" || *tokenFile == "" {
-		return errors.New("--token and --token-file are required")
+	if *password == "" || *passwordFile == "" {
+		return errors.New("--password and --password-file are required")
 	}
 
 	baseURL, err := serverURL(*server)
@@ -76,11 +76,11 @@ func connect(ctx context.Context, args []string, output io.Writer) error {
 		return err
 	}
 	client := &http.Client{Timeout: requestTimeout}
-	ready, err := readiness(ctx, client, baseURL, *token)
+	ready, err := readiness(ctx, client, baseURL, *password)
 	if err != nil {
 		return err
 	}
-	if err := writeToken(*tokenFile, *token); err != nil {
+	if err := writePassword(*passwordFile, *password); err != nil {
 		return err
 	}
 	fmt.Fprintf(output, "Connected to %s\nInstance: %s\nVersion: %s\n", baseURL, ready.InstanceID, ready.Version)
@@ -91,22 +91,22 @@ func status(ctx context.Context, args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	server := flags.String("server", "", "Wingman server URL")
-	tokenFile := flags.String("token-file", "", "Session token file")
+	passwordFile := flags.String("password-file", "", "Wingman password file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *tokenFile == "" {
-		return errors.New("--token-file is required")
+	if *passwordFile == "" {
+		return errors.New("--password-file is required")
 	}
 	baseURL, err := serverURL(*server)
 	if err != nil {
 		return err
 	}
-	token, err := readToken(*tokenFile)
+	password, err := readPassword(*passwordFile)
 	if err != nil {
 		return err
 	}
-	ready, err := readiness(ctx, &http.Client{Timeout: requestTimeout}, baseURL, token)
+	ready, err := readiness(ctx, &http.Client{Timeout: requestTimeout}, baseURL, password)
 	if err != nil {
 		return err
 	}
@@ -117,23 +117,23 @@ func status(ctx context.Context, args []string, output io.Writer) error {
 func disconnect(args []string, output io.Writer) error {
 	flags := flag.NewFlagSet("disconnect", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	tokenFile := flags.String("token-file", "", "Session token file")
+	passwordFile := flags.String("password-file", "", "Wingman password file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *tokenFile == "" {
-		return errors.New("--token-file is required")
+	if *passwordFile == "" {
+		return errors.New("--password-file is required")
 	}
-	if err := os.Remove(*tokenFile); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove token file: %w", err)
+	if err := os.Remove(*passwordFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove password file: %w", err)
 	}
-	fmt.Fprintln(output, "Removed local session token.")
+	fmt.Fprintln(output, "Removed local password.")
 	return nil
 }
 
-func readiness(ctx context.Context, client *http.Client, baseURL *url.URL, token string) (api.ReadinessResponse, error) {
+func readiness(ctx context.Context, client *http.Client, baseURL *url.URL, password string) (api.ReadinessResponse, error) {
 	var ready api.ReadinessResponse
-	if err := requestJSON(ctx, client, baseURL, http.MethodGet, "/ready", token, nil, &ready); err != nil {
+	if err := requestJSON(ctx, client, baseURL, http.MethodGet, "/ready", password, nil, &ready); err != nil {
 		return api.ReadinessResponse{}, err
 	}
 	if !ready.Ready {
@@ -142,7 +142,7 @@ func readiness(ctx context.Context, client *http.Client, baseURL *url.URL, token
 	return ready, nil
 }
 
-func requestJSON(ctx context.Context, client *http.Client, baseURL *url.URL, method, path, token string, requestBody, responseBody any) error {
+func requestJSON(ctx context.Context, client *http.Client, baseURL *url.URL, method, path, password string, requestBody, responseBody any) error {
 	endpoint := baseURL.ResolveReference(&url.URL{Path: path})
 	var body io.Reader
 	if requestBody != nil {
@@ -157,8 +157,8 @@ func requestJSON(ctx context.Context, client *http.Client, baseURL *url.URL, met
 		return fmt.Errorf("create request: %w", err)
 	}
 	request.Header.Set("Accept", "application/json")
-	if token != "" {
-		request.Header.Set("Authorization", "Bearer "+token)
+	if password != "" {
+		request.SetBasicAuth("wingman", password)
 	}
 	if requestBody != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -203,27 +203,27 @@ func hostIsLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func writeToken(path, token string) error {
+func writePassword(path, password string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create token directory: %w", err)
+		return fmt.Errorf("create password directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(token+"\n"), 0600); err != nil {
-		return fmt.Errorf("write token file: %w", err)
+	if err := os.WriteFile(path, []byte(password+"\n"), 0600); err != nil {
+		return fmt.Errorf("write password file: %w", err)
 	}
 	if err := os.Chmod(path, 0600); err != nil {
-		return fmt.Errorf("secure token file: %w", err)
+		return fmt.Errorf("secure password file: %w", err)
 	}
 	return nil
 }
 
-func readToken(path string) (string, error) {
+func readPassword(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read token file: %w", err)
+		return "", fmt.Errorf("read password file: %w", err)
 	}
-	token := strings.TrimSpace(string(data))
-	if token == "" {
-		return "", errors.New("token file is empty")
+	password := strings.TrimSpace(string(data))
+	if password == "" {
+		return "", errors.New("password file is empty")
 	}
-	return token, nil
+	return password, nil
 }

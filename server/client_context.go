@@ -6,18 +6,9 @@ import (
 	"net/http"
 )
 
-type principalKind uint8
-
-const (
-	rootPrincipal principalKind = iota + 1
-	sessionPrincipal
-)
-
 type authPrincipal struct {
-	kind     principalKind
-	clientID string
-	owner    bool
-	cookie   bool
+	authenticated bool
+	cookie        bool
 }
 
 type principalContextKey struct{}
@@ -33,18 +24,15 @@ func principalFromRequest(r *http.Request) authPrincipal {
 
 func (s *Server) requireRoot(w http.ResponseWriter, r *http.Request) bool {
 	principal := principalFromRequest(r)
-	if principal.kind == rootPrincipal || principal.owner {
+	if s.password == "" || principal.authenticated {
 		return true
 	}
-	w.Header().Set("WWW-Authenticate", `Bearer realm="wingman"`)
+	w.Header().Set("WWW-Authenticate", `Basic realm="wingman"`)
 	s.writeError(w, http.StatusUnauthorized, "root authentication required")
 	return false
 }
 
 func (s *Server) resolveClientID(r *http.Request) (string, error) {
-	if principal := principalFromRequest(r); principal.kind == sessionPrincipal {
-		return principal.clientID, nil
-	}
 	clientID := r.Header.Get("X-Wingman-Client")
 	if clientID == "" {
 		client, err := s.store.EnsureDefaultClient()

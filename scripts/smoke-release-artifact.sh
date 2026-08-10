@@ -86,24 +86,24 @@ export HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
 daemon_pid=$!
 
 registration_file=$state_dir/registration.json
-credential_file=$state_dir/credential
+password_file=$state_dir/password
 for _ in {1..100}; do
-  [[ -f $registration_file && -f $credential_file ]] && break
+  [[ -f $registration_file && -f $password_file ]] && break
   kill -0 "$daemon_pid" 2>/dev/null || fail 'daemon exited before publishing registration'
   sleep 0.1
 done
 [[ -f $registration_file ]] || fail 'daemon did not publish registration'
-[[ -f $credential_file ]] || fail 'daemon did not publish credential'
+[[ -f $password_file ]] || fail 'daemon did not publish password'
 
 registration=$(<"$registration_file")
-credential=$(<"$credential_file")
+password=$(<"$password_file")
 [[ $registration =~ \"instance_id\":\"[^\"]+\" ]] || fail 'registration has no instance_id'
 if [[ $registration =~ \"url\":\"([^\"]+)\" ]]; then
   daemon_url=${BASH_REMATCH[1]}
 else
   fail 'registration has no URL'
 fi
-[[ $credential =~ ^[A-Za-z0-9_-]+$ ]] || fail 'credential is invalid'
+[[ $password =~ ^[A-Za-z0-9_-]+$ ]] || fail 'password is invalid'
 
 for _ in {1..100}; do
   health_status=$(curl --silent --show-error --output "$tmp/health" --write-out '%{http_code}' \
@@ -119,7 +119,7 @@ ready_status=$(curl --silent --show-error --output "$tmp/ready-unauthenticated" 
 [[ $ready_status == 401 ]] || fail "unauthenticated /ready returned $ready_status"
 
 ready_status=$(curl --silent --show-error --output "$tmp/ready-authenticated" --write-out '%{http_code}' \
-  --connect-timeout 1 --max-time 2 --header "Authorization: Bearer $credential" "$daemon_url/ready") || ready_status=000
+  --connect-timeout 1 --max-time 2 --user "wingman:$password" "$daemon_url/ready") || ready_status=000
 [[ $ready_status == 200 ]] || fail "authenticated /ready returned $ready_status"
 
 console_status=$(curl --silent --show-error --output "$tmp/console" --write-out '%{http_code}' \

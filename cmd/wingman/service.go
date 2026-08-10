@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -25,29 +26,29 @@ const (
 	launchdLabel       = "actor.wingman"
 )
 
-func runUp(ctx context.Context, cmd *cli.Command) error {
+func runServiceStart(ctx context.Context, cmd *cli.Command) error {
 	switch runtime.GOOS {
 	case "linux":
-		return runLinuxUp(ctx, cmd)
+		return runLinuxStart(ctx, cmd)
 	case "darwin":
-		return runDarwinUp(ctx, cmd)
+		return runDarwinStart(ctx, cmd)
 	default:
-		return fmt.Errorf("wingman up supports Linux/systemd and macOS/launchd only")
+		return fmt.Errorf("wingman service start supports Linux/systemd and macOS/launchd only")
 	}
 }
 
-func runDown(ctx context.Context, cmd *cli.Command) error {
+func runServiceStop(ctx context.Context, cmd *cli.Command) error {
 	switch runtime.GOOS {
 	case "linux":
-		return runLinuxDown(ctx)
+		return runLinuxStop(ctx)
 	case "darwin":
-		return runDarwinDown(ctx)
+		return runDarwinStop(ctx)
 	default:
-		return fmt.Errorf("wingman down supports Linux/systemd and macOS/launchd only")
+		return fmt.Errorf("wingman service stop supports Linux/systemd and macOS/launchd only")
 	}
 }
 
-func runRestart(ctx context.Context, cmd *cli.Command) error {
+func runServiceRestart(ctx context.Context, cmd *cli.Command) error {
 	stateDir, err := managedStateDir()
 	if err != nil {
 		return err
@@ -66,12 +67,12 @@ func runRestart(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("wingman restart supports Linux/systemd and macOS/launchd only")
+		return fmt.Errorf("wingman service restart supports Linux/systemd and macOS/launchd only")
 	}
 	return waitForServiceReady(ctx, stateDir)
 }
 
-func runStatus(ctx context.Context, cmd *cli.Command) error {
+func runServiceStatus(ctx context.Context, cmd *cli.Command) error {
 	stateDir, err := managedStateDir()
 	if err == nil {
 		printDaemonStatus(ctx, daemonstate.New(stateDir))
@@ -85,11 +86,101 @@ func runStatus(ctx context.Context, cmd *cli.Command) error {
 	case "darwin":
 		return runLaunchctlAttached(ctx, "print", launchdTarget())
 	default:
-		return fmt.Errorf("wingman status supports Linux/systemd and macOS/launchd only")
+		return fmt.Errorf("wingman service status supports Linux/systemd and macOS/launchd only")
 	}
 }
 
-func runLinuxUp(ctx context.Context, cmd *cli.Command) error {
+func runServicePassword(ctx context.Context, cmd *cli.Command) error {
+	if cmd.Args().Len() > 1 {
+		return fmt.Errorf("expected zero or one password")
+	}
+	stateDir, err := managedStateDir()
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS == "linux" {
+		ok, err := ensureSystemdRoot(ctx)
+		if err != nil || !ok {
+			return err
+		}
+	}
+	state := daemonstate.New(stateDir)
+	changed := cmd.Args().Len() == 1
+	if changed {
+		if err := stopServiceForPasswordChange(ctx); err != nil {
+			return err
+		}
+		if err := state.SetPassword(cmd.Args().First()); err != nil {
+			return err
+		}
+	}
+	password, err := state.Password()
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS == "linux" {
+		if err := chownServicePassword(stateDir); err != nil {
+			return err
+		}
+	}
+	if changed {
+		fmt.Fprintln(commandWriter(cmd), "Wingman service stopped. Run 'wingman service start' to start it again.")
+	}
+	fmt.Fprintln(commandWriter(cmd), password)
+	return nil
+}
+
+func stopServiceForPasswordChange(ctx context.Context) error {
+	switch runtime.GOOS {
+	case "linux":
+		if _, err := os.Stat(systemdServicePath); os.IsNotExist(err) {
+			return nil
+		}
+		return runSystemctl(ctx, "stop", "wingman.service")
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve home directory: %w", err)
+		}
+		if _, err := os.Stat(launchdPlistPath(home)); os.IsNotExist(err) {
+			return nil
+		}
+		return runLaunchctl(ctx, "bootout", launchdTarget())
+	default:
+		return fmt.Errorf("wingman service password supports Linux/systemd and macOS/launchd only")
+	}
+}
+
+func chownServicePassword(stateDir string) error {
+	name, _, err := serviceAccount()
+	if err != nil {
+		return err
+	}
+	account, err := user.Lookup(name)
+	if err != nil {
+		return fmt.Errorf("look up service user %q: %w", name, err)
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return fmt.Errorf("parse service user UID: %w", err)
+	}
+	gid, err := strconv.Atoi(account.Gid)
+	if err != nil {
+		return fmt.Errorf("parse service user GID: %w", err)
+	}
+	if err := os.Chown(stateDir, uid, gid); err != nil {
+		return fmt.Errorf("chown state directory: %w", err)
+	}
+	if err := os.Chown(filepath.Join(stateDir, "password"), uid, gid); err != nil {
+		return fmt.Errorf("chown password file: %w", err)
+	}
+	if err := os.Chown(filepath.Join(stateDir, "password.lock"), uid, gid); err != nil {
+		return fmt.Errorf("chown password lock: %w", err)
+	}
+	return nil
+}
+
+func runLinuxStart(ctx context.Context, cmd *cli.Command) error {
 	ok, err := ensureSystemdRoot(ctx)
 	if err != nil || !ok {
 		return err
@@ -118,11 +209,11 @@ func runLinuxUp(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
-	fmt.Println("Run 'wingman status' to inspect it")
+	fmt.Println("Run 'wingman service status' to inspect it")
 	return nil
 }
 
-func runLinuxDown(ctx context.Context) error {
+func runLinuxStop(ctx context.Context) error {
 	ok, err := ensureSystemdRoot(ctx)
 	if err != nil || !ok {
 		return err
@@ -140,9 +231,9 @@ func runLinuxDown(ctx context.Context) error {
 	return nil
 }
 
-func runDarwinUp(ctx context.Context, cmd *cli.Command) error {
+func runDarwinStart(ctx context.Context, cmd *cli.Command) error {
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("run wingman up as the logged-in user, not root")
+		return fmt.Errorf("run wingman service start as the logged-in user, not root")
 	}
 	exe, err := executablePath()
 	if err != nil {
@@ -171,13 +262,13 @@ func runDarwinUp(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
-	fmt.Println("Run 'wingman status' to inspect it")
+	fmt.Println("Run 'wingman service status' to inspect it")
 	return nil
 }
 
-func runDarwinDown(ctx context.Context) error {
+func runDarwinStop(ctx context.Context) error {
 	if os.Geteuid() == 0 {
-		return fmt.Errorf("run wingman down as the logged-in user, not root")
+		return fmt.Errorf("run wingman service stop as the logged-in user, not root")
 	}
 	if err := runLaunchctl(ctx, "bootout", launchdTarget()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -270,7 +361,7 @@ func waitForServiceReady(ctx context.Context, stateDir string) error {
 	defer cancel()
 	registration, err := daemonclient.WaitReady(waitCtx, daemonstate.New(stateDir), version, 100*time.Millisecond)
 	if err != nil {
-		return fmt.Errorf("Wingman service did not become ready; run 'wingman status' for details: %w", err)
+		return fmt.Errorf("Wingman service did not become ready; run 'wingman service status' for details: %w", err)
 	}
 	fmt.Printf("Wingman daemon ready at %s\n", registration.URL)
 	return nil
