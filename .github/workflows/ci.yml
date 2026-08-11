@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Set up deno
+        uses: denoland/setup-deno@v2
+
       - name: Install JavaScript dependencies
         working-directory: web
         run: bun install --frozen-lockfile
@@ -82,6 +85,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up go
         uses: actions/setup-go@v5
