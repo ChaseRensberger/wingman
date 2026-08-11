@@ -53,3 +53,4 @@ NODE
 (cd "$repo_root/web" && bun run --filter @wingman-actor/client test:package)
 
 printf 'Prepared release v%s. Review the changes, commit them, then tag that commit.\n' "$version"
+printf 'Suggested commit: build: prepare v%s release\n' "$version"
