@@ -1,6 +1,6 @@
 {
   "name": "@wingman-actor/client",
-  "version": "0.1.39",
+  "version": "0.1.41",
   "description": "Typed TypeScript client for the Wingman agent harness HTTP API.",
   "license": "MIT",
   "repository": {
@@ -10,7 +10,13 @@
   },
   "homepage": "https://docs.wingman.actor/build-clients/typescript-sdk/",
   "bugs": "https://github.com/chaserensberger/wingman/issues",
-  "keywords": ["wingman", "agents", "openapi", "sse", "typescript"],
+  "keywords": [
+    "wingman",
+    "agents",
+    "openapi",
+    "sse",
+    "typescript"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +26,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "engines": {
     "node": ">=20"
