@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -150,5 +151,55 @@ func TestClientDoJSONReturnsAPIErrorWithoutPassword(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), password) {
 		t.Fatalf("error leaked password: %v", err)
+	}
+}
+
+func TestInspectRejectsNonLoopbackRegistrationBeforeReadingPassword(t *testing.T) {
+	state := daemonstate.New(t.TempDir())
+	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "https://example.com", PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	if err := state.WriteRegistration(registration); err != nil {
+		t.Fatal(err)
+	}
+
+	result := Inspect(context.Background(), state, "dev")
+	if result.Status != StatusStale {
+		t.Fatalf("status = %s, want %s", result.Status, StatusStale)
+	}
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "loopback") {
+		t.Fatalf("error = %v", result.Err)
+	}
+}
+
+func TestInspectDoesNotFollowRedirects(t *testing.T) {
+	var redirected atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected.Add(1)
+	}))
+	defer target.Close()
+
+	state := daemonstate.New(t.TempDir())
+	password, err := state.Password()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		username, supplied, ok := request.BasicAuth()
+		if !ok || username != "wingman" || supplied != password {
+			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
+		}
+		http.Redirect(response, request, target.URL, http.StatusFound)
+	}))
+	defer server.Close()
+	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: server.URL, PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	if err := state.WriteRegistration(registration); err != nil {
+		t.Fatal(err)
+	}
+
+	result := Inspect(context.Background(), state, "dev")
+	if result.Status != StatusStale {
+		t.Fatalf("status = %s, want %s", result.Status, StatusStale)
+	}
+	if redirected.Load() != 0 {
+		t.Fatalf("redirect target requests = %d", redirected.Load())
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,6 +30,12 @@ const (
 )
 
 const startingWindow = 30 * time.Second
+
+var managedHTTPClient = &http.Client{
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 // Result contains the discovered registration and authenticated readiness.
 type Result struct {
@@ -162,6 +169,9 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 		}
 		return Result{Status: status, Err: err}
 	}
+	if err := validateManagedDaemonURL(registration.URL); err != nil {
+		return Result{Status: StatusStale, Registration: registration, Err: err}
+	}
 	password, err := state.ReadPassword()
 	if err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
@@ -172,7 +182,7 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
 	request.SetBasicAuth("wingman", password)
-	response, err := http.DefaultClient.Do(request)
+	response, err := managedHTTPClient.Do(request)
 	if err != nil {
 		status := StatusStale
 		if created, parseErr := time.Parse(time.RFC3339Nano, registration.CreatedAt); parseErr == nil {
@@ -211,6 +221,25 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 	result.Status = StatusStale
 	result.Err = fmt.Errorf("readiness returned HTTP %d", response.StatusCode)
 	return result
+}
+
+func validateManagedDaemonURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path != "" && parsed.Path != "/" {
+		return fmt.Errorf("managed daemon URL must be a loopback origin: %q", raw)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("managed daemon URL must use HTTP or HTTPS: %q", raw)
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("managed daemon URL must use a loopback host: %q", raw)
+	}
+	return nil
 }
 
 // WaitReady polls discovery until a compatible daemon is ready or ctx ends.
