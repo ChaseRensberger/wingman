@@ -47,7 +47,7 @@ jobs:
 
       - name: Check browser client boundaries
         working-directory: web
-        run: bun --filter @wingman-actor/client test
+        run: bun run --filter @wingman-actor/client test
 
       - name: Verify client release version
         run: bash scripts/check-client-version.sh "${GITHUB_REF_NAME#v}"

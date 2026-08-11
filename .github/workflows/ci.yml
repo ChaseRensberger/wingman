@@ -38,7 +38,7 @@ jobs:
 
       - name: Check browser client boundaries
         working-directory: web
-        run: bun --filter @wingman-actor/client test
+        run: bun run --filter @wingman-actor/client test
 
       - name: Test npm package artifact
         run: bash scripts/test-client-package.sh
