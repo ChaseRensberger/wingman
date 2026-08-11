@@ -20,8 +20,9 @@ go get github.com/chaserensberger/wingman/client@v0.1.41
 ## Connect to a Local Daemon
 
 If the application runs as the daemon user, use `NewLocal`. It reads the
-private daemon registration. It accepts only a loopback origin. It makes sure
-that the daemon is ready before it returns a client.
+private daemon registration from the XDG state directory. On Linux, it also
+checks the managed service state directory. It accepts only a loopback origin.
+It makes sure that the daemon is ready before it returns a client.
 
 ```go
 wingman, err := client.NewLocal(context.Background())
@@ -30,7 +31,7 @@ if err != nil {
 }
 ```
 
-Use `NewLocal` only in a local application that runs as the daemon user. It
+Use `NewLocal` only in a local application that can read the daemon state. It
 does not connect to a remote daemon.
 
 If the daemon has a known URL, use `WithPassword`:

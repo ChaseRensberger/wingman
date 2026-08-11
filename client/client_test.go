@@ -303,6 +303,34 @@ func TestNewLocalFromState(t *testing.T) {
 	}
 }
 
+func TestNewLocalFallsBackToManagedState(t *testing.T) {
+	userState := daemonstate.New(t.TempDir())
+	managedState := daemonstate.New(t.TempDir())
+	password, err := managedState.Password()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		username, supplied, ok := request.BasicAuth()
+		if !ok || username != "wingman" || supplied != password {
+			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
+		}
+		_ = json.NewEncoder(response).Encode(api.ReadinessResponse{Ready: true, InstanceID: "ins_1", Version: "0.1.0"})
+	}))
+	defer server.Close()
+	if err := managedState.WriteRegistration(daemonstate.Registration{InstanceID: "ins_1", Version: "0.1.0", URL: server.URL, PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := newLocalFromDirs(context.Background(), []string{userState.Dir(), managedState.Dir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client == nil {
+		t.Fatal("client = nil")
+	}
+}
+
 func TestMessageAdmissionHelpers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/sessions/ses_1/message" {

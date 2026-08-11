@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,14 @@ func DefaultDir() (string, error) {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
 	return filepath.Join(home, ".local", "state", "wingman"), nil
+}
+
+// ManagedDir returns Wingman's managed-service state directory.
+func ManagedDir() (string, error) {
+	if runtime.GOOS == "linux" {
+		return "/var/lib/wingman", nil
+	}
+	return DefaultDir()
 }
 
 // Dir returns the state root directory.
