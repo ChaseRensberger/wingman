@@ -14,6 +14,9 @@ npm install @wingman-actor/client@0.1.42
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
 bundlers that support `fetch`, `ReadableStream`, and `TextDecoder`.
 
+See the [TypeScript Client API](/reference/typescript-client-api/) for the
+complete public method index.
+
 ## REST Requests
 
 Create a client with the daemon URL, password, and client identity. The client

@@ -8,6 +8,9 @@ description: "Use the generated Go client with a Wingman daemon."
 The Go SDK provides typed REST methods. It also provides local daemon discovery
 and helpers for Wingman SSE streams.
 
+See the [Go Client API](/reference/go-client-api/) for the complete public
+method index.
+
 Install the SDK version with the same tag as the Wingman daemon:
 
 ```bash

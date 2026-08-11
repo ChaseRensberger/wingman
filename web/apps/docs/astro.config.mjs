@@ -97,11 +97,13 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          items: [
-            { label: "CLI", slug: "reference/cli" },
-            { label: "API", slug: "reference/referenceapi" },
-            { label: "Config Schema", slug: "reference/config-schema" },
-          ],
+           items: [
+             { label: "CLI", slug: "reference/cli" },
+             { label: "API", slug: "reference/referenceapi" },
+             { label: "Go Client API", slug: "reference/go-client-api" },
+             { label: "TypeScript Client API", slug: "reference/typescript-client-api" },
+             { label: "Config Schema", slug: "reference/config-schema" },
+           ],
         },
       ],
     }),
