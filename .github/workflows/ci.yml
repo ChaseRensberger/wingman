@@ -23,7 +23,7 @@ jobs:
       - name: Set up node
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install JavaScript dependencies
         working-directory: web
@@ -60,6 +60,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up go
         uses: actions/setup-go@v5

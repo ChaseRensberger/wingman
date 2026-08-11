@@ -168,8 +168,8 @@ func TestManagerKeepsProjectPluginDirectoriesScopeLocal(t *testing.T) {
 	if len(discovered) != 3 {
 		t.Fatalf("plugin generations = %d, want default plus two directory scopes", len(discovered))
 	}
-	wantFirst := []string{global, pluginhost.LocalPluginDir(firstDir)}
-	wantSecond := []string{global, pluginhost.LocalPluginDir(secondDir)}
+	wantFirst := []string{global, pluginhost.LocalPluginDir(first.Scope().WorkDir())}
+	wantSecond := []string{global, pluginhost.LocalPluginDir(second.Scope().WorkDir())}
 	if !reflect.DeepEqual(discovered[1], wantFirst) || !reflect.DeepEqual(discovered[2], wantSecond) {
 		t.Fatalf("plugin dirs = %#v, want %#v then %#v", discovered, wantFirst, wantSecond)
 	}
