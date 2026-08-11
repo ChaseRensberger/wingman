@@ -76,6 +76,54 @@ curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
 
 The deployment helper does not change the VM share's public/private setting.
 
+## Go SDK
+
+The Go SDK is generated from the same OpenAPI 3.1 contract as the TypeScript
+client. Add the current release to your application:
+
+```bash
+go get github.com/chaserensberger/wingman/client@latest
+```
+
+Create an authenticated client, then call generated endpoint methods:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/chaserensberger/wingman/client"
+)
+
+func main() {
+	wingman, err := client.New(
+		"http://localhost:2323",
+		client.WithPassword(os.Getenv("WINGMAN_DAEMON_PASSWORD")),
+		client.WithClientID("cli_example"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	ready, err := wingman.GetReadinessWithResponse(context.Background(), nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(ready.JSON200.Version)
+}
+```
+
+Generated methods have a `WithResponse` suffix and expose typed JSON response
+fields. `Run` and `StreamSessionEvents` provide typed SSE streams. Non-success
+responses return `*client.APIError`.
+
+The SDK is released with the Wingman module. A new public `v*` Git tag is
+automatically available through the Go module proxy and indexed at
+[`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client).
+
 ## OpenAPI and TypeScript
 
 The running daemon publishes its OpenAPI 3.1 contract at `/openapi.json`. The

@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.0/configuration-schema.json
+package: client
+output: client/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  client-type-name: GeneratedClient
+  response-type-suffix: HTTPResponse
+  exclude-operation-ids:
+    - listSessionEvents
+    - streamSessionEvents
+  exclude-schemas:
+    - SessionEvent
+    - RunStreamEvent
