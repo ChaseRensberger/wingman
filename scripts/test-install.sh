@@ -65,7 +65,7 @@ run_install() {
 
 location_home=$tmp/location-home
 location_output=$tmp/location-output
-HOME=$location_home "$repo/install" --binary "$binary" --install-dir "$location_home/bin" --no-modify-path --yes >"$location_output"
+HOME=$location_home XDG_CONFIG_HOME=$location_home/.config XDG_STATE_HOME=$location_home/.local/state "$repo/install" --binary "$binary" --install-dir "$location_home/bin" --no-modify-path --yes >"$location_output"
 grep -Fxq "  Binary (created now): $location_home/bin/wingman" "$location_output" || fail 'binary location was not reported'
 grep -Fxq "  Config (created when saved): $location_home/.config/wingman/wingman.json" "$location_output" || fail 'config location was not reported'
 grep -Fxq "  Database (created when the server starts): $location_home/.local/share/wingman/wingman.db" "$location_output" || fail 'database location was not reported'
