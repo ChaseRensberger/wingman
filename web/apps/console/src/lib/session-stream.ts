@@ -1,4 +1,5 @@
-import { APIError, streamRun } from "@wingman-actor/client";
+import { APIError } from "@wingman-actor/client";
+import { client } from "@/lib/client";
 
 function sanitizeGeneratedTitle(title: string): string {
 	return title
@@ -18,7 +19,7 @@ export async function generateSessionTitle(
 
 	let textBuffer = "";
 	let terminal = false;
-	for await (const parsed of streamRun({
+	for await (const parsed of client.run.stream({
 			agent: {
 				id: "session_title_generator",
 				name: "Session Title Generator",

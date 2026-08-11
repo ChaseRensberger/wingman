@@ -22,7 +22,7 @@ import {
 } from "@wingman/core/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
-import { api, apiData } from "@/lib/client";
+import { client } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
@@ -58,7 +58,7 @@ function AgentsPage() {
     onSubmit: async ({ value }) => {
       setSaving(true);
       try {
-        await apiData(api.POST("/agents", { body: buildAgentPayload(value) }));
+        await client.agents.create(buildAgentPayload(value));
         form.reset();
         setCreateOpen(false);
         await load();
@@ -73,9 +73,9 @@ function AgentsPage() {
   async function load() {
     try {
       const [agentData, providerData, toolData] = await Promise.all([
-        apiData(api.GET("/agents")) as Promise<Agent[]>,
-        apiData(api.GET("/provider")) as Promise<Provider[]>,
-        apiData(api.GET("/tools")) as Promise<ToolsResponse>,
+        client.agents.list() as Promise<Agent[]>,
+        client.providers.list() as Promise<Provider[]>,
+        client.tools.list() as Promise<ToolsResponse>,
       ]);
       setAgents(agentData);
       setProviders(providerData);
@@ -84,9 +84,7 @@ function AgentsPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = (await apiData(api.GET("/provider/{name}/models", {
-              params: { path: { name: provider.id } },
-            }))) as Record<string, ProviderModel>;
+            const data = await client.providers.models.list(provider.id) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
           } catch {
             return [provider.id, []] as const;

@@ -6,7 +6,7 @@ import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { getDisplayName, setDisplayName } from "@/lib/greeting";
 import { Input } from "@wingman/core/components/core/input";
 import { ThemePreviewSwitcher } from "@wingman/core/components/theme-preview-switcher";
-import { api, apiData } from "@/lib/client";
+import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
@@ -32,7 +32,7 @@ function ClientManagement() {
 
 	async function load() {
 		try {
-			setClients(await apiData(api.GET("/clients")) as Client[]);
+			setClients(await client.clients.list() as Client[]);
 		} catch { }
 	}
 	useEffect(() => { void load(); }, []);
@@ -41,7 +41,7 @@ function ClientManagement() {
 		if (!clientID.trim() || !clientName.trim()) return;
 		setBusy(true);
 		try {
-			const created = await apiData(api.POST("/clients", { body: { id: clientID.trim(), name: clientName.trim() } })) as { client: Client };
+			const created = await client.clients.create({ id: clientID.trim(), name: clientName.trim() }) as { client: Client };
 			setClients((current) => [created.client, ...current]); setClientID(""); setClientName("");
 		} catch (err) { showErrorToast(err); } finally { setBusy(false); }
 	}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/chaserensberger/wingman/api"
 	"github.com/segmentio/ksuid"
 )
 
@@ -18,6 +20,32 @@ func (c *SDK) RegisterClient(ctx context.Context, id, name string) (Client, erro
 		return Client{}, fmt.Errorf("register client returned HTTP %d without a client", response.StatusCode())
 	}
 	return response.JSON201.Client, nil
+}
+
+// EnsureClient creates a client identity or returns the matching existing client.
+func (c *SDK) EnsureClient(ctx context.Context, id, name string) (Client, error) {
+	id, name = strings.TrimSpace(id), strings.TrimSpace(name)
+	created, err := c.RegisterClient(ctx, id, name)
+	if err == nil {
+		return created, nil
+	}
+	var apiError *APIError
+	if !errors.As(err, &apiError) || apiError.Response.Code != api.ErrorCodeConflict {
+		return Client{}, err
+	}
+
+	response, getErr := c.GetClientWithResponse(ctx, id, nil)
+	if getErr != nil {
+		return Client{}, getErr
+	}
+	if response.JSON200 == nil {
+		return Client{}, fmt.Errorf("get client returned HTTP %d without a client", response.StatusCode())
+	}
+	existing := *response.JSON200
+	if existing.Id != id || existing.Name != name {
+		return Client{}, fmt.Errorf("client %q does not match the requested identity", id)
+	}
+	return existing, nil
 }
 
 // NewMessageAdmission assigns a request ID when one is not already present.

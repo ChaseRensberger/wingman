@@ -5,7 +5,7 @@ description: "Control which tool actions run automatically, ask for approval, or
 
 # Permissions
 
-Permissions control what happens when an agent calls a tool.
+Permissions control the result when an agent calls a tool.
 
 Wingman has two layers:
 
@@ -31,7 +31,7 @@ Rules match an action and a resource.
 | Action | Resource |
 |---|---|
 | `read` | File or directory path. |
-| `edit` | File path for `edit` and `write`; every touched path for `apply_patch`. |
+| `edit` | File path for `edit` and `write`. Every touched path for `apply_patch`. |
 | `grep` | Search pattern. |
 | `glob` | Glob pattern. |
 | `bash` | Shell command string. |
@@ -39,7 +39,7 @@ Rules match an action and a resource.
 | `websearch` | Search query. |
 | MCP or plugin tool name | `*` |
 
-`edit`, `write`, and `apply_patch` all use the `edit` action because they mutate files.
+`edit`, `write`, and `apply_patch` use the `edit` action because they change files.
 
 ## Global Permissions
 
@@ -64,13 +64,15 @@ Put daemon-wide defaults in `~/.config/wingman/wingman.json`:
 }
 ```
 
-Global permissions are runtime policy. They are not written into SQLite and do not mutate stored agents.
+Global permissions are runtime policy. SQLite does not store them. They do not
+change stored agents.
 
 ## Agent Overrides In Config
 
-Use `agent_permissions` for daemon-local rules that apply to one stored agent.
+For daemon-local rules that apply to one stored agent, use `agent_permissions`.
 
-Keys may be an agent ID or an agent name. If both match, the ID-specific rules run last.
+Keys can be an agent ID or an agent name. If both match, the ID-specific rules run
+last.
 
 ```json
 {
@@ -94,7 +96,8 @@ Keys may be an agent ID or an agent name. If both match, the ID-specific rules r
 
 ## Stored Agent Permissions
 
-Agents are stored in SQLite. Their `permissions` field is part of the agent definition and can be set through the agent API:
+SQLite stores agents. The `permissions` field is part of the agent definition.
+You can set it through the agent API:
 
 ```json
 {
@@ -112,9 +115,9 @@ Agents are stored in SQLite. Their `permissions` field is part of the agent defi
 
 ## Rule Order
 
-Rules are evaluated in order. The last matching rule wins.
+Wingman evaluates rules in order. The last matching rule wins.
 
-This lets you put a catch-all first and exceptions after it:
+This lets you put a catch-all first. Put exceptions after it:
 
 ```json
 {
@@ -128,34 +131,36 @@ This lets you put a catch-all first and exceptions after it:
 }
 ```
 
-The command `git status --short` is allowed. The command `git push origin main` is denied.
+The command `git status --short` is allowed. The command `git push origin main`
+is denied.
 
 ## Interactive Approval
 
-When `ask` wins, Wingman persists a request before the tool is authorized or
-started. The bundled console shows the action and every resource with three
+When `ask` wins, Wingman stores a request before the tool is authorized or
+started. The bundled console shows the action and every resource. It has three
 choices:
 
 - **Allow once** permits only the waiting call.
-- **Always allow** permits the waiting call and remembers each exact
+- **Always allow** permits the waiting call. It remembers each exact
   action/resource pair for this session.
 - **Reject** declines the tool call and returns a model-visible permission
   error.
 
 Remembered grants are stored separately from authored Agent and daemon rules.
-They satisfy later `ask` decisions in the same session, but cannot override a
-`deny`. Pending requests time out after five minutes. Canceling the run or
-stopping the daemon interrupts them without running the tool.
+They satisfy later `ask` decisions in the same session. They cannot override a
+`deny`. Pending requests time out after five minutes. Canceling the run interrupts
+them without running the tool. Stopping the daemon interrupts them without running
+the tool.
 
 API clients can list and answer requests through the session permission
 endpoints. A non-interactive Go `run.Config` without a `PermissionPrompter`
-declines `ask` immediately; it never waits indefinitely.
+declines `ask` immediately. It never waits indefinitely.
 
 ## Client Behavior
 
-Denied and rejected tool calls are returned as failed tool results. The
-model-facing output remains plain text, but clients should use structured
-metadata and durable permission records instead of parsing that text.
+Denied and rejected tool calls return failed tool results. The model-facing output
+remains plain text. Clients must use structured metadata and durable permission
+records instead of parsing that text.
 
 Denied example:
 
@@ -190,30 +195,30 @@ Rejected approval example:
 ```
 
 Persistent session streams emit durable `session.permission.requested` and
-`session.permission.resolved` events containing the complete permission request.
-Reload pending state from `GET /sessions/{id}/permission-requests`; do not depend
-on having observed the original request event.
+`session.permission.resolved` events. Each event contains the complete permission
+request. Reload pending state from `GET /sessions/{id}/permission-requests`. Do not
+depend on the original request event.
 
 ## Precedence
 
-Effective permissions are assembled at run time:
+Wingman assembles effective permissions at run time:
 
 1. Stored agent permissions from SQLite.
 2. Global `permissions` from `wingman.json`.
 3. Name-matched `agent_permissions` from `wingman.json`.
 4. ID-matched `agent_permissions` from `wingman.json`.
 
-Daemon-local config can restrict or refine stored agents without rewriting them.
+Daemon-local configuration can restrict or refine stored agents without rewriting them.
 
 ## Supported Syntax
 
-Use a single effect for everything:
+To use one effect for everything, use:
 
 ```json
 { "permissions": "ask" }
 ```
 
-Use action-level effects:
+To use action-level effects, use:
 
 ```json
 {
@@ -225,7 +230,7 @@ Use action-level effects:
 }
 ```
 
-Use action/resource maps for granular rules:
+To use action/resource maps for granular rules, use:
 
 ```json
 {
@@ -238,4 +243,5 @@ Use action/resource maps for granular rules:
 }
 ```
 
-Resource patterns use simple wildcards: `*` matches any sequence, including `/`, and `?` matches one character.
+Resource patterns use simple wildcards. `*` matches any sequence, including `/`.
+`?` matches one character.

@@ -6,7 +6,7 @@ order: 104
 
 # Plugins
 
-Plugins extend a Wingman session. They can add tools, observe lifecycle events,
+Plugins extend a Wingman session. They add tools, observe lifecycle events,
 transform model context, change tool calls, and add custom message parts.
 
 Plugins are session-scoped. They cannot create sessions, list other sessions, or
@@ -15,12 +15,12 @@ HTTP API.
 
 ## Plugin Forms
 
-Wingman has one plugin model with two loading paths:
+Wingman uses one plugin model with two loading paths:
 
 | Form | Use it when |
 |---|---|
-| Go plugin | You embed Wingman or ship a custom binary and want typed in-process hooks. |
-| External RPC plugin | You want the stock `wingman serve` binary to load a subprocess from disk. |
+| Go plugin | Use this form when you embed Wingman or ship a custom binary that needs typed in-process hooks. |
+| External RPC plugin | Use this form when the stock `wingman serve` binary loads a subprocess from disk. |
 
 Go plugins provide lifecycle hooks. RPC plugins provide tool execution in the
 stock server.
@@ -38,9 +38,9 @@ type Plugin interface {
 }
 ```
 
-`Activate` receives a session-scoped registry. Use it to register hooks, tools,
-event sinks, transforms, or custom message-part decoders. Return cleanup for any
-resources acquired during activation.
+`Activate` receives a session-scoped registry. Register hooks, tools, event
+sinks, transforms, or custom message-part decoders with this registry. Return
+cleanup for resources that activation acquires.
 
 ```go
 func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
@@ -56,7 +56,7 @@ func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 }
 ```
 
-Install a Go plugin when constructing a session:
+Add a Go plugin when you construct a session:
 
 ```go
 sess := session.New(
@@ -68,23 +68,25 @@ defer sess.Close(context.Background())
 ```
 
 Plugins activate before the first run. If replacement activation fails, the
-existing plugins remain active. `Session.Close` waits for active work before
-releasing plugins.
+existing plugins stay active. `Session.Close` waits for active work. It then
+releases the plugins.
 
-`RegisterSink` uses a one-second dispatch timeout by default and permits at most
-one callback in flight per sink. Use `RegisterSinkTimeout` to choose another
+`RegisterSink` uses a one-second dispatch timeout by default. It permits one
+callback in flight for each sink. Use `RegisterSinkTimeout` to set another
 positive timeout. A blocked sink drops later events until its callback returns.
 
-Use Go plugins for embedded applications, custom binaries, performance-sensitive hooks, and code that needs typed access to hook inputs.
+Use Go plugins for embedded applications, custom binaries, performance-sensitive
+hooks, and code that needs typed access to hook inputs.
 
-The stock `wingman serve` binary does not discover Go plugins from disk. See [Go Plugin Quickstart](/extend/plugin-quickstart) for a step-by-step example.
+The stock `wingman serve` binary does not discover Go plugins from disk. See
+[Go Plugin Quickstart](/extend/plugin-quickstart) for a step-by-step example.
 
 ## External Plugins
 
-External plugins are discovered from global plugin directories and, when a
-session has a working directory, from `.wingman/plugins/` under that directory.
-They are started as subprocesses and called over newline-delimited JSON-RPC on
-stdio.
+Wingman discovers external plugins in global plugin directories. If a session
+has a working directory, Wingman also discovers plugins in
+`.wingman/plugins/` under that directory. Wingman starts each plugin as a
+subprocess. It calls the plugin through newline-delimited JSON-RPC on stdio.
 
 The default plugin directory is:
 
@@ -105,7 +107,7 @@ wingman serve --no-plugins
 ```
 
 Project-local plugins are available only to sessions in that working directory.
-Tool names must be unique across native, RPC, and MCP sources. A collision
+Tool names must be unique across native, RPC, and MCP sources. A name collision
 prevents the tool catalog from loading.
 
 An external plugin is declared by a `wingman-plugin.json` file. Files ending in `.plugin.json` are also loaded.
@@ -133,13 +135,15 @@ Minimal manifest:
 }
 ```
 
-`command` is executed directly. Shell expansion is not applied, so pass every argument as a separate array item.
+Wingman executes `command` directly. Shell expansion is not applied. Pass each
+argument as a separate array item.
 
 See [RPC Plugin Protocol](/extend/rpc-plugin-protocol) for the manifest fields, JSON-RPC request shape, and a minimal Node plugin.
 
 ## Using Plugin Tools
 
-Plugin tools are selected like built-in tools: include the tool name in an agent's `tools` allow-list.
+Plugin tools are selected like built-in tools. Include the tool name in an
+agent's `tools` allow-list.
 
 ```json
 {
@@ -155,20 +159,22 @@ Wingman rejects duplicate names rather than choosing an implicit winner.
 
 ## Inspect Plugins
 
-List loaded plugins and non-fatal load errors:
+Use this command to list loaded plugins and non-fatal load errors:
 
-These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands use `WINGMAN_DAEMON_PASSWORD` for HTTP Basic authentication. See
+[HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \
   -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
-Reload plugins in the directoryless scope:
+Use this command to reload plugins in the directoryless scope:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload \
   -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
 ```
 
-External plugins run with the same permissions as the Wingman process that starts them. Install plugins only from sources you trust.
+External plugins run with the permissions of the Wingman process that starts
+them. Install plugins only from trusted sources.

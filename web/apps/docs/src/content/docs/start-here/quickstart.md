@@ -6,7 +6,7 @@ order: 2
 
 # Quick Start
 
-This guide uses the CLI and HTTP API. For the bundled browser UI, see [Use the Console](/use-wingman/web-ui).
+This guide uses the CLI and HTTP API. For the bundled browser UI, read [Use the Console](/use-wingman/web-ui).
 
 ## Prerequisites
 
@@ -26,19 +26,19 @@ curl -fsSL https://wingman.actor/install | bash
 wingman service start
 ```
 
-To run it in the foreground instead, use `wingman serve`.
+To run Wingman in the foreground, use `wingman serve`.
 
 Wingman always requires a daemon password. The managed service creates and uses
-its private password file. Set `WINGMAN_PASSWORD` only when you run
+its private password file. Set `WINGMAN_PASSWORD` only if you run
 `wingman serve` with a chosen foreground password.
 
-For the commands below, load the managed service password:
+For the following commands, load the managed service password:
 
 ```bash
 export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
 ```
 
-## Check that it is running
+## Make Sure That It Is Running
 
 ```bash
 curl -sS http://localhost:2323/health
@@ -52,7 +52,8 @@ Expected response:
 
 ## Configure provider auth
 
-Store your Anthropic API key in Wingman's local auth store. Replace `{key}` with your key:
+Store the Anthropic API key in the local Wingman auth store. Replace `{key}`
+with your key:
 
 ```bash
 export ANTHROPIC_API_KEY={key}
@@ -65,11 +66,13 @@ curl -sS -X PUT http://localhost:2323/provider/auth \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
 
-The key is persisted in the server's SQLite database. Auth status responses only report whether a provider is configured; they do not return the secret.
+The server saves the key in its SQLite database. Auth status responses report
+only whether a provider is configured. They do not return the secret.
 
 ## Create an agent
 
-An agent is a reusable definition: instructions, allowed tools, model, and model options.
+An agent is a reusable definition. It contains instructions, allowed tools, a
+model, and model options.
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
@@ -88,7 +91,8 @@ printf 'agent: %s\n' "$AGENT_ID"
 
 ## Create a session
 
-A session is the running conversation. It owns the message history and optional working directory.
+A session is a running conversation. It contains the message history and an
+optional working directory.
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
@@ -99,7 +103,9 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must already exist. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` run relative to this session directory.
+The working directory must already exist. Directory-scoped tools such as
+`read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` run relative
+to this session directory.
 
 ## Send a message
 
@@ -110,7 +116,8 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response confirms that the server accepted the message. Use the session event stream for progress and completion:
+The response confirms that the server accepted the message. Use the session
+event stream to get progress and completion:
 
 ```json
 {
@@ -120,12 +127,12 @@ The response confirms that the server accepted the message. Use the session even
 }
 ```
 
-If the response is lost, repeating this request with the same `request_id` and
-input returns the same run instead of queuing duplicate work.
+If the response is lost, repeat this request with the same `request_id` and
+input. The server returns the same run instead of queuing duplicate work.
 
 ## Stream a message
 
-Subscribe to session events when you want lifecycle events as the agent runs:
+If you want lifecycle events as the agent runs, subscribe to session events:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
@@ -133,7 +140,8 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
   -H "Accept: text/event-stream"
 ```
 
-Each event is sent as server-sent events with an `event:` type and a JSON `data:` envelope.
+The server sends each event as a server-sent event. Each event has an `event:`
+type and a JSON `data:` envelope.
 
 ## Next steps
 

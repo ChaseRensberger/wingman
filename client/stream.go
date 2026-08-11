@@ -17,8 +17,9 @@ import (
 
 // SessionEventsOptions configures a persistent-session event stream.
 type SessionEventsOptions struct {
-	After *int64
-	Limit *int
+	After       *int64
+	LastEventID *int64
+	Limit       *int
 }
 
 // SSEFrame is one parsed server-sent event frame.
@@ -58,10 +59,11 @@ func (c *SDK) ListSessionEvents(ctx context.Context, sessionID string, options *
 
 // RunStream reads events from one ephemeral run.
 type RunStream struct {
-	decoder *sseDecoder
-	frame   SSEFrame
-	event   api.RunStreamEvent
-	err     error
+	decoder  *sseDecoder
+	frame    SSEFrame
+	event    api.RunStreamEvent
+	err      error
+	terminal bool
 }
 
 // Next advances to the next run event.
@@ -69,6 +71,9 @@ func (s *RunStream) Next() bool {
 	frame, ok := s.decoder.Next()
 	if !ok {
 		s.err = s.decoder.Err()
+		if s.err == nil && !s.terminal {
+			s.err = fmt.Errorf("run stream ended before terminal done or error event")
+		}
 		return false
 	}
 	event, err := decodeRunStreamEvent(frame.Data)
@@ -78,6 +83,7 @@ func (s *RunStream) Next() bool {
 	}
 	s.event = event
 	s.frame = frame
+	s.terminal = event.Type == api.RunStreamEventDone || event.Type == api.RunStreamEventError
 	return true
 }
 
@@ -149,7 +155,11 @@ func (c *SDK) StreamSessionEvents(ctx context.Context, sessionID string, options
 	if encoded := query.Encode(); encoded != "" {
 		path += "?" + encoded
 	}
-	response, err := c.sseRequest(ctx, http.MethodGet, path, nil, nil)
+	headers := http.Header{}
+	if options != nil && options.LastEventID != nil {
+		headers.Set("Last-Event-ID", strconv.FormatInt(*options.LastEventID, 10))
+	}
+	response, err := c.sseRequest(ctx, http.MethodGet, path, nil, headers)
 	if err != nil {
 		return nil, err
 	}

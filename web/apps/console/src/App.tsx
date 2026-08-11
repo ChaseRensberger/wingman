@@ -9,7 +9,7 @@ import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
 import { DaemonConnectionBanner, useDaemonConnection } from "@/components/daemon-connection";
 import { navItems } from "@/lib/navigation";
-import { api, apiData } from "@/lib/client";
+import { client as wingman } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
 type Client = { id: string; name: string };
@@ -20,7 +20,7 @@ function useCurrentClient(hasConnected: boolean, revision: number) {
 	useEffect(() => {
 		if (!hasConnected) return;
 		let cancelled = false;
-		void apiData(api.GET("/client"))
+		void wingman.current.client()
 			.then((current) => { if (!cancelled) setClient(current); })
 			.catch(() => {});
 		return () => { cancelled = true; };

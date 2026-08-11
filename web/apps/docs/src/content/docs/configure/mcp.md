@@ -5,15 +5,17 @@ description: "Connect Model Context Protocol servers and use their tools in Wing
 
 # Configure MCP Servers
 
-Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json`. Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
+Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json`.
+Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set,
+use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
 Wingman supports local stdio servers and remote HTTP servers. It validates MCP
-configuration when it starts. Enabled servers connect when Wingman creates an
+configuration at startup. Enabled servers connect when Wingman creates an
 execution scope.
 
 ## Add A Local Server
 
-Use `type: "local"` to start an MCP server as a subprocess over stdio:
+To start an MCP server as a subprocess over stdio, use `type: "local"`:
 
 ```json
 {
@@ -30,7 +32,8 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 }
 ```
 
-`command` runs directly without shell expansion. Put the executable in one array item. Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths.
+`command` runs directly without shell expansion. Put the executable in one array
+item. Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths.
 
 ## Chrome DevTools example
 
@@ -47,8 +50,8 @@ Use `type: "local"` to start an MCP server as a subprocess over stdio:
 
 ## Add A Remote Server
 
-Use `type: "remote"` for a remote MCP endpoint. Configure any required
-credentials in `headers`; Wingman does not provide an MCP OAuth login command.
+For a remote MCP endpoint, use `type: "remote"`. Put required credentials in
+`headers`. Wingman does not provide an MCP OAuth login command.
 
 ```json
 {
@@ -68,13 +71,13 @@ credentials in `headers`; Wingman does not provide an MCP OAuth login command.
 
 ## Use MCP Tools In An Agent
 
-Restart Wingman after you change `wingman.json`. After restart, Wingman lists
-connected tools on the Console's Tools page and at `GET /tools`.
+After you change `wingman.json`, restart Wingman. After the restart, Wingman
+lists connected tools on the Console's Tools page and at `GET /tools`.
 
 Wingman prefixes each MCP tool with its server name. For example, the remote
 `search` tool from `company-tools` becomes `company_tools_search`.
 
-Add that name to an agent's `tools` allow-list:
+Add that name to an agent `tools` allow-list:
 
 ```json
 {
@@ -85,15 +88,16 @@ Add that name to an agent's `tools` allow-list:
 }
 ```
 
-Only connected MCP tools are available to agents. Use the Console at
-`http://127.0.0.1:2323/console/tools` to inspect the directoryless scope.
+Only connected MCP tools are available to agents. To view the directoryless scope,
+use the Console at `http://127.0.0.1:2323/console/tools`.
 
-Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP
-tool names collide, tool catalog creation fails.
+Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP tool
+names collide, tool catalog creation fails.
 
-To inspect the daemon directly:
+To view the daemon directly, run:
 
-These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See
+[HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl -sS http://127.0.0.1:2323/mcp \
@@ -102,15 +106,17 @@ curl -sS http://127.0.0.1:2323/tools \
   -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq '.tools[] | select(.source == "mcp")'
 ```
 
-`/mcp` lists every configured server and its connection status. `/tools` lists the MCP tools currently available to agents.
+`/mcp` lists every configured server and its connection status. `/tools` lists the
+MCP tools currently available to agents.
 
 `discovery_timeout` limits connection and tool discovery. `execution_timeout`
-limits each MCP tool call. Both values are in milliseconds. They default to
-`30000` when omitted.
+limits each MCP tool call. Both values are in milliseconds. If omitted, they
+default to `30000`.
 
 ## Enable And Disable Servers
 
-MCP servers are enabled by default. Set `enabled` to `false` to keep a server configured without connecting it at startup:
+MCP servers are enabled by default. To keep a server configured without
+connecting it at startup, set `enabled` to `false`:
 
 ```json
 {
@@ -124,10 +130,11 @@ MCP servers are enabled by default. Set `enabled` to `false` to keep a server co
 }
 ```
 
-Use the Console to connect or disconnect enabled configured servers without changing the file.
+To connect or disconnect enabled configured servers without changing the file,
+use the Console.
 
 ## Current Limits
 
-- MCP OAuth login is not implemented. Supply any required credentials through configured request headers or a local server's environment.
-- MCP servers run with the same permissions as the Wingman process. Only configure servers you trust.
-- MCP configuration is daemon-wide, but each execution scope owns its runtime connections.
+- MCP OAuth login is not implemented. Supply required credentials through configured request headers or a local server environment.
+- MCP servers run with the same permissions as the Wingman process. Configure only servers that you trust.
+- MCP configuration is daemon-wide. Each execution scope owns its runtime connections.

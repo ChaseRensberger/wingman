@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { streamSessionEvents, type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
+import { type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
 
-import { api, apiData } from "@/lib/client";
+import { client } from "@/lib/client";
 import { formatSessionError } from "@/lib/session-detail";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
 import type { Message, PermissionRequest, Session, SessionRun, ToolActivity, Usage } from "@/lib/types";
@@ -152,9 +152,7 @@ type Options = {
 async function latestSessionEventSeq(sessionId: string): Promise<number> {
 	let after = 0;
 	for (;;) {
-		const page = await apiData(api.GET("/sessions/{id}/events/history", {
-			params: { path: { id: sessionId }, query: { after, limit: 500 } },
-		})) as { data?: UnknownSessionEvent[] | null; has_more?: boolean };
+		const page = await client.sessions.listEvents(sessionId, { after, limit: 500 }) as { data?: UnknownSessionEvent[] | null; has_more?: boolean };
 		const events = page.data ?? [];
 		if (events.length === 0) return after;
 		after = events.at(-1)?.cursor?.seq ?? after;
@@ -209,10 +207,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	}, [sessionId]);
 
 	async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
-		const requests = await apiData(api.GET("/sessions/{id}/permission-requests", {
-			params: { path: { id } },
-			signal,
-		})) as PermissionRequest[];
+		const requests = await client.sessions.permissionRequests.list(id) as PermissionRequest[];
 		if (signal?.aborted) return;
 		setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "loaded", requests }));
 	}
@@ -233,10 +228,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
 		async function recover() {
 			try {
-				const runs = await apiData(api.GET("/sessions/{id}/runs", {
-					params: { path: { id: sessionId } },
-					signal: controller.signal,
-				})) as SessionRun[];
+				const runs = await client.sessions.runs.list(sessionId) as SessionRun[];
 				const run = latestActiveSessionRun(runs);
 				if (cancelled || !run || activeRunRef.current || submissionControllerRef.current) return;
 				setIsStreaming(true);
@@ -323,7 +315,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	async function subscribe(id: string, signal: AbortSignal): Promise<SessionStreamResult> {
 		const after = lastEventSeqRef.current;
 		let synchronized = false;
-		for await (const parsed of streamSessionEvents(id, { after, lastEventID: after || undefined, signal })) {
+		for await (const parsed of client.sessions.streamEvents(id, { after, lastEventID: after || undefined, signal })) {
 			if (signal.aborted || activeRunRef.current?.sessionId !== id) return { resync: false, synchronized };
 			const control = sessionStreamControl(parsed.event.type);
 			if (control === "synchronized") {
@@ -345,10 +337,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 	async function reloadRun(id: string, runID: string, controller: AbortController): Promise<SessionRun | undefined> {
 		await Promise.all([load(id), reloadPermissionRequests(id, controller.signal)]);
 		if (!isCurrentSubscription(id, controller)) return;
-		const run = await apiData(api.GET("/sessions/{id}/runs/{runID}", {
-			params: { path: { id, runID } },
-			signal: controller.signal,
-		})) as SessionRun;
+		const run = await client.sessions.runs.get(id, runID) as SessionRun;
 		return isCurrentSubscription(id, controller) ? run : undefined;
 	}
 
@@ -423,10 +412,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		setPermissionRepliesInFlight(permissionRepliesInFlightRef.current);
 		try {
 			const targetSessionID = activeRunRef.current?.sessionId ?? sessionId;
-			const request = await apiData(api.POST("/sessions/{id}/permission-requests/{requestID}/reply", {
-				params: { path: { id: targetSessionID, requestID } },
-				body: { response },
-			})) as PermissionRequest;
+			const request = await client.sessions.permissionRequests.reply(targetSessionID, requestID, { response }) as PermissionRequest;
 			setPermissionRequestRecords((previous) => reducePermissionRequestRecords(previous, { type: "resolved", request }));
 		} finally {
 			const next = new Set(permissionRepliesInFlightRef.current);
@@ -447,9 +433,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 		try {
 			const runID = activeRunRef.current?.runId;
 			if (runID) {
-				await apiData(api.POST("/sessions/{id}/runs/{runID}/abort", { params: { path: { id, runID } } }));
+				await client.sessions.runs.abort(id, runID);
 			} else {
-				await apiData(api.POST("/sessions/{id}/abort", { params: { path: { id } } }));
+				await client.sessions.abort(id);
 			}
 		} catch (err) {
 			console.error("Abort failed", err);

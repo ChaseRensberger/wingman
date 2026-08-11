@@ -6,8 +6,8 @@ order: 100
 
 # Agents
 
-An agent is a reusable definition for a [session](/concepts/sessions) turn. It
-holds the instructions, allowed tools, model default, and optional output
+An agent is a reusable definition for a [session](/concepts/sessions) turn.
+It contains the instructions, allowed tools, default model, and optional output
 schema for that turn.
 
 This command uses `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
@@ -27,4 +27,4 @@ curl -sS -X POST http://localhost:2323/agents \
       }'
 ```
 
-To use an agent, see [sessions](/concepts/sessions).
+For agent use, see [sessions](/concepts/sessions).

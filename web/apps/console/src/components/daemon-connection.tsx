@@ -1,7 +1,20 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { api, apiData, daemonConnectionFailureEvent } from "@/lib/client";
-import { daemonConnectionFailureMessage, daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay, type DaemonConnectionPhase } from "@/lib/connection";
+import { client, daemonConnectionFailureEvent } from "@/lib/client";
+import {
+  daemonConnectionFailureMessage,
+  daemonConnectionMessage,
+  daemonFailurePhase,
+  daemonRetryDelay,
+  type DaemonConnectionPhase,
+} from "@/lib/connection";
 
 type DaemonConnection = {
   phase: DaemonConnectionPhase;
@@ -16,8 +29,16 @@ const DaemonConnectionContext = createContext<DaemonConnection>({
   hasConnected: false,
 });
 
-export function DaemonConnectionProvider({ children }: { children: ReactNode }) {
-	const [connection, setConnection] = useState<DaemonConnection>({ phase: "connecting", revision: 0, hasConnected: false });
+export function DaemonConnectionProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [connection, setConnection] = useState<DaemonConnection>({
+    phase: "connecting",
+    revision: 0,
+    hasConnected: false,
+  });
   const hasBeenLive = useRef(false);
   const disconnected = useRef(false);
   useEffect(() => {
@@ -53,26 +74,42 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
       }
 
       if (!hasBeenLive.current || attempt > 0 || disconnected.current) {
-        setConnection((current) => ({ ...current, phase: attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying" }));
+        setConnection((current) => ({
+          ...current,
+          phase:
+            attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying",
+        }));
       }
       const controller = new AbortController();
       request = controller;
       try {
-        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(3_000)]);
-        const ready = await apiData(api.GET("/ready", { signal }));
+        const signal = AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(3_000),
+        ]);
+        const ready = await client.health.ready({ signal });
+        if (signal.aborted) return;
         if (!ready.ready) throw new Error("Wingman is not ready");
         const recovered = hasBeenLive.current && disconnected.current;
         hasBeenLive.current = true;
         disconnected.current = false;
         attempt = 0;
-		setConnection((current) => ({ phase: "live", revision: current.revision + (recovered ? 1 : 0), hasConnected: true }));
+        setConnection((current) => ({
+          phase: "live",
+          revision: current.revision + (recovered ? 1 : 0),
+          hasConnected: true,
+        }));
         schedule(5_000);
       } catch (error) {
         if (stopped || (error as Error).name === "AbortError") return;
         disconnected.current = hasBeenLive.current;
         attempt += 1;
         const failure = daemonConnectionFailureMessage(error);
-		setConnection((current) => ({ ...current, phase: daemonFailurePhase(attempt), failure }));
+        setConnection((current) => ({
+          ...current,
+          phase: daemonFailurePhase(attempt),
+          failure,
+        }));
         schedule(daemonRetryDelay(attempt - 1));
       } finally {
         if (request === controller) request = undefined;
@@ -106,15 +143,22 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
     schedule(0);
     return () => {
       stopped = true;
-		clearPending();
+      clearPending();
       window.removeEventListener("online", resume);
       window.removeEventListener("offline", resume);
-      window.removeEventListener(daemonConnectionFailureEvent, connectionFailed);
+      window.removeEventListener(
+        daemonConnectionFailureEvent,
+        connectionFailed,
+      );
       document.removeEventListener("visibilitychange", resume);
     };
-	}, []);
+  }, []);
 
-	return <DaemonConnectionContext value={connection}>{children}</DaemonConnectionContext>;
+  return (
+    <DaemonConnectionContext value={connection}>
+      {children}
+    </DaemonConnectionContext>
+  );
 }
 
 export function useDaemonConnection(): DaemonConnection {
@@ -122,12 +166,15 @@ export function useDaemonConnection(): DaemonConnection {
 }
 
 export function DaemonConnectionBanner() {
-	const { phase, failure } = useDaemonConnection();
+  const { phase, failure } = useDaemonConnection();
   if (phase === "live") return null;
 
   return (
-    <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-800 dark:text-amber-200" role="status">
-		<p>{daemonConnectionMessage(phase, failure)}</p>
+    <div
+      className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-800 dark:text-amber-200"
+      role="status"
+    >
+      <p>{daemonConnectionMessage(phase, failure)}</p>
     </div>
   );
 }

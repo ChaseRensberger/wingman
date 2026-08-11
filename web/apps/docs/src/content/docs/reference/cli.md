@@ -7,7 +7,8 @@ description: "Wingman command-line interface reference."
 
 # CLI
 
-The `wingman` binary runs the local Wingman HTTP server, manages its background service, updates release installations, and prints build information.
+The `wingman` binary runs the local Wingman HTTP server. It manages the
+background service, updates release installations, and prints build information.
 
 ```bash
 wingman <command> [flags]
@@ -42,14 +43,15 @@ wingman serve
 wingman service start
 ```
 
-On Linux, `wingman service start` re-executes itself through `sudo` when required. It
-installs `/etc/systemd/system/wingman.service` and runs the service as the
+If required on Linux, `wingman service start` re-executes through `sudo`. It
+installs `/etc/systemd/system/wingman.service`. It runs the service as the
 invoking user. Systemd manages its private daemon state at `/var/lib/wingman`.
 The default SQLite database remains at `~/.local/share/wingman/wingman.db`.
 On macOS, it installs a per-user LaunchAgent. Both service forms wait for
 readiness before the command returns.
 
-`wingman service start` accepts the same runtime flags as `wingman serve`; selected values are written into the generated service definition.
+`wingman service start` accepts the same runtime flags as `wingman serve`.
+Selected values are written into the generated service definition.
 
 ## Runtime Flags
 
@@ -101,7 +103,8 @@ Restart the service after editing `~/.config/wingman/wingman.json`:
 wingman service restart
 ```
 
-To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`, run `wingman service start` again with the new flags.
+To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`,
+run `wingman service start` again with the new flags.
 
 Show the managed service password, or replace it by providing a new value:
 
@@ -110,7 +113,8 @@ wingman service password
 wingman service password 'new-password'
 ```
 
-When you set a new password, Wingman stops the service. Run `wingman service start` to start it again.
+When you set a new password, Wingman stops the service. Run `wingman service start`
+to start it again.
 
 Stop and remove the service:
 
@@ -134,18 +138,24 @@ wingman dev (commit: none, built: unknown)
 
 ## Update
 
-`wingman update` downloads the latest stable GitHub release for the current Linux or macOS architecture, verifies the downloaded archive against the release's `checksums.txt`, and atomically replaces the resolved executable:
+`wingman update` downloads the latest stable GitHub release for the current Linux
+or macOS architecture. It verifies the downloaded archive against the release's
+`checksums.txt`. It atomically replaces the resolved executable:
 
 ```bash
 wingman update
 ```
 
-The executable directory must be writable. This works with the default installer location (`~/.wingman/bin`) and other writable standalone installs. Installations owned by a package manager or another user should be updated through that original installation method.
+The executable directory must be writable. This works with the default installer
+location (`~/.wingman/bin`) and other writable standalone installs. Update an
+installation owned by a package manager or another user through its original
+installation method.
 
 The public installer also verifies the downloaded release archive against the
 published `checksums.txt` before it installs the binary.
 
-If Wingman is running through systemd or launchd, the command restarts that running managed service after replacement. It does not start an installed but stopped service.
+If Wingman runs through systemd or launchd, the command restarts that managed
+service after replacement. It does not start an installed but stopped service.
 
 Check availability without writing files:
 

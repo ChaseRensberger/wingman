@@ -13,9 +13,9 @@ Wingman reads global configuration from:
 ~/.config/wingman/wingman.json
 ```
 
-This file is for daemon-wide settings that apply across clients.
+This file defines daemon-wide settings for all clients.
 
-Set `XDG_CONFIG_HOME` to change the config root. For example, when it is set to
+Set `XDG_CONFIG_HOME` to change the config root. For example, if it is set to
 `~/settings`, Wingman reads `~/settings/wingman/wingman.json`. The default path
 is the same on Linux and macOS.
 
@@ -35,7 +35,7 @@ The file is parsed as strict JSON:
 
 - Comments are not allowed.
 - Trailing commas are not allowed.
-- Unknown keys cause startup to fail. The error identifies the config file and key.
+- Unknown keys cause startup to fail. The error identifies the config file and the key.
 
 ## Example
 
@@ -150,7 +150,8 @@ There is no config-file equivalent for `--no-plugins`.
 
 ## `mcp`
 
-`mcp` is a map of Model Context Protocol server names to server definitions. Enabled servers connect when Wingman starts.
+`mcp` maps Model Context Protocol server names to server definitions. Enabled
+servers connect when Wingman starts.
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
@@ -171,7 +172,8 @@ See [MCP Servers](/configure/mcp) for local and remote examples, status checks, 
 
 ## `permissions`
 
-`permissions` defines daemon-wide tool policy. It is evaluated at run time and is not written into stored agents.
+`permissions` defines daemon-wide tool policy. Wingman evaluates it at run time.
+It is not written into stored agents.
 
 Supported effects are `allow`, `ask`, and `deny`.
 
@@ -195,11 +197,13 @@ Example:
 
 See [Permissions](/configure/permissions) for actions, resources, precedence, and current limits.
 
-Permission failures include structured tool-result metadata so clients can render policy failures without parsing text output.
+Permission failures include structured tool-result metadata. Clients can render
+policy failures without parsing text output.
 
 ## `agent_permissions`
 
-`agent_permissions` overlays daemon-local rules onto stored SQLite agents by agent ID or name.
+`agent_permissions` overlays daemon-local rules on stored SQLite agents by agent
+ID or name.
 
 Example:
 
@@ -214,11 +218,13 @@ Example:
 }
 ```
 
-ID-specific overlays run after name-specific overlays when both match.
+If both overlays match, ID-specific overlays run after name-specific overlays.
 
 ## `provider`
 
-`provider` is a map keyed by provider ID. It overlays WingModels catalog provider routes and can define custom providers and models at daemon startup. It is not persisted in SQLite and does not store credentials.
+`provider` maps provider IDs to provider definitions. It overlays WingModels
+catalog provider routes. It can define custom providers and models at daemon
+startup. It is not persisted in SQLite. It does not store credentials.
 
 Supported provider fields:
 
@@ -254,7 +260,8 @@ Example:
 }
 ```
 
-Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways or local endpoints.
+Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways
+or local endpoints.
 
 Supported model fields under `provider.<id>.models.<model-id>`:
 

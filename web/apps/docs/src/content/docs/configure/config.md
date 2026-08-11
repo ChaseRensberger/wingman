@@ -6,23 +6,23 @@ order: 3
 
 # Global Config
 
-Wingman uses per-user configuration. By default, files live under:
+Wingman uses per-user configuration. By default, configuration files are in:
 
 ```text
 ~/.config/wingman/
 ```
 
-Use this file for daemon-wide settings.
+Use this directory for daemon-wide configuration.
 
 > **Security:** Wingman always requires a daemon password. Authentication does
 > not provide tenant isolation.
 
-Set `XDG_CONFIG_HOME` to use a different config root. For example,
+To use a different config root, set `XDG_CONFIG_HOME`. For example,
 `XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.
 
 ## Configuration Surfaces
 
-Wingman has three main configuration surfaces:
+Wingman has three main configuration locations:
 
 | Concern | Where it lives |
 |---|---|
@@ -30,18 +30,19 @@ Wingman has three main configuration surfaces:
 | Provider API keys | SQLite auth store through `PUT /provider/auth` |
 | External plugin manifests | `~/.config/wingman/plugins/` plus any extra plugin dirs |
 
-Agents are stored through the HTTP API. They do not live in `wingman.json`.
+The HTTP API stores agents. Agents are not in `wingman.json`.
 
 ## Config File
 
-The global config file is:
+The global configuration file is:
 
 ```text
 ~/.config/wingman/wingman.json
 ```
 
-It is strict JSON. Comments, trailing commas, trailing JSON values, and unknown
-keys cause startup to fail. The error identifies the config file.
+The file uses strict JSON. Comments cause startup to fail. Trailing commas cause
+startup to fail. Trailing JSON values cause startup to fail. Unknown keys cause
+startup to fail. The error identifies the configuration file.
 
 Example:
 
@@ -82,7 +83,7 @@ Example:
 }
 ```
 
-Flags passed to `wingman serve` or `wingman service start` override config values.
+Flags passed to `wingman serve` or `wingman service start` override configuration values.
 
 For exact fields, see [Config Schema](/reference/config-schema).
 
@@ -101,7 +102,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 
 ## Defaults
 
-Wingman listens on `127.0.0.1:2323` and stores persistent data in SQLite at:
+Wingman listens on `127.0.0.1:2323`. It stores persistent data in SQLite at:
 
 ```text
 ~/.local/share/wingman/wingman.db

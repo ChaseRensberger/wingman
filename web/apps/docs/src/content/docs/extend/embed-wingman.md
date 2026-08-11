@@ -7,13 +7,13 @@ order: 1005
 
 # Embed the Daemon
 
-Use the `app` package when a Go program must own a complete Wingman daemon.
+Use the `app` package when a Go program owns a complete Wingman daemon.
 The application root owns storage, external plugins, MCP connections, background
 workers, and the HTTP adapter.
 
 ## Serve on a Listener
 
-Create the listener before the application. A bind failure then occurs before
+Create the listener before the application. Then a bind failure occurs before
 Wingman opens the database or starts external processes.
 
 ```go
@@ -43,7 +43,7 @@ if err := application.Serve(ctx, listener); err != nil {
 
 `app.New` completes startup recovery before it returns.
 
-`App.Serve` stops accepting HTTP requests when the context ends and then closes
+When the context ends, `App.Serve` stops accepting HTTP requests. It then closes
 daemon resources.
 
 ## Use the Handler Without a Listener
@@ -73,8 +73,8 @@ does not need daemon HTTP behavior.
 
 ## Shutdown Contract
 
-`App.Close` cancels application work, waits for the server to stop, then closes
-daemon resources.
+`App.Close` cancels application work. It waits for the server to stop. Then it
+closes daemon resources.
 
 If the supplied context ends before server work drains, dependencies remain
-open. Call `App.Close` again with a new context to continue shutdown.
+open. Call `App.Close` again with a new context. This continues shutdown.

@@ -49,16 +49,16 @@ Go plugins register hooks with `plugin.Registry`.
 | `RegisterTool` | Add a tool to the session. |
 | `RegisterPart` | Register a custom message-part decoder. |
 
-Hooks compose in activation order. Transform hooks receive the previous hook's
-output. `Activate` may return context-aware cleanup. Sink dispatch waits one
-second by default and drops events while a callback remains blocked.
+Hooks run in activation order. Transform hooks receive the previous hook's
+output. `Activate` can return context-aware cleanup. By default, sink dispatch
+waits one second. It drops events while a callback remains blocked.
 
 ## RPC Plugin Support
 
 RPC plugin manifests contain only bootstrap identity, command, and configuration.
-The process negotiates protocol version 1 through `plugin.initialize` and returns
+The process negotiates protocol version 1 through `plugin.initialize`. It returns
 its authoritative identity, capabilities, and tool contributions. Tool calls can
-run concurrently and receive session, run, agent, call, message, part, model-call,
+run concurrently. They receive session, run, agent, call, message, part, model-call,
 and working-directory identity.
 
 RPC plugins can negotiate request cancellation, progress notifications, and
@@ -66,4 +66,4 @@ health checks.
 
 Protocol version 1 supports tool contributions only.
 
-The RPC protocol page defines the exact wire contract exposed by the stock server.
+The RPC protocol page defines the wire contract for the stock server.

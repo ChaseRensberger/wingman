@@ -26,7 +26,7 @@ import { Textarea } from "@wingman/core/components/core/textarea";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
-import { api, apiData } from "@/lib/client";
+import { client } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
 import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
@@ -81,10 +81,7 @@ function AgentDetailPage() {
     onSubmit: async ({ value }) => {
       setSaving(true);
       try {
-        const updated = (await apiData(api.PUT("/agents/{id}", {
-          params: { path: { id: agentId } },
-          body: buildAgentPayload(value),
-        }))) as Agent;
+        const updated = await client.agents.update(agentId, buildAgentPayload(value)) as Agent;
         setAgent(updated);
         form.reset(formFromAgent(updated));
       } catch (err) {
@@ -98,9 +95,9 @@ function AgentDetailPage() {
   async function load() {
     try {
       const [agentData, providerData, toolData] = await Promise.all([
-        apiData(api.GET("/agents/{id}", { params: { path: { id: agentId } } })) as Promise<Agent>,
-        apiData(api.GET("/provider")) as Promise<Provider[]>,
-        apiData(api.GET("/tools")) as Promise<ToolsResponse>,
+        client.agents.get(agentId) as Promise<Agent>,
+        client.providers.list() as Promise<Provider[]>,
+        client.tools.list() as Promise<ToolsResponse>,
       ]);
       setAgent(agentData);
       form.reset(formFromAgent(agentData));
@@ -110,9 +107,7 @@ function AgentDetailPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = (await apiData(api.GET("/provider/{name}/models", {
-              params: { path: { name: provider.id } },
-            }))) as Record<string, ProviderModel>;
+            const data = await client.providers.models.list(provider.id) as Record<string, ProviderModel>;
             return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
           } catch {
             return [provider.id, []] as const;
@@ -133,7 +128,7 @@ function AgentDetailPage() {
     if (!agent) return;
     setDeleting(true);
     try {
-      await apiData(api.DELETE("/agents/{id}", { params: { path: { id: agent.id } } }));
+      await client.agents.delete(agent.id);
       navigate({ to: "/agents" });
     } catch (err) {
       showErrorToast(err);

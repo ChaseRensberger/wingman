@@ -5,34 +5,36 @@ description: "Use Wingman from your own client over HTTP."
 
 # HTTP API Basics
 
-Wingman is designed to be driven by clients. A client can be a web app, CLI, TUI, editor extension, script, or internal service.
+Clients control Wingman. A client can be a web app, CLI, TUI, editor
+extension, script, or internal service.
 
 ## Basic Flow
 
 Most clients follow this sequence:
 
-1. Check health with `GET /health`.
-2. Load the daemon password, then check readiness with `GET /ready`.
-3. Configure provider auth with `PUT /provider/auth`.
-4. Create or reuse an agent with `/agents`.
-5. Create or reuse a Workspace with `/workspaces` if the session needs a saved context.
-6. Create a session with `POST /sessions`.
-7. Admit messages with `POST /sessions/{id}/message`.
-8. Subscribe to updates with `GET /sessions/{id}/events`.
+1. Make sure that the daemon is healthy with `GET /health`.
+2. Load the daemon password.
+3. Make sure that the daemon is ready with `GET /ready`.
+4. Configure provider auth with `PUT /provider/auth`.
+5. Create or reuse an agent with `/agents`.
+6. If the session needs saved context, create or reuse a Workspace with `/workspaces`.
+7. Create a session with `POST /sessions`.
+8. Admit messages with `POST /sessions/{id}/message`.
+9. Subscribe to updates with `GET /sessions/{id}/events`.
 
 ## Authentication
 
 `GET /health` is public. Other API routes require the daemon password.
 
-Obtain the daemon password through a secure channel, then set it in your client
+Obtain the daemon password through a secure channel. Then set it in the client
 environment. For a local managed service:
 
 ```bash
 export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
 ```
 
-For a foreground server started with `WINGMAN_PASSWORD`, the client uses the
-same value but must set `WINGMAN_DAEMON_PASSWORD` itself.
+For a foreground server started with `WINGMAN_PASSWORD`, use the same value.
+Set `WINGMAN_DAEMON_PASSWORD` in the client environment.
 
 Send it with HTTP Basic authentication and the username `wingman`:
 
@@ -41,9 +43,9 @@ Authorization: Basic <base64("wingman:<password>")>
 ```
 
 For example, `curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" http://localhost:2323/ready`
-sends the required credentials. Use TLS or an SSH tunnel before sending this
-password to a remote daemon. The
-`X-Wingman-Client` header is an attribution selector, not a credential.
+sends the required credentials. Before you send this password to a remote
+daemon, use TLS or an SSH tunnel. The `X-Wingman-Client` header is an
+attribution selector, not a credential.
 
 See [Authentication](/concepts/authentication) for Console sessions.
 
@@ -56,10 +58,10 @@ helper. Deploy the current checkout to a VM:
 ./scripts/deploy-exe ratchet-mews
 ```
 
-The helper builds a Linux `amd64` binary, installs it on
-`ratchet-mews.exe.xyz`, starts `wingman service start` on loopback port `2323`, and sets
-the exe.dev HTTPS proxy port. Set `WINGMAN_EXE_ARCH=arm64` before the command
-for an arm64 VM.
+The helper builds a Linux `amd64` binary. It installs the binary on
+`ratchet-mews.exe.xyz`. It starts `wingman service start` on loopback port
+`2323`. It sets the exe.dev HTTPS proxy port. For an arm64 VM, set
+`WINGMAN_EXE_ARCH=arm64` before you run the command.
 
 Use the managed service password to register a client on the VM:
 
@@ -78,14 +80,14 @@ The deployment helper does not change the VM share's public/private setting.
 
 ## Go SDK
 
-The Go SDK is generated from the same OpenAPI 3.1 contract as the TypeScript
-client. Add the current release to your application:
+The Go SDK and TypeScript client use the same OpenAPI 3.1 contract. Add the
+current release to the application:
 
 ```bash
 go get github.com/chaserensberger/wingman/client@latest
 ```
 
-Create an authenticated client, then call generated endpoint methods:
+Create an authenticated client. Then call generated endpoint methods:
 
 ```go
 package main
@@ -116,13 +118,12 @@ func main() {
 }
 ```
 
-Generated methods have a `WithResponse` suffix and expose typed JSON response
+Generated methods have a `WithResponse` suffix. They expose typed JSON response
 fields. `Run` and `StreamSessionEvents` provide typed SSE streams. Non-success
 responses return `*client.APIError`.
 
-The SDK is released with the Wingman module. A new public `v*` Git tag is
-automatically available through the Go module proxy and indexed at
-[`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client).
+The SDK is released with the Wingman module. The Go module proxy automatically
+provides each new public `v*` Git tag. [`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client) indexes it.
 
 ## OpenAPI and TypeScript
 
@@ -132,8 +133,8 @@ unions for persistent-session and one-shot run events.
 
 ## Client Identity
 
-Any caller with daemon access can register clients with `/clients` and pass
-`X-Wingman-Client` on client-scoped requests.
+Any caller with daemon access can register clients with `/clients`. The caller
+can pass `X-Wingman-Client` on client-scoped requests.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
@@ -154,7 +155,8 @@ curl -sS -X POST http://localhost:2323/sessions \
 
 ## Workspaces
 
-Workspaces are client-scoped saved contexts with optional directories. `GET /workspaces` lists Workspaces for the active client.
+Workspaces are client-scoped saved contexts with optional directories.
+`GET /workspaces` lists Workspaces for the active client.
 
 Create one when needed:
 
@@ -187,7 +189,8 @@ curl -sS -X POST http://localhost:2323/sessions \
   -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"
 ```
 
-Use `working_directory` instead of `workspace_id` for ad hoc sessions. Do not send both fields.
+For ad hoc sessions, use `working_directory` instead of `workspace_id`. Do not
+send both fields.
 
 ## Handle Errors
 
@@ -203,23 +206,23 @@ Every non-success JSON response uses one envelope:
 }
 ```
 
-Use `error.code` for program logic and `error.message` for display. The
+Use `error.code` for program logic. Use `error.message` for display. The
 `X-Request-ID` response header contains the same identifier as
-`error.request_id`. Include that value when you report a server failure.
+`error.request_id`. If you report a server failure, include that value.
 
 Wingman does not return internal failure details for 5xx responses. It records
-those details in daemon logs with the request ID.
+these details in daemon logs with the request ID.
 
 ## Persistent and Ephemeral Runs
 
-Use persistent sessions when you want history:
+If you want history, use persistent sessions:
 
 ```text
 POST /sessions
 POST /sessions/{id}/message
 ```
 
-Use an ephemeral session when you want one in-memory run and no transcript:
+If you want one in-memory run and no transcript, use an ephemeral session:
 
 ```text
 POST /run

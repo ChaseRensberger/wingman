@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { api, apiData, moveSession, purgeSession, renameSession } from "@/lib/client";
+import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
 import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
@@ -90,9 +90,7 @@ function SessionDetailPage() {
 			});
 			if (draftWorkspaceId) {
 				try {
-					setWorkspace((await apiData(api.GET("/workspaces/{id}", {
-						params: { path: { id: draftWorkspaceId } },
-					}))) as Workspace);
+					setWorkspace(await client.workspaces.get(draftWorkspaceId) as Workspace);
 				} catch {
 					setWorkspace(null);
 				}
@@ -106,15 +104,13 @@ function SessionDetailPage() {
 
 		try {
 			const [data, calls] = await Promise.all([
-				apiData(api.GET("/sessions/{id}", { params: { path: { id } } })) as Promise<Session>,
-				apiData(api.GET("/sessions/{id}/model-calls", { params: { path: { id } } })) as Promise<ModelCall[]>,
+				client.sessions.get(id) as Promise<Session>,
+				client.sessions.modelCalls.list(id) as Promise<ModelCall[]>,
 			]);
 			setSession(data);
 			setModelCalls(calls);
 			if (data.workspace_id) {
-				setWorkspace((await apiData(api.GET("/workspaces/{id}", {
-					params: { path: { id: data.workspace_id } },
-				}))) as Workspace);
+				setWorkspace(await client.workspaces.get(data.workspace_id) as Workspace);
 			} else {
 				setWorkspace(null);
 			}
@@ -145,18 +141,16 @@ function SessionDetailPage() {
 		async function load() {
 			try {
 				const [sessData, agentsData, providerData, callsData] = await Promise.all([
-					isDraft ? Promise.resolve(null) : apiData(api.GET("/sessions/{id}", { params: { path: { id: sessionId } } })) as Promise<Session>,
-					apiData(api.GET("/agents")) as Promise<Agent[]>,
-					apiData(api.GET("/provider")) as Promise<Provider[]>,
-					isDraft ? Promise.resolve([] as ModelCall[]) : apiData(api.GET("/sessions/{id}/model-calls", { params: { path: { id: sessionId } } })) as Promise<ModelCall[]>,
+					isDraft ? Promise.resolve(null) : client.sessions.get(sessionId) as Promise<Session>,
+					client.agents.list() as Promise<Agent[]>,
+					client.providers.list() as Promise<Provider[]>,
+					isDraft ? Promise.resolve([] as ModelCall[]) : client.sessions.modelCalls.list(sessionId) as Promise<ModelCall[]>,
 				]);
 				const selectableProviders = providerData.filter(isProviderSelectable);
 				const modelEntries = await Promise.all(
 					selectableProviders.map(async (provider) => {
 						try {
-							const data = (await apiData(api.GET("/provider/{name}/models", {
-								params: { path: { name: provider.id } },
-							}))) as Record<string, ProviderModel>;
+							const data = await client.providers.models.list(provider.id) as Record<string, ProviderModel>;
 							return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
 						} catch {
 							return [provider.id, []] as const;
@@ -181,9 +175,7 @@ function SessionDetailPage() {
 					const workspaceID = sessData?.workspace_id ?? (isDraft ? draftWorkspaceId : undefined);
 					if (workspaceID) {
 						try {
-							setWorkspace((await apiData(api.GET("/workspaces/{id}", {
-								params: { path: { id: workspaceID } },
-							}))) as Workspace);
+							setWorkspace(await client.workspaces.get(workspaceID) as Workspace);
 						} catch {
 							setWorkspace(null);
 						}
@@ -306,9 +298,7 @@ function SessionDetailPage() {
 
 		try {
 			if (isDraft) {
-				const created = (await apiData(api.POST("/sessions", {
-					body: draftWorkspaceId ? { workspace_id: draftWorkspaceId } : {},
-				}))) as SessionSummary;
+				const created = await client.sessions.create(draftWorkspaceId ? { workspace_id: draftWorkspaceId } : {}) as SessionSummary;
 				activeSessionId = created.id;
 				activeSessionIdRef.current = created.id;
 				if (titlePromise) titleSessionIdRef.current = created.id;
@@ -333,16 +323,12 @@ function SessionDetailPage() {
 				message: outboundText,
 			};
 
-			const admitted = await apiData(api.POST("/sessions/{id}/message", {
-				params: { path: { id: activeSessionId } },
-				body: {
+			const admitted = await client.sessions.admit(activeSessionId, {
 					request_id: requestId,
 					agent_id: outboundAgentId,
 					model_ref: outboundModelRef,
 					message: outboundText,
-				},
-				signal: controller.signal,
-			}));
+				});
 			if (!admitted.run_id || !admitted.status || !admitted.session_version) {
 				throw new Error("Message was not accepted for execution");
 			}

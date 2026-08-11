@@ -9,8 +9,8 @@ order: 1000
 Workspace URL: `http://localhost:2323` (configurable via `--host` and `--port`).
 
 All endpoints accept and return JSON unless noted. Non-success JSON responses
-contain `error.code`, `error.message`, and `error.request_id`. The same request
-ID is returned in the `X-Request-ID` header. See [HTTP API Basics](/build-clients/http-api-basics#handle-errors).
+contain `error.code`, `error.message`, and `error.request_id`. The
+`X-Request-ID` header returns the same request ID. See [HTTP API Basics](/build-clients/http-api-basics#handle-errors).
 
 The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
@@ -23,7 +23,7 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 - Request bodies are JSON.
 - Send HTTP Basic authentication as `wingman:<password>` on protected routes from native clients.
 - Standard request timeout is 60 seconds.
-- Session event endpoints and `POST /run` bypass the standard timeout; `/sessions/{id}/events` and `/run` return `text/event-stream`.
+- Session event endpoints and `POST /run` bypass the standard timeout. `/sessions/{id}/events` and `/run` return `text/event-stream`.
 - ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
 
 ## Authentication endpoints
@@ -43,10 +43,10 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 { "status": "ok" }
 ```
 
-`GET /health` reports liveness and does not require authentication.
+`GET /health` reports liveness. It does not require authentication.
 `GET /ready` requires authentication. It returns `503 Service Unavailable`
-until startup recovery is complete. A non-ready response includes the failed
-subsystem and a recovery action; inspect `/logs` before restarting the daemon.
+until startup recovery is complete. A non-ready response identifies the failed
+subsystem and provides a recovery action. Inspect `/logs` before you restart the daemon.
 
 ```json
 {
@@ -83,7 +83,8 @@ subsystem and a recovery action; inspect `/logs` before restarting the daemon.
 
 ### Auth response
 
-`GET /provider/auth` returns a `configured` flag per provider without leaking the secret:
+`GET /provider/auth` returns a `configured` flag for each provider. It does not
+return the secret:
 
 ```json
 {
@@ -96,7 +97,7 @@ subsystem and a recovery action; inspect `/logs` before restarting the daemon.
 
 ### OpenAI Codex OAuth
 
-Begin browser or headless authorization by posting a method:
+Begin browser or headless authorization. Post a method:
 
 ```json
 { "method": "browser" }
@@ -109,9 +110,9 @@ or:
 ```
 
 `POST /provider/openai/oauth/authorize` returns `202 Accepted` with an attempt
-ID, an authorization URL, and instructions. Poll the attempt URL until its
-`status` is `completed`, `failed`, or `cancelled`. OAuth tokens are never
-returned by these endpoints.
+ID, an authorization URL, and instructions. Poll the attempt URL until the
+`status` is `completed`, `failed`, or `cancelled`. These endpoints never return
+OAuth tokens.
 
 ## Agent endpoints
 
@@ -124,7 +125,7 @@ returned by these endpoints.
 | `DELETE` | `/agents/{id}` | Delete agent |
 
 `tools` must contain unique names from the current `GET /tools` catalog. Create
-and update return `400 Bad Request` for unknown or duplicate names.
+and update requests return `400 Bad Request` for unknown or duplicate names.
 
 ### Create request
 
@@ -158,16 +159,22 @@ and update return `400 Bad Request` for unknown or duplicate names.
 | `GET` | `/clients/{id}` | Get a registered client. |
 | `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
 | `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
-| `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories; omit `path` to list the server user's home directory. |
+| `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory. |
 
-Plugin directories and MCP server definitions are configured server-wide; see [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins), and [MCP Servers](/configure/mcp). Client records and the client header organize persisted resources only; they do not authorize requests.
+Plugin directories and MCP server definitions are configured server-wide. See
+[Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins),
+and [MCP Servers](/configure/mcp). Client records and the client header organize
+persisted resources only. They do not authorize requests.
 
-`/logs` is an operational diagnostic endpoint, not durable logging or a stream. Request log entries can include paths, raw query strings, remote addresses, user agents, and client headers. Do not put secrets in API URLs, and keep the endpoint on trusted local access.
+`/logs` is an operational diagnostic endpoint. It is not durable logging or a
+stream. Request log entries can include paths, raw query strings, remote
+addresses, user agents, and client headers. Do not put secrets in API URLs. Keep
+the endpoint on trusted local access.
 
-`/diagnostics` is a point-in-time operational snapshot, not durable history or
-a metrics feed. Use it to identify queue buildup, disconnected event clients, or
-aggregate plugin failures. Use `/plugins` for per-plugin detail and the session
-and run APIs for authoritative per-run state.
+`/diagnostics` is a point-in-time operational snapshot. It is not durable
+history or a metrics feed. Use it to identify queue buildup, disconnected event
+clients, or aggregate plugin failures. Use `/plugins` for per-plugin detail. Use
+the session and run APIs for authoritative per-run state.
 
 ## Session endpoints
 
@@ -190,19 +197,22 @@ and run APIs for authoritative per-run state.
 | `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
 | `GET` | `/sessions/{id}/events` | Replay durable events after a cursor, synchronize, then stream new events |
 | `GET` | `/sessions/{id}/events/history` | Read one finite page of durable session events |
-| `POST` | `/sessions/{id}/abort` | Cancel the active run; queued messages remain scheduled |
+| `POST` | `/sessions/{id}/abort` | Cancel the active run. Queued messages remain scheduled. |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
 Session responses include `version`, beginning at `1`. Rename and move commands
-require that value as `expected_version`. A stale command returns `409 Conflict`;
-reload the session before deciding whether to retry.
+require that value as `expected_version`. A stale command returns `409 Conflict`.
+Reload the session before you decide whether to retry.
 
 `POST /sessions`, `GET /sessions`, and successful rename or move commands return
-session summaries. Summaries contain metadata and `version`; they do not contain
+session summaries. Summaries contain metadata and `version`. They do not contain
 `history` or `latest_model_call`. `GET /sessions/{id}` returns the session detail
 shape with both fields. An empty detail history is `[]`, not `null`.
 
-`POST /sessions/{id}/message` requires the session to exist. Unknown IDs return `404`; message endpoints do not create sessions implicitly. Runs for one session execute in order. Queued runs survive a server restart and resume when the server starts; a run that was active at restart is recorded as aborted.
+`POST /sessions/{id}/message` requires the session to exist. Unknown IDs return
+`404`. Message endpoints do not create sessions implicitly. Runs for one session
+execute in order. Queued runs survive a server restart. They resume when the
+server starts. A run that was active at restart is recorded as aborted.
 
 The response includes the canonical run ID, current run status, and aggregate
 version after admission. Read `/sessions/{id}/runs/{runID}` for authoritative
@@ -226,7 +236,9 @@ Or create the session from a Workspace:
 }
 ```
 
-`working_directory` and `workspace_id` are mutually exclusive. When `workspace_id` is set, Wingman records `workspace_id` on the session and copies the Workspace path into `work_dir` if the Workspace has one.
+`working_directory` and `workspace_id` are mutually exclusive. When
+`workspace_id` is set, Wingman records it on the session. If the Workspace has a
+path, Wingman copies the path into `work_dir`.
 
 ### Rename request
 
@@ -258,7 +270,7 @@ Or move the session to a Workspace:
 ```
 
 Successful commands return the updated session and its new `version`. Sending
-the current title or location is a no-op and leaves the version unchanged.
+the current title or location is a no-op. The version remains unchanged.
 
 ### Delete request
 
@@ -273,9 +285,8 @@ curl -sS -X DELETE \
 
 A successful delete permanently removes the aggregate stream, public event
 history, queued and completed runs, messages, parts, model-call records, and
-tool-use records.
-Wingman retains no tombstone. Active SSE streams close and active execution is
-canceled and settled before the response returns.
+tool-use records. Wingman retains no tombstone. Active SSE streams close. Active
+execution is canceled and settled before the response returns.
 
 ### Message request
 
@@ -287,12 +298,12 @@ canceled and settled before the response returns.
 }
 ```
 
-`request_id` is optional, opaque, scoped to this session, and limited to 200
-bytes. Repeating it with the same effective input returns the existing run.
+`request_id` is optional, opaque, and scoped to this session. It is limited to
+200 bytes. Repeating it with the same effective input returns the existing run.
 Reusing it with a different prompt, effective Agent or model, output schema,
 client, or current session placement returns `409 Conflict`. Omitting it always
 creates a new run. Wingman snapshots the effective Agent and placement at
-admission, so later Agent edits or session moves do not redirect queued work.
+admission. Later Agent edits or session moves do not redirect queued work.
 
 ### Accepted response
 
@@ -305,15 +316,15 @@ admission, so later Agent edits or session moves do not redirect queued work.
 ```
 
 Both a new admission and an identical retry return `202 Accepted`. On retry,
-`status` is the run's current status and `session_version` is the session's
-current aggregate version.
+`status` is the run's current status. `session_version` is the current aggregate
+version of the session.
 
 ### Run response
 
 Run statuses are `queued`, `running`, `completed`, `failed`, and `aborted`.
-`GET /sessions/{id}/runs` returns an array in admission order; the single-run
+`GET /sessions/{id}/runs` returns an array in admission order. The single-run
 endpoint returns `404` when the run does not belong to that session. Both
-endpoints enforce the session's client scope.
+endpoints enforce the session client scope.
 
 ```json
 {
@@ -335,14 +346,13 @@ endpoints enforce the session's client scope.
 ```
 
 On startup, running runs are recorded as aborted. Unfinished tool uses are
-interrupted, partial messages are retained as failed, and queued runs resume.
-Wingman does not replay provider calls or tool side effects that may already
-have run.
+interrupted. Partial messages are retained as failed. Queued runs resume.
+Wingman does not replay provider calls or tool side effects from before restart.
 
 ### Model-call response
 
-`GET /sessions/{id}/model-calls` returns one record per physical upstream
-attempt. Durable attempts include `run_id`; all calls include stable `id`,
+`GET /sessions/{id}/model-calls` returns one record for each physical upstream
+attempt. Durable attempts include `run_id`. All calls include stable `id`,
 `step`, `attempt`, `status`, route, timing, usage, and error fields. A
 `provider_request_id` is included when the provider returns a supported request
 ID header. `assistant_message_id` appears when the attempt produced a persisted
@@ -372,10 +382,10 @@ assistant message.
 
 ### Tool-use response
 
-`GET /sessions/{id}/tool-uses` returns the authoritative lifecycle for every
+`GET /sessions/{id}/tool-uses` returns the authoritative lifecycle for each
 model-proposed tool invocation. Rows are ordered by proposal time and source
-ordinal. `id` is Wingman's stable identity; `call_id` is provider correlation
-data and may repeat across runs.
+ordinal. `id` is the stable Wingman identity. `call_id` is provider correlation
+data and can repeat across runs.
 
 ```json
 [
@@ -404,13 +414,13 @@ data and may repeat across runs.
 
 Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
 `interrupted`, or `declined`. On server startup, unfinished records become
-`interrupted`; Wingman does not automatically replay them.
+`interrupted`. Wingman does not automatically replay them.
 
 ### Permission requests
 
 An authored `ask` rule creates a pending request after tool proposal and input
-validation but before tool authorization. The tool remains suspended until a
-reply, timeout, run cancellation, or shutdown recovery resolves it.
+validation. It creates the request before tool authorization. The tool remains
+suspended until a reply, timeout, run cancellation, or shutdown recovery resolves it.
 
 ```json
 {
@@ -433,14 +443,14 @@ Reply with:
 { "response": "once" }
 ```
 
-`once` and `always` resolve the request as `approved`; `reject` resolves it as
+`once` and `always` resolve the request as `approved`. `reject` resolves it as
 `rejected`. `always` also atomically stores exact session-scoped grants for the
-request's action/resources. Identical reply retries return `200` with the
-existing request and no duplicate event. A conflicting terminal reply returns
-`409`; unknown requests return `404`.
+request action/resources. Identical reply retries return `200` with the existing
+request and no duplicate event. A conflicting terminal reply returns `409`.
+Unknown requests return `404`.
 
 Other terminal statuses are `timed_out` and `interrupted`. Pending requests use
-a five-minute server timeout and become interrupted when their run is canceled
+a five-minute server timeout. They become interrupted when their run is canceled
 or during startup recovery. Durable events are `session.permission.requested`
 and `session.permission.resolved`.
 
@@ -448,16 +458,15 @@ and `session.permission.resolved`.
 
 `GET /sessions/{id}/events?after=<seq>` returns `text/event-stream`. `after` is
 an exclusive durable cursor. When `after` is absent, Wingman reads the
-`Last-Event-ID` header. The query parameter takes precedence when both are
-present.
+`Last-Event-ID` header. If both are present, the query parameter takes precedence.
 
-The server captures a durable watermark, replays every sequence through it in
-pages, emits `session.events.synchronized`, and then delivers live events. The
-`limit` parameter controls replay page size, not total replay length; its default
-is `100` and maximum is `500`. If delivery overflows or a cursor cannot be
-reconciled, the server emits `session.events.resync_required` and disconnects.
-Reload authoritative session and run state, then reconnect from the last durable
-cursor.
+The server captures a durable watermark. It replays every sequence through the
+watermark in pages. It emits `session.events.synchronized`. Then it delivers
+live events. The `limit` parameter controls replay page size, not total replay
+length. Its default is `100` and maximum is `500`. If delivery overflows or a
+cursor cannot be reconciled, the server emits `session.events.resync_required`.
+It then disconnects. Reload authoritative session and run state. Then reconnect
+from the last durable cursor.
 
 Each event is:
 
@@ -483,10 +492,10 @@ See [Streaming Events](/build-clients/streaming-events) for event shapes and rec
 
 `aborted` is `1` when the active run was asked to cancel and `0` when no run is
 active. Queued runs remain scheduled. The session-level endpoint is idempotent.
-To abort a specific run, use `POST /sessions/{id}/runs/{runID}/abort`: queued
-runs settle immediately and return `200`; a locally running run is signaled and
-returns `202`; terminal runs or a running run not owned by this server return
-`409`.
+To abort a specific run, use `POST /sessions/{id}/runs/{runID}/abort`. Queued
+runs settle immediately and return `200`. A locally running run is signaled and
+returns `202`. Terminal runs return `409`. A running run not owned by this server
+also returns `409`.
 
 ## Workspace endpoints
 
@@ -508,16 +517,16 @@ returns `202`; terminal runs or a running run not owned by this server return
 }
 ```
 
-Use an empty `path` for a Workspace that should not provide a working directory.
+Use an empty `path` for a Workspace that does not provide a working directory.
 
 Workspaces are scoped by `X-Wingman-Client`. Omitting the header uses the built-in `WingClient` client (`cli_wingclient`).
 
 ## Ephemeral run endpoint
 
-`POST /run` creates an in-memory session, streams the run, and does not persist
+`POST /run` creates an in-memory session. It streams the run. It does not persist
 the session or its messages. Unlike persistent session SSE, it uses the one-shot
-run event vocabulary (including `stream_part`) and ends with `done` on success
-or `error` on a terminal failure; it cannot be replayed.
+run event vocabulary, including `stream_part`. It ends with `done` on success or
+`error` on a terminal failure. It cannot be replayed.
 
 In normal persistent mode, pass either `agent_id` or an inline `agent`:
 
@@ -529,7 +538,8 @@ In normal persistent mode, pass either `agent_id` or an inline `agent`:
 }
 ```
 
-When the server is started with `--ephemeral`, persisted agents are unavailable, so pass an inline agent:
+When the server starts with `--ephemeral`, persisted agents are unavailable. Pass
+an inline agent:
 
 ```json
 {

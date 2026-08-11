@@ -24,32 +24,31 @@ const NPM_CLIENT_URL = "https://www.npmjs.com/package/@wingman-actor/client";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const TYPESCRIPT_SDK_EXAMPLE = `\`\`\`typescript
-import { apiData, createWingmanClient } from "@wingman-actor/client";
+import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
   baseUrl: "http://localhost:2323",
-  headers: { "X-Wingman-Client": "my_app" },
+  clientName: "my_app",
 });
 
-const session = await apiData(
-  client.POST("/sessions", { body: { title: "Research" } }),
-);
+const session = await client.sessions.create({ title: "Research" });
 \`\`\``;
 const GO_SDK_EXAMPLE = `\`\`\`go
 package main
 
 import (
-  "context"
-  "github.com/chaserensberger/wingman/client"
+   "context"
+   "github.com/chaserensberger/wingman/client"
 )
 
 func main() {
-  wingman := client.New("http://localhost:2323")
-  if _, err := wingman.Sessions.Create(context.Background(),
-    client.CreateSessionInput{Title: "Research"},
-   ); err != nil {
-     panic(err)
-   }
+   wingman, err := client.New("http://localhost:2323")
+   if err != nil { panic(err) }
+   title := "Research"
+   response, err := wingman.CreateSessionWithResponse(context.Background(), nil,
+     client.CreateSessionRequest{Title: &title})
+   if err != nil { panic(err) }
+   if response.JSON201 == nil { panic("session was not created") }
 }
 \`\`\``;
 const WINGMODELS_EXAMPLE = `

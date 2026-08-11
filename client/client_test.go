@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -130,6 +131,75 @@ func TestRunStream(t *testing.T) {
 	}
 }
 
+func TestRunStreamReportsPrematureEOF(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "text/event-stream")
+		_, _ = response.Write([]byte("event: iteration_start\ndata: {\"type\":\"iteration_start\",\"version\":1,\"data\":{\"step\":1}}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := client.Run(context.Background(), RunRequest{Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if !stream.Next() {
+		t.Fatalf("first Next() = false, err = %v", stream.Err())
+	}
+	if stream.Next() {
+		t.Fatal("second Next() = true")
+	}
+	if err := stream.Err(); err == nil || !strings.Contains(err.Error(), "before terminal done or error event") {
+		t.Fatalf("Err() = %v", err)
+	}
+}
+
+func TestRunStreamAllowsEOFAfterTerminalEvent(t *testing.T) {
+	tests := []struct {
+		name  string
+		event api.RunStreamEventType
+		data  string
+	}{
+		{name: "done", event: api.RunStreamEventDone, data: `{"usage":{},"steps":1}`},
+		{name: "error", event: api.RunStreamEventError, data: `{"code":"run_failed","message":"failed"}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				response.Header().Set("Content-Type", "text/event-stream")
+				_, _ = fmt.Fprintf(response, "event: %s\ndata: {\"type\":%q,\"version\":1,\"data\":%s}\n\n", test.event, string(test.event), test.data)
+			}))
+			defer server.Close()
+
+			client, err := New(server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stream, err := client.Run(context.Background(), RunRequest{Message: "hello"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			if !stream.Next() {
+				t.Fatalf("first Next() = false, err = %v", stream.Err())
+			}
+			if event := stream.Event(); event.Type != test.event {
+				t.Fatalf("event type = %q", event.Type)
+			}
+			if stream.Next() {
+				t.Fatal("second Next() = true")
+			}
+			if err := stream.Err(); err != nil {
+				t.Fatalf("Err() = %v", err)
+			}
+		})
+	}
+}
+
 func TestSessionEventStream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/sessions/session-1/events" {
@@ -138,17 +208,21 @@ func TestSessionEventStream(t *testing.T) {
 		if after := request.URL.Query().Get("after"); after != "7" {
 			t.Errorf("after = %q", after)
 		}
+		if lastEventID := request.Header.Get("Last-Event-ID"); lastEventID != "3" {
+			t.Errorf("Last-Event-ID = %q", lastEventID)
+		}
 		response.Header().Set("Content-Type", "text/event-stream")
 		_, _ = response.Write([]byte("id: 7\r\nevent: session.events.synchronized\r\ndata: {\"id\":\"7\",\"schema_version\":1,\r\ndata: \"type\":\"session.events.synchronized\",\"data\":{\"cursor\":7,\"watermark\":7}}\r\n\r\n"))
 	}))
 	defer server.Close()
 
 	after := int64(7)
+	lastEventID := int64(3)
 	client, err := New(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream, err := client.StreamSessionEvents(context.Background(), "session-1", &SessionEventsOptions{After: &after})
+	stream, err := client.StreamSessionEvents(context.Background(), "session-1", &SessionEventsOptions{After: &after, LastEventID: &lastEventID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,6 +356,89 @@ func TestRegisterClient(t *testing.T) {
 	}
 	if registered.Id != "cli_1" {
 		t.Fatalf("client = %#v", registered)
+	}
+}
+
+func TestEnsureClient(t *testing.T) {
+	tests := []struct {
+		name      string
+		client    Client
+		wantError bool
+	}{
+		{name: "creates client", client: Client{Id: "cli_wingcode", Name: "Wingcode"}},
+		{name: "returns matching client", client: Client{Id: "cli_wingcode", Name: "Wingcode"}},
+		{name: "rejects mismatched client", client: Client{Id: "cli_wingcode", Name: "Other"}, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				requests++
+				response.Header().Set("Content-Type", "application/json")
+				if requests == 1 && test.name == "creates client" {
+					response.WriteHeader(http.StatusCreated)
+					_, _ = response.Write([]byte(`{"client":{"id":"cli_wingcode","name":"Wingcode","created_at":"now"}}`))
+					return
+				}
+				if requests == 1 {
+					response.WriteHeader(http.StatusConflict)
+					_, _ = response.Write([]byte(`{"error":{"code":"conflict","message":"client exists"}}`))
+					return
+				}
+				if request.URL.Path != "/clients/cli_wingcode" {
+					t.Errorf("path = %q", request.URL.Path)
+				}
+				_, _ = response.Write([]byte(fmt.Sprintf(`{"id":%q,"name":%q,"created_at":"now"}`, test.client.Id, test.client.Name)))
+			}))
+			defer server.Close()
+
+			client, err := New(server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ensured, err := client.EnsureClient(context.Background(), " cli_wingcode ", " Wingcode ")
+			if test.wantError {
+				if err == nil {
+					t.Fatal("EnsureClient() error = nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ensured.Id != "cli_wingcode" || ensured.Name != "Wingcode" {
+				t.Fatalf("client = %#v", ensured)
+			}
+		})
+	}
+}
+
+func TestEnsureClientReturnsLookupFailureAfterConflict(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		response.Header().Set("Content-Type", "application/json")
+		if requests == 1 {
+			response.WriteHeader(http.StatusConflict)
+			_, _ = response.Write([]byte(`{"error":{"code":"conflict","message":"client exists"}}`))
+			return
+		}
+		response.WriteHeader(http.StatusInternalServerError)
+		_, _ = response.Write([]byte(`{"error":{"code":"internal_error","message":"lookup failed"}}`))
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.EnsureClient(context.Background(), "cli_wingcode", "Wingcode")
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("EnsureClient() error = %v, want APIError", err)
+	}
+	if apiError.StatusCode != http.StatusInternalServerError || apiError.Response.Message != "lookup failed" {
+		t.Fatalf("EnsureClient() error = %#v", apiError)
 	}
 }
 

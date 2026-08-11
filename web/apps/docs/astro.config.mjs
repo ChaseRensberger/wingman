@@ -46,6 +46,7 @@ export default defineConfig({
           label: "Build Clients",
           items: [
             { label: "HTTP API Basics", slug: "build-clients/http-api-basics" },
+			{ label: "Go SDK", slug: "build-clients/go-sdk" },
             { label: "TypeScript SDK", slug: "build-clients/typescript-sdk" },
             {
               label: "Streaming Events",
