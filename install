@@ -88,6 +88,10 @@ is_interactive() {
   [[ -t 0 && -t 1 && "$assume_yes" == false ]]
 }
 
+supports_color() {
+  [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]
+}
+
 confirm() {
   local prompt="$1" default="$2" answer
   if ! is_interactive; then
@@ -415,7 +419,15 @@ if [[ "$no_modify_path" == false ]] && add_path; then
 fi
 
 echo
-echo "Installed ${APP} to ${install_dir}"
+if supports_color; then
+  printf '\033[1;36mW   W\033[0m  \033[1mWingman installed\033[0m\n'
+  printf '\033[1;36mW   W\033[0m\n'
+  printf '\033[1;36mW W W\033[0m  %s\n' "${install_dir}/${APP}"
+  printf '\033[1;36mWW WW\033[0m\n'
+  printf '\033[1;36m W W\033[0m\n'
+else
+  echo "Installed ${APP} to ${install_dir}"
+fi
 if [[ "${GITHUB_ACTIONS:-}" == "true" && "$no_modify_path" == false ]]; then
   echo "Wingman is available in subsequent GitHub Actions steps."
 elif [[ ":$PATH:" != *":${install_dir}:"* ]]; then
@@ -433,5 +445,7 @@ elif [[ ":$PATH:" != *":${install_dir}:"* ]]; then
     fi
   fi
 fi
-echo "Run '${APP} version' to verify"
+echo "Verify: ${APP} version"
+echo "Start: ${APP} service start"
+echo "Docs: https://docs.wingman.actor"
 echo

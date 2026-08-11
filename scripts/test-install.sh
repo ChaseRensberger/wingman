@@ -69,7 +69,11 @@ HOME=$location_home "$repo/install" --binary "$binary" --install-dir "$location_
 grep -Fxq "  Binary (created now): $location_home/bin/wingman" "$location_output" || fail 'binary location was not reported'
 grep -Fxq "  Config (created when saved): $location_home/.config/wingman/wingman.json" "$location_output" || fail 'config location was not reported'
 grep -Fxq "  Database (created when the server starts): $location_home/.local/share/wingman/wingman.db" "$location_output" || fail 'database location was not reported'
-grep -Fxq "  Daemon state (created by serve or up): $location_home/.local/state/wingman" "$location_output" || fail 'daemon state location was not reported'
+grep -Fxq "  Daemon state (created by serve): $location_home/.local/state/wingman" "$location_output" || fail 'daemon state location was not reported'
+grep -Fxq "Installed wingman to $location_home/bin" "$location_output" || fail 'plain install success was not reported'
+grep -Fxq 'Verify: wingman version' "$location_output" || fail 'verify next step was not reported'
+grep -Fxq 'Start: wingman service start' "$location_output" || fail 'start next step was not reported'
+grep -Fxq 'Docs: https://docs.wingman.actor' "$location_output" || fail 'docs next step was not reported'
 
 archive_home=$tmp/archive-home
 PATH="$mock_bin:$PATH" WINGMAN_TEST_ARCHIVE=$archive WINGMAN_TEST_CHECKSUMS=$checksums HOME=$archive_home "$repo/install" --version 1.2.3 --install-dir "$archive_home/bin" --no-modify-path --yes >"$tmp/archive-output"
