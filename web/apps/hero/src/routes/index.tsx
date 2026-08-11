@@ -3,6 +3,7 @@ import { useState } from "react";
 import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { Button } from "@wingman/core/components/core/button";
 import { Markdown } from "@wingman/core/components/core/markdown";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@wingman/core/components/core/tabs";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from '../components/ascii-logo';
 
@@ -21,6 +22,35 @@ const DOCS_URL = "https://docs.wingman.actor";
 // const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
+const TYPESCRIPT_SDK_EXAMPLE = `\`\`\`typescript
+import { apiData, createWingmanClient } from "@wingman-actor/client";
+
+const client = createWingmanClient({
+  baseUrl: "http://localhost:2323",
+  headers: { "X-Wingman-Client": "my_app" },
+});
+
+const session = await apiData(
+  client.POST("/sessions", { body: { title: "Research" } }),
+);
+\`\`\``;
+const GO_SDK_EXAMPLE = `\`\`\`go
+package main
+
+import (
+  "context"
+  "github.com/chaserensberger/wingman/client"
+)
+
+func main() {
+  wingman := client.New("http://localhost:2323")
+  if _, err := wingman.Sessions.Create(context.Background(),
+    client.CreateSessionInput{Title: "Research"},
+   ); err != nil {
+     panic(err)
+   }
+}
+\`\`\``;
 const WINGMODELS_EXAMPLE = `
 
 \`\`\`go
@@ -273,7 +303,7 @@ function PluginsSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<div>
-				<SectionHeader title="Plugins" markerId="05" />
+				<SectionHeader title="Plugins" markerId="06" />
 				<p className='text-sm text-muted-foreground'>Extend Wingman with in-process Go modules or out-of-process JSON-RPC plugins.</p>
 			</div>
 			<LinkCard title="Compaction" description="Save context by compacting older messages when close to a session overflow." href={COMPACTION_PLUGIN_URL} />
@@ -326,11 +356,39 @@ function ProvidersSection() {
 	);
 }
 
+function SDKSection() {
+	return (
+		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
+			<div className="space-y-2">
+				<SectionHeader title="SDKs" markerId="05" />
+				<p className="max-w-3xl text-sm text-muted-foreground">
+					Build clients against the Wingman daemon with a typed SDK.
+				</p>
+			</div>
+			<Tabs defaultValue="typescript">
+				<TabsList className="w-fit">
+					<TabsTrigger value="typescript">TypeScript</TabsTrigger>
+					<TabsTrigger value="go">Go</TabsTrigger>
+				</TabsList>
+				<TabsContent value="typescript">
+					<Markdown>{TYPESCRIPT_SDK_EXAMPLE}</Markdown>
+				</TabsContent>
+				<TabsContent value="go">
+					<Markdown>{GO_SDK_EXAMPLE}</Markdown>
+				</TabsContent>
+			</Tabs>
+			<p className="text-sm text-muted-foreground">
+				More languages coming soon. Every SDK targets the same HTTP and event-stream API.
+			</p>
+		</section>
+	)
+}
+
 function ClientsSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<div>
-				<SectionHeader title="Clients" markerId="06" />
+				<SectionHeader title="Clients" markerId="07" />
 				<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			</div>
 			<div className="rounded-sm border bg-card p-4 space-y-4">
@@ -456,6 +514,7 @@ function Hero() {
 			<WhatIsWingmanSection />
 			<FeaturesSection />
 			<ReliableExecutionSection />
+			<SDKSection />
 			<ProvidersSection />
 			<PluginsSection />
 			<ClientsSection />
