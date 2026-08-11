@@ -6,14 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --sequential --workspaces build",
-    "build:blog": "bun --filter @wingman/blog build",
-    "build:docs": "bun --filter @wingman/docs build",
-    "build:hero": "bun --filter @wingman/hero build",
-    "build:console": "bun --filter @wingman/console build",
-    "build:desktop": "bun run build:console && bun --filter @wingman/desktop build",
-    "build:core": "bun --filter @wingman/core build",
+    "build": "bun run build:client && bun run --sequential --workspaces build",
+    "build:blog": "bun run --filter @wingman/blog build",
+    "build:docs": "bun run --filter @wingman/docs build",
+    "build:hero": "bun run --filter @wingman/hero build",
+    "build:console": "bun run --filter @wingman/console build",
+    "build:client": "bun run --filter @wingman-actor/client build",
+    "build:desktop": "bun run build:console && bun run --filter @wingman/desktop build",
+    "build:core": "bun run --filter @wingman/core build",
     "lint": "bun run --sequential --workspaces --if-present lint",
-    "generate:client": "bun --filter @wingman-actor/client generate"
+    "generate:client": "bun run --filter @wingman-actor/client generate"
   }
 }

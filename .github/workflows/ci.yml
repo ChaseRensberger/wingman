@@ -1,6 +1,8 @@
 name: ci
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -18,6 +20,11 @@ jobs:
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
       - name: Install JavaScript dependencies
         working-directory: web
         run: bun install --frozen-lockfile
@@ -31,7 +38,10 @@ jobs:
 
       - name: Check browser client boundaries
         working-directory: web
-        run: bun --filter @wingman-actor/client test
+        run: bun run --filter @wingman-actor/client test
+
+      - name: Test npm package artifact
+        run: bash scripts/test-client-package.sh
 
       - name: Vet
         run: go vet ./...

@@ -1,13 +1,38 @@
 {
   "name": "@wingman-actor/client",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.39",
+  "description": "Typed TypeScript client for the Wingman agent harness HTTP API.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chaserensberger/wingman.git",
+    "directory": "web/packages/client"
+  },
+  "homepage": "https://docs.wingman.actor/build-clients/typescript-sdk/",
+  "bugs": "https://github.com/chaserensberger/wingman/issues",
+  "keywords": ["wingman", "agents", "openapi", "sse", "typescript"],
   "type": "module",
-  "exports": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/schema.d.ts dist/schema.d.ts",
     "generate": "openapi-typescript ../../../openapi.json -o src/schema.d.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "test:package": "bun run build && bun run test && bash ../../../scripts/test-client-package.sh"
   },
   "dependencies": {
     "openapi-fetch": "^0.14.0"

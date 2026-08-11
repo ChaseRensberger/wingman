@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "bun run --cwd ../../packages/client build && vite",
+    "build": "bun run --cwd ../../packages/client build && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

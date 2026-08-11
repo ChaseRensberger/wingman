@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { parseRunStreamEvent, parseSessionEvent, readSSE } from "./session-stream";
+import { parseRunStreamEvent, parseSessionEvent, readSSE } from "@wingman-actor/client";
 
 test("readSSE preserves SSE event ids", async () => {
 	const response = new Response('id:42\nevent: session.text.delta\ndata: {"delta":"hello"}\n\n');
