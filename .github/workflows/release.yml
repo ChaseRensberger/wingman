@@ -10,7 +10,13 @@ permissions:
   id-token: write
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,47 +37,20 @@ jobs:
         with:
           node-version: 24
 
-      - name: Set up deno
-        uses: denoland/setup-deno@v2
-
       - name: Install JavaScript dependencies
         working-directory: web
         run: bun install --frozen-lockfile
 
-      - name: Build TypeScript workspaces
-        working-directory: web
-        run: bun run build
-
-      - name: Check API contract drift
-        run: ./scripts/check-api-contract.sh
-
-      - name: Check browser client boundaries
-        working-directory: web
-        run: bun run --filter @wingman-actor/client test
-
       - name: Verify client release version
         run: bash scripts/check-client-version.sh "${GITHUB_REF_NAME#v}"
 
-      - name: Test npm package artifact
-        run: bash scripts/test-client-package.sh
+      - name: Build npm package
+        working-directory: web
+        run: bun run build:client
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Build
-        run: go build -tags webdist ./...
-
-      - name: Test
-        run: go test ./...
-
-      - name: Build snapshot artifacts
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --snapshot --clean
-
-      - name: Smoke test Linux artifact
-        run: ./scripts/smoke-release-artifact.sh "$(find dist -type f -name 'wingman_*_linux_amd64.tar.gz' -print -quit)"
+      - name: Build Console assets
+        working-directory: web
+        run: bun run build:console
 
       - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6
