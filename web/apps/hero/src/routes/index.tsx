@@ -19,6 +19,7 @@ const SERVER_COMMAND = "curl -fsSL https://wingman.actor/install | bash";
 const ENABLE_COMMAND = "wingman service start";
 const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
+const NPM_CLIENT_URL = "https://www.npmjs.com/package/@wingman-actor/client";
 // const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
@@ -377,6 +378,9 @@ function SDKSection() {
 					<Markdown>{GO_SDK_EXAMPLE}</Markdown>
 				</TabsContent>
 			</Tabs>
+			<a href={NPM_CLIENT_URL} target="_blank" rel="noreferrer">
+				<Button variant="outline">View TypeScript SDK on npm -&gt;</Button>
+			</a>
 			<p className="text-sm text-muted-foreground">
 				More languages coming soon. Every SDK targets the same HTTP and event-stream API.
 			</p>
