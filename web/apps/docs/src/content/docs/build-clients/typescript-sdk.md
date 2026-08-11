@@ -16,7 +16,7 @@ bundlers with `fetch`, `ReadableStream`, and `TextDecoder` support.
 
 ## REST Requests
 
-Create a client with the daemon URL and send the bearer token on each request:
+Create a client with the daemon URL and daemon password on each request:
 
 ```ts
 import { apiData, createWingmanClient } from "@wingman-actor/client";
@@ -24,7 +24,7 @@ import { apiData, createWingmanClient } from "@wingman-actor/client";
 const client = createWingmanClient({
   baseUrl: "http://localhost:2323",
   headers: {
-    Authorization: `Bearer ${process.env.WINGMAN_TOKEN}`,
+    Authorization: `Basic ${btoa(`wingman:${process.env.WINGMAN_DAEMON_PASSWORD}`)}`,
     "X-Wingman-Client": "my_client",
   },
 });
@@ -49,9 +49,9 @@ try {
 }
 ```
 
-Use a registered client bearer token outside trusted local administration. See
-[HTTP API Basics](/build-clients/http-api-basics#authentication) for token and
-client identity rules.
+Use TLS or an SSH tunnel before sending the daemon password to a remote server.
+See [HTTP API Basics](/build-clients/http-api-basics#authentication) for
+authentication and client identity rules.
 
 ## One-Shot Streams
 
