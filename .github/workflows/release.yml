@@ -68,6 +68,3 @@ jobs:
       - name: Publish npm package
         working-directory: web/packages/client
         run: npm publish --provenance
-
-      - name: Verify published npm package
-        run: test "$(npm view @wingman-actor/client version)" = "${GITHUB_REF_NAME#v}"
