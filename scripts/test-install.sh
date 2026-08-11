@@ -60,7 +60,13 @@ chmod +x "$mock_bin/curl"
 
 run_install() {
   local shell=$1 home=$2 install_dir=$3
-  HOME=$home SHELL=$shell "$repo/install" --binary "$binary" --install-dir "$install_dir" --yes
+  env -i \
+    PATH="$PATH" \
+    HOME="$home" \
+    XDG_CONFIG_HOME="$home/.config" \
+    XDG_STATE_HOME="$home/.local/state" \
+    SHELL="$shell" \
+    "$repo/install" --binary "$binary" --install-dir "$install_dir" --yes
 }
 
 location_home=$tmp/location-home
