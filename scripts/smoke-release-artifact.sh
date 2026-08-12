@@ -33,6 +33,8 @@ esac
 tmp=$(mktemp -d)
 daemon_pid=
 port=${WINGMAN_SMOKE_PORT:-$((20000 + RANDOM % 20000))}
+username=smoke
+password=smoke-password
 
 cleanup() {
   status=$?
@@ -81,7 +83,7 @@ XDG_DATA_HOME=$tmp/data
 XDG_STATE_HOME=$tmp/data/state
 export HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME
 
-"$binary" serve --ephemeral --no-plugins --register --state-dir "$state_dir" --host 127.0.0.1 --port "$port" \
+WINGMAN_USERNAME=$username WINGMAN_PASSWORD=$password "$binary" serve --ephemeral --no-plugins --register --state-dir "$state_dir" --host 127.0.0.1 --port "$port" \
   >"$tmp/daemon.log" 2>&1 &
 daemon_pid=$!
 
@@ -111,11 +113,11 @@ done
 [[ $health_status == 200 ]] || fail "public /health returned $health_status"
 
 ready_status=$(curl --silent --show-error --output "$tmp/ready" --write-out '%{http_code}' \
-  --connect-timeout 1 --max-time 2 "$daemon_url/ready") || ready_status=000
-[[ $ready_status == 200 ]] || fail "public /ready returned $ready_status"
+  --connect-timeout 1 --max-time 2 --user "$username:$password" "$daemon_url/ready") || ready_status=000
+[[ $ready_status == 200 ]] || fail "/ready returned $ready_status"
 
 console_status=$(curl --silent --show-error --output "$tmp/console" --write-out '%{http_code}' \
-  --connect-timeout 1 --max-time 2 "$daemon_url/console/") || console_status=000
+  --connect-timeout 1 --max-time 2 --user "$username:$password" "$daemon_url/console/") || console_status=000
 [[ $console_status == 200 && -s $tmp/console ]] || fail "/console/ returned $console_status without content"
 
 console=$(<"$tmp/console")
@@ -125,7 +127,7 @@ else
   fail '/console/ did not reference a JavaScript entrypoint'
 fi
 entry_status=$(curl --silent --show-error --output "$tmp/console-entry" --write-out '%{http_code}' \
-  --connect-timeout 1 --max-time 2 "$daemon_url/console/assets/$console_entry") || entry_status=000
+  --connect-timeout 1 --max-time 2 --user "$username:$password" "$daemon_url/console/assets/$console_entry") || entry_status=000
 [[ $entry_status == 200 ]] || fail "console entrypoint returned $entry_status"
 
 console_entry=$(<"$tmp/console-entry")
@@ -135,7 +137,7 @@ else
   fail 'console entrypoint did not reference a session route chunk'
 fi
 chunk_status=$(curl --silent --show-error --output "$tmp/console-session-chunk" --write-out '%{http_code}' \
-  --connect-timeout 1 --max-time 2 "$daemon_url/console/assets/$session_chunk") || chunk_status=000
+  --connect-timeout 1 --max-time 2 --user "$username:$password" "$daemon_url/console/assets/$session_chunk") || chunk_status=000
 [[ $chunk_status == 200 ]] || fail "console session route chunk returned $chunk_status"
 
 kill -TERM "$daemon_pid"
