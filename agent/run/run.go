@@ -137,42 +137,6 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return r.finalize(step, StopReasonMaxSteps), nil
 		}
 
-		// TransformHistory hook. Runs before OnTurnStart so the hook sees
-		// (and the per-turn hooks operate on) any persisted mutation
-		// the TransformHistory returned. step+1 reflects the upcoming turn.
-		// Compaction is the canonical user of this seam (shipped in
-		// agent/hook).
-		if r.cfg.Hooks.TransformHistory != nil {
-			info := TransformHistoryInfo{
-				Step:      step + 1,
-				Messages:  r.messages,
-				Usage:     r.usage,
-				Client:    r.cfg.Client,
-				Model:     r.cfg.Model,
-				ModelInfo: r.cfg.ModelInfo,
-				// Transform hooks must enqueue through the runner rather than
-				// bypassing its serialized sink drain.
-				Sink: SinkFunc(r.emit),
-			}
-			newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
-			if err != nil {
-				r.emitError(err)
-				return r.finalize(step, StopReasonError), fmt.Errorf("hook TransformHistory: %w", err)
-			}
-			if newMsgs != nil && len(newMsgs) != len(r.messages) {
-				orig := len(r.messages)
-				head := firstChangedMessage(r.messages, newMsgs)
-				r.messages = newMsgs
-				r.emit(ContextTransformedEvent{
-					Step:          step + 1,
-					Phase:         "before_step",
-					OriginalCount: orig,
-					NewCount:      len(newMsgs),
-					Head:          head,
-				})
-			}
-		}
-
 		step++
 
 		if r.cfg.Hooks.OnTurnStart != nil {
@@ -256,42 +220,6 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		system = s
 	}
 
-	msgs := r.messages
-	if r.cfg.Hooks.TransformContext != nil {
-		info := TransformContextInfo{
-			Step:      step,
-			Messages:  append([]models.Message(nil), msgs...),
-			Model:     r.cfg.Model,
-			ModelInfo: r.cfg.ModelInfo,
-		}
-		m, err := r.cfg.Hooks.TransformContext(ctx, info)
-		if err != nil {
-			return Turn{}, fmt.Errorf("hook TransformContext: %w", err)
-		}
-		if m != nil && len(m) != len(msgs) {
-			var head *models.Message
-			if len(m) > 0 {
-				h := m[0]
-				head = &h
-			}
-			r.emit(ContextTransformedEvent{
-				Step:          step,
-				Phase:         "transform_context",
-				OriginalCount: len(msgs),
-				NewCount:      len(m),
-				Head:          head,
-			})
-		}
-		if m != nil {
-			msgs = m
-		}
-	}
-
-	// Note: any plugin-defined Part types that providers don't
-	// understand must be reduced to core types by the plugin's own
-	// TransformContextHook (the read-side seam). The loop is
-	// deliberately unaware of any specific plugin's part types.
-
 	toolDefs := r.toolDefs
 	if r.cfg.Hooks.TransformToolDefs != nil {
 		info := TransformToolDefsInfo{
@@ -325,7 +253,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	req := models.Request{
 		Model:        r.cfg.Model,
 		System:       system,
-		Messages:     msgs,
+		Messages:     r.messages,
 		Tools:        toolDefs,
 		ToolChoice:   r.cfg.ToolChoice,
 		Capabilities: r.cfg.Capabilities,
@@ -334,6 +262,48 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	if params.MaxOutputTokens != nil {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
+
+	if r.cfg.Hooks.TransformHistory != nil {
+		info := TransformHistoryInfo{
+			Step: step, Messages: r.messages, Usage: r.usage, Client: r.cfg.Client,
+			Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo, Request: req, Sink: SinkFunc(r.emit),
+		}
+		newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
+		if err != nil {
+			return Turn{}, fmt.Errorf("hook TransformHistory: %w", err)
+		}
+		if newMsgs != nil && len(newMsgs) != len(r.messages) {
+			orig := len(r.messages)
+			head := firstChangedMessage(r.messages, newMsgs)
+			r.messages = newMsgs
+			r.emit(ContextTransformedEvent{Step: step, Phase: "before_step", OriginalCount: orig, NewCount: len(newMsgs), Head: head})
+
+		}
+	}
+
+	msgs := r.messages
+	if r.cfg.Hooks.TransformContext != nil {
+		info := TransformContextInfo{Step: step, Messages: append([]models.Message(nil), msgs...), Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo}
+		m, err := r.cfg.Hooks.TransformContext(ctx, info)
+		if err != nil {
+			return Turn{}, fmt.Errorf("hook TransformContext: %w", err)
+		}
+		if m != nil && len(m) != len(msgs) {
+			var head *models.Message
+			if len(m) > 0 {
+				h := m[0]
+				head = &h
+			}
+			r.emit(ContextTransformedEvent{Step: step, Phase: "transform_context", OriginalCount: len(msgs), NewCount: len(m), Head: head})
+		}
+		if m != nil {
+			msgs = m
+		}
+	}
+
+	// Note: any plugin-defined Part types that providers don't understand must
+	// be reduced to core types by the plugin's TransformContextHook.
+	req.Messages = msgs
 
 	assistantMsg := models.Message{Role: models.RoleAssistant, State: models.MessageStateInProgress, Revision: 1}
 	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {

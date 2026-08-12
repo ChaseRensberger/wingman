@@ -363,7 +363,7 @@ type Hooks struct {
 	BeforeRun BeforeRunHook
 
 	// OnTurnStart fires at the top of each turn, after MaxSteps is
-	// checked and after TransformHistory / TransformContext / the LLM call.
+	// checked and before request transforms and the LLM call.
 	// step is 1-indexed.
 	OnTurnStart func(ctx context.Context, step int) error
 
@@ -372,12 +372,13 @@ type Hooks struct {
 	// happened in the turn. Errors here fail the run.
 	OnTurnEnd func(ctx context.Context, step int, turn Turn) error
 
-	// TransformHistory, if non-nil, is invoked at the top of each loop
-	// iteration (after MaxSteps gating, before OnTurnStart). The
-	// returned slice replaces the loop's running message history and
-	// persists across subsequent turns. Use this for compaction, budget
-	// enforcement, or any other transformation that should outlive a
-	// single turn. Returning the input slice unchanged is a no-op.
+	// TransformHistory, if non-nil, is invoked after the per-turn request
+	// has been assembled and before provider dispatch. The returned slice
+	// replaces the loop's running message history and persists across
+	// subsequent turns. Request contains the assembled model-facing view
+	// before this transform, so compaction and budget enforcement can
+	// account for system text, tools, schemas, and output limits. Returning
+	// the input slice unchanged is a no-op.
 	//
 	// If the returned slice's length differs from the input, the loop
 	// emits a ContextTransformedEvent so observers can react.
@@ -437,11 +438,11 @@ type Hooks struct {
 }
 
 // TransformHistoryInfo is the input to a TransformHistoryHook. Step is 1-indexed and
-// reflects the upcoming iteration. Messages is the loop's current
-// running history (the hook may inspect or copy but should treat it as
-// read-only; return a new slice to mutate). Usage is the cumulative
-// token usage across all completed turns. Model is the loop's model ref.
-// Sink is the
+// reflects the upcoming iteration. Messages is the loop's current running
+// history (the hook may inspect or copy but should treat it as read-only;
+// return a new slice to mutate). Request is the fully assembled model request
+// before this transform. Usage is the cumulative token usage across all
+// completed turns. Model is the loop's model ref. Sink is the
 // loop's event sink: hooks that synthesize new history messages
 // (compaction markers, redaction notices, etc.) should emit a
 // MessageEvent for each so observers (storage, UIs) see them on the
@@ -453,6 +454,7 @@ type TransformHistoryInfo struct {
 	Client    models.Client
 	Model     models.ModelRef
 	ModelInfo models.ModelInfo
+	Request   models.Request
 	Sink      Sink
 }
 

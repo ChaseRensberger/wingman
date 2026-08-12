@@ -53,6 +53,31 @@ func TestRunRetainsToolCallWhenBeforeToolCallFails(t *testing.T) {
 	}
 }
 
+func TestTransformContextRunsOnceWhenHistoryChanges(t *testing.T) {
+	var calls int
+	client := lifecycleClient{message: models.Message{Role: models.RoleAssistant}}
+	_, err := Run(context.Background(), Config{
+		Client:   client,
+		Model:    models.ModelRef{Provider: "test", ID: "model"},
+		Messages: []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "input"}}}},
+		Hooks: Hooks{
+			TransformHistory: func(_ context.Context, info TransformHistoryInfo) ([]models.Message, error) {
+				return append(append([]models.Message(nil), info.Messages...), models.Message{Role: models.RoleUser}), nil
+			},
+			TransformContext: func(_ context.Context, info TransformContextInfo) ([]models.Message, error) {
+				calls++
+				return info.Messages, nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("TransformContext calls = %d, want 1", calls)
+	}
+}
+
 type lifecycleClient struct {
 	message models.Message
 }
