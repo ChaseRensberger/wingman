@@ -5,29 +5,29 @@ description: "Open the local Wingman Console."
 
 # Use the Console
 
-Wingman includes a local Console on the same HTTP origin as the API. It uses
-browser HTTP Basic Auth.
+Wingman includes a local Console on the API HTTP origin. It uses browser HTTP
+Basic Auth.
 
 ## Local Console
 
-After you start Wingman, open:
+After you start Wingman, open this URL:
 
 ```text
 http://localhost:2323/console
 ```
 
-Enter the generated credentials from `~/.config/wingman/service.env` in the
-browser prompt. The managed service and foreground server use these credentials
-unless the foreground process has explicit environment credentials.
+Enter the credentials from `~/.config/wingman/service.env` in the browser
+prompt. The managed service uses these credentials.
+The foreground server uses them unless it has explicit environment credentials.
 
-To open the managed daemon from the CLI, run:
+To open the managed daemon from the CLI, run this command:
 
 ```bash
 wingman console
 ```
 
-If the connection drops, the Console retries its readiness check. When the daemon
-returns, the Console reloads the active page from the API.
+If the connection drops, the Console repeats its readiness check.
+When the daemon returns, the Console reloads the active API page.
 
 The Console has no password form, session cookie, or `/auth/login` endpoint.
-See [Authentication](/concepts/authentication) for the authentication model.
+Read [Authentication](/concepts/authentication) for the authentication model.

@@ -6,12 +6,9 @@ order: 100
 
 # Agents
 
-An agent is a reusable definition for a [session](/concepts/sessions) turn.
-It contains the instructions, allowed tools, default model, and optional output
-schema for that turn.
+An agent is a reusable definition for a [session](/concepts/sessions) turn. It contains instructions, allowed tools, a default model, and an optional output schema.
 
-This command uses HTTP Basic authentication. Load managed-service credentials
-with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
+This command uses HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
 See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
@@ -29,4 +26,4 @@ curl -sS -X POST http://localhost:2323/agents \
       }'
 ```
 
-For agent use, see [sessions](/concepts/sessions).
+For agent use, see [Sessions](/concepts/sessions).

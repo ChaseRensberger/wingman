@@ -5,12 +5,12 @@ description: "Consume Wingman's server-sent event stream."
 
 # Streaming Events
 
-Wingman has two SSE contracts: persistent session events and the one-shot
-`POST /run` stream. Clients start persistent work with the message endpoint.
+Wingman has two SSE contracts: persistent session events and a one-shot
+`POST /run` stream. Clients start persistent work through the message endpoint.
 They read session state from the session event stream.
 
 These examples use HTTP Basic authentication. Load managed-service credentials
-with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
+with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
 See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ## Start Work
@@ -30,7 +30,7 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
 
 If the client can retry an uncertain response, save `request_id` before you
 send the request. An identical retry returns the existing run. It does not
-create a second `session.run.queued` event. The accepted response includes
+create another `session.run.queued` event. The accepted response includes
 `run_id`, `status`, and `session_version`.
 
 ## Subscribe
@@ -62,26 +62,24 @@ GET /sessions/{id}/events?after=42
 ```
 
 Clients can instead send `Last-Event-ID: 42`. An explicit `after` query takes
-precedence if both are present.
+precedence when both are present.
 
 The server subscribes to live publication. It captures the current durable
-watermark. It replays every stored sequence through that watermark. Replay uses
-internal pages. `limit` controls the page size. The default is `100`. The
-maximum is `500`. It does not control the total replay length. The server then
-emits `session.events.synchronized` before pure live delivery. The server
-buffers durable events committed during replay. It delivers them once after the
-boundary.
+watermark. It replays stored sequences through that watermark. Replay uses
+internal pages. `limit` controls page size. The default is `100`. The maximum
+is `500`. It does not control total replay length. The server emits
+`session.events.synchronized` before live delivery. It buffers durable events
+committed during replay. It delivers them once after the boundary.
 
-If a client needs a finite page instead of an open stream, use the history
-endpoint:
+For a finite page instead of an open stream, use the history endpoint:
 
 ```text
 GET /sessions/{id}/events/history?after=<seq>&limit=<n>
 ```
 
 The history response is `{ "data": [...], "has_more": <boolean> }`. `limit`
-has the same default and maximum. Advance `after` to the last returned durable
-cursor. Then request another page while `has_more` is true.
+has the same default and maximum. Advance `after` to the last durable cursor.
+Then request another page while `has_more` is true.
 
 ## Event Envelope
 
@@ -125,17 +123,16 @@ not recognize. Do not interpret an unknown payload as a known event.
 
 ## Stream Controls
 
-Control events coordinate replay and recovery. Do not render them as session
-activity.
+Control events coordinate replay and recovery. Do not render them as session activity.
 
 | Event | Meaning |
 |---|---|
 | `session.events.synchronized` | Every durable event through this cursor was delivered. Subsequent frames are live. |
-| `session.events.resync_required` | Delivery overflowed or the cursor did not reconcile. Reload authoritative state. Then reconnect. |
+| `session.events.resync_required` | Delivery overflowed or the cursor did not reconcile. Reload authoritative state. Reconnect. |
 
 The server disconnects after `session.events.resync_required`. Keep the last
 durable cursor. Discard volatile partial rendering. Reload the session and
-tracked run. Then reconnect. Never advance a saved cursor backward.
+tracked run. Reconnect. Never move a saved cursor backward.
 
 ## Durable Events
 
@@ -151,7 +148,7 @@ transcript and final run state after a reconnect.
 | `session.text.completed` | A text block reached its final value. |
 | `session.reasoning.completed` | A reasoning block reached its final value. |
 | `session.tool.called` | The model requested a tool. |
-| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`. It includes its latest durable input, text output, structured content, metadata, error, and timing. |
+| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`. |
 | `session.tool.completed` | A tool finished successfully. |
 | `session.tool.failed` | A tool failed. |
 | `session.permission.requested` | A tool is waiting for an interactive permission reply. |
@@ -163,13 +160,15 @@ transcript and final run state after a reconnect.
 | `session.run.aborted` | The run was canceled or interrupted. |
 
 Durable events store boundaries, not token streams. A completed text event
-stores the final text for that block. It does not store every partial token
-delta.
+stores the final text for that block. It does not store each partial token delta.
+
+`session.tool.updated` includes the latest durable input, text output,
+structured content, metadata, error, and timing.
 
 ## Live Events
 
-Live events are not replayed. They provide latency-sensitive rendering while
-the client is connected.
+Live events are not replayed. They provide latency-sensitive rendering while the
+client is connected.
 
 | Event | Meaning |
 |---|---|
@@ -178,10 +177,10 @@ the client is connected.
 | `session.tool.input.delta` | Partial tool-call input. |
 | `session.tool.progress` | Incremental tool output and metadata reported during execution. |
 
-Live provider events include the correlation identifiers for the later durable
+Live provider events include correlation identifiers for the later durable
 boundary event. Text, reasoning, and tool-input deltas include `run_id`,
 `step`, `message_id`, `part_id`, and the message `revision` when the server
-saved the delta. Tool progress also includes `call_id`:
+saves the delta. Tool progress also includes `call_id`:
 
 ```json
 {
@@ -199,25 +198,24 @@ saved the delta. Tool progress also includes `call_id`:
 }
 ```
 
-Before proposal, tool-input deltas use `run_id` plus provider `call_id` as a
+Before proposal, tool-input deltas use `run_id` and provider `call_id` as a
 temporary correlation key. If `session.tool.called` or `session.tool.updated`
-supplies `tool_use_id`, migrate the transient state to the durable ID. Provider
-call IDs can repeat across runs. Do not use them as session-global identity.
+supplies `tool_use_id`, move transient state to the durable ID. Provider call
+IDs can repeat across runs. Do not use them as session-global identity.
 
-Tool progress includes `tool_use_id`. Append `output_delta` to the visible
-output. Shallow-merge `metadata`. Replace both with values from the later
-durable `session.tool.updated` event. Treat that event's exact lifecycle status
-as authoritative.
+Tool progress includes `tool_use_id`. Append `output_delta` to visible output.
+Shallow-merge `metadata`. Replace both with values from the later durable
+`session.tool.updated` event. Treat its exact lifecycle status as authoritative.
 
 Treat `session.message.created` as the authoritative snapshot. If its
-`revision` is newer or equal, replace an existing message with the same
-`message.id`. Do not append a duplicate after replay. Ignore an older revision.
-Apply the same identity rule to parts in the message. A `failed` message can
-contain useful partial text, reasoning, or tool input.
+`revision` is newer or equal, replace the message with the same `message.id`.
+Do not append a duplicate after replay. Ignore an older revision. Apply this
+identity rule to message parts too. A `failed` message can contain useful
+partial text, reasoning, or tool input.
 
 ## Recovery
 
-A client needs only a session ID and last durable sequence. The open stream
+A client needs only a session ID and the last durable sequence. The open stream
 performs complete durable replay. Clients do not need to page history before
 they subscribe:
 
@@ -268,14 +266,14 @@ Idle streams send heartbeat comments:
 ```
 
 Persistent run failures and aborts are durable `session.run.failed` and
-`session.run.aborted` events with JSON envelopes. They are not transport
-errors. The persistent connection stays open after a terminal run event. It can
-carry later queued runs for the session.
+`session.run.aborted` events with JSON envelopes. They are not transport errors.
+The persistent connection stays open after a terminal run event. It can carry
+later queued runs for the session.
 
 ## One-Shot `/run` Stream
 
-`POST /run` returns a separate, non-persistent SSE stream. It has its own event
-vocabulary, including `stream_part`. Its JSON `data:` value is a public
+`POST /run` returns a separate, non-persistent SSE stream. It has a separate
+event vocabulary, including `stream_part`. Its JSON `data:` value is a public
 lower-case envelope with `type`, `version`, and event-specific `data`. These
 events are not `session.*` events and cannot be replayed. Treat `type` as a
 discriminator. Ignore unknown event types.
@@ -283,22 +281,20 @@ discriminator. Ignore unknown event types.
 On success, `/run` sends a terminal `done` event with usage and step
 information. Then it closes. If setup or streaming fails, it sends a terminal
 `error` event. Then it closes. Its `data:` is a stream envelope. Its inner
-`data` uses the same `code`, `message`, and `request_id` fields as an HTTP API
-error. The code is `run_failed`. An `error` event from the underlying run uses
-the same shape. Treat EOF before either `done` or `error` as an interrupted
-run, not as successful completion.
+`data` uses the HTTP API error fields `code`, `message`, and `request_id`. The
+code is `run_failed`. An underlying run `error` event uses the same shape. Treat
+EOF before `done` or `error` as an interrupted run, not successful completion.
 
 ## `stream_part`
 
-`stream_part` is only part of the `/run` contract. It carries provider stream
-parts such as text and tool-input deltas:
+`stream_part` is only in the `/run` contract. It carries provider stream parts,
+such as text and tool-input deltas:
 
 ```text
 event: stream_part
 ```
 
 Persistent session SSE never emits `stream_part`. It translates supported
-provider parts into the live `session.text.delta`, `session.reasoning.delta`,
-and `session.tool.input.delta` events described above. Use persistent SSE for
-recoverable session state. Use `/run` only if the raw one-shot stream is
-required.
+provider parts into live `session.text.delta`, `session.reasoning.delta`, and
+`session.tool.input.delta` events. Use persistent SSE for recoverable session
+state. Use `/run` only for the raw one-shot stream.

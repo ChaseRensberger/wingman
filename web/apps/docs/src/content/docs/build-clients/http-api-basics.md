@@ -5,15 +5,15 @@ description: "Use Wingman from your own client over HTTP."
 
 # HTTP API Basics
 
-Clients control Wingman. A client can be a web app, CLI, TUI, editor
-extension, script, or internal service.
+Clients control Wingman. A client can be a web app, CLI, TUI, editor extension,
+script, or internal service.
 
 ## Basic Flow
 
 Most clients follow this sequence:
 
 1. Make sure that the daemon is healthy with `GET /health`.
-2. Connect with managed discovery or configure foreground-server Basic Auth.
+2. Connect with managed discovery or configure Basic Auth for a foreground server.
 3. Make sure that the daemon is ready with `GET /ready`.
 4. Configure provider auth with `PUT /provider/auth`.
 5. Create or reuse an agent with `/agents`.
@@ -34,8 +34,8 @@ For manual HTTP requests to a managed service, load its generated credentials:
 source ~/.config/wingman/service.env
 ```
 
-A foreground server uses configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD`
-values. Otherwise, it creates or reuses the managed-service credentials.
+A foreground server uses the configured `WINGMAN_USERNAME` and
+`WINGMAN_PASSWORD` values. Otherwise, it creates or reuses managed-service credentials.
 
 Send credentials with HTTP Basic authentication:
 
@@ -44,11 +44,11 @@ Authorization: Basic <base64("<username>:<password>")>
 ```
 
 For example, `curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" http://localhost:2323/ready`
-sends the required credentials. Before you send credentials to a remote
-daemon, use TLS or an SSH tunnel. The `X-Wingman-Client` header is an
-attribution selector, not a credential.
+sends the required credentials. Before you send credentials to a remote daemon,
+use TLS or an SSH tunnel. The `X-Wingman-Client` header selects attribution. It
+is not a credential.
 
-The Console uses browser Basic Auth; it has no login endpoint or session cookie.
+The Console uses browser Basic Auth. It has no login endpoint or session cookie.
 
 ## Test a Remote Server
 
@@ -70,7 +70,7 @@ Use the managed service to register a client on the VM:
 ssh ratchet-mews.exe.xyz 'wingman clients create --id cli_reference --name "Reference client"'
 ```
 
-Check the remote daemon with HTTP Basic authentication:
+Test the remote daemon with HTTP Basic authentication:
 
 ```bash
 curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
@@ -124,7 +124,7 @@ fields. `Run` and `StreamSessionEvents` provide typed SSE streams. Non-success
 responses return `*client.APIError`.
 
 The SDK is released with the Wingman module. The Go module proxy automatically
-provides each new public `v*` Git tag. [`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client) indexes it.
+provides each public `v*` Git tag. [`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client) indexes it.
 
 ## OpenAPI and TypeScript
 
@@ -135,7 +135,7 @@ unions for persistent-session and one-shot run events.
 ## Client Identity
 
 Any caller with daemon access can register clients with `/clients`. The caller
-can pass `X-Wingman-Client` on client-scoped requests.
+can send `X-Wingman-Client` on client-scoped requests.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
@@ -208,11 +208,11 @@ Every non-success JSON response uses one envelope:
 ```
 
 Use `error.code` for program logic. Use `error.message` for display. The
-`X-Request-ID` response header contains the same identifier as
-`error.request_id`. If you report a server failure, include that value.
+`X-Request-ID` response header contains the identifier in `error.request_id`.
+If you report a server failure, include that value.
 
 Wingman does not return internal failure details for 5xx responses. It records
-these details in daemon logs with the request ID.
+the details in daemon logs with the request ID.
 
 ## Persistent and Ephemeral Runs
 

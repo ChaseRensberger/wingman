@@ -6,9 +6,7 @@ order: 103
 
 # WingModels
 
-WingModels is Wingman's provider-agnostic model SDK. It gives the agent runtime
-common request, message, and stream formats. The model client hides provider
-wire formats.
+WingModels is the provider-agnostic model SDK for Wingman. It gives the agent runtime common request, message, and stream formats. The model client hides provider wire formats.
 
 ## Supported Providers
 
@@ -36,9 +34,7 @@ type Client interface {
 }
 ```
 
-`Prepare` lowers a WingModels request into provider-native JSON without sending
-it. `Stream` sends the request and returns normalized stream parts. `Generate`
-drains the stream and returns the final assembled assistant message.
+`Prepare` converts a WingModels request to provider-native JSON without sending it. `Stream` sends the request and returns normalized stream parts. `Generate` drains the stream and returns the final assembled assistant message.
 
 Requests carry a provider-qualified model ref:
 
@@ -69,9 +65,7 @@ WingModels stores conversation content as provider-neutral messages with typed p
 - Tool result
 - Plugin-defined opaque content
 
-Providers lower this common format into their native wire formats at request
-time. This lets the store, HTTP API, UI, and plugins use one content model
-instead of provider-specific payloads.
+Providers convert this common format to native wire formats at request time. This lets the store, HTTP API, UI, and plugins use one content model instead of provider-specific payloads.
 
 ## Streaming
 
@@ -83,19 +77,13 @@ StreamStartPart
 FinishPart
 ```
 
-`FinishPart` carries usage, finish reason, and the final assembled assistant
-message. Consumers can also call `EventStream.Final()` after they drain the
-stream.
+`FinishPart` carries usage, a finish reason, and the final assembled assistant message. Consumers can also call `EventStream.Final()` after they drain the stream.
 
-Provider-backed streams bind their producer to the request context. Cancellation
-unblocks a producer if the consumer stops draining a full stream. Malformed tool
-arguments fail with a decoding error instead of becoming an empty object.
-Parallel OpenAI-compatible tool calls retain provider index order.
+Provider-backed streams bind their producer to the request context. If the consumer stops draining a full stream, cancellation unblocks the producer. Malformed tool arguments fail with a decoding error instead of becoming an empty object. Parallel OpenAI-compatible tool calls retain provider index order.
 
 ## Provider Errors And Retries
 
-WingModels returns `models.ProviderError` for provider and transport failures.
-The error preserves its underlying cause. It classifies the failure as one of:
+WingModels returns `models.ProviderError` for provider and transport failures. The error preserves its underlying cause. It classifies the failure as one of:
 
 ```text
 authentication
@@ -110,29 +98,19 @@ decoding
 cancellation
 ```
 
-It also carries safe status, provider request ID, retryability, and optional
-`Retry-After` data. Provider response bodies are not included in public error
-messages.
+It also carries safe status, provider request ID, retryability, and optional `Retry-After` data. Provider response bodies are not included in public error messages.
 
-The agent loop retries retryable dispatch failures up to three physical attempts
-by default. It uses cancellation-aware exponential backoff. It honors
-`Retry-After`. Every attempt receives a separate durable model-call record.
-WingModels never retries failures after a stream is established.
+The agent loop retries retryable dispatch failures up to three physical attempts by default. It uses cancellation-aware exponential backoff. It honors `Retry-After`. Every attempt receives a separate durable model-call record. WingModels never retries failures after a stream is established.
 
-Embedded Go callers can configure this behavior with
-`session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
+Embedded Go callers can configure this behavior with `session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
 
 ## Request Options
 
-`Request.ProviderOptions` supplies top-level provider-native body fields keyed
-by the active provider ID. `Request.HTTP.Body` is the final override for
-advanced callers. Per-request HTTP query values override configured route query
-values without changing process configuration.
+`Request.ProviderOptions` supplies top-level provider-native body fields for the active provider ID. `Request.HTTP.Body` is the final override for advanced callers. Per-request HTTP query values override configured route query values without changing process configuration.
 
 ## Provider Route Overlays
 
-Wingman's configuration can override catalog provider routes for the running
-daemon.
+Wingman configuration can override catalog provider routes for the running daemon.
 
 ```json
 {
@@ -147,15 +125,13 @@ daemon.
 }
 ```
 
-The agent's `model_ref` remains `openai/gpt-5.6-terra`. The daemon routes
-OpenAI requests to the configured endpoint.
+The agent `model_ref` remains `openai/gpt-5.6-terra`. The daemon routes OpenAI requests to the configured endpoint.
 
 See [Providers](/configure/providers) for auth and gateway details.
 
 ## Custom Models
 
-Use explicit route metadata if the catalog does not know a model. Also use it
-if an agent/request needs a custom endpoint.
+Use explicit route metadata if the catalog does not know a model. Also use it if an agent/request needs a custom endpoint.
 
 HTTP agents use `model_route`:
 
@@ -178,8 +154,7 @@ HTTP agents use `model_route`:
 }
 ```
 
-If `model_ref` is in the catalog, the catalog wins. Use `model_route` for
-uncataloged models and explicit custom deployments.
+If `model_ref` is in the catalog, the catalog wins. Use `model_route` for uncataloged models and explicit custom deployments.
 
 ## Supported Protocols
 

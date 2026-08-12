@@ -1,11 +1,11 @@
 ---
 title: "Providers"
-description: "Configure provider auth, provider routes, and model gateways."
+description: "Configure provider authentication, routes, and model gateways."
 ---
 
 # Providers
 
-Providers are model services that Wingman can call. Examples include Anthropic,
+Providers are model services that Wingman calls. Examples include Anthropic,
 OpenAI, and OpenCode Zen.
 
 Provider configuration has three parts:
@@ -13,47 +13,42 @@ Provider configuration has three parts:
 | Concern | Where it lives | What it controls |
 |---|---|---|
 | Provider metadata | WingModels catalog and `~/.config/wingman/wingman.json` | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
-| Provider credentials | SQLite auth store through `/provider/auth` | API keys used by the Wingman server. |
-| Provider route and model config | `~/.config/wingman/wingman.json` | Runtime routing changes and custom provider/model definitions. |
+| Provider credentials | SQLite authentication store through `/provider/auth` | API keys that the Wingman server uses. |
+| Provider route and model configuration | `~/.config/wingman/wingman.json` | Runtime route changes and custom provider or model definitions. |
 
 Agents store `model_ref` values such as `openai/gpt-5.6-terra`. A provider route
-overlay changes where that reference is sent without changing the agent.
+overlay changes the destination without changing the agent.
 
-OpenCode Go uses the `opencode-go` provider ID. It uses the same
-`OPENCODE_API_KEY` environment variable as OpenCode Zen. Stored credentials use
-the provider ID as a key. If you use the auth API, configure `opencode-go` separately.
+OpenCode Go uses the `opencode-go` provider ID and the `OPENCODE_API_KEY` environment variable.
+Stored credentials use the provider ID as a key. Configure `opencode-go` separately when you use the authentication API.
 
 ## OpenAI Codex Subscription
 
-The `openai` provider supports a metered OpenAI API key. It also supports
-ChatGPT Plus/Pro through Codex OAuth. In the Console, open **Providers > OpenAI**.
-On the machine that runs Wingman, select **Connect in browser**. If the daemon is
-remote or headless, select **Connect headless**. Then open the displayed URL in
-any browser. Enter the displayed code.
+The `openai` provider supports metered OpenAI API keys and ChatGPT Plus/Pro through Codex OAuth.
+In the Console, open **Providers > OpenAI**. On the Wingman host, select **Connect in browser**.
+If the daemon is remote or headless, select **Connect headless**. Then open the displayed URL in any browser.
+Enter the displayed code.
 
-Browser OAuth requires Wingman to bind `localhost:1455`. Complete this flow in a
-browser on the daemon host because the callback targets that localhost address.
-Headless OAuth uses the device flow. It is appropriate for remote daemons. Only
-one OpenAI OAuth attempt can be pending at a time. An attempt expires after five
-minutes. Wingman stores authorization attempts in memory. If Wingman restarts,
-the restart cancels an in-progress attempt. After the server returns, start a new attempt.
+Browser OAuth requires Wingman to bind `localhost:1455`. Complete this flow in a browser on the daemon host.
+The callback targets that localhost address. Headless OAuth uses the device flow for remote daemons.
+Only one OpenAI OAuth attempt can be pending. An attempt expires after five minutes.
+Wingman stores authorization attempts in memory. If Wingman restarts, it cancels the in-progress attempt.
+After the server returns, start a new attempt.
 
 Codex OAuth routes supported `openai/*` model refs through the Codex backend.
-For example, use `openai/gpt-5.6-terra`. Codex OAuth is separate from
-`OPENAI_API_KEY`. An API key uses standard OpenAI Platform billing. OAuth uses
-the limits of the connected ChatGPT subscription. To remove either credential,
-disconnect OpenAI from the provider page.
+For example, use `openai/gpt-5.6-terra`. Codex OAuth is separate from `OPENAI_API_KEY`.
+An API key uses standard OpenAI Platform billing. OAuth uses the connected ChatGPT subscription limits.
+To remove either credential, disconnect OpenAI from the provider page.
 
-Only one OpenAI credential is active per Wingman daemon. Starting a new OAuth
+Only one OpenAI credential is active for each Wingman daemon. A new OAuth
 connection replaces a saved API key. Saving an API key replaces OAuth.
 
 ## Store Provider Auth
 
 To store provider API keys, use `PUT /provider/auth`.
 
-The commands use HTTP Basic authentication. Load managed-service credentials
-with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
-See
+The commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`.
+The username defaults to `wingman`. See
 [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
@@ -63,8 +58,7 @@ curl -sS -X PUT http://localhost:2323/provider/auth \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
 
-The server stores credentials in SQLite. Clients do not need access to the shell
-environment that supplied the key.
+The server stores credentials in SQLite. Clients do not need access to the shell environment that supplied the key.
 
 To view auth status, run:
 
@@ -74,7 +68,7 @@ curl -sS http://localhost:2323/provider/auth \
 ```
 
 The response reports stored SQLite credentials only. It does not return secrets.
-It does not report credentials that Wingman can resolve from environment variables.
+It does not report credentials that Wingman resolves from environment variables.
 
 To remove a provider credential, run:
 
@@ -85,8 +79,7 @@ curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic \
 
 ## Environment Variables
 
-When you use WingModels directly as a Go SDK, provider clients can read catalog
-environment variables, including:
+Provider clients can read catalog environment variables when you use WingModels as a Go SDK, including:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
@@ -95,12 +88,10 @@ environment variables, including:
 - `OPENROUTER_API_KEY`
 - `DEEPSEEK_API_KEY`
 
-When you use the Wingman server, use `/provider/auth`. The daemon then owns the
-stored credential.
+Use `/provider/auth` with the Wingman server. The daemon then owns the stored credential.
 
-`/provider/auth` is not a complete view of effective authentication. If no stored
-credential is available, a route with auth enabled can use environment variables
-declared by its model metadata. To view the provider's effective auth source, use
+`/provider/auth` does not show all effective authentication. If no stored credential is available, an authenticated route can use environment variables from its model metadata.
+To view the provider's effective authentication source, use
 `GET /provider/{id}`.
 
 ## Route A Provider Through A Gateway
@@ -108,7 +99,7 @@ declared by its model metadata. To view the provider's effective auth source, us
 To send a cataloged provider through a gateway or proxy, use
 `provider.<id>.options.baseURL`.
 
-For example, this routes `openai/*` refs through the exe.dev LLM Gateway:
+This configuration routes `openai/*` refs through the exe.dev LLM Gateway:
 
 ```json
 {
@@ -123,7 +114,7 @@ For example, this routes `openai/*` refs through the exe.dev LLM Gateway:
 }
 ```
 
-With this configuration, agents keep normal catalog model refs:
+With this configuration, agents keep the normal catalog model refs:
 
 ```json
 {
@@ -133,16 +124,15 @@ With this configuration, agents keep normal catalog model refs:
 }
 ```
 
-The route changes at runtime. The stored agent still uses `openai/gpt-5.6-terra`.
+The route changes at run time. The stored agent still uses `openai/gpt-5.6-terra`.
 
 ## Add A Custom Provider
 
-If you want a separate provider ID and model list, use a configuration-defined
-provider instead of rewriting an existing catalog provider.
+Use a configuration-defined provider for a separate provider ID and model list.
+Do not rewrite an existing catalog provider.
 
-This configuration keeps gateway references separate from direct provider
-references. Agents can use `exe-openai/gpt-5.6-terra`. `openai/*` continues to
-use OpenAI directly.
+This configuration separates gateway references from direct provider references.
+Agents can use `exe-openai/gpt-5.6-terra`. `openai/*` continues to use OpenAI directly.
 
 ```json
 {
@@ -171,8 +161,8 @@ use OpenAI directly.
 }
 ```
 
-After you restart the server, the provider appears at `/provider`. Its models
-appear at `/provider/exe-openai/models`. Agents can use:
+After you restart the server, the provider appears at `/provider`. Its models appear at `/provider/exe-openai/models`.
+Agents can use:
 
 ```text
 exe-openai/gpt-5.6-terra
@@ -184,24 +174,22 @@ exe-openai/gpt-5.6-terra
 
 | Config | Behavior |
 |---|---|
-| omitted | Use normal auth resolution: stored `/provider/auth` credentials first, then catalog environment variables. |
+| omitted | Use normal authentication resolution: stored `/provider/auth` credentials first, then catalog environment variables. |
 | `true` | Same as omitted. |
 | `false` | Send no stored or environment credential for this provider route. |
 
-Use `auth: false` only for unauthenticated gateways or local endpoints where
-Wingman must not send a provider credential.
+Use `auth: false` only for unauthenticated gateways or local endpoints. Wingman must not send a provider credential to these endpoints.
 
-Routes can also override credential transport. `authHeader` sets the header name.
-`authScheme` prefixes the credential value (for example, `Bearer`). `query` adds
-static query parameters. These options apply to the route. They do not store credentials.
+Routes can override credential transport. `authHeader` sets the header name.
+`authScheme` prefixes the credential value (for example, `Bearer`). `query` adds static query parameters.
+These route values apply to the route. They do not store credentials.
 
 ## exe.dev Gateway Example
 
 exe.dev boxes expose provider-compatible LLM gateways at
 `http://169.254.169.254/gateway/llm/{provider}`.
 
-If you want direct provider refs and exe.dev gateway refs side by side, use custom
-provider IDs:
+Use custom provider IDs to keep direct provider refs and exe.dev gateway refs separate:
 
 ```json
 {
@@ -256,8 +244,7 @@ exe-openai/gpt-5.6-terra
 exe-anthropic/claude-sonnet-5
 ```
 
-If you want all existing `openai/*` and `anthropic/*` refs to route through
-exe.dev, overlay the built-in providers:
+Overlay the built-in providers to route all existing `openai/*` and `anthropic/*` refs through exe.dev:
 
 ```json
 {
@@ -278,7 +265,7 @@ exe.dev, overlay the built-in providers:
 }
 ```
 
-With the overlay approach, use normal model refs:
+With the overlay approach, use the normal model refs:
 
 ```text
 openai/gpt-5.6-terra

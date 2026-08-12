@@ -7,14 +7,13 @@ order: 1003
 
 # RPC Plugin Protocol
 
-RPC plugins are external executables that Wingman supervises. They exchange
-newline-delimited JSON-RPC 2.0 messages with Wingman over stdin and stdout.
+RPC plugins are external programs that Wingman supervises. They exchange
+newline-delimited JSON-RPC 2.0 messages with Wingman through stdin and stdout.
 Protocol version 1 supports tool contributions.
 
-Use RPC plugins when the stock `wingman serve` binary must load a polyglot,
-out-of-process extension. RPC isolates Wingman from plugin crashes. RPC is not an
-OS security sandbox. The plugin runs with the same operating-system permissions
-as Wingman.
+Use RPC plugins when the stock `wingman serve` binary loads a polyglot, out-of-process extension.
+RPC isolates Wingman from plugin crashes. RPC is not an OS security sandbox.
+The plugin runs with the same operating system permissions as Wingman.
 
 ## Discovery
 
@@ -24,7 +23,7 @@ Wingman loads global plugins from:
 ~/.config/wingman/plugins/
 ```
 
-Add global directories with configuration or CLI flags:
+Add global directories in the configuration or with CLI flags:
 
 ```json
 {
@@ -38,9 +37,9 @@ Add global directories with configuration or CLI flags:
 wingman serve --plugin-dir /home/me/wingman-plugins
 ```
 
-For a session with a working directory, Wingman also loads manifests from
-`<work_dir>/.wingman/plugins/`. If a project-plugin generation fails, the session
-does not start. The previous plugin generation remains active.
+For a session with a working directory, Wingman also loads manifests from `<work_dir>/.wingman/plugins/`.
+If a project plugin generation fails, the session does not start.
+The previous plugin generation remains active.
 
 Disable external plugins with `wingman serve --no-plugins`.
 
@@ -66,8 +65,7 @@ Name a manifest `wingman-plugin.json` or use the suffix `.plugin.json`.
 | `command` | string array | yes | Executable and arguments. Wingman does not use shell expansion. |
 | `config` | object | no | Plugin-specific configuration sent during initialization. |
 
-The manifest starts only the process. The initialization result provides tools
-and capabilities.
+The manifest starts only the process. The initialization result provides tools and capabilities.
 
 ## Initialization
 
@@ -94,8 +92,7 @@ The first host request is `plugin.initialize`:
 }
 ```
 
-The plugin selects one offered protocol version. It returns its authoritative
-identity, capabilities, and contributions:
+The plugin selects one offered protocol version. It returns its authoritative identity, capabilities, and contributions:
 
 ```json
 {
@@ -129,9 +126,9 @@ identity, capabilities, and contributions:
 }
 ```
 
-Wingman rejects the complete candidate generation if initialization fails. It
-also rejects the generation if the protocol or plugin ID does not match. It
-rejects unsupported capabilities, invalid schemas, and duplicate contribution names.
+If initialization fails, Wingman rejects the complete candidate generation.
+If the protocol or plugin ID does not match, it also rejects the generation.
+It rejects unsupported capabilities, invalid schemas, and duplicate contribution names.
 
 ## Capabilities
 
@@ -141,14 +138,12 @@ rejects unsupported capabilities, invalid schemas, and duplicate contribution na
 | `progress` | Send `tool.progress` notifications for active tool requests. |
 | `health` | Implement `plugin.health`. Initialization includes a required health check. |
 
-Do not return capabilities that the plugin does not implement. Protocol version
-1 rejects unknown capabilities.
+Do not return capabilities that the plugin does not implement. Protocol version 1 rejects unknown capabilities.
 
 ## Tool Contributions
 
 Every tool requires `name`, `description`, and an object-shaped `input_schema`.
-Input and output values use JSON Schema. Wingman compiles both schemas before it
-publishes the generation.
+Input and output values use JSON Schema. Wingman compiles both schemas before it publishes the generation.
 
 | Field | Type | Description |
 |---|---:|---|
@@ -204,8 +199,7 @@ Return model-facing text separately from structured content and client metadata:
 | `structured` | any JSON value | when `output_schema` is declared | Structured result validated by Wingman. |
 | `metadata` | object | no | Client-facing data persisted with the result. |
 
-Do not put model instructions in `metadata`. Providers do not receive metadata
-as tool output.
+Do not put model instructions in `metadata`. Providers do not receive metadata as tool output.
 
 Return JSON-RPC errors for failed calls:
 
@@ -236,8 +230,7 @@ With the `progress` capability, report progress for the active request ID:
 }
 ```
 
-With the `cancellation` capability, Wingman sends this notification when the
-request context ends:
+With the `cancellation` capability, Wingman sends this notification when the request context ends:
 
 ```json
 {
@@ -272,8 +265,8 @@ With the `health` capability, implement `plugin.health`:
 }
 ```
 
-After initialization, a failed health check marks the plugin as degraded. It
-does not immediately remove the plugin tools.
+After initialization, a failed health check marks the plugin as degraded.
+It does not immediately remove the plugin tools.
 
 Write human-readable diagnostics to stderr, or send structured `plugin.log`
 notifications:
@@ -290,30 +283,31 @@ notifications:
 }
 ```
 
-Wingman keeps a bounded recent diagnostic buffer. Stdout is reserved for JSON-RPC.
-If a plugin process exits during `tool.execute`, the active call fails. The
-plugin becomes `failed`. Later calls through that generation are rejected.
-Wingman records a bounded process-exit diagnostic. It does not retry the call
-because the plugin can complete an external side effect before exit.
+Wingman keeps a bounded buffer of recent diagnostics. Stdout is reserved for JSON-RPC.
+If a plugin process exits during `tool.execute`, the active call fails.
+The plugin becomes `failed`. Later calls through that generation are rejected.
+Wingman records a bounded diagnostic for the process exit.
+It does not retry the call because the plugin can complete an external side effect before it exits.
 Reload the plugin to stage a new generation.
 
 ## Shutdown And Replacement
 
-Before retirement, Wingman stops new generation-bound calls. It waits for active
-calls to drain within a bounded timeout. It then sends `plugin.shutdown`. It
-closes stdin and waits for the process to exit. Wingman kills the process if the
-shutdown deadline expires.
+Before retirement, Wingman stops new calls bound to the generation.
+It waits for active calls to finish within a bounded timeout. Then it sends `plugin.shutdown`.
+It closes stdin and waits for the process to exit.
+If the shutdown deadline expires, Wingman kills the process.
 
 Reload builds and validates a complete candidate generation before publication.
-If candidate startup or validation fails, Wingman keeps the previous generation
-active. After a successful atomic swap, it retires the previous generation.
+If candidate startup or validation fails, Wingman keeps the previous generation active.
+After a successful atomic swap, it retires the previous generation.
 
 ## Inspect Plugins
 
-List plugin status, capabilities, health, process data, contributions, and
-recent diagnostics. These commands use HTTP Basic authentication. Load
-managed-service credentials with `source ~/.config/wingman/service.env`; the
-username defaults to `wingman`. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+List plugin status, capabilities, health, process data, contributions, and recent diagnostics.
+These commands use HTTP Basic authentication.
+Load managed-service credentials with `source ~/.config/wingman/service.env`.
+The username defaults to `wingman`.
+See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \

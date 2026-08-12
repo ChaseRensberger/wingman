@@ -7,7 +7,7 @@ order: 1002
 
 # Go Plugin Quickstart
 
-Go plugins are Go packages that implement Wingman's `plugin.Plugin` interface.
+Go plugins are Go packages that implement the Wingman `plugin.Plugin` interface.
 Use this path when you embed Wingman or ship a custom binary.
 
 This guide creates a plugin that observes session events through a sink.
@@ -65,13 +65,12 @@ sess := session.New(
 defer sess.Close(context.Background())
 ```
 
-Go plugins are linked into the Go process. The stock `wingman serve` binary does
-not discover Go plugins from disk.
+Go plugins are linked into the Go process. The stock `wingman serve` binary does not discover Go plugins from disk.
 
 ## 3. Add More Capabilities
 
-Inside `Activate`, register the capabilities that your plugin contributes. Return
-cleanup for resources such as files, workers, or subscriptions:
+Inside `Activate`, register the capabilities that the plugin contributes.
+Return cleanup for resources such as files, workers, or subscriptions:
 
 ```go
 func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
@@ -85,9 +84,8 @@ func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 }
 ```
 
-Hooks run in activation order. Transform hooks receive the previous hook's
-output. Sinks use a bounded callback time. If activation fails, existing plugins
-remain active.
+Hooks run in activation order. Transform hooks receive the output from the previous hook.
+Sinks use a bounded callback time. If activation fails, existing plugins remain active.
 
 ## When To Use Go Plugins
 
@@ -100,5 +98,4 @@ Use Go plugins for:
 - Custom message-part decoders.
 - Performance-sensitive extensions.
 
-Use [RPC plugins](/extend/rpc-plugin-protocol) when the stock server must load
-an out-of-process plugin from disk.
+Use [RPC plugins](/extend/rpc-plugin-protocol) when the stock server loads an out-of-process plugin from disk.

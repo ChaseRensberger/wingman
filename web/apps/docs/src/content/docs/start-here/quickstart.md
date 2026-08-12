@@ -6,7 +6,7 @@ order: 2
 
 # Quick Start
 
-This guide uses the CLI and HTTP API. For the bundled browser UI, read [Use the Console](/use-wingman/web-ui).
+This guide uses the CLI and HTTP API. For the browser UI, read [Use the Console](/use-wingman/web-ui).
 
 ## Prerequisites
 
@@ -26,18 +26,18 @@ curl -fsSL https://wingman.actor/install | bash
 wingman service start
 ```
 
-To run Wingman in the foreground, use `wingman serve`.
+Run `wingman serve` to run Wingman in the foreground.
 
-Wingman runs as a per-user managed service. Managed native clients discover its
-public registration at `~/.local/state/wingman/registration.json` and use the
-generated private credentials in `~/.config/wingman/service.env` automatically.
-For these `curl` commands, load the generated credentials:
+Wingman runs as a managed service for one user. Managed native clients read its
+public registration from `~/.local/state/wingman/registration.json`.
+They use the generated credentials in `~/.config/wingman/service.env`.
+For these `curl` commands, load the credentials:
 
 ```bash
 source ~/.config/wingman/service.env
 ```
 
-## Make Sure That It Is Running
+## Server Status
 
 ```bash
 curl -sS http://localhost:2323/health
@@ -51,8 +51,8 @@ Expected response:
 
 ## Configure provider auth
 
-Store the Anthropic API key in the local Wingman auth store. Replace `{key}`
-with your key:
+Store the Anthropic API key in the local Wingman authentication store. Replace
+`{key}` with your key:
 
 ```bash
 export ANTHROPIC_API_KEY={key}
@@ -115,8 +115,8 @@ curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response confirms that the server accepted the message. Use the session
-event stream to get progress and completion:
+The response shows that the server accepted the message. Use the session event
+stream for progress and completion:
 
 ```json
 {
@@ -131,7 +131,7 @@ input. The server returns the same run instead of queuing duplicate work.
 
 ## Stream a message
 
-If you want lifecycle events as the agent runs, subscribe to session events:
+To receive lifecycle events while the agent runs, subscribe to session events:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
@@ -140,11 +140,11 @@ curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
 ```
 
 The server sends each event as a server-sent event. Each event has an `event:`
-type and a JSON `data:` envelope.
+type and a JSON `data:` value.
 
 ## Next steps
 
-- Read [Global Config](/configure/config) for server flags, storage, logs, and plugins.
+- Read [Global Configuration](/configure/config) for server flags, storage, logs, and plugins.
 - Read [Providers](/configure/providers) for provider auth and gateway routing.
 - Read [Sessions](/concepts/sessions) for the session lifecycle and ephemeral runs.
 - Read [API](/reference/referenceapi) if you are building your own client.

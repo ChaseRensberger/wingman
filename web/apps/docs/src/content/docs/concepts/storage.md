@@ -6,9 +6,7 @@ order: 105
 
 # Storage
 
-Storage persists agents, clients, Workspaces, session history, tool execution,
-and provider credentials. Session history is durable by default when the server
-uses storage.
+Storage persists agents, clients, Workspaces, session history, tool execution, and provider credentials. Session history is durable by default when the server uses storage.
 
 ## Default Store
 
@@ -32,9 +30,7 @@ Use this command to run without persistence:
 wingman serve --ephemeral
 ```
 
-Use ephemeral mode for one-shot or embedded scenarios that do not need durable
-agents and sessions. Persisted HTTP endpoints return not-implemented responses
-in this mode.
+Use ephemeral mode for one-shot or embedded scenarios without durable agents and sessions. Persisted HTTP endpoints return not-implemented responses in this mode.
 
 ## What Is Stored
 
@@ -57,17 +53,11 @@ The SQLite schema stores:
 | `auth` | Local provider credentials, stored as JSON. |
 | `schema_migrations` | Applied migration versions, names, and SQL checksums. |
 
-Sessions do not store `agent_id` or `model_ref`. Wingman selects agents and
-models for each message. Assistant messages link to `model_calls`. These rows
-are the durable record of the provider/model route and usage for that turn.
+Sessions do not store `agent_id` or `model_ref`. Wingman selects agents and models for each message. Assistant messages link to `model_calls`. These rows are the durable record for provider/model routes and usage.
 
-Sessions created with `workspace_id` store the Workspace relationship. If the
-Workspace has a path, the session also stores a working-directory snapshot.
-Later Workspace path changes do not rewrite existing sessions.
+Sessions created with `workspace_id` store the Workspace relationship. If the Workspace has a path, the session also stores a working-directory snapshot. Later Workspace path changes do not rewrite existing sessions.
 
-Each admitted run records the prompt, effective Agent and model, output schema,
-client, working directory, and status. Deleting a session permanently removes
-its associated data.
+Each admitted run records the prompt, effective Agent and model, output schema, client, working directory, and status. Deleting a session permanently removes its associated data.
 
 ## Model Calls
 
@@ -85,30 +75,20 @@ use start-time order across runs.
 
 ## Tool Uses
 
-`tool_uses` is the authoritative execution record for model-proposed tools. A
-row links to its run, physical model call, assistant message, stable part, step,
-source ordinal, and provider call ID. Its Wingman-owned `tlu_` ID stays stable
-through this lifecycle:
+`tool_uses` is the authoritative execution record for model-proposed tools. A row links to its run, model call, assistant message, stable part, step, source ordinal, and provider call ID. Its Wingman-owned `tlu_` ID stays stable through this lifecycle:
 
 ```text
 proposed -> authorized -> started -> completed | failed | interrupted
          \-> declined
 ```
 
-Wingman stores rewritten input at authorization. It commits `started` before it
-calls the tool implementation. Unknown tools, invalid input, skipped hooks,
-permission denial, rejected approval, and unavailable non-interactive approval
-become `declined` without running. Interactive `ask` requests stay proposed
-while they wait. They proceed only after approval. At startup, Wingman
-interrupts pending permission requests and unfinished tool rows before queued
-work resumes.
+Wingman stores rewritten input at authorization. It commits `started` before it calls the tool implementation. Unknown tools, invalid input, skipped hooks, permission denial, rejected approval, and unavailable non-interactive approval become `declined` without execution. Interactive `ask` requests stay proposed while they wait. They proceed only after approval. At startup, Wingman interrupts pending permission requests and unfinished tool rows before queued work resumes.
 
 Wingman does not automatically replay interrupted tool uses.
 
 ## Message Parts
 
-Messages use typed parts. This lets the store preserve provider-neutral model
-content:
+Messages use typed parts. This lets the store preserve provider-neutral model content:
 
 - Text parts.
 - Image parts.
@@ -117,14 +97,11 @@ content:
 - Tool result parts.
 - Plugin-defined opaque parts.
 
-The store treats part payloads as opaque JSON. The model/session layer interprets
-the payloads. A plugin that registers a custom part type also interprets its
-payloads.
+The store treats part payloads as opaque JSON. The model/session layer interprets the payloads. A plugin that registers a custom part type also interprets its payloads.
 
 ## Migrations
 
-Pending schema migrations run when the store opens. If the applied migration
-history is invalid, Wingman does not start.
+Pending schema migrations run when the store opens. If the applied migration history is invalid, Wingman does not start.
 
 SQLite is the durable store that Wingman provides. Embedded Go applications can
 provide a different store implementation.

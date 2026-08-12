@@ -6,13 +6,12 @@ description: "Reference for the Wingman Go client public API."
 # Go Client API
 
 This page lists the public API in `github.com/chaserensberger/wingman/client`.
-Use the [Go SDK guide](/build-clients/go-sdk/) to connect to a daemon and use
-persistent streams correctly.
+Use the [Go SDK guide](/build-clients/go-sdk/) to connect to a daemon. The guide
+also describes persistent streams.
 
-`SDK` embeds the generated client. Use generated methods with the
-`WithResponse` suffix for JSON endpoints. These methods return an HTTP response
-struct with typed fields for each success status. They return `*APIError` for a
-non-success response.
+`SDK` embeds the generated client. For JSON endpoints, use generated methods
+with the `WithResponse` suffix. They return an HTTP response structure with
+typed fields for each success status. They return `*APIError` for non-success responses.
 
 ```go
 wingman, err := client.New(
@@ -26,8 +25,8 @@ if err != nil {
 ```
 
 The package also generates `WithBodyWithResponse` variants for JSON write
-methods. Use them only when the request body is an `io.Reader`. Use the JSON
-methods in this reference for normal Go values.
+methods. If the request body is an `io.Reader`, use these variants. For normal
+Go values, use the JSON methods in this reference.
 
 ## Create a Client
 
@@ -110,9 +109,9 @@ if err != nil {
 | `AbortSessionRunWithResponse(ctx, id, runID, nil)` | Abort one run. |
 | `ListSessionToolUsesWithResponse(ctx, id, nil)` | List tool uses for a session. |
 
-Use `NewMessageAdmission` before the first `AdmitMessage` request. Save the
-returned request before you send it. Reuse the saved request if the result is
-unknown.
+Before the first `AdmitMessage` request, use `NewMessageAdmission`. Save the
+returned request before you send it. If the result is unknown, reuse the saved
+request.
 
 ```go
 request := client.NewMessageAdmission(client.MessageSessionRequest{
@@ -234,6 +233,5 @@ if errors.As(err, &apiError) {
 ```
 
 The `client` package exports generated request, response, and resource types.
-Use [pkg.go.dev](https://pkg.go.dev/github.com/chaserensberger/wingman/client)
-for the complete Go type reference. Use the matching daemon and SDK release
-versions.
+For the complete Go type reference, use [pkg.go.dev](https://pkg.go.dev/github.com/chaserensberger/wingman/client).
+Use matching daemon and SDK release versions.

@@ -6,13 +6,12 @@ description: "Reference for the @wingman-actor/client public API."
 # TypeScript Client API
 
 This page lists the public API in `@wingman-actor/client`. Use the
-[TypeScript SDK guide](/build-clients/typescript-sdk/) to connect a client and
-use persistent streams correctly.
+[TypeScript SDK guide](/build-clients/typescript-sdk/) to connect a client. The
+guide also describes persistent streams.
 
 All resource methods return response data. A non-success HTTP response throws
-`APIError`. Request and response fields are TypeScript types from the package.
-The [OpenAPI document](/reference/referenceapi/#api) is the complete HTTP
-contract.
+`APIError`. The package provides TypeScript types for request and response
+fields. The [OpenAPI document](/reference/referenceapi/#api) defines the complete HTTP contract.
 
 ```ts
 import { createWingmanClient } from "@wingman-actor/client";
@@ -98,8 +97,8 @@ await client.clients.ensure("cli_example", "Example client");
 | `client.sessions.runs.abort(id, runID)` | Abort one run. |
 | `client.sessions.toolUses.list(id)` | List tool uses for a session. |
 
-Use `newMessageAdmission` before the first `admit` request. Save the returned
-request before you send it. Reuse the saved request if the result is unknown.
+Before the first `admit` request, use `newMessageAdmission`. Save the returned
+request before you send it. If the result is unknown, reuse the saved request.
 
 ```ts
 import { newMessageAdmission } from "@wingman-actor/client";
@@ -121,10 +120,10 @@ See [Streaming Events](/build-clients/streaming-events/) for replay and recovery
 | --- | --- |
 | `client.run.stream(request, options?)` | Start `POST /run` and return an async iterable of one-shot run events. `options.signal` aborts the request. |
 
-The iterable yields parsed event envelopes. It returns `{ known: false, event }`
-for a valid event type that this SDK version does not know. Ignore unknown
-events. It throws `StreamError` if the server does not return SSE or the stream
-ends before `done` or `error`.
+The iterable returns parsed event envelopes. It returns `{ known: false, event }`
+for a valid event type unknown to this SDK version. Ignore unknown events. If the
+server does not return SSE, it throws `StreamError`. It also throws `StreamError`
+if the stream ends before `done` or `error`.
 
 ```ts
 for await (const result of client.run.stream({
@@ -215,8 +214,8 @@ The package exports common resource and request types, including `Agent`,
 `CreateSessionRequest`, `MessageSessionRequest`, `RunRequest`, and
 `SessionEvent`.
 
-For every generated type, import `components`, `operations`, or `paths` from
-the package. Use the matching daemon and SDK release versions.
+For generated types, import `components`, `operations`, or `paths` from the
+package. Use matching daemon and SDK release versions.
 
 ```ts
 import type { components, operations, paths } from "@wingman-actor/client";

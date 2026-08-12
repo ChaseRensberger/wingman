@@ -12,15 +12,15 @@ npm install @wingman-actor/client@0.1.48
 ```
 
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
-bundlers that support `fetch`, `ReadableStream`, and `TextDecoder`.
+bundlers with `fetch`, `ReadableStream`, and `TextDecoder`.
 
 See the [TypeScript Client API](/reference/typescript-client-api/) for the
 complete public method index.
 
 ## REST Requests
 
-Create a client with the daemon URL, Basic Auth username, password, and client identity. The client
-uses this configuration for REST requests and streams.
+Create a client with the daemon URL, Basic Auth username, password, and client identity.
+The client uses this configuration for REST requests and streams.
 
 ```ts
 import { createWingmanClient } from "@wingman-actor/client";
@@ -36,14 +36,13 @@ await client.clients.ensure("cli_wingcode", "Wingcode");
 const sessions = await client.sessions.list();
 ```
 
-`clients.ensure` creates the client identity at the first start. On later
-starts, it gets and compares the existing identity. If the name differs, it
+`clients.ensure` creates the client identity on the first start. On later
+starts, it reads and compares the existing identity. If the name differs, it
 throws an `APIError` with the `conflict` code.
 
 Resource methods return response data for successful requests. They throw an
-`APIError` for an HTTP error. The error contains `status`, `code`, `message`,
-`requestId`, validation `details`, response `headers`, and `retryAfterMs`
-fields.
+`APIError` for HTTP errors. The error has `status`, `code`, `message`,
+`requestId`, validation `details`, response `headers`, and `retryAfterMs` fields.
 
 ```ts
 import { APIError } from "@wingman-actor/client";
@@ -58,7 +57,7 @@ try {
 }
 ```
 
-`username` is optional; the server defaults it to `wingman`. Use TLS or an SSH
+`username` is optional. The server defaults it to `wingman`. Use TLS or an SSH
 tunnel before sending Basic Auth credentials to a remote server.
 See [HTTP API Basics](/build-clients/http-api-basics#authentication) for
 authentication and client identity rules.
@@ -109,13 +108,13 @@ for await (const result of client.run.stream(
 ```
 
 Unknown event types return as `{ known: false, event }`. Ignore them. A newer
-daemon can then add stream events without breaking the client.
+daemon can add stream events without breaking the client.
 
 ## Persistent Session Streams
 
-`client.sessions.streamEvents` opens one `GET /sessions/{id}/events`
-connection. It does not reconnect automatically. The application owns the
-durable cursor and authoritative session state.
+`client.sessions.streamEvents` opens one `GET /sessions/{id}/events` connection.
+It does not reconnect automatically. The application owns the durable cursor
+and authoritative session state.
 
 ```ts
 let lastSequence = loadLastSequence();
@@ -137,16 +136,15 @@ for await (const result of client.sessions.streamEvents(sessionID, {
 }
 ```
 
-If transport fails, reload the authoritative session and run. Reconnect with
-the last saved durable sequence only while the run remains queued or running.
-Read [Streaming Events](/build-clients/streaming-events) for the complete event
-and recovery contract.
+If transport fails, reload the authoritative session and run. Reconnect only
+while the run is queued or running. Use the last saved durable sequence. Read
+[Streaming Events](/build-clients/streaming-events) for the event recovery contract.
 
 ## Browser Use
 
 The SDK can run in a browser. The daemon does not enable cross-origin CORS. Use
-it from the daemon's origin or through a same-origin backend proxy. Do not
-place an owner credential in a remote browser application.
+it from the daemon origin or a same-origin backend proxy. Do not place an owner
+credential in a remote browser application.
 
 ## Version Compatibility
 

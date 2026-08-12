@@ -8,7 +8,7 @@ description: "Wingman command-line interface reference."
 # CLI
 
 The `wingman` binary runs the local Wingman HTTP server. It manages the
-background service, updates release installations, and prints build information.
+background service, installs release updates, and prints build information.
 
 ```bash
 wingman <command> [flags]
@@ -42,14 +42,14 @@ wingman serve
 wingman service start
 ```
 
-The service runs for the invoking user and does not require `sudo`. Its public
-registration is `~/.local/state/wingman/registration.json`. Its generated
-private credentials are `~/.config/wingman/service.env`. The default SQLite
-database remains at `~/.local/share/wingman/wingman.db`. The command waits for
-readiness before it returns.
+The service runs for the user who runs the command. It does not require `sudo`.
+Its public registration is `~/.local/state/wingman/registration.json`. Its
+generated private credentials are `~/.config/wingman/service.env`. The default
+SQLite database is `~/.local/share/wingman/wingman.db`. The command waits until
+the service is ready.
 
 `wingman service start` accepts the same runtime flags as `wingman serve`.
-Selected values are written into the generated service definition.
+The command writes selected values to the generated service definition.
 
 ## Runtime Flags
 
@@ -81,7 +81,7 @@ Open the Console for the managed daemon:
 wingman console
 ```
 
-The Console uses the browser's HTTP Basic Auth prompt for managed-service
+The Console uses the browser HTTP Basic Auth prompt for managed-service
 credentials. It has no password form or session cookie.
 
 ## Service Commands
@@ -92,10 +92,10 @@ Check the generated service:
 wingman service status
 ```
 
-The command reports discovery as `ready`, `starting`, `stale`, `incompatible`,
-or missing. It then displays the managed-service status.
+The command reports `ready`, `starting`, `stale`, `incompatible`, or missing.
+It then shows the managed-service status.
 
-Restart the service after editing `~/.config/wingman/wingman.json`:
+If you edit `~/.config/wingman/wingman.json`, restart the service:
 
 ```bash
 wingman service restart
@@ -126,24 +126,24 @@ wingman dev (commit: none, built: unknown)
 
 ## Update
 
-`wingman update` downloads the latest stable GitHub release for the current Linux
-or macOS architecture. It verifies the downloaded archive against the release's
-`checksums.txt`. It atomically replaces the resolved executable:
+`wingman update` downloads the latest stable GitHub release for the current
+Linux or macOS architecture. It compares the downloaded archive with the
+release `checksums.txt`. It atomically replaces the resolved executable:
 
 ```bash
 wingman update
 ```
 
 The executable directory must be writable. This works with the default installer
-location (`~/.wingman/bin`) and other writable standalone installs. Update an
-installation owned by a package manager or another user through its original
+location (`~/.wingman/bin`) and other writable standalone installations. Update
+an installation owned by a package manager or another user with its original
 installation method.
 
-The public installer also verifies the downloaded release archive against the
+The public installer also compares the downloaded release archive with the
 published `checksums.txt` before it installs the binary.
 
 If Wingman runs as a managed service, the command restarts it after replacement.
-It does not start an installed but stopped service.
+It does not start an installed service that is stopped.
 
 Check availability without writing files:
 

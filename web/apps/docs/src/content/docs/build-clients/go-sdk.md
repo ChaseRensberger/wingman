@@ -5,13 +5,13 @@ description: "Use the generated Go client with a Wingman daemon."
 
 # Go SDK
 
-The Go SDK provides typed REST methods. It also provides local daemon discovery
-and helpers for Wingman SSE streams.
+The Go SDK provides typed REST methods, local daemon discovery, and helpers for
+Wingman SSE streams.
 
 See the [Go Client API](/reference/go-client-api/) for the complete public
 method index.
 
-Install the SDK version with the same tag as the Wingman daemon:
+Install the SDK version that has the same tag as the Wingman daemon:
 
 ```bash
 go get github.com/chaserensberger/wingman/client@v0.1.41
@@ -20,9 +20,9 @@ go get github.com/chaserensberger/wingman/client@v0.1.41
 ## Connect to a Local Daemon
 
 If the application runs as the daemon user, use `NewLocal`. It reads the
-private daemon registration from the XDG state directory. On Linux, it also
-checks the managed service state directory. It accepts only a loopback origin.
-It makes sure that the daemon is ready before it returns a client.
+private daemon registration from the XDG state directory. On Linux, it reads
+the managed-service state directory too. It accepts only a loopback origin.
+It waits for the daemon before it returns a client.
 
 ```go
 wingman, err := client.NewLocal(context.Background())
@@ -31,8 +31,8 @@ if err != nil {
 }
 ```
 
-Use `NewLocal` only in a local application that can read the daemon state. It
-does not connect to a remote daemon.
+Use `NewLocal` only in a local application that can read daemon state. It does
+not connect to a remote daemon.
 
 If a foreground server has a known URL and Basic Auth enabled, use
 `WithBasicAuth`:
@@ -54,7 +54,7 @@ Auth credentials to a remote server, use TLS or an SSH tunnel.
 ## Call REST Endpoints
 
 Generated methods with a `WithResponse` suffix decode successful JSON responses
-into typed fields:
+to typed fields:
 
 ```go
 ready, err := wingman.GetReadinessWithResponse(context.Background(), nil)
@@ -64,13 +64,13 @@ if err != nil {
 fmt.Println(ready.JSON200.Version)
 ```
 
-If requests use a registered client identity, set `WithClientID`. A
+For requests from a registered client identity, set `WithClientID`. A
 per-request `X-Wingman-Client` header overrides the SDK default.
 
 ## Set Up a Client Identity
 
-At application startup, call `EnsureClient`. It creates the client identity at
-the first start. On later starts, it gets and compares the existing identity.
+At application startup, call `EnsureClient`. It creates the client identity on
+the first start. On later starts, it reads and compares the existing identity.
 
 ```go
 bootstrap, err := client.NewLocal(ctx)
@@ -92,7 +92,7 @@ If the existing client has a different name, `EnsureClient` returns an error.
 
 ## Admit Messages Safely
 
-Persistent message admission is idempotent if each retry uses the same
+Persistent message admission is idempotent when each retry uses the same
 `request_id`. `NewMessageAdmission` adds an ID if the request has none.
 
 Save the returned request before you send the first network request:
@@ -151,9 +151,8 @@ if err := stream.Err(); err != nil {
 }
 ```
 
-If you need the raw SSE `id`, `event`, or `data` fields, use `stream.Frame()`.
-Read [Streaming Events](/build-clients/streaming-events) for the event recovery
-contract.
+For raw SSE `id`, `event`, or `data` fields, use `stream.Frame()`. Read
+[Streaming Events](/build-clients/streaming-events) for the event recovery contract.
 
 ## Handle Errors
 
@@ -168,8 +167,8 @@ if errors.As(err, &apiError) {
 }
 ```
 
-`APIError` keeps the response headers, error payload, request ID, and parsed
-`Retry-After` value. Use this data for diagnostics and retry decisions.
+`APIError` keeps response headers, the error payload, the request ID, and the
+parsed `Retry-After` value. Use this data for diagnostics and retry decisions.
 
 ## Version Compatibility
 

@@ -8,13 +8,11 @@ order: 1005
 # Embed the Daemon
 
 Use the `app` package when a Go program owns a complete Wingman daemon.
-The application root owns storage, external plugins, MCP connections, background
-workers, and the HTTP adapter.
+The application root owns storage, external plugins, MCP connections, background workers, and the HTTP adapter.
 
 ## Serve on a Listener
 
-Create the listener before the application. Then a bind failure occurs before
-Wingman opens the database or starts external processes.
+Create the listener before the application. Then a bind failure occurs before Wingman opens the database or starts external processes.
 
 ```go
 ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -43,8 +41,7 @@ if err := application.Serve(ctx, listener); err != nil {
 
 `app.New` completes startup recovery before it returns.
 
-When the context ends, `App.Serve` stops accepting HTTP requests. It then closes
-daemon resources.
+When the context ends, `App.Serve` stops accepting HTTP requests. Then it closes daemon resources.
 
 ## Use the Handler Without a Listener
 
@@ -65,16 +62,15 @@ response := httptest.NewRecorder()
 application.Handler().ServeHTTP(response, request)
 ```
 
-`App.Close` coordinates automatically with `App.Serve`. If another HTTP server
-uses `App.Handler`, drain that server before you call `App.Close`.
+`App.Close` coordinates automatically with `App.Serve`.
+If another HTTP server uses `App.Handler`, drain that server before you call `App.Close`.
 
 Use the direct packages under `agent/`, `models/`, and `store/` when a program
 does not need daemon HTTP behavior.
 
 ## Shutdown Contract
 
-`App.Close` cancels application work. It waits for the server to stop. Then it
-closes daemon resources.
+`App.Close` cancels application work. It waits for the server to stop. Then it closes daemon resources.
 
-If the supplied context ends before server work drains, dependencies remain
-open. Call `App.Close` again with a new context. This continues shutdown.
+If the supplied context ends before server work drains, dependencies remain open.
+Call `App.Close` again with a new context. This continues shutdown.

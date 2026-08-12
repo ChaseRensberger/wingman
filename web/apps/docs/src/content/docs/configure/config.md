@@ -1,12 +1,12 @@
 ---
 title: "Global Config"
-description: "Understand where Wingman configuration lives and which page to use next."
+description: "Find Wingman configuration and the relevant documentation."
 order: 3
 ---
 
 # Global Config
 
-Wingman uses per-user configuration. By default, configuration files are in:
+Wingman uses per-user configuration. By default, the configuration files are in:
 
 ```text
 ~/.config/wingman/
@@ -18,7 +18,7 @@ Use this directory for daemon-wide configuration.
 > `~/.config/wingman/service.env`. Authentication does not provide tenant
 > isolation.
 
-To use a different config root, set `XDG_CONFIG_HOME`. For example,
+To use a different configuration root, set `XDG_CONFIG_HOME`. For example,
 `XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.
 
 ## Configuration Surfaces
@@ -27,9 +27,9 @@ Wingman has three main configuration locations:
 
 | Concern | Where it lives |
 |---|---|
-| Server bind address, database path, logs, plugin dirs, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags |
+| Server bind address, database path, logs, plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags |
 | Provider API keys | SQLite auth store through `PUT /provider/auth` |
-| External plugin manifests | `~/.config/wingman/plugins/` plus any extra plugin dirs |
+| External plugin manifests | `~/.config/wingman/plugins/` plus extra plugin directories |
 
 The HTTP API stores agents. Agents are not in `wingman.json`.
 
@@ -41,9 +41,9 @@ The global configuration file is:
 ~/.config/wingman/wingman.json
 ```
 
-The file uses strict JSON. Comments cause startup to fail. Trailing commas cause
-startup to fail. Trailing JSON values cause startup to fail. Unknown keys cause
-startup to fail. The error identifies the configuration file.
+The file uses strict JSON. Comments cause startup failure. Trailing commas cause
+startup failure. Trailing JSON values cause startup failure. Unknown keys cause
+startup failure. The error identifies the configuration file.
 
 Example:
 
@@ -84,7 +84,7 @@ Example:
 }
 ```
 
-Flags passed to `wingman serve` or `wingman service start` override configuration values.
+Flags for `wingman serve` or `wingman service start` override configuration values.
 
 For exact fields, see [Config Schema](/reference/config-schema).
 
@@ -99,7 +99,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 | Choose between `model_ref` and `model_route` | [Models](/configure/models) |
 | Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
 | Connect MCP servers and tools | [MCP Servers](/configure/mcp) |
-| Check all supported config fields | [Config Schema](/reference/config-schema) |
+| View all supported configuration fields | [Config Schema](/reference/config-schema) |
 
 ## Defaults
 

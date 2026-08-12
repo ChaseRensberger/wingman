@@ -6,7 +6,7 @@ order: 1000
 
 # API
 
-Workspace URL: `http://localhost:2323` (configurable via `--host` and `--port`).
+Workspace URL: `http://localhost:2323` (set with `--host` and `--port`).
 
 All endpoints accept and return JSON unless noted. Non-success JSON responses
 contain `error.code`, `error.message`, and `error.request_id`. The
@@ -41,7 +41,7 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 `GET /health` reports liveness. It does not require authentication.
 `GET /ready` requires authentication. It returns `503 Service Unavailable`
 until startup recovery is complete. A non-ready response identifies the failed
-subsystem and provides a recovery action. Inspect `/logs` before you restart the daemon.
+subsystem and gives a recovery action. Before you restart the daemon, inspect `/logs`.
 
 ```json
 {
@@ -92,7 +92,7 @@ return the secret:
 
 ### OpenAI Codex OAuth
 
-Begin browser or headless authorization. Post a method:
+Start browser or headless authorization. Send a method:
 
 ```json
 { "method": "browser" }
@@ -156,7 +156,7 @@ and update requests return `400 Bad Request` for unknown or duplicate names.
 | `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
 | `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory. |
 
-Plugin directories and MCP server definitions are configured server-wide. See
+Plugin directories and MCP server definitions use server-wide configuration. See
 [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins),
 and [MCP Servers](/configure/mcp). Client records and the client header organize
 persisted resources only. They do not authorize requests.
@@ -166,10 +166,10 @@ stream. Request log entries can include paths, raw query strings, remote
 addresses, user agents, and client headers. Do not put secrets in API URLs. Keep
 the endpoint on trusted local access.
 
-`/diagnostics` is a point-in-time operational snapshot. It is not durable
+`/diagnostics` is an operational snapshot at one time. It is not durable
 history or a metrics feed. Use it to identify queue buildup, disconnected event
-clients, or aggregate plugin failures. Use `/plugins` for per-plugin detail. Use
-the session and run APIs for authoritative per-run state.
+clients, or aggregate plugin failures. For each plugin, use `/plugins`. For
+authoritative state for each run, use the session and run APIs.
 
 ## Session endpoints
 
@@ -195,7 +195,7 @@ the session and run APIs for authoritative per-run state.
 | `POST` | `/sessions/{id}/abort` | Cancel the active run. Queued messages remain scheduled. |
 | `POST` | `/run` | Run one ephemeral session without persisting it |
 
-Session responses include `version`, beginning at `1`. Rename and move commands
+Session responses include `version`, starting at `1`. Rename and move commands
 require that value as `expected_version`. A stale command returns `409 Conflict`.
 Reload the session before you decide whether to retry.
 
@@ -210,8 +210,8 @@ execute in order. Queued runs survive a server restart. They resume when the
 server starts. A run that was active at restart is recorded as aborted.
 
 The response includes the canonical run ID, current run status, and aggregate
-version after admission. Read `/sessions/{id}/runs/{runID}` for authoritative
-status and `/sessions/{id}/events` for execution progress.
+version after admission. For authoritative status, read `/sessions/{id}/runs/{runID}`.
+For execution progress, read `/sessions/{id}/events`.
 
 ### Create request
 
@@ -233,7 +233,7 @@ Or create the session from a Workspace:
 
 `working_directory` and `workspace_id` are mutually exclusive. When
 `workspace_id` is set, Wingman records it on the session. If the Workspace has a
-path, Wingman copies the path into `work_dir`.
+path, Wingman copies the path to `work_dir`.
 
 ### Rename request
 
@@ -265,7 +265,7 @@ Or move the session to a Workspace:
 ```
 
 Successful commands return the updated session and its new `version`. Sending
-the current title or location is a no-op. The version remains unchanged.
+the current title or location does nothing. The version remains unchanged.
 
 ### Delete request
 
@@ -280,7 +280,7 @@ curl -sS -X DELETE \
 
 A successful delete permanently removes the aggregate stream, public event
 history, queued and completed runs, messages, parts, model-call records, and
-tool-use records. Wingman retains no tombstone. Active SSE streams close. Active
+tool-use records. Wingman keeps no tombstone. Active SSE streams close. Active
 execution is canceled and settled before the response returns.
 
 ### Message request
@@ -296,9 +296,9 @@ execution is canceled and settled before the response returns.
 `request_id` is optional, opaque, and scoped to this session. It is limited to
 200 bytes. Repeating it with the same effective input returns the existing run.
 Reusing it with a different prompt, effective Agent or model, output schema,
-client, or current session placement returns `409 Conflict`. Omitting it always
-creates a new run. Wingman snapshots the effective Agent and placement at
-admission. Later Agent edits or session moves do not redirect queued work.
+client, or current session placement returns `409 Conflict`. Omitting it creates
+a new run. Wingman saves the effective Agent and placement at admission. Later
+Agent edits or session moves do not redirect queued work.
 
 ### Accepted response
 
@@ -350,7 +350,7 @@ Wingman does not replay provider calls or tool side effects from before restart.
 attempt. Durable attempts include `run_id`. All calls include stable `id`,
 `step`, `attempt`, `status`, route, timing, usage, and error fields. A
 `provider_request_id` is included when the provider returns a supported request
-ID header. `assistant_message_id` appears when the attempt produced a persisted
+ID header. `assistant_message_id` appears when the attempt produced a stored
 assistant message.
 
 ```json
@@ -378,8 +378,8 @@ assistant message.
 ### Tool-use response
 
 `GET /sessions/{id}/tool-uses` returns the authoritative lifecycle for each
-model-proposed tool invocation. Rows are ordered by proposal time and source
-ordinal. `id` is the stable Wingman identity. `call_id` is provider correlation
+tool invocation proposed by a model. Rows use proposal time and source ordinal
+order. `id` is the stable Wingman identity. `call_id` is provider correlation
 data and can repeat across runs.
 
 ```json
@@ -414,7 +414,7 @@ Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
 ### Permission requests
 
 An authored `ask` rule creates a pending request after tool proposal and input
-validation. It creates the request before tool authorization. The tool remains
+validation. It creates the request before tool authorization. The tool stays
 suspended until a reply, timeout, run cancellation, or shutdown recovery resolves it.
 
 ```json
@@ -455,9 +455,9 @@ and `session.permission.resolved`.
 an exclusive durable cursor. When `after` is absent, Wingman reads the
 `Last-Event-ID` header. If both are present, the query parameter takes precedence.
 
-The server captures a durable watermark. It replays every sequence through the
-watermark in pages. It emits `session.events.synchronized`. Then it delivers
-live events. The `limit` parameter controls replay page size, not total replay
+The server saves a durable watermark. It replays every sequence through the
+watermark in pages. It emits `session.events.synchronized`. Then it sends live
+events. The `limit` parameter controls replay page size, not total replay
 length. Its default is `100` and maximum is `500`. If delivery overflows or a
 cursor cannot be reconciled, the server emits `session.events.resync_required`.
 It then disconnects. Reload authoritative session and run state. Then reconnect
@@ -523,7 +523,7 @@ the session or its messages. Unlike persistent session SSE, it uses the one-shot
 run event vocabulary, including `stream_part`. It ends with `done` on success or
 `error` on a terminal failure. It cannot be replayed.
 
-In normal persistent mode, pass either `agent_id` or an inline `agent`:
+In normal persistent mode, send either `agent_id` or an inline `agent`:
 
 ```json
 {
@@ -533,8 +533,8 @@ In normal persistent mode, pass either `agent_id` or an inline `agent`:
 }
 ```
 
-When the server starts with `--ephemeral`, persisted agents are unavailable. Pass
-an inline agent:
+If the server starts with `--ephemeral`, send an inline agent. Stored agents are
+unavailable:
 
 ```json
 {

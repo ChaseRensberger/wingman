@@ -13,9 +13,9 @@ Wingman reads global configuration from:
 ~/.config/wingman/wingman.json
 ```
 
-This file defines daemon-wide settings for all clients.
+This file defines daemon-wide configuration for all clients.
 
-Set `XDG_CONFIG_HOME` to change the config root. For example, if it is set to
+Set `XDG_CONFIG_HOME` to change the configuration root. For example, if it is
 `~/settings`, Wingman reads `~/settings/wingman/wingman.json`. The default path
 is the same on Linux and macOS.
 
@@ -35,7 +35,7 @@ The file is parsed as strict JSON:
 
 - Comments are not allowed.
 - Trailing commas are not allowed.
-- Unknown keys cause startup to fail. The error identifies the config file and the key.
+- Unknown keys stop startup. The error identifies the configuration file and key.
 
 ## Example
 
@@ -81,7 +81,7 @@ The file is parsed as strict JSON:
 | Field | Type | Required | Description |
 |---|---:|---:|---|
 | `server` | object | no | Server defaults used by `wingman serve` and `wingman service start`. |
-| `provider` | object | no | Provider route overlays and config-defined provider/model metadata. |
+| `provider` | object | no | Provider route overlays and configuration-defined provider/model metadata. |
 | `mcp` | object | no | Configured Model Context Protocol servers. |
 | `plugins` | object | no | External plugin discovery defaults. |
 | `permissions` | string, object, or rule array | no | Daemon-wide tool permission rules. |
@@ -125,7 +125,7 @@ Wingman includes the default global plugin directory:
 ~/.config/wingman/plugins/
 ```
 
-`plugins.dirs` adds more directories. It does not replace the default directory.
+`plugins.dirs` adds directories. It does not replace the default directory.
 
 Example:
 
@@ -146,7 +146,7 @@ Disable external plugin loading entirely with the CLI flag:
 wingman serve --no-plugins
 ```
 
-There is no config-file equivalent for `--no-plugins`.
+There is no configuration-file equivalent for `--no-plugins`.
 
 ## `mcp`
 
@@ -165,14 +165,14 @@ servers connect when Wingman starts.
 | `discovery_timeout` | number | no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
 | `execution_timeout` | number | no | Per-tool-call timeout in milliseconds. Defaults to `30000`. |
 
-Wingman validates MCP definitions before it constructs daemon resources. The
+Wingman validates MCP definitions before it creates daemon resources. The
 `cwd` field supports `~` and `~/...` expansion for the effective user.
 
 See [MCP Servers](/configure/mcp) for local and remote examples, status checks, and current limits.
 
 ## `permissions`
 
-`permissions` defines daemon-wide tool policy. Wingman evaluates it at run time.
+`permissions` defines daemon-wide tool policy. Wingman evaluates it during a run.
 It is not written into stored agents.
 
 Supported effects are `allow`, `ask`, and `deny`.
@@ -202,8 +202,8 @@ policy failures without parsing text output.
 
 ## `agent_permissions`
 
-`agent_permissions` overlays daemon-local rules on stored SQLite agents by agent
-ID or name.
+`agent_permissions` overlays daemon-local rules on stored SQLite agents by ID
+or name.
 
 Example:
 
@@ -223,14 +223,14 @@ If both overlays match, ID-specific overlays run after name-specific overlays.
 ## `provider`
 
 `provider` maps provider IDs to provider definitions. It overlays WingModels
-catalog provider routes. It can define custom providers and models at daemon
-startup. It is not persisted in SQLite. It does not store credentials.
+catalog provider routes. It can define custom providers and models when the
+daemon starts. It is not stored in SQLite. It does not store credentials.
 
 Supported provider fields:
 
 | Field | Type | Required | Description |
 |---|---:|---:|---|
-| `name` | string | no | Display name for a config-defined provider. Defaults to the provider ID for unknown providers. |
+| `name` | string | no | Display name for a configuration-defined provider. Defaults to the provider ID for unknown providers. |
 | `auth_types` | object array | no | Auth methods exposed through `/provider`. Defaults to one `api_key` auth type for unknown providers. |
 | `options` | object | no | Runtime route options for this provider. |
 | `models` | object | no | Model metadata keyed by model ID. Required if this is a new provider you want to select from the API or web UI. |

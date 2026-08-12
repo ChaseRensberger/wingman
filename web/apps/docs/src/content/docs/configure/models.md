@@ -1,6 +1,6 @@
 ---
 title: "Models"
-description: "Choose models with model refs and custom routes."
+description: "Select models with model refs and custom routes."
 ---
 
 # Models
@@ -27,7 +27,7 @@ The provider selects a catalog entry. The model selects a model from that entry.
 
 ## Agent Default Model
 
-Agents can define a default `model_ref`:
+Agents can have a default `model_ref`:
 
 ```json
 {
@@ -39,8 +39,8 @@ Agents can define a default `model_ref`:
 }
 ```
 
-The model belongs to the agent definition, not the session. A session can use
-different agents or models on different turns.
+The model belongs to the agent definition, not the session. A session can use a
+different agent or model on each turn.
 
 ## Per-Message Model Override
 
@@ -54,15 +54,14 @@ Message requests can override the agent model for one turn:
 }
 ```
 
-If neither the message nor the agent provides a model, Wingman returns an error
-before the first provider call.
+Wingman returns an error before the first provider call if neither the message nor the agent provides a model.
 
 ## Provider Routes and Model Refs
 
-Provider route overlays change where cataloged model refs are sent. They do not
-change the model ref.
+Provider route overlays change the destination for cataloged model refs. They do
+not change the model ref.
 
-For example, this config routes `openai/*` refs through a gateway:
+For example, this configuration routes `openai/*` refs through a gateway:
 
 ```json
 {
@@ -77,7 +76,7 @@ For example, this config routes `openai/*` refs through a gateway:
 }
 ```
 
-Agents continue to use normal refs:
+Agents continue to use the normal refs:
 
 ```json
 {
@@ -86,15 +85,14 @@ Agents continue to use normal refs:
 }
 ```
 
-If a known provider uses a proxy, local gateway, or compatible endpoint, use a
-provider route overlay. See [Providers](/configure/providers) for auth and route
-details.
+Use a provider route overlay for a known provider with a proxy, local gateway, or compatible endpoint.
+See [Providers](/configure/providers) for authentication and route details.
 
 ## Custom Model Routes
 
-For daemon-wide custom providers and models, use configuration-defined providers.
-If one agent or request needs explicit route metadata, use `model_route`. This
-metadata travels with that agent or request.
+Use configuration-defined providers for daemon-wide custom providers and models.
+Use `model_route` when one agent or request needs route metadata. This metadata
+travels with that agent or request.
 
 For example, a custom provider in `~/.config/wingman/wingman.json` adds
 `exe-openai/gpt-5.6-terra` to the normal provider and model APIs:
@@ -126,7 +124,7 @@ For example, a custom provider in `~/.config/wingman/wingman.json` adds
 }
 ```
 
-Agents can then use the custom ref directly:
+Agents can use the custom ref directly:
 
 ```json
 {
@@ -156,9 +154,8 @@ For an uncataloged route in an agent or request, use `model_route`:
 }
 ```
 
-If `model_ref` is known through the embedded catalog or configuration-defined
-models, that metadata wins. Use `model_route` for uncataloged models and custom
-deployments.
+Metadata from the embedded catalog or configuration-defined models takes precedence over `model_route`.
+Use `model_route` for uncataloged models and custom deployments.
 
 ## Supported Protocols
 

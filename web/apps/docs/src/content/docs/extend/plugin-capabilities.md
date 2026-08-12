@@ -7,7 +7,7 @@ order: 1004
 
 # Plugin Capabilities
 
-Wingman has one plugin model with two authoring paths:
+Wingman has one plugin model with two ways to write plugins:
 
 - Go plugins for typed lifecycle extensions in embedded applications or custom binaries.
 - RPC plugins for out-of-process extensions loaded by the stock server.
@@ -37,7 +37,7 @@ Go plugins register hooks with `plugin.Registry`.
 | Registry method | Purpose |
 |---|---|
 | `RegisterBeforeRun` | Observe or prepend messages before a run starts. |
-| `RegisterAfterRun` | Observe run completion, including error paths. |
+| `RegisterAfterRun` | Observe run completion, including paths with errors. |
 | `RegisterTransformHistory` | Rewrite durable loop history before a turn. |
 | `RegisterTransformContext` | Rewrite model-facing context for one turn. |
 | `RegisterTransformToolDefs` | Rewrite tool definitions for one turn. |
@@ -49,17 +49,16 @@ Go plugins register hooks with `plugin.Registry`.
 | `RegisterTool` | Add a tool to the session. |
 | `RegisterPart` | Register a custom message-part decoder. |
 
-Hooks run in activation order. Transform hooks receive the previous hook's
-output. `Activate` can return context-aware cleanup. By default, sink dispatch
-waits one second. It drops events while a callback remains blocked.
+Hooks run in activation order. Transform hooks receive the output from the previous hook.
+`Activate` can return cleanup that uses a context. By default, sink dispatch waits one second.
+It drops events while a callback remains blocked.
 
 ## RPC Plugin Support
 
 RPC plugin manifests contain only bootstrap identity, command, and configuration.
-The process negotiates protocol version 1 through `plugin.initialize`. It returns
-its authoritative identity, capabilities, and tool contributions. Tool calls can
-run concurrently. They receive session, run, agent, call, message, part, model-call,
-and working-directory identity.
+The process negotiates protocol version 1 through `plugin.initialize`.
+It returns its authoritative identity, capabilities, and tool contributions.
+Tool calls can run concurrently. They receive session, run, agent, call, message, part, model-call, and working-directory identity.
 
 RPC plugins can negotiate request cancellation, progress notifications, and
 health checks.
