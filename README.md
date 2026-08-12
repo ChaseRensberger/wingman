@@ -32,3 +32,5 @@ It adds Wingman to your shell `PATH` when it finds a suitable shell config. Pass
 [Introduction](https://docs.wingman.actor/)
 
 [Quick Start](https://docs.wingman.actor/start-here/quickstart)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ChaseRensberger/wingman&type=Date)](https://star-history.com/#ChaseRensberger/wingman&Date)
