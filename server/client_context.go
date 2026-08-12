@@ -8,7 +8,6 @@ import (
 
 type authPrincipal struct {
 	authenticated bool
-	cookie        bool
 }
 
 type principalContextKey struct{}

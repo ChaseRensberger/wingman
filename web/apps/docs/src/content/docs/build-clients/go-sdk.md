@@ -34,12 +34,13 @@ if err != nil {
 Use `NewLocal` only in a local application that can read the daemon state. It
 does not connect to a remote daemon.
 
-If the daemon has a known URL, use `WithPassword`:
+If a foreground server has a known URL and Basic Auth enabled, use
+`WithBasicAuth`:
 
 ```go
 wingman, err := client.New(
 	"https://wingman.example",
-	client.WithPassword(os.Getenv("WINGMAN_DAEMON_PASSWORD")),
+	client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
 	client.WithClientID("cli_example"),
 )
 if err != nil {
@@ -47,7 +48,8 @@ if err != nil {
 }
 ```
 
-Before you send a daemon password to a remote server, use TLS or an SSH tunnel.
+`WINGMAN_USERNAME` defaults to `wingman` on the server. Before you send Basic
+Auth credentials to a remote server, use TLS or an SSH tunnel.
 
 ## Call REST Endpoints
 

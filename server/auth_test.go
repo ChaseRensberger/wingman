@@ -23,8 +23,21 @@ func TestAuthenticationIsDisabledWithoutPassword(t *testing.T) {
 	}
 }
 
-func TestAuthenticationAcceptsBasicPassword(t *testing.T) {
-	s := New(Config{Password: "secret"})
+func jsonRequest(method, path string, value any) *http.Request {
+	body, _ := json.Marshal(value)
+	request := httptest.NewRequest(method, path, bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	return request
+}
+
+func authenticatedRequest(method, path, password string) *http.Request {
+	request := httptest.NewRequest(method, path, nil)
+	request.SetBasicAuth("wingman", password)
+	return request
+}
+
+func TestAuthenticationAcceptsConfiguredBasicAuth(t *testing.T) {
+	s := New(Config{Username: "service-user", Password: "secret"})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
 	unauthorized := httptest.NewRecorder()
@@ -41,33 +54,28 @@ func TestAuthenticationAcceptsBasicPassword(t *testing.T) {
 	}
 
 	authorized := httptest.NewRecorder()
-	s.ServeHTTP(authorized, authenticatedRequest(http.MethodGet, "/ready", "secret"))
+	request = httptest.NewRequest(http.MethodGet, "/ready", nil)
+	request.SetBasicAuth("service-user", "secret")
+	s.ServeHTTP(authorized, request)
 	if authorized.Code != http.StatusServiceUnavailable {
 		t.Fatalf("authorized status = %d", authorized.Code)
 	}
 }
 
-func TestConsoleLoginCreatesCookieSession(t *testing.T) {
+func TestConsoleRequiresBasicAuth(t *testing.T) {
 	s := New(Config{Password: "secret"})
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
-	login := jsonRequest(http.MethodPost, "/auth/login", loginRequest{Password: "secret"})
-	response := httptest.NewRecorder()
-	s.ServeHTTP(response, login)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("login status = %d: %s", response.Code, response.Body.String())
-	}
-	cookies := response.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != consoleSessionCookie || !cookies[0].HttpOnly {
-		t.Fatalf("login cookies = %#v", cookies)
+	unauthorized := httptest.NewRecorder()
+	s.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/console/", nil))
+	if unauthorized.Code != http.StatusUnauthorized || unauthorized.Header().Get("WWW-Authenticate") == "" {
+		t.Fatalf("unauthorized console = %d, challenge = %q", unauthorized.Code, unauthorized.Header().Get("WWW-Authenticate"))
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
-	request.AddCookie(cookies[0])
-	response = httptest.NewRecorder()
-	s.ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("cookie status = %d", response.Code)
+	authorized := httptest.NewRecorder()
+	s.ServeHTTP(authorized, authenticatedRequest(http.MethodGet, "/console/", "secret"))
+	if authorized.Code != http.StatusOK {
+		t.Fatalf("authorized console = %d", authorized.Code)
 	}
 }
 
@@ -83,17 +91,4 @@ func TestClientRegistrationDoesNotIssueToken(t *testing.T) {
 	if response.Code != http.StatusCreated || json.NewDecoder(response.Body).Decode(&created) != nil || created.Client.ID != "cli_test" {
 		t.Fatalf("create client status = %d: %s", response.Code, response.Body.String())
 	}
-}
-
-func jsonRequest(method, path string, value any) *http.Request {
-	body, _ := json.Marshal(value)
-	request := httptest.NewRequest(method, path, bytes.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	return request
-}
-
-func authenticatedRequest(method, path, password string) *http.Request {
-	request := httptest.NewRequest(method, path, nil)
-	request.SetBasicAuth("wingman", password)
-	return request
 }

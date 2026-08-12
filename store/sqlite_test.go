@@ -4,13 +4,67 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestSQLiteStoreUsesPrivatePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are not available")
+	}
+	dir := filepath.Join(t.TempDir(), "wingman")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "wingman.db")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	for name, want := range map[string]os.FileMode{dir: 0o755, path: 0o600} {
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s permissions = %o, want %o", name, got, want)
+		}
+	}
+}
+
+func TestSQLiteStoreMakesDefaultDataDirectoryPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are not available")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path, err := DefaultDBPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	info, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("default data directory permissions = %o, want 700", got)
+	}
+}
 
 func TestSQLiteModelCallsAreScopedToRuns(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))

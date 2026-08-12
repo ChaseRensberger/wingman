@@ -51,6 +51,7 @@ type Config struct {
 	PermissionTimeout time.Duration
 	ShutdownTimeout   time.Duration
 	Password          string
+	Username          string
 	InstanceID        string
 	Version           string
 }
@@ -175,7 +176,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		RootContext: root, Store: a.store.store, ConsoleDevURL: cfg.ConsoleDevURL,
 		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
-		Password: cfg.Password, InstanceID: cfg.InstanceID, Version: cfg.Version,
+		Password: cfg.Password, Username: cfg.Username, InstanceID: cfg.InstanceID, Version: cfg.Version,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

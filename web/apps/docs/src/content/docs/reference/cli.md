@@ -23,7 +23,6 @@ wingman <command> [flags]
 | `service stop` | Stop and remove the Wingman background service. |
 | `service restart` | Restart the Wingman background service. |
 | `service status` | Show the Wingman background service status. |
-| `service password [password]` | Show or set the managed service password. |
 | `console` | Open the managed daemon Console. |
 | `clients create` | Register an API client identity. |
 | `update` | Check for or install a verified release update. |
@@ -43,12 +42,11 @@ wingman serve
 wingman service start
 ```
 
-If required on Linux, `wingman service start` re-executes through `sudo`. It
-installs `/etc/systemd/system/wingman.service`. It runs the service as the
-invoking user. Systemd manages its private daemon state at `/var/lib/wingman`.
-The default SQLite database remains at `~/.local/share/wingman/wingman.db`.
-On macOS, it installs a per-user LaunchAgent. Both service forms wait for
-readiness before the command returns.
+The service runs for the invoking user and does not require `sudo`. Its public
+registration is `~/.local/state/wingman/registration.json`. Its generated
+private credentials are `~/.config/wingman/service.env`. The default SQLite
+database remains at `~/.local/share/wingman/wingman.db`. The command waits for
+readiness before it returns.
 
 `wingman service start` accepts the same runtime flags as `wingman serve`.
 Selected values are written into the generated service definition.
@@ -83,8 +81,8 @@ Open the Console for the managed daemon:
 wingman console
 ```
 
-The Console prompts for the daemon password and creates a signed `HttpOnly`
-session cookie.
+The Console uses the browser's HTTP Basic Auth prompt for managed-service
+credentials. It has no password form or session cookie.
 
 ## Service Commands
 
@@ -95,7 +93,7 @@ wingman service status
 ```
 
 The command reports discovery as `ready`, `starting`, `stale`, `incompatible`,
-or missing. It then displays the systemd or launchd status.
+or missing. It then displays the managed-service status.
 
 Restart the service after editing `~/.config/wingman/wingman.json`:
 
@@ -105,16 +103,6 @@ wingman service restart
 
 To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`,
 run `wingman service start` again with the new flags.
-
-Show the managed service password, or replace it by providing a new value:
-
-```bash
-wingman service password
-wingman service password 'new-password'
-```
-
-When you set a new password, Wingman stops the service. Run `wingman service start`
-to start it again.
 
 Stop and remove the service:
 
@@ -154,8 +142,8 @@ installation method.
 The public installer also verifies the downloaded release archive against the
 published `checksums.txt` before it installs the binary.
 
-If Wingman runs through systemd or launchd, the command restarts that managed
-service after replacement. It does not start an installed but stopped service.
+If Wingman runs as a managed service, the command restarts it after replacement.
+It does not start an installed but stopped service.
 
 Check availability without writing files:
 

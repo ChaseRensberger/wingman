@@ -1,6 +1,6 @@
 ---
 title: "Run the Server"
-description: "Start Wingman as a foreground process or system service."
+description: "Start Wingman as a foreground process or per-user managed service."
 ---
 
 # Run the Server
@@ -36,18 +36,17 @@ To install and start Wingman in the background, run:
 wingman service start
 ```
 
-On Linux, `wingman service start` prompts for `sudo` before it writes
-`/etc/systemd/system/wingman.service`. On macOS, it writes the per-user
-LaunchAgent at `~/Library/LaunchAgents/actor.wingman.plist`. It does not require
-`sudo`.
+The managed service runs for the current user. It does not require `sudo`.
 
 `wingman service start` returns after the registered daemon passes its readiness check.
 The private state files are in
 `${XDG_STATE_HOME:-$HOME/.local/state}/wingman`:
 
-- `registration.json` contains the instance ID, version, URL, PID, and creation time. It has owner-only permissions.
-- `password` contains the managed service password. It has owner-only permissions.
+- `registration.json` contains the instance ID, version, URL, PID, and creation time. It is public service discovery data.
 - `daemon.lock` selects one managed daemon for this state directory.
+
+Generated managed-service credentials are in
+`~/.config/wingman/service.env`. This private file has owner-only permissions.
 
 To view the service status, run:
 
@@ -71,8 +70,8 @@ wingman update
 
 Wingman downloads the archive for the current Linux or macOS architecture. It
 compares the archive with the release's `checksums.txt`. It replaces the resolved
-executable atomically. Wingman restarts a running systemd service or LaunchAgent
-after replacement. The executable directory must be writable. If a package manager
+executable atomically. Wingman restarts a running managed service after
+replacement. The executable directory must be writable. If a package manager
 or system installation manages the executable, use the original installer to update it.
 
 To view update availability without making changes, run:
@@ -100,20 +99,23 @@ is served from `/console` on the same origin as the API.
 
 ## Authentication
 
-Wingman always requires a daemon password. If `WINGMAN_PASSWORD` is set,
-`wingman serve` uses it. Otherwise, `wingman serve` creates or reuses the private
-state `password` file. The managed service uses only its private password file.
-`GET /health` and Console assets remain public.
+The managed service uses generated credentials from
+`~/.config/wingman/service.env`. Managed native clients discover and use them
+automatically.
+
+An explicit foreground server also requires HTTP Basic authentication. It uses
+configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` values. Otherwise, it
+creates or reuses the credentials in `service.env`.
 
 For protected routes, use HTTP Basic authentication:
 
 ```bash
 curl -sS http://localhost:2323/ready \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
-The Console asks for the password. It stores a separate signed `HttpOnly`
-session cookie. If you send a password to a remote machine, use TLS or an SSH
+The Console uses browser HTTP Basic Auth; it has no password form or session
+cookie. Before sending credentials to a remote machine, use TLS or an SSH
 tunnel. See
 [Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
 

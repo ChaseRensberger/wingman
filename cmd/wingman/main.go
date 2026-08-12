@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
 	"strconv"
 	"strings"
 	"syscall"
@@ -93,12 +92,6 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 						Name:   "status",
 						Usage:  "Show Wingman's background service status",
 						Action: runServiceStatus,
-					},
-					{
-						Name:      "password",
-						Usage:     "Show or set the background service password",
-						ArgsUsage: "[password]",
-						Action:    runServicePassword,
 					},
 				},
 			},
@@ -201,13 +194,9 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			}
 		}
 		state := daemonstate.New(stateDir)
-		password := os.Getenv("WINGMAN_PASSWORD")
-		if password == "" {
-			var err error
-			password, err = state.Password()
-			if err != nil {
-				return fmt.Errorf("load daemon password: %w", err)
-			}
+		username, password, err := serverCredentials()
+		if err != nil {
+			return err
 		}
 		var lock *daemonstate.Lock
 		if cmd.Bool("register") {
@@ -243,7 +232,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			MCP: effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
-			Password: password, InstanceID: instanceID, Version: version,
+			Password: password, Username: username, InstanceID: instanceID, Version: version,
 		})
 		if err != nil {
 			_ = listener.Close()
@@ -258,6 +247,22 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		logger.Info("shutdown complete")
 		return nil
 	}
+}
+
+func serverCredentials() (string, string, error) {
+	password := os.Getenv("WINGMAN_PASSWORD")
+	username := os.Getenv("WINGMAN_USERNAME")
+	if password != "" {
+		if username == "" {
+			username = "wingman"
+		}
+		return username, password, nil
+	}
+	serviceConfig, err := daemonstate.EnsureServiceConfig()
+	if err != nil {
+		return "", "", fmt.Errorf("load server credentials: %w", err)
+	}
+	return serviceConfig.Username, serviceConfig.Password, nil
 }
 
 func listenerURL(configuredHost string, addr net.Addr) string {
@@ -283,21 +288,4 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(strings.Trim(host, "[]"))
 	return ip != nil && ip.IsLoopback()
-}
-
-func serviceAccount() (string, string, error) {
-	name := os.Getenv("SUDO_USER")
-	if name == "" {
-		current, err := user.Current()
-		if err != nil {
-			return "", "", fmt.Errorf("resolve current user: %w", err)
-		}
-		return current.Username, current.HomeDir, nil
-	}
-
-	u, err := user.Lookup(name)
-	if err != nil {
-		return "", "", fmt.Errorf("resolve sudo user %q: %w", name, err)
-	}
-	return u.Username, u.HomeDir, nil
 }

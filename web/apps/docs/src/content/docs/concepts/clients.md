@@ -27,11 +27,13 @@ identity. It does not issue credentials.
 To make a request in a client context, send the client ID with
 `X-Wingman-Client`:
 
-This command uses `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+This command uses HTTP Basic authentication. Load managed-service credentials
+with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
+See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: cli_..." \
   -d '{"title":"From my app"}'

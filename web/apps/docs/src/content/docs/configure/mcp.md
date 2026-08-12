@@ -96,14 +96,15 @@ names collide, tool catalog creation fails.
 
 To view the daemon directly, run:
 
-These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See
+These commands use HTTP Basic authentication. Load managed-service credentials
+with `source ~/.config/wingman/service.env`; the username defaults to `wingman`. See
 [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl -sS http://127.0.0.1:2323/mcp \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq
 curl -sS http://127.0.0.1:2323/tools \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq '.tools[] | select(.source == "mcp")'
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq '.tools[] | select(.source == "mcp")'
 ```
 
 `/mcp` lists every configured server and its connection status. `/tools` lists the

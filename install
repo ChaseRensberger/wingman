@@ -141,7 +141,7 @@ print_locations() {
   state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/wingman"
 
   case "$os" in
-    linux) service_path="/etc/systemd/system/wingman.service" ;;
+    linux) service_path="$HOME/.config/systemd/user/wingman.service" ;;
     darwin) service_path="$HOME/Library/LaunchAgents/actor.wingman.plist" ;;
     windows) service_path="not supported; use wingman serve" ;;
   esac
@@ -152,9 +152,7 @@ print_locations() {
   echo "  Plugins (created by you): $HOME/.config/wingman/plugins"
   echo "  Database (created when the server starts): ${data_dir}/wingman.db"
   echo "  Daemon state (created by serve): ${state_dir}"
-  if [[ "$os" == "linux" ]]; then
-    echo "  Managed daemon state (created by service start): /var/lib/wingman"
-  fi
+  echo "  Managed service credentials (created by service start): ${config_dir}/service.env"
   if [[ "$os" == "windows" ]]; then
     echo "  Managed service: ${service_path}"
   else

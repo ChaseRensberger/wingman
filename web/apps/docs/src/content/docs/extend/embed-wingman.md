@@ -26,7 +26,7 @@ if err != nil {
 }
 
 application, err := app.New(ctx, app.Config{
-	DBPath:          "/var/lib/wingman/wingman.db",
+	DBPath:          "/home/alex/.local/share/wingman/wingman.db",
 	LogFormat:       "json",
 	LogLevel:        "info",
 	ShutdownTimeout: 30 * time.Second,

@@ -110,6 +110,23 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create directory %s: %w", dir, err)
 	}
+	defaultPath, defaultErr := DefaultDBPath()
+	if defaultErr == nil && filepath.Clean(dbPath) == filepath.Clean(defaultPath) {
+		if err := os.Chmod(dir, 0700); err != nil {
+			return nil, fmt.Errorf("set database directory permissions: %w", err)
+		}
+	}
+	file, err := os.OpenFile(dbPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("create database: %w", err)
+	}
+	if err := file.Chmod(0600); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("set database permissions: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("close database: %w", err)
+	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {

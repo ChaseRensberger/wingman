@@ -29,13 +29,15 @@ saved context that groups sessions. It can set their initial working directory.
 
 Create a session first, then send messages to it.
 
-The commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+The commands use HTTP Basic authentication. Load managed-service credentials
+with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
+See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 Create a session:
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Explore repo\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 ```
@@ -44,10 +46,10 @@ Create a session in a Workspace:
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" | jq -r '.[0].id')
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq -r '.[0].id')
 
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
@@ -63,7 +65,7 @@ session:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/rename" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"title":"Investigate retries","expected_version":1}'
 ```
@@ -72,7 +74,7 @@ To move a session, send exactly one of `working_directory` or `workspace_id`:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/move" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"working_directory":"/home/me/other-project","expected_version":2}'
 ```
@@ -89,7 +91,7 @@ query parameter:
 
 ```bash
 curl -sS -X DELETE \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
 ```
 
@@ -105,7 +107,7 @@ Send a message with an optional retry ID:
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
     "request_id": "submit-123",
@@ -155,7 +157,7 @@ If a client needs live events, use the event stream:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Accept: text/event-stream"
 ```
 
@@ -174,9 +176,9 @@ The durable run record is authoritative after a reload or lost event stream:
 
 ```bash
 curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..." \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
 A run moves from `queued` to `running`. It then moves to `completed`, `failed`,
@@ -186,7 +188,7 @@ Abort a specific queued or running run with:
 
 ```bash
 curl -sS -X POST \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   "http://localhost:2323/sessions/${SESSION_ID}/runs/run_.../abort"
 ```
 
@@ -204,7 +206,7 @@ runs:
 
 ```bash
 curl -N -X POST http://localhost:2323/run \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d '{

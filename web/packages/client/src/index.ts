@@ -292,6 +292,7 @@ export function parseRunStreamEvent(
 
 export type WingmanClientOptions = {
   baseUrl: string;
+	username?: string;
   password?: string;
   clientName?: string;
   headers?: HeadersInit;
@@ -317,7 +318,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
   if (options.password !== undefined)
     headers.set(
       "Authorization",
-      `Basic ${base64("wingman:" + options.password)}`,
+		`Basic ${base64((options.username ?? "wingman") + ":" + options.password)}`,
     );
   if (options.clientName !== undefined)
     headers.set("X-Wingman-Client", options.clientName);
@@ -534,10 +535,6 @@ export function createWingmanClient(options: WingmanClientOptions) {
             api.GET("/workspaces/{id}/sessions", { params: { path: { id } } }),
           ),
       },
-    },
-    auth: {
-      login: (request: components["schemas"]["LoginRequest"]) =>
-        requestData(api.POST("/auth/login", { body: request })),
     },
     catalog: {
       get: () => requestData(api.GET("/catalog")),

@@ -28,14 +28,16 @@ type Option func(*clientConfig)
 
 type clientConfig struct {
 	doer             HttpRequestDoer
+	username         string
 	password         string
 	clientID         string
 	maxSSEEventBytes int
 }
 
-// WithPassword configures the daemon password for HTTP Basic authentication.
-func WithPassword(password string) Option {
+// WithBasicAuth configures HTTP Basic authentication.
+func WithBasicAuth(username, password string) Option {
 	return func(config *clientConfig) {
+		config.username = username
 		config.password = password
 	}
 }
@@ -82,7 +84,7 @@ func New(baseURL string, options ...Option) (*SDK, error) {
 		return nil, errors.New("maximum SSE event size must be positive")
 	}
 
-	doer := &authenticatedDoer{next: config.doer, password: config.password, clientID: config.clientID}
+	doer := &authenticatedDoer{next: config.doer, username: config.username, password: config.password, clientID: config.clientID}
 	generated, err := NewClient(strings.TrimRight(baseURL, "/"), WithHTTPClient(doer))
 	if err != nil {
 		return nil, fmt.Errorf("create generated client: %w", err)
@@ -118,13 +120,14 @@ func (e *APIError) Error() string {
 
 type authenticatedDoer struct {
 	next     HttpRequestDoer
+	username string
 	password string
 	clientID string
 }
 
 func (d *authenticatedDoer) Do(request *http.Request) (*http.Response, error) {
 	if d.password != "" {
-		request.SetBasicAuth("wingman", d.password)
+		request.SetBasicAuth(d.username, d.password)
 	}
 	if d.clientID != "" {
 		if request.Header.Get("X-Wingman-Client") == "" {

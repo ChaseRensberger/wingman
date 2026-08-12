@@ -31,11 +31,13 @@ Directory-scoped tools require a session with a working directory. Before you
 allow file or shell tools, create the session with `working_directory` or
 `workspace_id`. You can also move the session with `POST /sessions/{id}/move`.
 
-These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands use HTTP Basic authentication. Load managed-service credentials
+with `source ~/.config/wingman/service.env`; the username defaults to `wingman`.
+See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
@@ -65,7 +67,7 @@ Agents store tool names in `tools`:
 
 ```bash
 curl -sS -X POST http://localhost:2323/agents \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
         "name": "Researcher",

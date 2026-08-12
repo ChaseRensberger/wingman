@@ -48,6 +48,7 @@ type Result struct {
 // Client is an authenticated transport to a verified managed daemon.
 type Client struct {
 	baseURL    *url.URL
+	username   string
 	password   string
 	httpClient *http.Client
 }
@@ -75,15 +76,15 @@ func New(ctx context.Context, state *daemonstate.State, expectedVersion string) 
 	if result.Status != StatusReady {
 		return nil, unavailableError(result)
 	}
-	password, err := state.ReadPassword()
+	config, err := daemonstate.ReadServiceConfig()
 	if err != nil {
-		return nil, fmt.Errorf("read managed daemon password: %w", err)
+		return nil, fmt.Errorf("read managed daemon credentials: %w", err)
 	}
 	baseURL, err := url.Parse(result.Registration.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse managed daemon URL: %w", err)
 	}
-	return &Client{baseURL: baseURL, password: password, httpClient: http.DefaultClient}, nil
+	return &Client{baseURL: baseURL, username: config.Username, password: config.Password, httpClient: http.DefaultClient}, nil
 }
 
 // URL returns the registered daemon URL.
@@ -113,7 +114,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, requestBody, r
 	if err != nil {
 		return fmt.Errorf("create daemon API request: %w", err)
 	}
-	request.SetBasicAuth("wingman", c.password)
+	request.SetBasicAuth(c.username, c.password)
 	request.Header.Set("Accept", "application/json")
 	if requestBody != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -172,7 +173,7 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 	if err := validateManagedDaemonURL(registration.URL); err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
-	password, err := state.ReadPassword()
+	config, err := daemonstate.ReadServiceConfig()
 	if err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
@@ -181,7 +182,7 @@ func Inspect(ctx context.Context, state *daemonstate.State, expectedVersion stri
 	if err != nil {
 		return Result{Status: StatusStale, Registration: registration, Err: err}
 	}
-	request.SetBasicAuth("wingman", password)
+	request.SetBasicAuth(config.Username, config.Password)
 	response, err := managedHTTPClient.Do(request)
 	if err != nil {
 		status := StatusStale

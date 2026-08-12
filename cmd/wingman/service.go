@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,9 +19,7 @@ import (
 )
 
 const (
-	systemdServicePath = "/etc/systemd/system/wingman.service"
-	systemdStateDir    = "/var/lib/wingman"
-	systemdStateDirEnv = "${STATE_DIRECTORY}"
+	systemdServiceName = "wingman.service"
 	launchdLabel       = "actor.wingman"
 )
 
@@ -55,11 +52,10 @@ func runServiceRestart(ctx context.Context, cmd *cli.Command) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
-		ok, err := ensureSystemdRoot(ctx)
-		if err != nil || !ok {
-			return err
+		if os.Geteuid() == 0 {
+			return fmt.Errorf("run wingman service restart as the logged-in user, not root")
 		}
-		if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
+		if err := runSystemctl(ctx, "restart", systemdServiceName); err != nil {
 			return err
 		}
 	case "darwin":
@@ -79,10 +75,13 @@ func runServiceStatus(ctx context.Context, cmd *cli.Command) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
+		if os.Geteuid() == 0 {
+			return fmt.Errorf("run wingman service status as the logged-in user, not root")
+		}
 		if _, err := exec.LookPath("systemctl"); err != nil {
 			return fmt.Errorf("systemctl not found: %w", err)
 		}
-		return runSystemctlAttached(ctx, "status", "wingman.service")
+		return runSystemctlAttached(ctx, "status", systemdServiceName)
 	case "darwin":
 		return runLaunchctlAttached(ctx, "print", launchdTarget())
 	default:
@@ -90,122 +89,48 @@ func runServiceStatus(ctx context.Context, cmd *cli.Command) error {
 	}
 }
 
-func runServicePassword(ctx context.Context, cmd *cli.Command) error {
-	if cmd.Args().Len() > 1 {
-		return fmt.Errorf("expected zero or one password")
-	}
-	stateDir, err := managedStateDir()
-	if err != nil {
-		return err
-	}
-	if runtime.GOOS == "linux" {
-		ok, err := ensureSystemdRoot(ctx)
-		if err != nil || !ok {
-			return err
-		}
-	}
-	state := daemonstate.New(stateDir)
-	changed := cmd.Args().Len() == 1
-	if changed {
-		if err := stopServiceForPasswordChange(ctx); err != nil {
-			return err
-		}
-		if err := state.SetPassword(cmd.Args().First()); err != nil {
-			return err
-		}
-	}
-	password, err := state.Password()
-	if err != nil {
-		return err
-	}
-	if runtime.GOOS == "linux" {
-		if err := chownServicePassword(stateDir); err != nil {
-			return err
-		}
-	}
-	if changed {
-		fmt.Fprintln(commandWriter(cmd), "Wingman service stopped. Run 'wingman service start' to start it again.")
-	}
-	fmt.Fprintln(commandWriter(cmd), password)
-	return nil
-}
-
-func stopServiceForPasswordChange(ctx context.Context) error {
-	switch runtime.GOOS {
-	case "linux":
-		if _, err := os.Stat(systemdServicePath); os.IsNotExist(err) {
-			return nil
-		}
-		return runSystemctl(ctx, "stop", "wingman.service")
-	case "darwin":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("resolve home directory: %w", err)
-		}
-		if _, err := os.Stat(launchdPlistPath(home)); os.IsNotExist(err) {
-			return nil
-		}
-		return runLaunchctl(ctx, "bootout", launchdTarget())
-	default:
-		return fmt.Errorf("wingman service password supports Linux/systemd and macOS/launchd only")
-	}
-}
-
-func chownServicePassword(stateDir string) error {
-	name, _, err := serviceAccount()
-	if err != nil {
-		return err
-	}
-	account, err := user.Lookup(name)
-	if err != nil {
-		return fmt.Errorf("look up service user %q: %w", name, err)
-	}
-	uid, err := strconv.Atoi(account.Uid)
-	if err != nil {
-		return fmt.Errorf("parse service user UID: %w", err)
-	}
-	gid, err := strconv.Atoi(account.Gid)
-	if err != nil {
-		return fmt.Errorf("parse service user GID: %w", err)
-	}
-	if err := os.Chown(stateDir, uid, gid); err != nil {
-		return fmt.Errorf("chown state directory: %w", err)
-	}
-	if err := os.Chown(filepath.Join(stateDir, "password"), uid, gid); err != nil {
-		return fmt.Errorf("chown password file: %w", err)
-	}
-	if err := os.Chown(filepath.Join(stateDir, "password.lock"), uid, gid); err != nil {
-		return fmt.Errorf("chown password lock: %w", err)
-	}
-	return nil
-}
-
 func runLinuxStart(ctx context.Context, cmd *cli.Command) error {
-	ok, err := ensureSystemdRoot(ctx)
-	if err != nil || !ok {
-		return err
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("run wingman service start as the logged-in user, not root")
 	}
 	exe, err := executablePath()
 	if err != nil {
 		return err
 	}
-	serviceUser, homeDir, err := serviceAccount()
+	stateDir, err := daemonstate.DefaultDir()
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(systemdServicePath, []byte(systemdUnit(exe, serviceUser, homeDir, serveArgs(exe, cmd, systemdStateDirEnv))), 0644); err != nil {
-		return fmt.Errorf("write %s: %w", systemdServicePath, err)
+	_, err = daemonstate.EnsureServiceConfig()
+	if err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	path := systemdUnitPath(home, configHome)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create user systemd directory: %w", err)
+	}
+	configPath, err := daemonstate.ServiceConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(systemdUnit(home, configHome, configPath, serveArgs(exe, cmd, stateDir))), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	if err := runSystemctl(ctx, "enable", "wingman.service"); err != nil {
+	if err := runSystemctl(ctx, "enable", systemdServiceName); err != nil {
 		return err
 	}
-	if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
+	if err := runSystemctl(ctx, "restart", systemdServiceName); err != nil {
 		return err
 	}
-	if err := waitForServiceReady(ctx, systemdStateDir); err != nil {
+	if err := waitForServiceReady(ctx, stateDir); err != nil {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
@@ -214,15 +139,18 @@ func runLinuxStart(ctx context.Context, cmd *cli.Command) error {
 }
 
 func runLinuxStop(ctx context.Context) error {
-	ok, err := ensureSystemdRoot(ctx)
-	if err != nil || !ok {
-		return err
+	if os.Geteuid() == 0 {
+		return fmt.Errorf("run wingman service stop as the logged-in user, not root")
 	}
-	if err := runSystemctl(ctx, "disable", "--now", "wingman.service"); err != nil {
+	if err := runSystemctl(ctx, "disable", "--now", systemdServiceName); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
-	if err := os.Remove(systemdServicePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove %s: %w", systemdServicePath, err)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	if err := os.Remove(systemdUnitPath(home, os.Getenv("XDG_CONFIG_HOME"))); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove user systemd unit: %w", err)
 	}
 	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
 		return err
@@ -244,11 +172,22 @@ func runDarwinStart(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
 	path := launchdPlistPath(home)
-	stateDir := stateDirForHome(home)
+	stateDir, err := daemonstate.DefaultDir()
+	if err != nil {
+		return err
+	}
+	_, err = daemonstate.EnsureServiceConfig()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(launchdPlist(home, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
+	configPath, err := daemonstate.ServiceConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(launchdPlist(home, os.Getenv("XDG_CONFIG_HOME"), configPath, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	_ = runLaunchctl(ctx, "bootout", launchdTarget())
@@ -295,29 +234,6 @@ func executablePath() (string, error) {
 	return exe, nil
 }
 
-func ensureSystemdRoot(ctx context.Context) (bool, error) {
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return false, fmt.Errorf("systemctl not found: %w", err)
-	}
-	if os.Geteuid() == 0 {
-		return true, nil
-	}
-	exe, err := executablePath()
-	if err != nil {
-		return false, err
-	}
-	args := append([]string{exe}, os.Args[1:]...)
-	if os.Getenv("XDG_STATE_HOME") != "" {
-		args = append([]string{"--preserve-env=XDG_STATE_HOME"}, args...)
-	}
-	sudo := exec.CommandContext(ctx, "sudo", args...)
-	sudo.Stdin, sudo.Stdout, sudo.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := sudo.Run(); err != nil {
-		return false, fmt.Errorf("sudo %s: %w", strings.Join(args, " "), err)
-	}
-	return false, nil
-}
-
 func serveArgs(exe string, cmd *cli.Command, stateDir string) []string {
 	args := []string{exe, "serve", "--register", "--state-dir", stateDir, "--host", cmd.String("host"), "--port", fmt.Sprint(cmd.Int("port")), "--log-format", cmd.String("log-format"), "--log-level", cmd.String("log-level")}
 	if db := cmd.String("db"); db != "" {
@@ -338,22 +254,8 @@ func serveArgs(exe string, cmd *cli.Command, stateDir string) []string {
 	return args
 }
 
-func stateDirForHome(home string) string {
-	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
-		return filepath.Join(stateHome, "wingman")
-	}
-	return filepath.Join(home, ".local", "state", "wingman")
-}
-
 func managedStateDir() (string, error) {
-	if runtime.GOOS == "linux" {
-		return systemdStateDir, nil
-	}
-	_, home, err := serviceAccount()
-	if err != nil {
-		return "", err
-	}
-	return stateDirForHome(home), nil
+	return daemonstate.DefaultDir()
 }
 
 func waitForServiceReady(ctx context.Context, stateDir string) error {
@@ -385,8 +287,19 @@ func printDaemonStatus(ctx context.Context, state *daemonstate.State) {
 	}
 }
 
-func systemdUnit(exe, serviceUser, homeDir string, args []string) string {
-	return fmt.Sprintf("[Unit]\nDescription=Wingman agent harness\n\n[Service]\nType=simple\nUser=%s\nEnvironment=%s\nStateDirectory=wingman\nStateDirectoryMode=0700\nExecStart=%s\nRestart=on-failure\nRestartSec=2s\n\n[Install]\nWantedBy=multi-user.target\n", serviceUser, strconv.Quote("HOME="+homeDir), systemdCommand(args))
+func systemdUnit(home, configHome, configPath string, args []string) string {
+	environment := "Environment=" + strconv.Quote("HOME="+home) + "\n"
+	if configHome != "" {
+		environment += "Environment=" + strconv.Quote("XDG_CONFIG_HOME="+configHome) + "\n"
+	}
+	return fmt.Sprintf("[Unit]\nDescription=Wingman agent harness\n\n[Service]\nType=simple\n%sEnvironmentFile=%s\nExecStart=%s\nRestart=on-failure\nRestartSec=2s\n\n[Install]\nWantedBy=default.target\n", environment, strconv.Quote(configPath), systemdCommand(args))
+}
+
+func systemdUnitPath(home, configHome string) string {
+	if configHome == "" {
+		configHome = filepath.Join(home, ".config")
+	}
+	return filepath.Join(configHome, "systemd", "user", systemdServiceName)
 }
 
 func systemdCommand(args []string) string {
@@ -403,12 +316,16 @@ func launchdPlistPath(home string) string {
 	return filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")
 }
 
-func launchdPlist(home string, args []string) string {
+func launchdPlist(home, configHome, configPath string, args []string) string {
 	var programArgs strings.Builder
-	for _, arg := range args {
+	for _, arg := range append([]string{"/bin/sh", "-c", `set -a; . "$1"; shift; exec "$@"`, "wingman-launch", configPath}, args...) {
 		fmt.Fprintf(&programArgs, "\t\t<string>%s</string>\n", xmlEscape(arg))
 	}
-	return fmt.Sprintf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>%s</string>\n\t<key>ProgramArguments</key>\n\t<array>\n%s\t</array>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>HOME</key>\n\t\t<string>%s</string>\n\t</dict>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>KeepAlive</key>\n\t<true/>\n</dict>\n</plist>\n", launchdLabel, programArgs.String(), xmlEscape(home))
+	var configEnvironment string
+	if configHome != "" {
+		configEnvironment = fmt.Sprintf("\t\t<key>XDG_CONFIG_HOME</key>\n\t\t<string>%s</string>\n", xmlEscape(configHome))
+	}
+	return fmt.Sprintf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>%s</string>\n\t<key>ProgramArguments</key>\n\t<array>\n%s\t</array>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>HOME</key>\n\t\t<string>%s</string>\n%s\t</dict>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>KeepAlive</key>\n\t<true/>\n</dict>\n</plist>\n", launchdLabel, programArgs.String(), xmlEscape(home), configEnvironment)
 }
 
 func xmlEscape(value string) string {
@@ -418,14 +335,7 @@ func xmlEscape(value string) string {
 }
 
 func runSystemctl(ctx context.Context, args ...string) error {
-	return runCommand(ctx, "systemctl", args...)
-}
-
-func runSystemctlRoot(ctx context.Context, args ...string) error {
-	if os.Geteuid() == 0 {
-		return runSystemctl(ctx, args...)
-	}
-	return runCommand(ctx, "sudo", append([]string{"systemctl"}, args...)...)
+	return runCommand(ctx, "systemctl", append([]string{"--user"}, args...)...)
 }
 func runLaunchctl(ctx context.Context, args ...string) error {
 	return runCommand(ctx, "launchctl", args...)
@@ -440,7 +350,7 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 }
 
 func runSystemctlAttached(ctx context.Context, args ...string) error {
-	return runCommandAttached(ctx, "systemctl", args...)
+	return runCommandAttached(ctx, "systemctl", append([]string{"--user"}, args...)...)
 }
 func runLaunchctlAttached(ctx context.Context, args ...string) error {
 	return runCommandAttached(ctx, "launchctl", args...)

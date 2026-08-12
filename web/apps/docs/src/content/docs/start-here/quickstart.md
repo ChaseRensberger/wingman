@@ -28,14 +28,13 @@ wingman service start
 
 To run Wingman in the foreground, use `wingman serve`.
 
-Wingman always requires a daemon password. The managed service creates and uses
-its private password file. Set `WINGMAN_PASSWORD` only if you run
-`wingman serve` with a chosen foreground password.
-
-For the following commands, load the managed service password:
+Wingman runs as a per-user managed service. Managed native clients discover its
+public registration at `~/.local/state/wingman/registration.json` and use the
+generated private credentials in `~/.config/wingman/service.env` automatically.
+For these `curl` commands, load the generated credentials:
 
 ```bash
-export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
+source ~/.config/wingman/service.env
 ```
 
 ## Make Sure That It Is Running
@@ -61,7 +60,7 @@ export ANTHROPIC_API_KEY={key}
 
 ```bash
 curl -sS -X PUT http://localhost:2323/provider/auth \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
@@ -76,7 +75,7 @@ model, and model options.
 
 ```bash
 AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Quickstart Assistant",
@@ -96,7 +95,7 @@ optional working directory.
 
 ```bash
 SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"title\":\"Quickstart\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 
@@ -111,7 +110,7 @@ to this session directory.
 
 ```bash
 curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
@@ -136,7 +135,7 @@ If you want lifecycle events as the agent runs, subscribe to session events:
 
 ```bash
 curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Accept: text/event-stream"
 ```
 

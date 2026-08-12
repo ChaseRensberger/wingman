@@ -161,19 +161,20 @@ Wingman rejects duplicate names rather than choosing an implicit winner.
 
 Use this command to list loaded plugins and non-fatal load errors:
 
-These commands use `WINGMAN_DAEMON_PASSWORD` for HTTP Basic authentication. See
+These commands use HTTP Basic authentication. Load managed-service credentials
+with `source ~/.config/wingman/service.env`; the username defaults to `wingman`. See
 [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
 Use this command to reload plugins in the directoryless scope:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
 External plugins run with the permissions of the Wingman process that starts

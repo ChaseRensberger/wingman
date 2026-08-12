@@ -17,6 +17,7 @@ import (
 )
 
 func TestInspect(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	tests := []struct {
 		name            string
 		statusCode      int
@@ -32,13 +33,13 @@ func TestInspect(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			state := daemonstate.New(t.TempDir())
-			password, err := state.Password()
+			config, err := daemonstate.EnsureServiceConfig()
 			if err != nil {
 				t.Fatal(err)
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				username, supplied, ok := r.BasicAuth()
-				if !ok || username != "wingman" || supplied != password {
+				if !ok || username != config.Username || supplied != config.Password {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
@@ -58,11 +59,12 @@ func TestInspect(t *testing.T) {
 }
 
 func TestInspectMissingAndStale(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	state := daemonstate.New(t.TempDir())
 	if result := Inspect(context.Background(), state, "dev"); result.Status != StatusMissing {
 		t.Fatalf("missing Inspect() = %s", result.Status)
 	}
-	if _, err := state.Password(); err != nil {
+	if _, err := daemonstate.EnsureServiceConfig(); err != nil {
 		t.Fatal(err)
 	}
 	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "http://127.0.0.1:1", PID: 1, CreatedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)}
@@ -77,8 +79,9 @@ func TestInspectMissingAndStale(t *testing.T) {
 }
 
 func TestInspectFutureRegistrationIsStale(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	state := daemonstate.New(t.TempDir())
-	if _, err := state.Password(); err != nil {
+	if _, err := daemonstate.EnsureServiceConfig(); err != nil {
 		t.Fatal(err)
 	}
 	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "http://127.0.0.1:1", PID: 1, CreatedAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano)}
@@ -119,7 +122,7 @@ func TestClientDoJSONAuthenticatesAndDecodesResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &Client{baseURL: baseURL, password: password, httpClient: server.Client()}
+	client := &Client{baseURL: baseURL, username: "wingman", password: password, httpClient: server.Client()}
 	var created api.CreateClientResponse
 	if err := client.DoJSON(context.Background(), http.MethodPost, "/clients", api.CreateClientRequest{ID: "cli_one", Name: "One"}, &created); err != nil {
 		t.Fatal(err)
@@ -140,7 +143,7 @@ func TestClientDoJSONReturnsAPIErrorWithoutPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &Client{baseURL: baseURL, password: password, httpClient: server.Client()}
+	client := &Client{baseURL: baseURL, username: "wingman", password: password, httpClient: server.Client()}
 	err = client.DoJSON(context.Background(), http.MethodGet, "/clients", nil, nil)
 	var apiError *APIError
 	if !errors.As(err, &apiError) {
@@ -171,6 +174,7 @@ func TestInspectRejectsNonLoopbackRegistrationBeforeReadingPassword(t *testing.T
 }
 
 func TestInspectDoesNotFollowRedirects(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	var redirected atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		redirected.Add(1)
@@ -178,13 +182,13 @@ func TestInspectDoesNotFollowRedirects(t *testing.T) {
 	defer target.Close()
 
 	state := daemonstate.New(t.TempDir())
-	password, err := state.Password()
+	config, err := daemonstate.EnsureServiceConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		username, supplied, ok := request.BasicAuth()
-		if !ok || username != "wingman" || supplied != password {
+		if !ok || username != config.Username || supplied != config.Password {
 			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
 		}
 		http.Redirect(response, request, target.URL, http.StatusFound)

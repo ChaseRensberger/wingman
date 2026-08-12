@@ -303,7 +303,7 @@ func restartManagedService(ctx context.Context) error {
 		if err := runSystemctl(ctx, "is-active", "--quiet", "wingman.service"); err != nil {
 			return nil
 		}
-		if err := runSystemctlRoot(ctx, "restart", "wingman.service"); err != nil {
+		if err := runSystemctl(ctx, "restart", "wingman.service"); err != nil {
 			return fmt.Errorf("restart updated service: %w", err)
 		}
 		fmt.Println("Restarted Wingman service")

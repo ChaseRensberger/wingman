@@ -2,8 +2,6 @@
 package daemonstate
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +17,6 @@ import (
 )
 
 const (
-	passwordFile     = "password"
-	passwordLock     = "password.lock"
 	registrationFile = "registration.json"
 	registrationLock = "registration.lock"
 	daemonLock       = "daemon.lock"
@@ -82,66 +77,9 @@ func DefaultDir() (string, error) {
 	return filepath.Join(home, ".local", "state", "wingman"), nil
 }
 
-// ManagedDir returns Wingman's managed-service state directory.
-func ManagedDir() (string, error) {
-	if runtime.GOOS == "linux" {
-		return "/var/lib/wingman", nil
-	}
-	return DefaultDir()
-}
-
 // Dir returns the state root directory.
 func (s *State) Dir() string {
 	return s.dir
-}
-
-// Password returns the stable, randomly generated daemon password.
-func (s *State) Password() (string, error) {
-	var password string
-	err := s.withLock(passwordLock, func() error {
-		path := s.path(passwordFile)
-		contents, err := os.ReadFile(path)
-		if err == nil {
-			password, err = validatePassword(string(contents))
-			return err
-		}
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("read password: %w", err)
-		}
-
-		bytes := make([]byte, 32)
-		if _, err := rand.Read(bytes); err != nil {
-			return fmt.Errorf("generate password: %w", err)
-		}
-		password = base64.RawURLEncoding.EncodeToString(bytes)
-		if err := s.atomicWrite(passwordFile, []byte(password)); err != nil {
-			return fmt.Errorf("write password: %w", err)
-		}
-		return nil
-	})
-	return password, err
-}
-
-// ReadPassword reads the existing daemon password without creating one.
-func (s *State) ReadPassword() (string, error) {
-	if err := s.ensureDir(); err != nil {
-		return "", err
-	}
-	contents, err := os.ReadFile(s.path(passwordFile))
-	if err != nil {
-		return "", fmt.Errorf("read password: %w", err)
-	}
-	return validatePassword(string(contents))
-}
-
-// SetPassword replaces the daemon password.
-func (s *State) SetPassword(password string) error {
-	if _, err := validatePassword(password); err != nil {
-		return err
-	}
-	return s.withLock(passwordLock, func() error {
-		return s.atomicWrite(passwordFile, []byte(password))
-	})
 }
 
 // WriteRegistration atomically writes a validated daemon registration.

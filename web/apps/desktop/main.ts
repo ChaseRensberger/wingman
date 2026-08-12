@@ -1,9 +1,10 @@
 import { consoleAssets } from "./assets.generated.ts";
-import { DaemonDiscovery, daemonStateDir, proxyDaemonRequest } from "./daemon.ts";
+import { DaemonDiscovery, daemonServiceConfigPath, daemonStateDir, proxyDaemonRequest } from "./daemon.ts";
 
 const consolePrefix = "/console";
 const daemon = new DaemonDiscovery({
   stateDir: () => daemonStateDir((name) => Deno.env.get(name)),
+  serviceConfigPath: () => daemonServiceConfigPath((name) => Deno.env.get(name)),
   readTextFile: Deno.readTextFile,
   fetch,
 });

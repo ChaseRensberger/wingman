@@ -19,7 +19,7 @@ complete public method index.
 
 ## REST Requests
 
-Create a client with the daemon URL, password, and client identity. The client
+Create a client with the daemon URL, Basic Auth username, password, and client identity. The client
 uses this configuration for REST requests and streams.
 
 ```ts
@@ -27,7 +27,8 @@ import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
   baseUrl: "http://localhost:2323",
-  password: process.env.WINGMAN_DAEMON_PASSWORD,
+  username: process.env.WINGMAN_USERNAME,
+  password: process.env.WINGMAN_PASSWORD,
   clientName: "cli_wingcode",
 });
 
@@ -57,7 +58,8 @@ try {
 }
 ```
 
-Use TLS or an SSH tunnel before sending the daemon password to a remote server.
+`username` is optional; the server defaults it to `wingman`. Use TLS or an SSH
+tunnel before sending Basic Auth credentials to a remote server.
 See [HTTP API Basics](/build-clients/http-api-basics#authentication) for
 authentication and client identity rules.
 

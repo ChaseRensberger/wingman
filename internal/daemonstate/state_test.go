@@ -1,7 +1,6 @@
 package daemonstate
 
 import (
-	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -90,74 +89,57 @@ func TestRegistrationOwnershipCleanup(t *testing.T) {
 	}
 }
 
-func TestPasswordIsStableAndPrivate(t *testing.T) {
-	state := New(t.TempDir())
-	first, err := state.Password()
+func TestServiceConfigIsStableAndPrivate(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	first, err := EnsureServiceConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := state.Password()
+	second, err := EnsureServiceConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first != second {
-		t.Fatalf("Password() = %q then %q", first, second)
+		t.Fatalf("EnsureServiceConfig() = %#v then %#v", first, second)
 	}
-	read, err := state.ReadPassword()
+	read, err := ReadServiceConfig()
 	if err != nil || read != first {
-		t.Fatalf("ReadPassword() = %q, %v", read, err)
+		t.Fatalf("ReadServiceConfig() = %#v, %v", read, err)
 	}
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(first)
-	if err != nil || len(decoded) != 32 {
-		t.Fatalf("password is not a 32-byte base64url value: %q", first)
-	}
-	assertPrivatePermissions(t, state.Dir(), passwordFile)
+	dir, _ := DefaultConfigDir()
+	assertPrivatePermissions(t, dir, serviceConfigFile)
 }
 
-func TestConcurrentPasswordCreation(t *testing.T) {
-	state := New(t.TempDir())
-	passwords := make(chan string, 16)
+func TestConcurrentServiceConfigCreation(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configs := make(chan ServiceConfig, 16)
 	errs := make(chan error, 16)
 	var group sync.WaitGroup
 	for range 16 {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			password, err := state.Password()
+			config, err := EnsureServiceConfig()
 			if err != nil {
 				errs <- err
 				return
 			}
-			passwords <- password
+			configs <- config
 		}()
 	}
 	group.Wait()
-	close(passwords)
+	close(configs)
 	close(errs)
 	for err := range errs {
 		t.Fatal(err)
 	}
-	var first string
-	for password := range passwords {
-		if first == "" {
-			first = password
-		} else if password != first {
-			t.Fatalf("Password() values differ: %q and %q", first, password)
+	var first ServiceConfig
+	for config := range configs {
+		if first == (ServiceConfig{}) {
+			first = config
+		} else if config != first {
+			t.Fatalf("EnsureServiceConfig() values differ: %#v and %#v", first, config)
 		}
-	}
-}
-
-func TestSetPassword(t *testing.T) {
-	state := New(t.TempDir())
-	if err := state.SetPassword("new-password"); err != nil {
-		t.Fatal(err)
-	}
-	password, err := state.ReadPassword()
-	if err != nil || password != "new-password" {
-		t.Fatalf("ReadPassword() = %q, %v", password, err)
-	}
-	if err := state.SetPassword(" "); err == nil {
-		t.Fatal("SetPassword accepted whitespace")
 	}
 }
 

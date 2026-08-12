@@ -19,7 +19,8 @@ import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
   baseUrl: "http://localhost:2323",
-  password: process.env.WINGMAN_DAEMON_PASSWORD,
+  username: process.env.WINGMAN_USERNAME,
+  password: process.env.WINGMAN_PASSWORD,
   clientName: "cli_example",
 });
 ```
@@ -31,7 +32,8 @@ const client = createWingmanClient({
 | Option | Type | Description |
 | --- | --- | --- |
 | `baseUrl` | `string` | Required HTTP or HTTPS daemon origin. It cannot include a path, query, fragment, or credentials. |
-| `password` | `string` | Daemon password for protected routes. |
+| `username` | `string` | HTTP Basic Auth username. The server defaults it to `wingman`. |
+| `password` | `string` | HTTP Basic Auth password for protected routes. |
 | `clientName` | `string` | Default value for the `X-Wingman-Client` header. |
 | `headers` | `HeadersInit` | Extra headers for all requests. |
 | `fetch` | `typeof fetch` | Fetch implementation for this client. |
@@ -166,7 +168,6 @@ for await (const result of client.run.stream({
 
 | Method | Description |
 | --- | --- |
-| `client.auth.login(request)` | Create a Console session with `LoginRequest`. |
 | `client.current.service()` | Get service metadata for the current daemon. |
 | `client.current.client()` | Get the active request client. |
 | `client.health.get()` | Get public liveness status. |

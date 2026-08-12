@@ -15,15 +15,7 @@ func NewLocal(ctx context.Context, options ...Option) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve local daemon state directory: %w", err)
 	}
-	dirs := []string{dir}
-	managedDir, err := daemonstate.ManagedDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolve managed daemon state directory: %w", err)
-	}
-	if managedDir != dir {
-		dirs = append(dirs, managedDir)
-	}
-	return newLocalFromDirs(ctx, dirs, options...)
+	return NewLocalFromState(ctx, dir, options...)
 }
 
 func newLocalFromDirs(ctx context.Context, dirs []string, options ...Option) (*SDK, error) {
@@ -48,10 +40,10 @@ func NewLocalFromState(ctx context.Context, stateDir string, options ...Option) 
 		}
 		return nil, fmt.Errorf("managed daemon is %s", result.Status)
 	}
-	password, err := state.ReadPassword()
+	config, err := daemonstate.ReadServiceConfig()
 	if err != nil {
-		return nil, fmt.Errorf("read managed daemon password: %w", err)
+		return nil, fmt.Errorf("read managed daemon credentials: %w", err)
 	}
-	options = append(append([]Option{}, options...), WithPassword(password))
+	options = append(append([]Option{}, options...), WithBasicAuth(config.Username, config.Password))
 	return New(result.Registration.URL, options...)
 }

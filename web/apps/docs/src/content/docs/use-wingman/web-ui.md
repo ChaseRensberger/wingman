@@ -5,8 +5,8 @@ description: "Open the local Wingman Console."
 
 # Use the Console
 
-Wingman includes a local Console on the same HTTP origin as the API. It asks for
-the daemon password. It stores only a signed browser session cookie.
+Wingman includes a local Console on the same HTTP origin as the API. It uses
+browser HTTP Basic Auth.
 
 ## Local Console
 
@@ -16,8 +16,9 @@ After you start Wingman, open:
 http://localhost:2323/console
 ```
 
-Enter the daemon password in the Console. The session cookie uses `HttpOnly` and
-`SameSite=Strict`.
+Enter the generated credentials from `~/.config/wingman/service.env` in the
+browser prompt. The managed service and foreground server use these credentials
+unless the foreground process has explicit environment credentials.
 
 To open the managed daemon from the CLI, run:
 
@@ -28,4 +29,5 @@ wingman console
 If the connection drops, the Console retries its readiness check. When the daemon
 returns, the Console reloads the active page from the API.
 
-See [Authentication](/concepts/authentication) for the daemon password model.
+The Console has no password form, session cookie, or `/auth/login` endpoint.
+See [Authentication](/concepts/authentication) for the authentication model.

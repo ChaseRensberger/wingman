@@ -14,23 +14,18 @@ contain `error.code`, `error.message`, and `error.request_id`. The
 
 The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
-> **Control surface:** Protected routes require the daemon password through HTTP
-> Basic authentication or a Console session. Wingman does not provide tenant
+> **Control surface:** Protected routes require HTTP Basic authentication.
+> Managed native clients authenticate automatically with generated credentials.
+> Wingman does not provide tenant
 > isolation. See [Authentication](/concepts/authentication).
 
 ## Conventions
 
 - Request bodies are JSON.
-- Send HTTP Basic authentication as `wingman:<password>` on protected routes from native clients.
+- Send Basic Auth as `<username>:<password>`. The default username is `wingman`.
 - Standard request timeout is 60 seconds.
 - Session event endpoints and `POST /run` bypass the standard timeout. `/sessions/{id}/events` and `/run` return `text/event-stream`.
 - ID prefixes are stable: `agt_` (agent), `wsp_` (Workspace), `cli_` (client), `ses_` (session), `msg_` (message), `prt_` (part), `tlu_` (tool use).
-
-## Authentication endpoints
-
-| Method | Path | Authentication | Description |
-|---|---|---|---|
-| `POST` | `/auth/login` | None | Create a Console session from the daemon password |
 
 ## Health
 
@@ -279,7 +274,7 @@ Deletion requires the current session version in `expected_version`. It returns
 
 ```bash
 curl -sS -X DELETE \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   "http://localhost:2323/sessions/ses_...?expected_version=2"
 ```
 

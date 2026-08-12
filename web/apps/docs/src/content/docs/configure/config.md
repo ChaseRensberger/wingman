@@ -14,8 +14,9 @@ Wingman uses per-user configuration. By default, configuration files are in:
 
 Use this directory for daemon-wide configuration.
 
-> **Security:** Wingman always requires a daemon password. Authentication does
-> not provide tenant isolation.
+> **Security:** The managed service uses private generated credentials in
+> `~/.config/wingman/service.env`. Authentication does not provide tenant
+> isolation.
 
 To use a different config root, set `XDG_CONFIG_HOME`. For example,
 `XDG_CONFIG_HOME=~/settings` uses `~/settings/wingman/wingman.json`.
@@ -91,7 +92,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 
 | Task | Go to |
 |---|---|
-| Start the local server or systemd service | [Run the Server](/use-wingman/run-server) |
+| Start the local server or managed service | [Run the Server](/use-wingman/run-server) |
 | Store API keys | [Providers](/configure/providers#store-provider-auth) |
 | Route a cataloged provider through a gateway | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
 | Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |

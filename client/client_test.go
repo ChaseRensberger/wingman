@@ -22,7 +22,7 @@ func TestNewAuthenticatesGeneratedRequests(t *testing.T) {
 			t.Errorf("path = %q", request.URL.Path)
 		}
 		username, password, ok := request.BasicAuth()
-		if !ok || username != "wingman" || password != "secret" {
+		if !ok || username != "service-user" || password != "secret" {
 			t.Errorf("basic auth = %q, %q, %t", username, password, ok)
 		}
 		if clientID := request.Header.Get("X-Wingman-Client"); clientID != "cli_test" {
@@ -33,7 +33,7 @@ func TestNewAuthenticatesGeneratedRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(server.URL, WithPassword("secret"), WithClientID("cli_test"))
+	client, err := New(server.URL, WithBasicAuth("service-user", "secret"), WithClientID("cli_test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,14 +277,15 @@ func TestNewRejectsInvalidBaseURL(t *testing.T) {
 }
 
 func TestNewLocalFromState(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	state := daemonstate.New(t.TempDir())
-	password, err := state.Password()
+	config, err := daemonstate.EnsureServiceConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		username, supplied, ok := request.BasicAuth()
-		if !ok || username != "wingman" || supplied != password {
+		if !ok || username != config.Username || supplied != config.Password {
 			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
 		}
 		_ = json.NewEncoder(response).Encode(api.ReadinessResponse{Ready: true, InstanceID: "ins_1", Version: "0.1.0"})
@@ -304,15 +305,16 @@ func TestNewLocalFromState(t *testing.T) {
 }
 
 func TestNewLocalFallsBackToManagedState(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	userState := daemonstate.New(t.TempDir())
 	managedState := daemonstate.New(t.TempDir())
-	password, err := managedState.Password()
+	config, err := daemonstate.EnsureServiceConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		username, supplied, ok := request.BasicAuth()
-		if !ok || username != "wingman" || supplied != password {
+		if !ok || username != config.Username || supplied != config.Password {
 			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
 		}
 		_ = json.NewEncoder(response).Encode(api.ReadinessResponse{Ready: true, InstanceID: "ins_1", Version: "0.1.0"})

@@ -311,19 +311,20 @@ active. After a successful atomic swap, it retires the previous generation.
 ## Inspect Plugins
 
 List plugin status, capabilities, health, process data, contributions, and
-recent diagnostics. These commands use `WINGMAN_DAEMON_PASSWORD` with HTTP Basic
-authentication. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+recent diagnostics. These commands use HTTP Basic authentication. Load
+managed-service credentials with `source ~/.config/wingman/service.env`; the
+username defaults to `wingman`. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
 
 ```bash
 curl http://127.0.0.1:2323/plugins \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
 Reload global and accepted project plugin directories:
 
 ```bash
 curl -X POST http://127.0.0.1:2323/plugins/reload \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}"
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
 ```
 
 Install plugins only from sources you trust.

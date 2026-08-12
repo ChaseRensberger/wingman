@@ -4,11 +4,13 @@ const defaultDaemonTarget = "http://127.0.0.1:2323";
 
 export type DaemonProxy = {
   target: string;
+	username: string;
 	password: string;
 };
 
-export function readDaemonProxy(stateDir: string): DaemonProxy {
+export function readDaemonProxy(stateDir: string, serviceConfigPath: string): DaemonProxy {
   let target = defaultDaemonTarget;
+	let username = "wingman";
 	let password = "";
 
   try {
@@ -19,10 +21,15 @@ export function readDaemonProxy(stateDir: string): DaemonProxy {
   }
 
   try {
-		password = fs.readFileSync(`${stateDir}/password`, "utf8").trim();
-  } catch {
-		// Vite may start before Wingman creates its local password.
-  }
+		const values = fs.readFileSync(serviceConfigPath, "utf8");
+		for (const line of values.trim().split("\n")) {
+			const [key, value] = line.split("=", 2);
+			if (key === "WINGMAN_USERNAME") username = value.slice(1, -1);
+			if (key === "WINGMAN_PASSWORD") password = value.slice(1, -1);
+		}
+	} catch {
+		// Vite may start before Wingman creates service credentials.
+	}
 
-	return { target, password };
+	return { target, username, password };
 }

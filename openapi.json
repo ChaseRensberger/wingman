@@ -738,18 +738,6 @@
         ],
         "type": "object"
       },
-      "LoginRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "password": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "type": "object"
-      },
       "LoweredOptions": {
         "additionalProperties": false,
         "properties": {
@@ -3847,14 +3835,9 @@
     },
     "securitySchemes": {
       "basicAuth": {
-        "description": "Daemon password with username wingman",
+        "description": "Daemon username and password",
         "scheme": "basic",
         "type": "http"
-      },
-      "consoleSession": {
-        "in": "cookie",
-        "name": "wingman_session",
-        "type": "apiKey"
       }
     }
   },
@@ -3902,9 +3885,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Describe the Wingman service"
@@ -3954,9 +3934,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List agents"
@@ -4008,9 +3985,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Create an agent"
@@ -4062,9 +4036,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Delete an agent"
@@ -4114,9 +4085,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get an agent"
@@ -4176,61 +4144,9 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Update an agent"
-      }
-    },
-    "/auth/login": {
-      "post": {
-        "operationId": "login",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            },
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
-        },
-        "security": [],
-        "summary": "Create a Console session"
       }
     },
     "/catalog": {
@@ -4271,9 +4187,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get the model catalog"
@@ -4327,9 +4240,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a catalog lab logo"
@@ -4373,9 +4283,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get the current API client"
@@ -4425,9 +4332,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List API clients"
@@ -4479,9 +4383,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Register an API client"
@@ -4533,9 +4434,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get an API client"
@@ -4579,9 +4477,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get bounded daemon operational diagnostics"
@@ -4633,9 +4528,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List filesystem directories"
@@ -4724,9 +4616,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List recent daemon logs"
@@ -4770,9 +4659,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List MCP server status"
@@ -4814,9 +4700,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Remove MCP authorization"
@@ -4856,9 +4739,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Authorize an MCP server"
@@ -4910,9 +4790,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Connect an MCP server"
@@ -4964,9 +4841,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Disconnect an MCP server"
@@ -5010,9 +4884,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List plugin status"
@@ -5056,9 +4927,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Reload plugins"
@@ -5108,9 +4976,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List model providers"
@@ -5154,9 +5019,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get provider credential status"
@@ -5208,9 +5070,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Set provider credentials"
@@ -5262,9 +5121,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Delete provider credentials"
@@ -5316,9 +5172,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a model provider"
@@ -5373,9 +5226,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List provider models"
@@ -5435,9 +5285,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a provider model"
@@ -5499,9 +5346,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Start provider OAuth"
@@ -5561,9 +5405,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Cancel provider OAuth"
@@ -5621,9 +5462,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get provider OAuth status"
@@ -5677,9 +5515,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Check daemon readiness"
@@ -5726,9 +5561,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Run one ephemeral agent turn"
@@ -5778,9 +5610,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List sessions"
@@ -5832,9 +5661,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Create a session"
@@ -5895,9 +5721,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Delete a session"
@@ -5947,9 +5770,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a session"
@@ -6001,9 +5821,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Abort active session runs"
@@ -6083,9 +5900,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Stream session events"
@@ -6153,9 +5967,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List durable session events"
@@ -6217,9 +6028,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Admit a session message"
@@ -6277,9 +6085,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List session model calls"
@@ -6341,9 +6146,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Move a session"
@@ -6401,9 +6203,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List session permission grants"
@@ -6461,9 +6260,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List session permission requests"
@@ -6533,9 +6329,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Reply to a permission request"
@@ -6597,9 +6390,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Rename a session"
@@ -6657,9 +6447,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List session runs"
@@ -6719,9 +6506,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a session run"
@@ -6791,9 +6575,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Abort a session run"
@@ -6851,9 +6632,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List session tool uses"
@@ -6897,9 +6675,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List available tools"
@@ -6949,9 +6724,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List Workspaces"
@@ -7003,9 +6775,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Create a Workspace"
@@ -7057,9 +6826,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Delete a Workspace"
@@ -7109,9 +6875,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Get a Workspace"
@@ -7171,9 +6934,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "Update a Workspace"
@@ -7231,9 +6991,6 @@
         "security": [
           {
             "basicAuth": []
-          },
-          {
-            "consoleSession": []
           }
         ],
         "summary": "List Workspace sessions"

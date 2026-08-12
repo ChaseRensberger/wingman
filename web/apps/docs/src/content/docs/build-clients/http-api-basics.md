@@ -13,7 +13,7 @@ extension, script, or internal service.
 Most clients follow this sequence:
 
 1. Make sure that the daemon is healthy with `GET /health`.
-2. Load the daemon password.
+2. Connect with managed discovery or configure foreground-server Basic Auth.
 3. Make sure that the daemon is ready with `GET /ready`.
 4. Configure provider auth with `PUT /provider/auth`.
 5. Create or reuse an agent with `/agents`.
@@ -24,30 +24,31 @@ Most clients follow this sequence:
 
 ## Authentication
 
-`GET /health` is public. Other API routes require the daemon password.
+`GET /health` is public. All other routes require HTTP Basic authentication.
+Managed native clients discover the service registration and load generated
+credentials automatically.
 
-Obtain the daemon password through a secure channel. Then set it in the client
-environment. For a local managed service:
+For manual HTTP requests to a managed service, load its generated credentials:
 
 ```bash
-export WINGMAN_DAEMON_PASSWORD="$(wingman service password)"
+source ~/.config/wingman/service.env
 ```
 
-For a foreground server started with `WINGMAN_PASSWORD`, use the same value.
-Set `WINGMAN_DAEMON_PASSWORD` in the client environment.
+A foreground server uses configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD`
+values. Otherwise, it creates or reuses the managed-service credentials.
 
-Send it with HTTP Basic authentication and the username `wingman`:
+Send credentials with HTTP Basic authentication:
 
 ```text
-Authorization: Basic <base64("wingman:<password>")>
+Authorization: Basic <base64("<username>:<password>")>
 ```
 
-For example, `curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" http://localhost:2323/ready`
-sends the required credentials. Before you send this password to a remote
+For example, `curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" http://localhost:2323/ready`
+sends the required credentials. Before you send credentials to a remote
 daemon, use TLS or an SSH tunnel. The `X-Wingman-Client` header is an
 attribution selector, not a credential.
 
-See [Authentication](/concepts/authentication) for Console sessions.
+The Console uses browser Basic Auth; it has no login endpoint or session cookie.
 
 ## Test a Remote Server
 
@@ -63,7 +64,7 @@ The helper builds a Linux `amd64` binary. It installs the binary on
 `2323`. It sets the exe.dev HTTPS proxy port. For an arm64 VM, set
 `WINGMAN_EXE_ARCH=arm64` before you run the command.
 
-Use the managed service password to register a client on the VM:
+Use the managed service to register a client on the VM:
 
 ```bash
 ssh ratchet-mews.exe.xyz 'wingman clients create --id cli_reference --name "Reference client"'
@@ -72,7 +73,7 @@ ssh ratchet-mews.exe.xyz 'wingman clients create --id cli_reference --name "Refe
 Check the remote daemon with HTTP Basic authentication:
 
 ```bash
-curl -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   https://ratchet-mews.exe.xyz/ready
 ```
 
@@ -103,7 +104,7 @@ import (
 func main() {
 	wingman, err := client.New(
 		"http://localhost:2323",
-		client.WithPassword(os.Getenv("WINGMAN_DAEMON_PASSWORD")),
+		client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
 		client.WithClientID("cli_example"),
 	)
 	if err != nil {
@@ -138,7 +139,7 @@ can pass `X-Wingman-Client` on client-scoped requests.
 
 ```bash
 CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -d '{"id":"cli_example","name":"Example client"}' | jq -r .client.id)
 ```
@@ -147,7 +148,7 @@ Create a session attributed to that client:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d '{"title":"Client session"}'
@@ -162,7 +163,7 @@ Create one when needed:
 
 ```bash
 WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "$(jq -n \
@@ -175,7 +176,7 @@ Or reuse an existing Workspace:
 
 ```bash
 WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "X-Wingman-Client: ${CLIENT_ID}" | jq -r '.[0].id')
 ```
 
@@ -183,7 +184,7 @@ Create a session in that Workspace:
 
 ```bash
 curl -sS -X POST http://localhost:2323/sessions \
-  -u "wingman:${WINGMAN_DAEMON_PASSWORD}" \
+  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"

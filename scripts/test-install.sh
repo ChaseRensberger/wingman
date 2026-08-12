@@ -76,6 +76,8 @@ grep -Fxq "  Binary (created now): $location_home/bin/wingman" "$location_output
 grep -Fxq "  Config (created when saved): $location_home/.config/wingman/wingman.json" "$location_output" || fail 'config location was not reported'
 grep -Fxq "  Database (created when the server starts): $location_home/.local/share/wingman/wingman.db" "$location_output" || fail 'database location was not reported'
 grep -Fxq "  Daemon state (created by serve): $location_home/.local/state/wingman" "$location_output" || fail 'daemon state location was not reported'
+grep -Fxq "  Managed service credentials (created by service start): $location_home/.config/wingman/service.env" "$location_output" || fail 'service credential location was not reported'
+grep -Fxq "  Service file (created by service start): $location_home/.config/systemd/user/wingman.service" "$location_output" || fail 'service file location was not reported'
 grep -Fxq "Installed wingman to $location_home/bin" "$location_output" || fail 'plain install success was not reported'
 grep -Fxq 'Verify: wingman version' "$location_output" || fail 'verify next step was not reported'
 grep -Fxq 'Start: wingman service start' "$location_output" || fail 'start next step was not reported'

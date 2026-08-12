@@ -2,10 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,6 +48,7 @@ type Server struct {
 	agentPermissions   map[string]permission.Ruleset
 	oauth              *oauthManager
 	password           string
+	username           string
 	instanceID         string
 	version            string
 	ready              atomic.Bool
@@ -85,11 +83,15 @@ type Config struct {
 	// than or equal to zero use the five-minute default.
 	PermissionTimeout time.Duration
 	Password          string
+	Username          string
 	InstanceID        string
 	Version           string
 }
 
 func New(cfg Config) *Server {
+	if cfg.Username == "" {
+		cfg.Username = "wingman"
+	}
 	root := cfg.RootContext
 	rootProvided := root != nil
 	if root == nil {
@@ -125,6 +127,7 @@ func New(cfg Config) *Server {
 		agentPermissions: cfg.AgentPermissions,
 		oauth:            newOAuthManager(ctx, cfg.Store),
 		password:         cfg.Password,
+		username:         cfg.Username,
 		instanceID:       cfg.InstanceID,
 		version:          cfg.Version,
 		shutdownCtx:      ctx,
@@ -156,11 +159,6 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(s.authenticate)
 }
 
-const (
-	consoleSessionCookie   = "wingman_session"
-	consoleSessionLifetime = 30 * 24 * time.Hour
-)
-
 var errAuthenticationRequired = errors.New("authentication required")
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
@@ -180,80 +178,20 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			s.writeError(w, http.StatusInternalServerError, "authentication unavailable")
 			return
 		}
-		if principal.cookie && !cookieRequestAllowed(r) {
-			s.writeError(w, http.StatusForbidden, "cookie-authenticated request origin is not allowed")
-			return
-		}
 		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
 	})
 }
 
 func publicPath(path string) bool {
-	return path == "/health" || path == "/console" || strings.HasPrefix(path, "/console/") || path == "/auth/login"
+	return path == "/health"
 }
 
 func (s *Server) authenticateRequest(r *http.Request) (authPrincipal, error) {
 	username, password, ok := r.BasicAuth()
-	if ok && username == "wingman" && subtle.ConstantTimeCompare([]byte(password), []byte(s.password)) == 1 {
+	if ok && username == s.username && subtle.ConstantTimeCompare([]byte(password), []byte(s.password)) == 1 {
 		return authPrincipal{authenticated: true}, nil
 	}
-	cookie, err := r.Cookie(consoleSessionCookie)
-	if err != nil {
-		return authPrincipal{}, errAuthenticationRequired
-	}
-	if !s.validConsoleSession(cookie.Value) {
-		return authPrincipal{}, errAuthenticationRequired
-	}
-	return authPrincipal{authenticated: true, cookie: true}, nil
-}
-
-func cookieRequestAllowed(r *http.Request) bool {
-	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-		return true
-	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-		return false
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return r.Header.Get("Sec-Fetch-Site") == "same-origin"
-	}
-	parsed, err := url.Parse(origin)
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && strings.EqualFold(parsed.Host, r.Host)
-}
-
-func (s *Server) setConsoleSession(w http.ResponseWriter, r *http.Request) {
-	expiresAt := time.Now().UTC().Add(consoleSessionLifetime)
-	http.SetCookie(w, &http.Cookie{
-		Name: s.consoleSessionCookieName(), Value: s.newConsoleSession(), Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteStrictMode,
-		Secure:  r.TLS != nil,
-		Expires: expiresAt, MaxAge: int(consoleSessionLifetime.Seconds()),
-	})
-}
-
-func (s *Server) consoleSessionCookieName() string { return consoleSessionCookie }
-
-func (s *Server) newConsoleSession() string {
-	payload := fmt.Sprintf("%d", time.Now().UTC().Add(consoleSessionLifetime).Unix())
-	mac := hmac.New(sha256.New, []byte(s.password))
-	_, _ = mac.Write([]byte(payload))
-	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
-func (s *Server) validConsoleSession(value string) bool {
-	parts := strings.Split(value, ".")
-	if len(parts) != 2 {
-		return false
-	}
-	var expiresAt int64
-	if _, err := fmt.Sscan(parts[0], &expiresAt); err != nil || time.Now().UTC().Unix() >= expiresAt {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(s.password))
-	_, _ = mac.Write([]byte(parts[0]))
-	want, err := base64.RawURLEncoding.DecodeString(parts[1])
-	return err == nil && hmac.Equal(want, mac.Sum(nil))
+	return authPrincipal{}, errAuthenticationRequired
 }
 
 func requestIDHeader(next http.Handler) http.Handler {
@@ -352,7 +290,6 @@ func shouldBypassTimeout(r *http.Request) bool {
 func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
-	s.registerJSON(http.MethodPost, "/auth/login", "login", "Create a Console session", loginRequest{}, http.StatusNoContent, api.StatusResponse{}, s.handleLogin)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
 	s.registerJSON(http.MethodGet, "/diagnostics", "getDiagnostics", "Get bounded daemon operational diagnostics", nil, http.StatusOK, api.DiagnosticsResponse{}, s.handleDiagnostics)

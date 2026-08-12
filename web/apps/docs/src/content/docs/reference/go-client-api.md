@@ -17,7 +17,7 @@ non-success response.
 ```go
 wingman, err := client.New(
 	"http://localhost:2323",
-	client.WithPassword(os.Getenv("WINGMAN_DAEMON_PASSWORD")),
+	client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
 	client.WithClientID("cli_example"),
 )
 if err != nil {
@@ -34,9 +34,9 @@ methods in this reference for normal Go values.
 | Function or option | Description |
 | --- | --- |
 | `New(baseURL, options...)` | Create an SDK for an HTTP or HTTPS daemon origin. The URL cannot include a path, query, fragment, or credentials. |
-| `NewLocal(ctx, options...)` | Discover and verify the managed local daemon for the current user. It reads the private daemon registration and password. |
+| `NewLocal(ctx, options...)` | Discover and verify the managed local daemon for the current user. It reads the public registration and private generated credentials. |
 | `NewLocalFromState(ctx, stateDir, options...)` | Discover a managed daemon from an explicit state directory. |
-| `WithPassword(password)` | Set the daemon password for HTTP Basic authentication. |
+| `WithBasicAuth(username, password)` | Set HTTP Basic authentication credentials. |
 | `WithClientID(id)` | Set `X-Wingman-Client` on requests that do not set it explicitly. |
 | `WithTransport(doer)` | Set the `HttpRequestDoer` for requests. |
 | `WithMaxSSEEventBytes(size)` | Set the maximum accepted SSE frame size. The default is `1048576`. |
@@ -206,7 +206,6 @@ if err := stream.Err(); err != nil {
 
 | Method | Description |
 | --- | --- |
-| `LoginWithResponse(ctx, nil, body)` | Create a Console session. |
 | `GetServiceWithResponse(ctx, nil)` | Get service metadata for the current daemon. |
 | `GetHealthWithResponse(ctx, nil)` | Get public liveness status. |
 | `GetReadinessWithResponse(ctx, nil)` | Get protected readiness status. |

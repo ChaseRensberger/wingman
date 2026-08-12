@@ -304,11 +304,6 @@ type LogEntry struct {
 	Time  *string                 `json:"time,omitempty"`
 }
 
-// LoginRequest defines model for LoginRequest.
-type LoginRequest struct {
-	Password string `json:"password"`
-}
-
 // LoweredOptions defines model for LoweredOptions.
 type LoweredOptions struct {
 	ReasoningSummaryAuto *bool `json:"reasoning_summary_auto,omitempty"`
@@ -1053,12 +1048,6 @@ type UpdateAgentParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
-// LoginParams defines parameters for Login.
-type LoginParams struct {
-	// XWingmanClient Client identity for resource attribution and scoping
-	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
-}
-
 // GetModelCatalogParams defines parameters for GetModelCatalog.
 type GetModelCatalogParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1375,9 +1364,6 @@ type CreateAgentJSONRequestBody = CreateAgentRequest
 
 // UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
 type UpdateAgentJSONRequestBody = UpdateAgentRequest
-
-// LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = LoginRequest
 
 // CreateClientJSONRequestBody defines body for CreateClient for application/json ContentType.
 type CreateClientJSONRequestBody = CreateClientRequest
@@ -1791,20 +1777,6 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /agents/{id} (the `UpdateAgent` operationId).
 	UpdateAgent(ctx context.Context, id string, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// LoginWithBody Create a Console session
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /auth/login (the `Login` operationId).
-	LoginWithBody(ctx context.Context, params *LoginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// Login Create a Console session
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /auth/login (the `Login` operationId).
-	Login(ctx context.Context, params *LoginParams, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetModelCatalog Get the model catalog
 	//
@@ -2284,40 +2256,6 @@ func (c *GeneratedClient) UpdateAgentWithBody(ctx context.Context, id string, pa
 // Corresponds with PUT /agents/{id} (the `UpdateAgent` operationId).
 func (c *GeneratedClient) UpdateAgent(ctx context.Context, id string, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateAgentRequest(c.Server, id, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// LoginWithBody Create a Console session
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /auth/login (the `Login` operationId).
-func (c *GeneratedClient) LoginWithBody(ctx context.Context, params *LoginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewLoginRequestWithBody(c.Server, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// Login Create a Console session
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /auth/login (the `Login` operationId).
-func (c *GeneratedClient) Login(ctx context.Context, params *LoginParams, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewLoginRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3592,61 +3530,6 @@ func NewUpdateAgentRequestWithBody(server string, id string, params *UpdateAgent
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	if params != nil {
-
-		if params.XWingmanClient != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("X-Wingman-Client", headerParam0)
-		}
-
-	}
-
-	return req, nil
-}
-
-// NewLoginRequest calls the generic Login builder with application/json body
-func NewLoginRequest(server string, params *LoginParams, body LoginJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewLoginRequestWithBody(server, params, "application/json", bodyReader)
-}
-
-// NewLoginRequestWithBody constructs an http.Request for the Login method, with any body, and a specified content type
-func NewLoginRequestWithBody(server string, params *LoginParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/auth/login")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -6392,20 +6275,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /agents/{id} (the `UpdateAgent` operationId).
 	UpdateAgentWithResponse(ctx context.Context, id string, params *UpdateAgentParams, body UpdateAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentHTTPResponse, error)
 
-	// LoginWithBodyWithResponse Create a Console session
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /auth/login (the `Login` operationId).
-	LoginWithBodyWithResponse(ctx context.Context, params *LoginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error)
-
-	// LoginWithResponse Create a Console session
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /auth/login (the `Login` operationId).
-	LoginWithResponse(ctx context.Context, params *LoginParams, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error)
-
 	// GetModelCatalogWithResponse Get the model catalog
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -7130,54 +6999,6 @@ func (r UpdateAgentHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateAgentHTTPResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type LoginHTTPResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON204 the response for an HTTP 204 `application/json` response
-	JSON204 *StatusResponse
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *ErrorResponse
-}
-
-// GetJSON204 returns the response for an HTTP 204 `application/json` response
-func (r LoginHTTPResponse) GetJSON204() *StatusResponse {
-	return r.JSON204
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r LoginHTTPResponse) GetJSONDefault() *ErrorResponse {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r LoginHTTPResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r LoginHTTPResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r LoginHTTPResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r LoginHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9770,32 +9591,6 @@ func (c *ClientWithResponses) UpdateAgentWithResponse(ctx context.Context, id st
 	return ParseUpdateAgentHTTPResponse(rsp)
 }
 
-// LoginWithBodyWithResponse Create a Console session
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /auth/login (the `Login` operationId).
-func (c *ClientWithResponses) LoginWithBodyWithResponse(ctx context.Context, params *LoginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error) {
-	rsp, err := c.LoginWithBody(ctx, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseLoginHTTPResponse(rsp)
-}
-
-// LoginWithResponse Create a Console session
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /auth/login (the `Login` operationId).
-func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, params *LoginParams, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error) {
-	rsp, err := c.Login(ctx, params, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseLoginHTTPResponse(rsp)
-}
-
 // GetModelCatalogWithResponse Get the model catalog
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10800,39 +10595,6 @@ func ParseUpdateAgentHTTPResponse(rsp *http.Response) (*UpdateAgentHTTPResponse,
 			return nil, err
 		}
 		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseLoginHTTPResponse parses an HTTP response from a LoginWithResponse call
-func ParseLoginHTTPResponse(rsp *http.Response) (*LoginHTTPResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &LoginHTTPResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 204:
-		var dest StatusResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON204 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse

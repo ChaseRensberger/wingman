@@ -8,7 +8,8 @@ function newDiscovery(fetchResponses: Response[]) {
 	return {
     discovery: new DaemonDiscovery({
       stateDir: () => "/state/wingman",
-		readTextFile: async (path) => path.endsWith("registration.json") ? registration() : "password\n",
+		serviceConfigPath: () => "/config/wingman/service.env",
+		readTextFile: async (path) => path.endsWith("registration.json") ? registration() : "WINGMAN_USERNAME='wingman'\nWINGMAN_PASSWORD='password'\n",
       fetch: async () => fetchResponses.shift() ?? new Response(null, { status: 503 }),
       now: () => 0,
       timeoutSignal: () => AbortSignal.timeout(100),
@@ -28,7 +29,7 @@ Deno.test("Desktop discovery retries a daemon that becomes ready", async () => {
     },
   );
   const transport = await discovery.transport();
-	if (transport.origin !== "http://127.0.0.1:2323" || transport.password !== "password") {
+	if (transport.origin !== "http://127.0.0.1:2323" || transport.username !== "wingman" || transport.password !== "password") {
     throw new Error(`transport = ${JSON.stringify(transport)}`);
   }
 });
@@ -62,9 +63,10 @@ Deno.test("Desktop proxy rediscovers credentials after daemon authentication or 
     };
     const discovery = new DaemonDiscovery({
       stateDir: () => "/state/wingman",
+		serviceConfigPath: () => "/config/wingman/service.env",
       readTextFile: async (path) => {
         if (path.endsWith("registration.json")) return registration(`ins_${generation}`);
-		return `password_${generation}\n`;
+		return `WINGMAN_USERNAME='wingman'\nWINGMAN_PASSWORD='password_${generation}'\n`;
       },
       fetch: fetchMock,
       now: () => 0,
