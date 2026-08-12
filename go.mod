@@ -8,6 +8,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/gofrs/flock v0.12.1
 	github.com/invopop/jsonschema v0.14.0
+	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/pmezard/go-difflib v1.0.0
@@ -36,8 +37,10 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
+	rsc.io/qr v0.2.0 // indirect
 )

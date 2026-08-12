@@ -12,6 +12,9 @@ import (
 
 func TestServiceCommandHierarchyAndHelp(t *testing.T) {
 	cmd := newCommand(daemonconfig.Config{})
+	if cmd.Command("pair") == nil {
+		t.Fatal("pair command is missing")
+	}
 	service := cmd.Command("service")
 	if service == nil {
 		t.Fatal("service command is missing")

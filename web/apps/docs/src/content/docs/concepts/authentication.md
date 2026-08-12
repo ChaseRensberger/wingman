@@ -16,6 +16,9 @@ Wingman is a managed service for one user. Its public registration is in
 
 Managed native clients find the local registration and use the generated credentials automatically. Do not copy these credentials into client configuration.
 
+Run `wingman pair` to display the managed server URL, username, password, and a
+QR code for another client.
+
 ## Foreground Server Authentication
 
 An explicit foreground server also requires HTTP Basic authentication. It uses `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` when both values are configured. Otherwise, it creates or reuses credentials in `service.env`.
@@ -24,7 +27,9 @@ An explicit foreground server also requires HTTP Basic authentication. It uses `
 curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" http://localhost:2323/ready
 ```
 
-Before you send Basic Auth credentials to a remote server, use TLS or an SSH tunnel. Basic Auth is not a multi-user authorization system.
+Basic Auth does not encrypt network traffic. Use a trusted network or a secure
+transport, such as Tailscale, TLS, or an SSH tunnel, for remote access. Basic
+Auth is not a multi-user authorization system.
 
 ## Console Authentication
 

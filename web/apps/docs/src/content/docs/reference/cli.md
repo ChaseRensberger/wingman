@@ -23,6 +23,7 @@ wingman <command> [flags]
 | `service stop` | Stop and remove the Wingman background service. |
 | `service restart` | Restart the Wingman background service. |
 | `service status` | Show the Wingman background service status. |
+| `pair` | Show the managed server URL and credentials with a QR code. |
 | `console` | Open the managed daemon Console. |
 | `clients create` | Register an API client identity. |
 | `update` | Check for or install a verified release update. |
@@ -50,6 +51,18 @@ the service is ready.
 
 `wingman service start` accepts the same runtime flags as `wingman serve`.
 The command writes selected values to the generated service definition.
+
+`wingman serve` prints its URL, username, and password when it uses generated
+credentials. To show the managed service connection details later, run:
+
+```bash
+wingman pair
+```
+
+The command starts the managed service when it is absent, then prints its
+connection URLs and HTTP Basic Auth credentials. It displays a QR code with the
+same connection information. A service bound to `0.0.0.0` or `::` advertises
+its non-loopback interface addresses.
 
 ## Runtime Flags
 

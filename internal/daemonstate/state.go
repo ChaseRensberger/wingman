@@ -27,11 +27,12 @@ var ErrLocked = errors.New("daemon state lock is held")
 
 // Registration identifies a running daemon instance.
 type Registration struct {
-	InstanceID string `json:"instance_id"`
-	Version    string `json:"version"`
-	URL        string `json:"url"`
-	PID        int    `json:"pid"`
-	CreatedAt  string `json:"created_at"`
+	InstanceID string   `json:"instance_id"`
+	Version    string   `json:"version"`
+	URL        string   `json:"url"`
+	URLs       []string `json:"urls,omitempty"`
+	PID        int      `json:"pid"`
+	CreatedAt  string   `json:"created_at"`
 }
 
 // Validate checks that a registration is safe to persist and use.
@@ -45,6 +46,12 @@ func (r Registration) Validate() error {
 	parsed, err := url.Parse(r.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || !parsed.IsAbs() {
 		return fmt.Errorf("url must be an absolute HTTP or HTTPS URL: %q", r.URL)
+	}
+	for _, raw := range r.URLs {
+		parsed, err := url.Parse(raw)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || !parsed.IsAbs() {
+			return fmt.Errorf("advertised URL must be an absolute HTTP or HTTPS URL: %q", raw)
+		}
 	}
 	if r.PID <= 0 {
 		return errors.New("pid must be greater than zero")

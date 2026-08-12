@@ -23,14 +23,39 @@ const (
 	launchdLabel       = "actor.wingman"
 )
 
+type serviceOptions struct {
+	Host           string
+	Port           int
+	DB             string
+	LogFormat      string
+	LogLevel       string
+	ConsoleDevURL  string
+	Ephemeral      bool
+	PluginDirs     []string
+	DisablePlugins bool
+}
+
 func runServiceStart(ctx context.Context, cmd *cli.Command) error {
+	return runServiceStartWithOptions(ctx, serviceOptionsFromCommand(cmd))
+}
+
+func runServiceStartWithOptions(ctx context.Context, options serviceOptions) error {
 	switch runtime.GOOS {
 	case "linux":
-		return runLinuxStart(ctx, cmd)
+		return runLinuxStart(ctx, options)
 	case "darwin":
-		return runDarwinStart(ctx, cmd)
+		return runDarwinStart(ctx, options)
 	default:
 		return fmt.Errorf("wingman service start supports Linux/systemd and macOS/launchd only")
+	}
+}
+
+func serviceOptionsFromCommand(cmd *cli.Command) serviceOptions {
+	return serviceOptions{
+		Host: cmd.String("host"), Port: cmd.Int("port"), DB: cmd.String("db"),
+		LogFormat: cmd.String("log-format"), LogLevel: cmd.String("log-level"),
+		ConsoleDevURL: cmd.String("console-dev-url"), Ephemeral: cmd.Bool("ephemeral"),
+		PluginDirs: append([]string(nil), cmd.StringSlice("plugin-dir")...), DisablePlugins: cmd.Bool("no-plugins"),
 	}
 }
 
@@ -89,7 +114,7 @@ func runServiceStatus(ctx context.Context, cmd *cli.Command) error {
 	}
 }
 
-func runLinuxStart(ctx context.Context, cmd *cli.Command) error {
+func runLinuxStart(ctx context.Context, options serviceOptions) error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf("run wingman service start as the logged-in user, not root")
 	}
@@ -118,7 +143,7 @@ func runLinuxStart(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(systemdUnit(home, configHome, configPath, serveArgs(exe, cmd, stateDir))), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(systemdUnit(home, configHome, configPath, serveArgsForOptions(exe, options, stateDir))), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := runSystemctl(ctx, "daemon-reload"); err != nil {
@@ -159,7 +184,7 @@ func runLinuxStop(ctx context.Context) error {
 	return nil
 }
 
-func runDarwinStart(ctx context.Context, cmd *cli.Command) error {
+func runDarwinStart(ctx context.Context, options serviceOptions) error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf("run wingman service start as the logged-in user, not root")
 	}
@@ -187,7 +212,7 @@ func runDarwinStart(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(launchdPlist(home, os.Getenv("XDG_CONFIG_HOME"), configPath, serveArgs(exe, cmd, stateDir))), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(launchdPlist(home, os.Getenv("XDG_CONFIG_HOME"), configPath, serveArgsForOptions(exe, options, stateDir))), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	_ = runLaunchctl(ctx, "bootout", launchdTarget())
@@ -235,20 +260,24 @@ func executablePath() (string, error) {
 }
 
 func serveArgs(exe string, cmd *cli.Command, stateDir string) []string {
-	args := []string{exe, "serve", "--register", "--state-dir", stateDir, "--host", cmd.String("host"), "--port", fmt.Sprint(cmd.Int("port")), "--log-format", cmd.String("log-format"), "--log-level", cmd.String("log-level")}
-	if db := cmd.String("db"); db != "" {
-		args = append(args, "--db", db)
+	return serveArgsForOptions(exe, serviceOptionsFromCommand(cmd), stateDir)
+}
+
+func serveArgsForOptions(exe string, options serviceOptions, stateDir string) []string {
+	args := []string{exe, "serve", "--register", "--state-dir", stateDir, "--host", options.Host, "--port", fmt.Sprint(options.Port), "--log-format", options.LogFormat, "--log-level", options.LogLevel}
+	if options.DB != "" {
+		args = append(args, "--db", options.DB)
 	}
-	if consoleDevURL := cmd.String("console-dev-url"); consoleDevURL != "" {
-		args = append(args, "--console-dev-url", consoleDevURL)
+	if options.ConsoleDevURL != "" {
+		args = append(args, "--console-dev-url", options.ConsoleDevURL)
 	}
-	if cmd.Bool("ephemeral") {
+	if options.Ephemeral {
 		args = append(args, "--ephemeral")
 	}
-	for _, dir := range cmd.StringSlice("plugin-dir") {
+	for _, dir := range options.PluginDirs {
 		args = append(args, "--plugin-dir", dir)
 	}
-	if cmd.Bool("no-plugins") {
+	if options.DisablePlugins {
 		args = append(args, "--no-plugins")
 	}
 	return args

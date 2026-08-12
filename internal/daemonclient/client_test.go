@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -55,6 +56,18 @@ func TestInspect(t *testing.T) {
 				t.Fatalf("Inspect() = %s, %v; want %s", result.Status, result.Err, test.want)
 			}
 		})
+	}
+}
+
+func TestClientURLsUsesAdvertisedURLs(t *testing.T) {
+	client := &Client{urls: []string{"http://192.0.2.1:2323"}}
+	if got, want := client.URLs(), []string{"http://192.0.2.1:2323"}; !slices.Equal(got, want) {
+		t.Fatalf("URLs() = %q, want %q", got, want)
+	}
+	got := client.URLs()
+	got[0] = "changed"
+	if client.urls[0] == "changed" {
+		t.Fatal("URLs() returns the client slice")
 	}
 }
 

@@ -48,6 +48,7 @@ type Result struct {
 // Client is an authenticated transport to a verified managed daemon.
 type Client struct {
 	baseURL    *url.URL
+	urls       []string
 	username   string
 	password   string
 	httpClient *http.Client
@@ -84,12 +85,21 @@ func New(ctx context.Context, state *daemonstate.State, expectedVersion string) 
 	if err != nil {
 		return nil, fmt.Errorf("parse managed daemon URL: %w", err)
 	}
-	return &Client{baseURL: baseURL, username: config.Username, password: config.Password, httpClient: http.DefaultClient}, nil
+	urls := result.Registration.URLs
+	if len(urls) == 0 {
+		urls = []string{result.Registration.URL}
+	}
+	return &Client{baseURL: baseURL, urls: urls, username: config.Username, password: config.Password, httpClient: http.DefaultClient}, nil
 }
 
 // URL returns the registered daemon URL.
 func (c *Client) URL() string {
 	return c.baseURL.String()
+}
+
+// URLs returns the daemon's advertised connection URLs.
+func (c *Client) URLs() []string {
+	return append([]string(nil), c.urls...)
 }
 
 // DoJSON makes an authenticated JSON request. requestBody and responseBody may be nil.

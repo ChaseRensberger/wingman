@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sync"
 	"testing"
@@ -40,6 +41,10 @@ func TestRegistrationValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	valid.URLs = []string{"http://192.0.2.1:2323"}
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRegistrationReadRejectsMalformedJSON(t *testing.T) {
@@ -64,6 +69,22 @@ func TestRegistrationReadRejectsMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestRegistrationPersistsAdvertisedURLs(t *testing.T) {
+	state := New(t.TempDir())
+	registration := testRegistration()
+	registration.URLs = []string{"http://192.0.2.1:2323", "http://198.51.100.1:2323"}
+	if err := state.WriteRegistration(registration); err != nil {
+		t.Fatal(err)
+	}
+	got, err := state.ReadRegistration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, registration) {
+		t.Fatalf("ReadRegistration() = %#v, want %#v", got, registration)
+	}
+}
+
 func TestRegistrationOwnershipCleanup(t *testing.T) {
 	state := New(t.TempDir())
 	registration := testRegistration()
@@ -77,7 +98,7 @@ func TestRegistrationOwnershipCleanup(t *testing.T) {
 	if err != nil || removed {
 		t.Fatalf("RemoveRegistration(other) = %v, %v", removed, err)
 	}
-	if got, err := state.ReadRegistration(); err != nil || got != registration {
+	if got, err := state.ReadRegistration(); err != nil || !reflect.DeepEqual(got, registration) {
 		t.Fatalf("ReadRegistration() = %#v, %v", got, err)
 	}
 	removed, err = state.RemoveRegistration("one")

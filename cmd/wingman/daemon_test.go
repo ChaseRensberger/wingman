@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"slices"
 	"testing"
 )
 
@@ -9,15 +10,15 @@ func TestServerCredentialsGenerateAndReuseServiceConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("WINGMAN_USERNAME", "")
 	t.Setenv("WINGMAN_PASSWORD", "")
-	firstUsername, firstPassword, err := serverCredentials()
+	firstUsername, firstPassword, firstDisplayed, err := serverCredentials()
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondUsername, secondPassword, err := serverCredentials()
+	secondUsername, secondPassword, secondDisplayed, err := serverCredentials()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if firstUsername != "wingman" || firstPassword == "" || firstPassword != secondPassword || secondUsername != firstUsername {
+	if firstUsername != "wingman" || firstPassword == "" || firstPassword != secondPassword || secondUsername != firstUsername || !firstDisplayed || !secondDisplayed {
 		t.Fatalf("credentials were not generated and reused: %q %q, %q %q", firstUsername, firstPassword, secondUsername, secondPassword)
 	}
 }
@@ -26,11 +27,11 @@ func TestServerCredentialsUseEnvironment(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("WINGMAN_USERNAME", "operator")
 	t.Setenv("WINGMAN_PASSWORD", "secret")
-	username, password, err := serverCredentials()
+	username, password, displayed, err := serverCredentials()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if username != "operator" || password != "secret" {
+	if username != "operator" || password != "secret" || displayed {
 		t.Fatalf("credentials = %q %q", username, password)
 	}
 }
@@ -52,6 +53,13 @@ func TestListenerURL(t *testing.T) {
 				t.Fatalf("listenerURL() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestListenerURLsUseSpecificListenerURL(t *testing.T) {
+	address := &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 4242}
+	if got, want := listenerURLs("192.0.2.1", address), []string{"http://192.0.2.1:4242"}; !slices.Equal(got, want) {
+		t.Fatalf("listenerURLs() = %q, want %q", got, want)
 	}
 }
 

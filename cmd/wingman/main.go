@@ -109,6 +109,11 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 				Flags:  updateFlags(),
 				Action: runUpdate,
 			},
+			{
+				Name:   "pair",
+				Usage:  "Show server pairing information",
+				Action: runPair(cfg),
+			},
 			clientsCommand(),
 			{
 				Name:   "console",
@@ -194,7 +199,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			}
 		}
 		state := daemonstate.New(stateDir)
-		username, password, err := serverCredentials()
+		username, password, displayCredentials, err := serverCredentials()
 		if err != nil {
 			return err
 		}
@@ -217,7 +222,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		}
 		if cmd.Bool("register") {
 			registration := daemonstate.Registration{
-				InstanceID: instanceID, Version: version, URL: listenerURL(effective.Server.Host, listener.Addr()),
+				InstanceID: instanceID, Version: version, URL: listenerURL(effective.Server.Host, listener.Addr()), URLs: listenerURLs(effective.Server.Host, listener.Addr()),
 				PID: os.Getpid(), CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 			}
 			if err := state.WriteRegistration(registration); err != nil {
@@ -241,6 +246,11 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		logger := application.Logger()
 		slog.SetDefault(logger)
 		logger.Info("server starting", "addr", addr)
+		if displayCredentials && !cmd.Bool("register") {
+			fmt.Printf("server listening on %s\n", listenerURL(effective.Server.Host, listener.Addr()))
+			fmt.Printf("server username %s\n", username)
+			fmt.Printf("server password %s\n", password)
+		}
 		if err := application.Serve(sigCtx, listener); err != nil {
 			return fmt.Errorf("serve application: %w", err)
 		}
@@ -249,20 +259,20 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 	}
 }
 
-func serverCredentials() (string, string, error) {
+func serverCredentials() (string, string, bool, error) {
 	password := os.Getenv("WINGMAN_PASSWORD")
 	username := os.Getenv("WINGMAN_USERNAME")
 	if password != "" {
 		if username == "" {
 			username = "wingman"
 		}
-		return username, password, nil
+		return username, password, false, nil
 	}
 	serviceConfig, err := daemonstate.EnsureServiceConfig()
 	if err != nil {
-		return "", "", fmt.Errorf("load server credentials: %w", err)
+		return "", "", false, fmt.Errorf("load server credentials: %w", err)
 	}
-	return serviceConfig.Username, serviceConfig.Password, nil
+	return serviceConfig.Username, serviceConfig.Password, true, nil
 }
 
 func listenerURL(configuredHost string, addr net.Addr) string {
@@ -280,6 +290,59 @@ func listenerURL(configuredHost string, addr net.Addr) string {
 		port, _ = strconv.Atoi(value)
 	}
 	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func listenerURLs(configuredHost string, addr net.Addr) []string {
+	port := listenerPort(addr)
+	if configuredHost != "0.0.0.0" && configuredHost != "::" && configuredHost != "[::]" {
+		return []string{listenerURL(configuredHost, addr)}
+	}
+	family := "ip4"
+	if configuredHost == "::" || configuredHost == "[::]" {
+		family = "ip6"
+	}
+	urls := make([]string, 0)
+	seen := make(map[string]struct{})
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return []string{listenerURL(configuredHost, addr)}
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addresses, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, address := range addresses {
+			ip, _, err := net.ParseCIDR(address.String())
+			if err != nil || ip.IsLoopback() || family == "ip4" && ip.To4() == nil || family == "ip6" && ip.To4() != nil {
+				continue
+			}
+			url := "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
+			if _, ok := seen[url]; !ok {
+				seen[url] = struct{}{}
+				urls = append(urls, url)
+			}
+		}
+	}
+	if len(urls) == 0 {
+		return []string{listenerURL(configuredHost, addr)}
+	}
+	return urls
+}
+
+func listenerPort(addr net.Addr) int {
+	if tcp, ok := addr.(*net.TCPAddr); ok {
+		return tcp.Port
+	}
+	_, value, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return 0
+	}
+	port, _ := strconv.Atoi(value)
+	return port
 }
 
 func isLoopbackHost(host string) bool {
