@@ -8,7 +8,7 @@ description: "Use the typed Wingman REST and event-stream client."
 Install the SDK version that matches the Wingman daemon release:
 
 ```bash
-npm install @wingman-actor/client@0.1.49
+npm install @wingman-actor/client@0.1.51
 ```
 
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
@@ -150,4 +150,4 @@ credential in a remote browser application.
 
 The SDK is generated from the daemon OpenAPI contract. Until the API is stable,
 use the exact SDK version that matches the daemon release tag. For example,
-Wingman `v0.1.49` requires `@wingman-actor/client@0.1.49`.
+Wingman `v0.1.51` requires `@wingman-actor/client@0.1.51`.
