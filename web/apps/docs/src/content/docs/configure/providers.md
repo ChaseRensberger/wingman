@@ -79,7 +79,8 @@ curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic \
 
 ## Environment Variables
 
-Provider clients can read catalog environment variables when you use WingModels as a Go SDK, including:
+WingModels and a foreground `wingman serve` process can read catalog environment
+variables, including:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
@@ -88,9 +89,23 @@ Provider clients can read catalog environment variables when you use WingModels 
 - `OPENROUTER_API_KEY`
 - `DEEPSEEK_API_KEY`
 
+When you run `wingman service start` or `wingman service restart`, Wingman
+imports any of these variables from that command's environment into its stored
+provider credentials. It imports a key only when the provider has no saved
+credential, so it does not replace a key entered in the Console or an OAuth
+connection.
+
+For example:
+
+```bash
+export OPENAI_API_KEY="..."
+wingman service start
+```
+
 Use `/provider/auth` with the Wingman server. The daemon then owns the stored credential.
 
-`/provider/auth` does not show all effective authentication. If no stored credential is available, an authenticated route can use environment variables from its model metadata.
+`/provider/auth` does not return secret values. It shows credentials saved by
+the service import, Console, or API.
 To view the provider's effective authentication source, use
 `GET /provider/{id}`.
 

@@ -3,12 +3,42 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
 	daemonconfig "github.com/chaserensberger/wingman/internal/config"
 	"github.com/urfave/cli/v3"
 )
+
+type fakeManagedDaemonAPI struct {
+	catalog      catalogResponse
+	auth         providersAuthResponse
+	stored       setProvidersAuthRequest
+	requests     []string
+	requestError error
+}
+
+func (f *fakeManagedDaemonAPI) DoJSON(_ context.Context, method, path string, requestBody, responseBody any) error {
+	f.requests = append(f.requests, method+" "+path)
+	if f.requestError != nil {
+		return f.requestError
+	}
+	switch {
+	case method == "GET" && path == "/catalog":
+		*responseBody.(*catalogResponse) = f.catalog
+	case method == "GET" && path == "/provider/auth":
+		*responseBody.(*providersAuthResponse) = f.auth
+	case method == "PUT" && path == "/provider/auth":
+		f.stored = requestBody.(setProvidersAuthRequest)
+	default:
+		return fmt.Errorf("unexpected request %s %s", method, path)
+	}
+	return nil
+}
 
 func TestServiceCommandHierarchyAndHelp(t *testing.T) {
 	cmd := newCommand(daemonconfig.Config{})
@@ -61,6 +91,64 @@ func TestSystemdUnitQuotesServiceArguments(t *testing.T) {
 	if strings.Contains(unit, "network-online.target") {
 		t.Fatalf("unit unexpectedly waits for network availability: %s", unit)
 	}
+}
+
+func TestImportEnvironmentCredentials(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "openai-key")
+	t.Setenv("ANTHROPIC_API_KEY", "anthropic-key")
+	api := &fakeManagedDaemonAPI{
+		catalog: catalogResponse{Providers: []catalogProvider{
+			{ID: "openai", Env: []string{"OPENAI_API_KEY"}},
+			{ID: "anthropic", Env: []string{"ANTHROPIC_API_KEY"}},
+			{ID: "missing", Env: []string{"MISSING_API_KEY"}},
+		}},
+		auth: providersAuthResponse{Providers: map[string]providerAuthInfo{
+			"anthropic": {Configured: true},
+		}},
+	}
+
+	if err := importEnvironmentCredentials(context.Background(), api); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := api.requests, []string{"GET /catalog", "GET /provider/auth", "PUT /provider/auth"}; !equalStrings(got, want) {
+		t.Fatalf("requests = %v, want %v", got, want)
+	}
+	if got, want := api.stored.Providers, map[string]providerAPIKeyCredential{
+		"openai": {Type: "api_key", Key: "openai-key"},
+	}; !equalCredentials(got, want) {
+		t.Fatalf("stored credentials = %#v, want %#v", got, want)
+	}
+}
+
+func TestImportEnvironmentCredentialsDoesNotReplaceStoredCredentials(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "new-key")
+	api := &fakeManagedDaemonAPI{
+		catalog: catalogResponse{Providers: []catalogProvider{{ID: "openai", Env: []string{"OPENAI_API_KEY"}}}},
+		auth:    providersAuthResponse{Providers: map[string]providerAuthInfo{"openai": {Configured: true}}},
+	}
+
+	if err := importEnvironmentCredentials(context.Background(), api); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := api.requests, []string{"GET /catalog", "GET /provider/auth"}; !equalStrings(got, want) {
+		t.Fatalf("requests = %v, want %v", got, want)
+	}
+}
+
+func TestImportEnvironmentCredentialsReturnsRequestError(t *testing.T) {
+	want := errors.New("offline")
+	err := importEnvironmentCredentials(context.Background(), &fakeManagedDaemonAPI{requestError: want})
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want wrapped %v", err, want)
+	}
+}
+
+func equalStrings(got, want []string) bool {
+	return slices.Equal(got, want)
+}
+
+func equalCredentials(got, want map[string]providerAPIKeyCredential) bool {
+	return maps.Equal(got, want)
 }
 
 func TestConsoleDevURLFlagAndServiceForwarding(t *testing.T) {

@@ -90,7 +90,10 @@ func runServiceRestart(ctx context.Context, cmd *cli.Command) error {
 	default:
 		return fmt.Errorf("wingman service restart supports Linux/systemd and macOS/launchd only")
 	}
-	return waitForServiceReady(ctx, stateDir)
+	if err := waitForServiceReady(ctx, stateDir); err != nil {
+		return err
+	}
+	return importServiceEnvironmentCredentials(ctx, stateDir)
 }
 
 func runServiceStatus(ctx context.Context, cmd *cli.Command) error {
@@ -158,6 +161,9 @@ func runLinuxStart(ctx context.Context, options serviceOptions) error {
 	if err := waitForServiceReady(ctx, stateDir); err != nil {
 		return err
 	}
+	if err := importServiceEnvironmentCredentials(ctx, stateDir); err != nil {
+		return err
+	}
 	fmt.Println("Wingman service installed and started")
 	fmt.Println("Run 'wingman service status' to inspect it")
 	return nil
@@ -223,6 +229,9 @@ func runDarwinStart(ctx context.Context, options serviceOptions) error {
 		return err
 	}
 	if err := waitForServiceReady(ctx, stateDir); err != nil {
+		return err
+	}
+	if err := importServiceEnvironmentCredentials(ctx, stateDir); err != nil {
 		return err
 	}
 	fmt.Println("Wingman service installed and started")
@@ -295,6 +304,75 @@ func waitForServiceReady(ctx context.Context, stateDir string) error {
 		return fmt.Errorf("Wingman service did not become ready; run 'wingman service status' for details: %w", err)
 	}
 	fmt.Printf("Wingman daemon ready at %s\n", registration.URL)
+	return nil
+}
+
+type managedDaemonAPI interface {
+	DoJSON(context.Context, string, string, any, any) error
+}
+
+type catalogProvider struct {
+	ID  string   `json:"id"`
+	Env []string `json:"env"`
+}
+
+type catalogResponse struct {
+	Providers []catalogProvider `json:"providers"`
+}
+
+type providerAuthInfo struct {
+	Configured bool `json:"configured"`
+}
+
+type providersAuthResponse struct {
+	Providers map[string]providerAuthInfo `json:"providers"`
+}
+
+type providerAPIKeyCredential struct {
+	Type string `json:"type"`
+	Key  string `json:"key"`
+}
+
+type setProvidersAuthRequest struct {
+	Providers map[string]providerAPIKeyCredential `json:"providers"`
+}
+
+func importServiceEnvironmentCredentials(ctx context.Context, stateDir string) error {
+	client, err := daemonclient.New(ctx, daemonstate.New(stateDir), version)
+	if err != nil {
+		return fmt.Errorf("connect to managed daemon for environment credentials: %w", err)
+	}
+	return importEnvironmentCredentials(ctx, client)
+}
+
+func importEnvironmentCredentials(ctx context.Context, client managedDaemonAPI) error {
+	var catalog catalogResponse
+	if err := client.DoJSON(ctx, "GET", "/catalog", nil, &catalog); err != nil {
+		return fmt.Errorf("get provider catalog: %w", err)
+	}
+	var auth providersAuthResponse
+	if err := client.DoJSON(ctx, "GET", "/provider/auth", nil, &auth); err != nil {
+		return fmt.Errorf("get provider credentials: %w", err)
+	}
+
+	credentials := make(map[string]providerAPIKeyCredential)
+	for _, provider := range catalog.Providers {
+		if auth.Providers[provider.ID].Configured {
+			continue
+		}
+		for _, name := range provider.Env {
+			if key := os.Getenv(name); key != "" {
+				credentials[provider.ID] = providerAPIKeyCredential{Type: "api_key", Key: key}
+				break
+			}
+		}
+	}
+	if len(credentials) == 0 {
+		return nil
+	}
+	if err := client.DoJSON(ctx, "PUT", "/provider/auth", setProvidersAuthRequest{Providers: credentials}, nil); err != nil {
+		return fmt.Errorf("store provider credentials from environment: %w", err)
+	}
 	return nil
 }
 
