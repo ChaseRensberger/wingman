@@ -1603,6 +1603,11 @@ func replaceMessageRevisionTx(ctx context.Context, tx *immediateTx, existing, ms
 			return fmt.Errorf("delete message part: %w", err)
 		}
 	}
+	// A final provider message can reorder already-persisted parts. Move retained
+	// parts away from their public indexes before assigning the new snapshot.
+	if _, err := tx.ExecContext(ctx, `UPDATE parts SET idx = -idx - 1 WHERE message_id = ?`, msg.ID); err != nil {
+		return fmt.Errorf("clear message part indexes: %w", err)
+	}
 	if err := upsertPartsTx(ctx, tx, msg.Parts, oldParts, now); err != nil {
 		return err
 	}

@@ -522,6 +522,44 @@ func TestSQLiteSaveMessageRevisionedAndRollback(t *testing.T) {
 	}
 }
 
+func TestSQLiteSaveMessageRevisionReordersExistingParts(t *testing.T) {
+	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	ctx := context.Background()
+	if err := data.CreateSession(&Session{ID: "ses_reorder_parts"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := StoredMessage{
+		ID: "msg_reorder_parts", SessionID: "ses_reorder_parts", Idx: 0, Role: "assistant",
+		Parts: []StoredPart{
+			{ID: "part_reasoning", MessageID: "msg_reorder_parts", Sequence: 0, Kind: "reasoning", PayloadJSON: []byte(`{"reasoning":"plan"}`)},
+			{ID: "part_text", MessageID: "msg_reorder_parts", Sequence: 1, Kind: "text", PayloadJSON: []byte(`{"text":"answer"}`)},
+		},
+	}
+	if err := data.SaveMessage(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	reordered := initial
+	reordered.Revision = 2
+	reordered.Parts = []StoredPart{
+		{ID: "part_text", MessageID: "msg_reorder_parts", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"answer"}`)},
+		{ID: "part_reasoning", MessageID: "msg_reorder_parts", Sequence: 1, Kind: "reasoning", PayloadJSON: []byte(`{"reasoning":"plan"}`)},
+	}
+	if err := data.SaveMessage(ctx, reordered); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := data.ListMessages(ctx, "ses_reorder_parts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].Revision != 2 || len(messages[0].Parts) != 2 || messages[0].Parts[0].ID != "part_text" || messages[0].Parts[1].ID != "part_reasoning" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestSQLiteSaveMessageRejectsInvalidOwnershipAndIndex(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {
