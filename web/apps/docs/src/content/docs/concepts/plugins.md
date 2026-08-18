@@ -79,16 +79,16 @@ The default plugin directory is:
 ~/.config/wingman/plugins/
 ```
 
-Add another global plugin directory with:
+Add another global plugin directory to the managed service with:
 
 ```bash
-wingman serve --plugin-dir /path/to/plugins
+wingman service start --plugin-dir /path/to/plugins
 ```
 
 Disable external plugin loading with:
 
 ```bash
-wingman serve --no-plugins
+wingman service start --no-plugins
 ```
 
 Project-local plugins are available only to sessions in that working directory. Tool names must be unique across native, RPC, and MCP sources. A name collision prevents the tool catalog from loading.
@@ -141,18 +141,16 @@ Plugin tool names must not collide with built-in, MCP, or other plugin tools. Wi
 
 Use this command to list loaded plugins and non-fatal load errors:
 
-These commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`. See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands find and authenticate with the managed daemon.
 
 ```bash
-curl http://127.0.0.1:2323/plugins \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api listPlugins
 ```
 
 Use this command to reload plugins in the directoryless scope:
 
 ```bash
-curl -X POST http://127.0.0.1:2323/plugins/reload \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api reloadPlugins
 ```
 
 External plugins run with the permissions of the Wingman process that starts them. Install plugins only from trusted sources.

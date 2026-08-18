@@ -13,19 +13,16 @@ A session belongs to one client. Any caller with daemon access can select a regi
 Client identity is not tenant isolation. It does not isolate providers, tools,
 logs, plugins, or filesystem access.
 
-Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client. Its name is `WingClient`. Its ID is `cli_wingclient`. Manual `curl` calls and local scripts work without configuration.
+Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client. Its name is `WingClient`. Its ID is `cli_wingclient`. Manual API calls and local scripts work without configuration.
 
 Client IDs are explicit and stable. They must start with `cli_`. Display names are unique without case sensitivity. Creating a client registers its attribution identity. It does not issue credentials.
 
 To make a request in a client context, send the client ID with `X-Wingman-Client`:
 
-This command uses HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+This command finds and authenticates with the managed daemon.
 
 ```bash
-curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api createSession \
   -H "X-Wingman-Client: cli_..." \
   -d '{"title":"From my app"}'
 ```

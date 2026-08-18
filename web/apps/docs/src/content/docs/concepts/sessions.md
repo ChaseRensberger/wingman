@@ -26,27 +26,21 @@ Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a sav
 
 Create a session first, then send messages to it.
 
-The commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+The commands find and authenticate with the managed daemon.
 
 Create a session:
 
 ```bash
-SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 ```
 
 Create a session in a Workspace:
 
 ```bash
-WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq -r '.[0].id')
+WORKSPACE_ID=$(wingman api listWorkspaces | jq -r '.[0].id')
 
-SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
@@ -57,18 +51,14 @@ SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
 Persisted session responses include a `version`. Use this value to rename a session:
 
 ```bash
-curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/rename" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api renameSession --param "id=${SESSION_ID}" \
   -d '{"title":"Investigate retries","expected_version":1}'
 ```
 
 To move a session, send exactly one of `working_directory` or `workspace_id`:
 
 ```bash
-curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/move" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api moveSession --param "id=${SESSION_ID}" \
   -d '{"working_directory":"/home/me/other-project","expected_version":2}'
 ```
 
@@ -79,9 +69,9 @@ Each changed result increments `version`. If another client changes the session 
 Deletion permanently purges the session. Pass the version that you read as a query parameter:
 
 ```bash
-curl -sS -X DELETE \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  "http://localhost:2323/sessions/${SESSION_ID}?expected_version=2"
+wingman api deleteSession \
+  --param "id=${SESSION_ID}" \
+  --param expected_version=2
 ```
 
 Wingman permanently removes the session, event history, runs, messages, parts, model calls, tool uses, and permission records. Active event streams close before the endpoint returns success. Wingman cancels active execution before the endpoint returns success. A stale version returns `409 Conflict`. It does not delete the session or cancel its work.
@@ -91,9 +81,7 @@ Wingman permanently removes the session, event history, runs, messages, parts, m
 Send a message with an optional retry ID:
 
 ```bash
-curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api messageSession --param "id=${SESSION_ID}" \
   -d '{
     "request_id": "submit-123",
     "agent_id": "agt_...",
@@ -128,9 +116,9 @@ Each message selects its agent and model:
 If a client needs live events, use the event stream:
 
 ```bash
-curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Accept: text/event-stream"
+wingman api streamSessionEvents \
+  --param "id=${SESSION_ID}" \
+  --param after=0
 ```
 
 The response is server-sent events. Each `data:` payload is a Wingman event envelope with `id`, `type`, and `data`. Durable events also include `cursor`.
@@ -142,10 +130,8 @@ Each accepted message emits `session.run.queued`. It then emits `session.run.sta
 The durable run record is authoritative after a reload or lost event stream:
 
 ```bash
-curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
-curl -sS "http://localhost:2323/sessions/${SESSION_ID}/runs/run_..." \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api listSessionRuns --param "id=${SESSION_ID}"
+wingman api getSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
 A run moves from `queued` to `running`. It then moves to `completed`, `failed`,
@@ -154,9 +140,7 @@ or `aborted`. A queued run can also be aborted before it starts.
 Abort a specific queued or running run with:
 
 ```bash
-curl -sS -X POST \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  "http://localhost:2323/sessions/${SESSION_ID}/runs/run_.../abort"
+wingman api abortSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
 Wingman does not automatically replay work that can have reached a provider or tool. During shutdown or restart, a running run becomes `aborted`. Started model calls become `aborted`. Unfinished tool uses become `interrupted`. An active message becomes `failed` and retains checkpointed content. Only runs that never started remain queued and resume automatically. If a recovery write fails, the server does not serve requests.
@@ -166,11 +150,7 @@ Wingman does not automatically replay work that can have reached a provider or t
 Some agent runs do not need durable state. Wingman provides them as ephemeral runs:
 
 ```bash
-curl -N -X POST http://localhost:2323/run \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  -d '{
+wingman api runAgent -d '{
     "agent": {
       "name": "One-shot Assistant",
       "instructions": "Be concise.",

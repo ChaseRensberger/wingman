@@ -27,16 +27,12 @@ The Wingman server resolves and validates paths. It trims whitespace. It expands
 
 Create or reuse a Workspace. Then create a session with `workspace_id`:
 
-These commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands find and authenticate with the managed daemon.
 
 ```bash
-WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq -r '.[0].id')
+WORKSPACE_ID=$(wingman api listWorkspaces | jq -r '.[0].id')
 
-SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 

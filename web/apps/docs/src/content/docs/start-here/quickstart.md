@@ -26,21 +26,14 @@ curl -fsSL https://wingman.actor/install | bash
 wingman service start
 ```
 
-Run `wingman serve` to run Wingman in the foreground.
-
-Wingman runs as a managed service for one user. Managed native clients read its
-public registration from `~/.local/state/wingman/registration.json`.
-They use the generated credentials in `~/.config/wingman/service.env`.
-For these `curl` commands, load the credentials:
-
-```bash
-source ~/.config/wingman/service.env
-```
+Wingman runs as a managed service for one user. The `wingman api` command finds
+the managed daemon and authenticates each request with its generated
+credentials.
 
 ## Server Status
 
 ```bash
-curl -sS http://localhost:2323/health
+wingman api getHealth
 ```
 
 Expected response:
@@ -59,9 +52,7 @@ export ANTHROPIC_API_KEY={key}
 ```
 
 ```bash
-curl -sS -X PUT http://localhost:2323/provider/auth \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api setProviderAuth \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
 
@@ -74,10 +65,7 @@ An agent is a reusable definition. It contains instructions, allowed tools, a
 model, and model options.
 
 ```bash
-AGENT_ID=$(curl -sS -X POST http://localhost:2323/agents \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
-  -d '{
+AGENT_ID=$(wingman api createAgent -d '{
     "name": "Quickstart Assistant",
     "instructions": "You are concise and helpful.",
     "tools": ["read", "glob", "grep"],
@@ -94,9 +82,7 @@ A session is a running conversation. It contains the message history and an
 optional working directory.
 
 ```bash
-SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Quickstart\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
 
 printf 'session: %s\n' "$SESSION_ID"
@@ -109,9 +95,7 @@ to this session directory.
 ## Send a message
 
 ```bash
-curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api messageSession --param "id=${SESSION_ID}" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
@@ -134,9 +118,9 @@ input. The server returns the same run instead of queuing duplicate work.
 To receive lifecycle events while the agent runs, subscribe to session events:
 
 ```bash
-curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Accept: text/event-stream"
+wingman api streamSessionEvents \
+  --param "id=${SESSION_ID}" \
+  --param after=0
 ```
 
 The server sends each event as a server-sent event. Each event has an `event:`

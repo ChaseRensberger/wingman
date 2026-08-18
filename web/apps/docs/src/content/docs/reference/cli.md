@@ -18,6 +18,7 @@ wingman <command> [flags]
 
 | Command | Description |
 |---|---|
+| `api` | Make an authenticated request to the managed daemon. |
 | `serve` | Start the HTTP server in the foreground. |
 | `service start` | Install, enable, and start Wingman as a background service. |
 | `service stop` | Stop and remove the Wingman background service. |
@@ -85,6 +86,33 @@ wingman serve --db ./wingman.db
 wingman serve --ephemeral
 wingman service start --port 2424
 ```
+
+## API Command
+
+`wingman api` finds the verified managed daemon and uses its HTTP Basic Auth
+credentials. Call an endpoint with an HTTP method and path:
+
+```bash
+wingman api get /sessions
+wingman api post /sessions -d '{"title":"Explore repo"}'
+```
+
+You can also call an OpenAPI operation ID. Use `--param name=value` for path and
+query parameters:
+
+```bash
+wingman api createSession -d '{"title":"Explore repo"}'
+wingman api getSession --param id=ses_...
+wingman api streamSessionEvents --param id=ses_... --param after=0
+```
+
+Use `-d` or `--data` for a request body. The command uses
+`Content-Type: application/json` unless you set another value. Use repeatable
+`-H` or `--header` flags for other request headers. Response bodies stream to
+standard output. An HTTP error writes the response body and exits with an error.
+
+The command supports the managed local daemon only. Use an HTTP client or a
+Wingman SDK to connect to an explicit remote server.
 
 ## Console Command
 

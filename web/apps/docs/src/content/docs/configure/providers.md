@@ -47,14 +47,10 @@ connection replaces a saved API key. Saving an API key replaces OAuth.
 
 To store provider API keys, use `PUT /provider/auth`.
 
-The commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`.
-The username defaults to `wingman`. See
-[HTTP API Basics](/build-clients/http-api-basics#authentication).
+The commands find and authenticate with the managed daemon.
 
 ```bash
-curl -sS -X PUT http://localhost:2323/provider/auth \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+wingman api setProviderAuth \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
 
@@ -63,8 +59,7 @@ The server stores credentials in SQLite. Clients do not need access to the shell
 To view auth status, run:
 
 ```bash
-curl -sS http://localhost:2323/provider/auth \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq
+wingman api getProviderAuth | jq
 ```
 
 The response reports stored SQLite credentials only. It does not return secrets.
@@ -73,8 +68,7 @@ It does not report credentials that Wingman resolves from environment variables.
 To remove a provider credential, run:
 
 ```bash
-curl -sS -X DELETE http://localhost:2323/provider/auth/anthropic \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api deleteProviderAuth --param provider=anthropic
 ```
 
 ## Environment Variables

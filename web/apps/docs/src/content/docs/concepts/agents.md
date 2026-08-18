@@ -8,14 +8,10 @@ order: 100
 
 An agent is a reusable definition for a [session](/concepts/sessions) turn. It contains instructions, allowed tools, a default model, and an optional output schema.
 
-This command uses HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+This command finds and authenticates with the managed daemon.
 
 ```bash
-curl -sS -X POST http://localhost:2323/agents \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
-  -d '{
+wingman api createAgent -d '{
         "name": "Builder",
         "instructions": "You are a pragmatic software engineer. Make small, correct changes.",
         "tools": ["read", "grep", "glob", "write", "edit", "bash"],

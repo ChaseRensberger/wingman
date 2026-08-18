@@ -26,13 +26,10 @@ Wingman ships these built-ins:
 
 Directory-scoped tools require a session with a working directory. Before you allow file or shell tools, create the session with `working_directory` or `workspace_id`. You can also move the session with `POST /sessions/{id}/move`.
 
-These commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands find and authenticate with the managed daemon.
 
 ```bash
-SESSION_ID=$(curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
+SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
 
@@ -50,10 +47,7 @@ Create sessions with `workspace_id`.
 Agents store tool names in `tools`:
 
 ```bash
-curl -sS -X POST http://localhost:2323/agents \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  -H "Content-Type: application/json" \
-  -d '{
+wingman api createAgent -d '{
         "name": "Researcher",
         "instructions": "Answer with citations when useful.",
         "tools": ["websearch", "webfetch", "grep", "glob", "read"],

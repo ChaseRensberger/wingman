@@ -34,14 +34,14 @@ Add global directories in the configuration or with CLI flags:
 ```
 
 ```bash
-wingman serve --plugin-dir /home/me/wingman-plugins
+wingman service start --plugin-dir /home/me/wingman-plugins
 ```
 
 For a session with a working directory, Wingman also loads manifests from `<work_dir>/.wingman/plugins/`.
 If a project plugin generation fails, the session does not start.
 The previous plugin generation remains active.
 
-Disable external plugins with `wingman serve --no-plugins`.
+Disable external plugins with `wingman service start --no-plugins`.
 
 ## Bootstrap Manifest
 
@@ -304,21 +304,16 @@ After a successful atomic swap, it retires the previous generation.
 ## Inspect Plugins
 
 List plugin status, capabilities, health, process data, contributions, and recent diagnostics.
-These commands use HTTP Basic authentication.
-Load managed-service credentials with `source ~/.config/wingman/service.env`.
-The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands find and authenticate with the managed daemon.
 
 ```bash
-curl http://127.0.0.1:2323/plugins \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api listPlugins
 ```
 
 Reload global and accepted project plugin directories:
 
 ```bash
-curl -X POST http://127.0.0.1:2323/plugins/reload \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+wingman api reloadPlugins
 ```
 
 Install plugins only from sources you trust.

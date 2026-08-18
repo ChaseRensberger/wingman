@@ -42,6 +42,9 @@ func (f *fakeManagedDaemonAPI) DoJSON(_ context.Context, method, path string, re
 
 func TestServiceCommandHierarchyAndHelp(t *testing.T) {
 	cmd := newCommand(daemonconfig.Config{})
+	if cmd.Command("api") == nil {
+		t.Fatal("api command is missing")
+	}
 	if cmd.Command("pair") == nil {
 		t.Fatal("pair command is missing")
 	}

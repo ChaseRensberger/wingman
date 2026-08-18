@@ -2,6 +2,7 @@
 package daemonclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,7 +90,7 @@ func New(ctx context.Context, state *daemonstate.State, expectedVersion string) 
 	if len(urls) == 0 {
 		urls = []string{result.Registration.URL}
 	}
-	return &Client{baseURL: baseURL, urls: urls, username: config.Username, password: config.Password, httpClient: http.DefaultClient}, nil
+	return &Client{baseURL: baseURL, urls: urls, username: config.Username, password: config.Password, httpClient: managedHTTPClient}, nil
 }
 
 // URL returns the registered daemon URL.
@@ -104,34 +105,22 @@ func (c *Client) URLs() []string {
 
 // DoJSON makes an authenticated JSON request. requestBody and responseBody may be nil.
 func (c *Client) DoJSON(ctx context.Context, method, path string, requestBody, responseBody any) error {
-	endpoint, err := c.baseURL.Parse(path)
-	if err != nil {
-		return fmt.Errorf("resolve daemon API path: %w", err)
-	}
-	if endpoint.Host != c.baseURL.Host || endpoint.Scheme != c.baseURL.Scheme {
-		return errors.New("daemon API path must resolve to the managed daemon")
-	}
-
 	var body io.Reader
 	if requestBody != nil {
 		encoded, err := json.Marshal(requestBody)
 		if err != nil {
 			return fmt.Errorf("encode daemon API request: %w", err)
 		}
-		body = strings.NewReader(string(encoded))
+		body = bytes.NewReader(encoded)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
-	if err != nil {
-		return fmt.Errorf("create daemon API request: %w", err)
-	}
-	request.SetBasicAuth(c.username, c.password)
-	request.Header.Set("Accept", "application/json")
+	headers := make(http.Header)
+	headers.Set("Accept", "application/json")
 	if requestBody != nil {
-		request.Header.Set("Content-Type", "application/json")
+		headers.Set("Content-Type", "application/json")
 	}
-	response, err := c.httpClient.Do(request)
+	response, err := c.Do(ctx, method, path, body, headers)
 	if err != nil {
-		return fmt.Errorf("request managed daemon API: %w", err)
+		return err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
@@ -148,6 +137,32 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, requestBody, r
 		return fmt.Errorf("decode daemon API response: %w", err)
 	}
 	return nil
+}
+
+// Do makes an authenticated request to the managed daemon without following redirects.
+func (c *Client) Do(ctx context.Context, method, path string, body io.Reader, headers http.Header) (*http.Response, error) {
+	endpoint, err := c.baseURL.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve daemon API path: %w", err)
+	}
+	if endpoint.Host != c.baseURL.Host || endpoint.Scheme != c.baseURL.Scheme {
+		return nil, errors.New("daemon API path must resolve to the managed daemon")
+	}
+	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
+	if err != nil {
+		return nil, fmt.Errorf("create daemon API request: %w", err)
+	}
+	request.Header = headers.Clone()
+	if request.Header == nil {
+		request.Header = make(http.Header)
+	}
+	request.SetBasicAuth(c.username, c.password)
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("request managed daemon API: %w", err)
+	}
+	return response, nil
 }
 
 func unavailableError(result Result) error {

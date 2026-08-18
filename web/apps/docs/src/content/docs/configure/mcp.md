@@ -91,15 +91,11 @@ Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP too
 
 To view the daemon directly, run these commands:
 
-These commands use HTTP Basic authentication. Load managed-service credentials with `source ~/.config/wingman/service.env`.
-The username defaults to `wingman`. See
-[HTTP API Basics](/build-clients/http-api-basics#authentication).
+These commands find and authenticate with the managed daemon.
 
 ```bash
-curl -sS http://127.0.0.1:2323/mcp \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq
-curl -sS http://127.0.0.1:2323/tools \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" | jq '.tools[] | select(.source == "mcp")'
+wingman api listMCPServers | jq
+wingman api listTools | jq '.tools[] | select(.source == "mcp")'
 ```
 
 `/mcp` lists each configured server and its connection status. `/tools` lists the MCP tools available to agents.

@@ -170,6 +170,41 @@ func TestClientDoJSONReturnsAPIErrorWithoutPassword(t *testing.T) {
 	}
 }
 
+func TestClientDoAuthenticatesAndDoesNotFollowRedirects(t *testing.T) {
+	const password = "root-password"
+	var redirected atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected.Add(1)
+	}))
+	defer target.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, supplied, ok := r.BasicAuth()
+		if !ok || username != "wingman" || supplied != password {
+			t.Fatalf("basic auth = %q, %q, %t", username, supplied, ok)
+		}
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpClient := server.Client()
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client := &Client{baseURL: baseURL, username: "wingman", password: password, httpClient: httpClient}
+	response, err := client.Do(context.Background(), http.MethodGet, "/redirect", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusFound)
+	}
+	if redirected.Load() != 0 {
+		t.Fatalf("redirect target requests = %d", redirected.Load())
+	}
+}
+
 func TestInspectRejectsNonLoopbackRegistrationBeforeReadingPassword(t *testing.T) {
 	state := daemonstate.New(t.TempDir())
 	registration := daemonstate.Registration{InstanceID: "one", Version: "dev", URL: "https://example.com", PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}

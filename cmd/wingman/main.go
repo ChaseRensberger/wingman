@@ -62,6 +62,7 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 		Name:  "wingman",
 		Usage: "The open-source client-agnostic agent harness",
 		Commands: []*cli.Command{
+			apiCommand(),
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
