@@ -13,6 +13,16 @@ export function buildUserMessage(text: string): Message {
 	return { role: "user", content: [{ type: "text", text } as Part] };
 }
 
+export function withFailedUserMessage(messages: Message[], text?: string): Message[] {
+	if (!text) return messages;
+	const latestUser = messages.findLast((message) => message.role === "user");
+	const latestText = latestUser?.content
+		.filter((part) => part.type === "text")
+		.map((part) => (part as { text: string }).text)
+		.join("\n");
+	return latestText === text ? messages : [...messages, buildUserMessage(text)];
+}
+
 function cleanReasoningHeading(value: string): string {
 	return value.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_~]+/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
@@ -54,7 +64,7 @@ export function persistLastModelRef(modelRef: string) {
 export function formatSessionError(err: unknown): string {
 	const message = String(err instanceof Error ? err.message : err);
 	if (message.includes("requires a working directory, but session has none")) {
-		return "This session has no working directory. The selected agent tried to use a tool that requires one. Create a new session with a working directory to use this agent.";
+		return "This session has no working directory. Set its working directory before using this agent.";
 	}
 	return message.replace(/^Error:\s*/, "");
 }

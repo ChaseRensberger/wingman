@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { reasoningSummary, shouldShowThinking } from "./session-detail";
+import { formatSessionError, reasoningSummary, shouldShowThinking, withFailedUserMessage } from "./session-detail";
 
 describe("reasoningSummary", () => {
 	test("extracts a provider reasoning-summary heading", () => {
@@ -21,4 +21,23 @@ describe("shouldShowThinking", () => {
 		expect(shouldShowThinking(true, true)).toBe(false);
 		expect(shouldShowThinking(false, false)).toBe(false);
 	});
+});
+
+describe("withFailedUserMessage", () => {
+	test("retains a rejected submission in an empty transcript", () => {
+		expect(withFailedUserMessage([], "hello")).toEqual([
+			{ role: "user", content: [{ type: "text", text: "hello" }] },
+		]);
+	});
+
+	test("does not duplicate a persisted user message", () => {
+		const messages = [{ role: "user" as const, content: [{ type: "text" as const, text: "hello" }] }];
+		expect(withFailedUserMessage(messages, "hello")).toBe(messages);
+	});
+});
+
+test("formatSessionError explains how to fix a missing working directory", () => {
+	expect(formatSessionError(new Error('session cannot start: tool "read" requires a working directory, but session has none'))).toBe(
+		"This session has no working directory. Set its working directory before using this agent.",
+	);
 });

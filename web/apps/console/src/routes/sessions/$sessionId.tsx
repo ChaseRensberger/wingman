@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
-import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
+import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, withFailedUserMessage, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
 import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, SessionSummary, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
@@ -433,7 +433,10 @@ function SessionDetailPage() {
 			}
 		}
 	}
-	const transcriptHistory = (session?.history ?? []).filter((message) => message.role !== "tool");
+	const transcriptHistory = withFailedUserMessage(
+		(session?.history ?? []).filter((message) => message.role !== "tool"),
+		run.failedRun?.message,
+	);
 
 	if (loading) {
 		return (

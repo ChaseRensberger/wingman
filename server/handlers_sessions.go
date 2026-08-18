@@ -834,6 +834,11 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	if err != nil {
 		return nil, err
 	}
+	for _, t := range tools {
+		if tool.IsDirectoryScoped(t) && workDir == "" {
+			return nil, fmt.Errorf("session cannot start: tool %q requires a working directory, but session has none", t.Name())
+		}
+	}
 	if len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}

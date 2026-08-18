@@ -361,6 +361,60 @@ func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.
 	}
 }
 
+func TestMessageSessionRejectsDirectoryScopedAgentWithoutWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_no_workdir", ClientID: client.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateAgent(&store.Agent{
+		ID:       "agt_needs_workdir",
+		Name:     "Needs workdir",
+		ModelRef: "test/model",
+		Tools:    []string{"read"},
+		Options: map[string]any{agentOptionModelRoute: models.ModelInfo{
+			Provider: "test",
+			ID:       "model",
+			API:      models.APIOpenAICompatible,
+			BaseURL:  "http://127.0.0.1:1",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: data})
+	request := httptest.NewRequest(http.MethodPost, "/sessions/ses_no_workdir/message", strings.NewReader(`{"agent_id":"agt_needs_workdir","message":"hello"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	server.router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `tool \"read\" requires a working directory`) {
+		t.Fatalf("response = %s", response.Body.String())
+	}
+	runs, err := data.ListSessionRuns(context.Background(), "ses_no_workdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("runs = %#v, want none", runs)
+	}
+	session, err := data.GetSession("ses_no_workdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.AggregateVersion != 1 {
+		t.Fatalf("session version = %d, want 1", session.AggregateVersion)
+	}
+}
+
 func TestListSessionModelCalls(t *testing.T) {
 	t.Parallel()
 

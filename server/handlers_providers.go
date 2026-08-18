@@ -262,11 +262,7 @@ func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	rawModels, ok := s.providers.Catalog().GetModels(name)
-	if !ok {
-		s.writeError(w, http.StatusNotFound, "no models for provider: "+name)
-		return
-	}
+	rawModels, _ := s.providers.Catalog().GetModels(name)
 
 	dtos := make(map[string]ModelDTO, len(rawModels))
 	for id := range rawModels {
