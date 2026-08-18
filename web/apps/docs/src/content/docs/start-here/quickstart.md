@@ -6,7 +6,8 @@ order: 2
 
 # Quick Start
 
-This guide uses the CLI and HTTP API. For the browser UI, read [Use the Console](/use-wingman/web-ui).
+This guide uses the managed local service and `wingman api`. For the browser UI,
+read [Use the Console](/use-wingman/web-ui).
 
 ## Prerequisites
 
@@ -26,9 +27,13 @@ curl -fsSL https://wingman.actor/install | bash
 wingman service start
 ```
 
-Wingman runs as a managed service for one user. The `wingman api` command finds
-the managed daemon and authenticates each request with its generated
-credentials.
+Wingman runs as a managed service for one user. This guide uses `wingman api`,
+which finds the managed daemon and adds its generated credentials. You do not
+need to specify HTTP authentication for these commands.
+
+To call the HTTP API directly, read [HTTP API Basics](/build-clients/http-api-basics).
+To build an application, use the [Go SDK](/build-clients/go-sdk) or
+[TypeScript SDK](/build-clients/typescript-sdk).
 
 ## Server Status
 

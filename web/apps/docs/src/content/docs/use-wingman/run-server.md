@@ -109,14 +109,14 @@ Otherwise, it creates or reuses the credentials in `service.env`.
 For protected routes, use HTTP Basic authentication:
 
 ```bash
-curl -sS http://localhost:2323/ready \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+curl -sS "$WINGMAN_URL/ready" -u "$WINGMAN_AUTH"
 ```
 
 The Console uses browser HTTP Basic Auth. It has no password form or session
 cookie. Before you send credentials to a remote machine, use TLS or an SSH
-tunnel. Read
-[Authentication](/concepts/authentication) and [HTTP API Basics](/build-clients/http-api-basics#authentication).
+tunnel. Complete the [direct HTTP setup](/concepts/authentication#direct-http-requests)
+before you run this command. Read [HTTP API Basics](/build-clients/http-api-basics)
+for raw HTTP examples.
 
 ## Ephemeral Mode
 

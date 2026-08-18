@@ -97,13 +97,20 @@ wingman api get /sessions
 wingman api post /sessions -d '{"title":"Explore repo"}'
 ```
 
-You can also call an OpenAPI operation ID. Use `--param name=value` for path and
+You can also call an OpenAPI operation ID. The command loads operation IDs from
+the managed daemon's `/openapi.json`. Use `--param name=value` for path and
 query parameters:
 
 ```bash
 wingman api createSession -d '{"title":"Explore repo"}'
 wingman api getSession --param id=ses_...
 wingman api streamSessionEvents --param id=ses_... --param after=0
+```
+
+To list the available operation IDs:
+
+```bash
+wingman api get /openapi.json | jq -r '.. | .operationId? // empty'
 ```
 
 Use `-d` or `--data` for a request body. The command uses

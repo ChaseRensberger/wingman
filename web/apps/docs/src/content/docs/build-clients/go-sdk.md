@@ -34,8 +34,7 @@ if err != nil {
 Use `NewLocal` only in a local application that can read daemon state. It does
 not connect to a remote daemon.
 
-If a foreground server has a known URL and Basic Auth enabled, use
-`WithBasicAuth`:
+If a foreground or remote server has a known URL, use `WithBasicAuth`:
 
 ```go
 wingman, err := client.New(
@@ -48,8 +47,10 @@ if err != nil {
 }
 ```
 
-`WINGMAN_USERNAME` defaults to `wingman` on the server. Before you send Basic
-Auth credentials to a remote server, use TLS or an SSH tunnel.
+Set `WINGMAN_PASSWORD` from that server's credentials before you run the
+application. `WINGMAN_USERNAME` defaults to `wingman` on the server. Before you
+send Basic Auth credentials to a remote server, use TLS or an SSH tunnel. Read
+[Authentication](/concepts/authentication) for credential and security details.
 
 ## Call REST Endpoints
 

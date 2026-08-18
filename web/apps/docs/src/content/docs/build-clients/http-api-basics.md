@@ -8,12 +8,26 @@ description: "Use Wingman from your own client over HTTP."
 Clients control Wingman. A client can be a web app, CLI, TUI, editor extension,
 script, or internal service.
 
+## Choose a Client
+
+Use the client that matches where and how you connect:
+
+| Need | Use |
+|---|---|
+| Send interactive requests to the local managed daemon | [`wingman api`](/reference/cli#api-command) |
+| Build a local Go application for the managed daemon | [Go SDK](/build-clients/go-sdk) with `NewLocal` |
+| Build a Go or TypeScript application for a known URL | [Go SDK](/build-clients/go-sdk) or [TypeScript SDK](/build-clients/typescript-sdk) |
+| Call the API from a script or another language | Direct HTTP requests in this guide |
+
+`wingman api` does not connect to foreground or remote servers. Use direct HTTP
+or an SDK when you have an explicit server URL.
+
 ## Basic Flow
 
 Most clients follow this sequence:
 
 1. Make sure that the daemon is healthy with `GET /health`.
-2. Connect with managed discovery or configure Basic Auth for a foreground server.
+2. Set the server URL and HTTP Basic Auth credentials.
 3. Make sure that the daemon is ready with `GET /ready`.
 4. Configure provider auth with `PUT /provider/auth`.
 5. Create or reuse an agent with `/agents`.
@@ -25,112 +39,23 @@ Most clients follow this sequence:
 ## Authentication
 
 `GET /health` is public. All other routes require HTTP Basic authentication.
-Managed native clients discover the service registration and load generated
-credentials automatically.
+Complete the [direct HTTP setup](/concepts/authentication#direct-http-requests)
+before you run the examples in this guide. They use `WINGMAN_URL` and
+`WINGMAN_AUTH` from that setup.
 
-For manual HTTP requests to a managed service, load its generated credentials:
+For an explicit foreground or remote server, set those variables from that
+server's credentials. Before you send credentials to a remote daemon, use TLS
+or an SSH tunnel. The `X-Wingman-Client` header selects attribution. It is not a
+credential.
 
-```bash
-source ~/.config/wingman/service.env
-```
-
-A foreground server uses the configured `WINGMAN_USERNAME` and
-`WINGMAN_PASSWORD` values. Otherwise, it creates or reuses managed-service credentials.
-
-Send credentials with HTTP Basic authentication:
-
-```text
-Authorization: Basic <base64("<username>:<password>")>
-```
-
-For example, `curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" http://localhost:2323/ready`
-sends the required credentials. Before you send credentials to a remote daemon,
-use TLS or an SSH tunnel. The `X-Wingman-Client` header selects attribution. It
-is not a credential.
-
-The Console uses browser Basic Auth. It has no login endpoint or session cookie.
-
-## Test a Remote Server
-
-The repository includes a headless Go reference client and an exe.dev deployment
-helper. Deploy the current checkout to a VM:
-
-```bash
-./scripts/deploy-exe ratchet-mews
-```
-
-The helper builds a Linux `amd64` binary. It installs the binary on
-`ratchet-mews.exe.xyz`. It starts `wingman service start` on loopback port
-`2323`. It sets the exe.dev HTTPS proxy port. For an arm64 VM, set
-`WINGMAN_EXE_ARCH=arm64` before you run the command.
-
-Use the managed service to register a client on the VM:
-
-```bash
-ssh ratchet-mews.exe.xyz 'wingman clients create --id cli_reference --name "Reference client"'
-```
-
-Test the remote daemon with HTTP Basic authentication:
-
-```bash
-curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  https://ratchet-mews.exe.xyz/ready
-```
-
-The deployment helper does not change the VM share's public/private setting.
-
-## Go SDK
-
-The Go SDK and TypeScript client use the same OpenAPI 3.1 contract. Add the
-current release to the application:
-
-```bash
-go get github.com/chaserensberger/wingman/client@latest
-```
-
-Create an authenticated client. Then call generated endpoint methods:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"os"
-
-	"github.com/chaserensberger/wingman/client"
-)
-
-func main() {
-	wingman, err := client.New(
-		"http://localhost:2323",
-		client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
-		client.WithClientID("cli_example"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	ready, err := wingman.GetReadinessWithResponse(context.Background(), nil)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(ready.JSON200.Version)
-}
-```
-
-Generated methods have a `WithResponse` suffix. They expose typed JSON response
-fields. `Run` and `StreamSessionEvents` provide typed SSE streams. Non-success
-responses return `*client.APIError`.
-
-The SDK is released with the Wingman module. The Go module proxy automatically
-provides each public `v*` Git tag. [`pkg.go.dev`](https://pkg.go.dev/github.com/chaserensberger/wingman/client) indexes it.
-
-## OpenAPI and TypeScript
+## OpenAPI and SDKs
 
 The running daemon publishes its OpenAPI 3.1 contract at `/openapi.json`. The
 contract includes canonical errors, request and response resources, and typed
 unions for persistent-session and one-shot run events.
+
+Use the [Go SDK](/build-clients/go-sdk) or
+[TypeScript SDK](/build-clients/typescript-sdk) for generated, typed clients.
 
 ## Client Identity
 
@@ -138,8 +63,8 @@ Any caller with daemon access can register clients with `/clients`. The caller
 can send `X-Wingman-Client` on client-scoped requests.
 
 ```bash
-CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+CLIENT_ID=$(curl -sS -X POST "$WINGMAN_URL/clients" \
+  -u "$WINGMAN_AUTH" \
   -H "Content-Type: application/json" \
   -d '{"id":"cli_example","name":"Example client"}' | jq -r .client.id)
 ```
@@ -147,8 +72,8 @@ CLIENT_ID=$(curl -sS -X POST http://localhost:2323/clients \
 Create a session attributed to that client:
 
 ```bash
-curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+curl -sS -X POST "$WINGMAN_URL/sessions" \
+  -u "$WINGMAN_AUTH" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d '{"title":"Client session"}'
@@ -162,8 +87,8 @@ Workspaces are client-scoped saved contexts with optional directories.
 Create one when needed:
 
 ```bash
-WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+WORKSPACE_ID=$(curl -sS -X POST "$WINGMAN_URL/workspaces" \
+  -u "$WINGMAN_AUTH" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "$(jq -n \
@@ -175,16 +100,16 @@ WORKSPACE_ID=$(curl -sS -X POST http://localhost:2323/workspaces \
 Or reuse an existing Workspace:
 
 ```bash
-WORKSPACE_ID=$(curl -sS http://localhost:2323/workspaces \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+WORKSPACE_ID=$(curl -sS "$WINGMAN_URL/workspaces" \
+  -u "$WINGMAN_AUTH" \
   -H "X-Wingman-Client: ${CLIENT_ID}" | jq -r '.[0].id')
 ```
 
 Create a session in that Workspace:
 
 ```bash
-curl -sS -X POST http://localhost:2323/sessions \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+curl -sS -X POST "$WINGMAN_URL/sessions" \
+  -u "$WINGMAN_AUTH" \
   -H "Content-Type: application/json" \
   -H "X-Wingman-Client: ${CLIENT_ID}" \
   -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"

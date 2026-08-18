@@ -22,11 +22,21 @@ complete public method index.
 Create a client with the daemon URL, Basic Auth username, password, and client identity.
 The client uses this configuration for REST requests and streams.
 
+Before you run a local Node.js or Bun application against the managed daemon,
+export its credentials and registered URL. These commands require `jq`:
+
+```bash
+set -a
+source "${XDG_CONFIG_HOME:-$HOME/.config}/wingman/service.env"
+WINGMAN_URL=$(jq -r .url "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/registration.json")
+set +a
+```
+
 ```ts
 import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
-  baseUrl: "http://localhost:2323",
+  baseUrl: process.env.WINGMAN_URL!,
   username: process.env.WINGMAN_USERNAME,
   password: process.env.WINGMAN_PASSWORD,
   clientName: "cli_wingcode",
@@ -58,9 +68,8 @@ try {
 ```
 
 `username` is optional. The server defaults it to `wingman`. Use TLS or an SSH
-tunnel before sending Basic Auth credentials to a remote server.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication) for
-authentication and client identity rules.
+tunnel before sending Basic Auth credentials to a remote server. Read
+[Authentication](/concepts/authentication) for credential and security details.
 
 The base URL must be an HTTP or HTTPS origin. Do not include a path, query,
 fragment, or credentials.

@@ -9,17 +9,16 @@ Wingman has two SSE contracts: persistent session events and a one-shot
 `POST /run` stream. Clients start persistent work through the message endpoint.
 They read session state from the session event stream.
 
-These examples use HTTP Basic authentication. Load managed-service credentials
-with `source ~/.config/wingman/service.env`. The username defaults to `wingman`.
-See [HTTP API Basics](/build-clients/http-api-basics#authentication).
+These examples use the direct HTTP setup in
+[Authentication](/concepts/authentication#direct-http-requests).
 
 ## Start Work
 
 Start a persistent session run:
 
 ```bash
-curl -sS -X POST "http://localhost:2323/sessions/${SESSION_ID}/message" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+curl -sS -X POST "$WINGMAN_URL/sessions/${SESSION_ID}/message" \
+  -u "$WINGMAN_AUTH" \
   -H "Content-Type: application/json" \
   -d '{
     "request_id": "submit-123",
@@ -38,8 +37,8 @@ create another `session.run.queued` event. The accepted response includes
 Subscribe to session events:
 
 ```bash
-curl -N "http://localhost:2323/sessions/${SESSION_ID}/events?after=0" \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
+curl -N "$WINGMAN_URL/sessions/${SESSION_ID}/events?after=0" \
+  -u "$WINGMAN_AUTH" \
   -H "Accept: text/event-stream"
 ```
 

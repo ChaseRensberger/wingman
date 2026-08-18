@@ -19,13 +19,36 @@ Managed native clients find the local registration and use the generated credent
 Run `wingman pair` to display the managed server URL, username, password, and a
 QR code for another client.
 
+`wingman api` is a managed native client. It adds these credentials to every
+request automatically. Use it for interactive requests to the local managed
+daemon.
+
+## Direct HTTP Requests
+
+For a shell session that sends requests to the local managed daemon, load the
+credentials and registered URL once. These commands require `jq`:
+
+```bash
+source "${XDG_CONFIG_HOME:-$HOME/.config}/wingman/service.env"
+WINGMAN_URL=$(jq -r .url "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/registration.json")
+WINGMAN_AUTH="${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}"
+```
+
+Then send requests with `curl`:
+
+```bash
+curl -u "$WINGMAN_AUTH" "$WINGMAN_URL/ready"
+```
+
+`WINGMAN_AUTH` is a shell variable for `curl`. Do not store it in a file.
+For more raw HTTP examples, read [HTTP API Basics](/build-clients/http-api-basics).
+
 ## Foreground Server Authentication
 
 An explicit foreground server also requires HTTP Basic authentication. It uses `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` when both values are configured. Otherwise, it creates or reuses credentials in `service.env`.
 
-```bash
-curl -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" http://localhost:2323/ready
-```
+For an explicit server, set `WINGMAN_URL` to its URL. Set `WINGMAN_AUTH` from
+that server's credentials.
 
 Basic Auth does not encrypt network traffic. Use a trusted network or a secure
 transport, such as Tailscale, TLS, or an SSH tunnel, for remote access. Basic

@@ -274,8 +274,8 @@ Deletion requires the current session version in `expected_version`. It returns
 
 ```bash
 curl -sS -X DELETE \
-  -u "${WINGMAN_USERNAME:-wingman}:${WINGMAN_PASSWORD}" \
-  "http://localhost:2323/sessions/ses_...?expected_version=2"
+  -u "$WINGMAN_AUTH" \
+  "$WINGMAN_URL/sessions/ses_...?expected_version=2"
 ```
 
 A successful delete permanently removes the aggregate stream, public event
