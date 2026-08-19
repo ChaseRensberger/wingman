@@ -7,7 +7,7 @@ description: "Reference for the @wingman-actor/client public API."
 
 This page lists the public API in `@wingman-actor/client`. Use the
 [TypeScript SDK guide](/build-clients/typescript-sdk/) to connect a client. The
-guide also describes persistent streams.
+guide also describes one-shot and persistent streams.
 
 All resource methods return response data. A non-success HTTP response throws
 `APIError`. The package provides TypeScript types for request and response

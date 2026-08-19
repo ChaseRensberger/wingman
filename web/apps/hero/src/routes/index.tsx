@@ -22,16 +22,34 @@ const DOCS_URL = "https://docs.wingman.actor";
 // const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
 const COMPACTION_PLUGIN_URL = "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
-const TYPESCRIPT_SDK_EXAMPLE = `\`\`\`typescript
+const WINGMAN_API_EXAMPLE = `\`\`\`bash
+wingman api createSession -d '{"title":"Research"}'
+\`\`\``;
+const HTTP_API_EXAMPLE = `\`\`\`bash
+curl -sS -X POST "$WINGMAN_URL/sessions" \\
+  -u "$WINGMAN_AUTH" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"Research"}'
+\`\`\``;
+const TYPESCRIPT_SDK_EXAMPLE = `\`\`\`bash
+npm install @wingman-actor/client
+\`\`\`
+
+\`\`\`typescript
 import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
-  baseUrl: "http://localhost:2323",
+  baseUrl: process.env.WINGMAN_URL!,
+  password: process.env.WINGMAN_PASSWORD,
 });
 
 const session = await client.sessions.create({ title: "Research" });
 \`\`\``;
-const GO_SDK_EXAMPLE = `\`\`\`go
+const GO_SDK_EXAMPLE = `\`\`\`bash
+go get github.com/chaserensberger/wingman/client
+\`\`\`
+
+\`\`\`go
 package main
 
 import (
@@ -43,7 +61,7 @@ import (
 
 func main() {
   ctx := context.Background()
-  wingman, err := client.New("http://localhost:2323")
+  wingman, err := client.NewLocal(ctx)
   if err != nil {
     log.Fatal(err)
   }
@@ -362,30 +380,59 @@ function ProvidersSection() {
 	);
 }
 
-function SDKSection() {
+function ConnectSection() {
 	return (
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
-			<div className="space-y-2">
-				<SectionHeader title="SDKs" markerId="05" />
-				<p className="max-w-3xl text-sm text-muted-foreground">
-					Build clients against the Wingman daemon with a typed SDK.
-				</p>
-			</div>
-			<Tabs defaultValue="typescript">
-				<TabsList className="w-fit">
+			<SectionHeader title="Connect to Wingman" markerId="05" />
+			<Tabs defaultValue="wingman-cli">
+				<TabsList className="w-full justify-start overflow-x-auto">
+					<TabsTrigger value="wingman-cli">Wingman CLI</TabsTrigger>
+					<TabsTrigger value="http">HTTP</TabsTrigger>
 					<TabsTrigger value="typescript">TypeScript</TabsTrigger>
 					<TabsTrigger value="go">Go</TabsTrigger>
 				</TabsList>
+				<TabsContent value="wingman-cli">
+					<div className="space-y-4">
+						<Markdown>{WINGMAN_API_EXAMPLE}</Markdown>
+						<a href={`${DOCS_URL}/reference/cli/#api-command`} className="text-sm text-primary underline-offset-4 hover:underline">
+							Read the docs -&gt;
+						</a>
+					</div>
+				</TabsContent>
+				<TabsContent value="http">
+					<div className="space-y-4">
+						<Markdown>{HTTP_API_EXAMPLE}</Markdown>
+						<a href={`${DOCS_URL}/build-clients/http-api-basics`} className="text-sm text-primary underline-offset-4 hover:underline">
+							Read the docs -&gt;
+						</a>
+					</div>
+				</TabsContent>
 				<TabsContent value="typescript">
-					<Markdown>{TYPESCRIPT_SDK_EXAMPLE}</Markdown>
+					<div className="space-y-4">
+						<Markdown>{TYPESCRIPT_SDK_EXAMPLE}</Markdown>
+						<a href={`https://www.npmjs.com/package/@wingman-actor/client`} className="text-sm text-primary underline-offset-4 hover:underline">
+							NPM Package -&gt;
+						</a>
+						<br />
+						<a href={`${DOCS_URL}/build-clients/typescript-sdk`} className="text-sm text-primary underline-offset-4 hover:underline">
+							Read the docs -&gt;
+						</a>
+					</div>
 				</TabsContent>
 				<TabsContent value="go">
-					<Markdown>{GO_SDK_EXAMPLE}</Markdown>
+					<div className="space-y-4">
+						<Markdown>{GO_SDK_EXAMPLE}</Markdown>
+
+						<a href={`https://pkg.go.dev/github.com/chaserensberger/wingman/client`} className="text-sm text-primary underline-offset-4 hover:underline">
+							Go Package -&gt;
+						</a>
+						<br />
+						<a href={`${DOCS_URL}/build-clients/go-sdk`} className="text-sm text-primary underline-offset-4 hover:underline">
+							Read the docs -&gt;
+						</a>
+					</div>
 				</TabsContent>
 			</Tabs>
-			<p className="text-sm text-muted-foreground">
-				More languages coming soon. Every SDK targets the same HTTP and event-stream API.
-			</p>
 		</section>
 	)
 }
@@ -520,7 +567,7 @@ function Hero() {
 			<WhatIsWingmanSection />
 			<FeaturesSection />
 			<ReliableExecutionSection />
-			<SDKSection />
+			<ConnectSection />
 			<ProvidersSection />
 			<PluginsSection />
 			<ClientsSection />

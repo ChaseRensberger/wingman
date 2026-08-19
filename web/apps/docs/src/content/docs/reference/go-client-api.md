@@ -7,7 +7,7 @@ description: "Reference for the Wingman Go client public API."
 
 This page lists the public API in `github.com/chaserensberger/wingman/client`.
 Use the [Go SDK guide](/build-clients/go-sdk/) to connect to a daemon. The guide
-also describes persistent streams.
+also describes one-shot and persistent streams.
 
 `SDK` embeds the generated client. For JSON endpoints, use generated methods
 with the `WithResponse` suffix. They return an HTTP response structure with

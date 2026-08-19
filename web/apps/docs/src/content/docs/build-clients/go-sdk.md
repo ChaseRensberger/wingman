@@ -5,24 +5,27 @@ description: "Use the generated Go client with a Wingman daemon."
 
 # Go SDK
 
-The Go SDK provides typed REST methods, local daemon discovery, and helpers for
-Wingman SSE streams.
+The Go SDK provides typed REST methods, local daemon discovery, and typed
+Wingman event streams.
 
 See the [Go Client API](/reference/go-client-api/) for the complete public
 method index.
 
-Install the SDK version that has the same tag as the Wingman daemon:
+## Install
+
+Install the SDK version that matches the Wingman daemon:
 
 ```bash
 go get github.com/chaserensberger/wingman/client@v0.1.41
 ```
 
-## Connect to a Local Daemon
+## Connect
+
+### Local Managed Daemon
 
 If the application runs as the daemon user, use `NewLocal`. It reads the
 private daemon registration from the XDG state directory. On Linux, it reads
 the managed-service state directory too. It accepts only a loopback origin.
-It waits for the daemon before it returns a client.
 
 ```go
 wingman, err := client.NewLocal(context.Background())
@@ -34,7 +37,9 @@ if err != nil {
 Use `NewLocal` only in a local application that can read daemon state. It does
 not connect to a remote daemon.
 
-If a foreground or remote server has a known URL, use `WithBasicAuth`:
+### Explicit Server
+
+For a foreground or remote server with a known URL, use `WithBasicAuth`:
 
 ```go
 wingman, err := client.New(
@@ -52,23 +57,7 @@ application. `WINGMAN_USERNAME` defaults to `wingman` on the server. Before you
 send Basic Auth credentials to a remote server, use TLS or an SSH tunnel. Read
 [Authentication](/concepts/authentication) for credential and security details.
 
-## Call REST Endpoints
-
-Generated methods with a `WithResponse` suffix decode successful JSON responses
-to typed fields:
-
-```go
-ready, err := wingman.GetReadinessWithResponse(context.Background(), nil)
-if err != nil {
-	return err
-}
-fmt.Println(ready.JSON200.Version)
-```
-
-For requests from a registered client identity, set `WithClientID`. A
-per-request `X-Wingman-Client` header overrides the SDK default.
-
-## Set Up a Client Identity
+## Client Identity
 
 At application startup, call `EnsureClient`. It creates the client identity on
 the first start. On later starts, it reads and compares the existing identity.
@@ -90,6 +79,21 @@ if err != nil {
 ```
 
 If the existing client has a different name, `EnsureClient` returns an error.
+`WithClientID` sets the default `X-Wingman-Client` header. A request header
+overrides this value.
+
+## REST Requests
+
+Generated methods with a `WithResponse` suffix decode successful JSON responses
+to typed fields:
+
+```go
+ready, err := wingman.GetReadinessWithResponse(context.Background(), nil)
+if err != nil {
+	return err
+}
+fmt.Println(ready.JSON200.Version)
+```
 
 ## Admit Messages Safely
 
@@ -116,7 +120,32 @@ fmt.Println(admission.RunId)
 If the request result is unknown, run `AdmitMessage` again with the saved
 request. Do not create a new request ID for this retry.
 
-## Consume Session Events
+## One-Shot Streams
+
+`Run` starts an ephemeral run. It does not create a session or save a
+transcript. The returned stream ends after a terminal event.
+
+```go
+modelRef := "openai/gpt-5.6-terra"
+stream, err := wingman.Run(ctx, client.RunRequest{
+	ModelRef: &modelRef,
+	Message:  "Summarize this project.",
+})
+if err != nil {
+	return err
+}
+defer stream.Close()
+
+for stream.Next() {
+	event := stream.Event()
+	_ = event
+}
+if err := stream.Err(); err != nil {
+	return err
+}
+```
+
+## Persistent Session Streams
 
 `StreamSessionEvents` opens one SSE connection for a persistent session. The
 SDK parses frames and typed event envelopes. The application saves cursors,
@@ -168,8 +197,8 @@ if errors.As(err, &apiError) {
 }
 ```
 
-`APIError` keeps response headers, the error payload, the request ID, and the
-parsed `Retry-After` value. Use this data for diagnostics and retry decisions.
+`APIError` includes response headers, the error payload, the request ID, and
+the parsed `Retry-After` value. Use this data for diagnostics and retry logic.
 
 ## Version Compatibility
 

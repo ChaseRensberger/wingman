@@ -5,7 +5,14 @@ description: "Use the typed Wingman REST and event-stream client."
 
 # TypeScript SDK
 
-Install the SDK version that matches the Wingman daemon release:
+The TypeScript SDK provides typed REST methods and typed Wingman event streams.
+
+See the [TypeScript Client API](/reference/typescript-client-api/) for the
+complete public method index.
+
+## Install
+
+Install the SDK version that matches the Wingman daemon:
 
 ```bash
 npm install @wingman-actor/client@0.1.52
@@ -14,16 +21,12 @@ npm install @wingman-actor/client@0.1.52
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
 bundlers with `fetch`, `ReadableStream`, and `TextDecoder`.
 
-See the [TypeScript Client API](/reference/typescript-client-api/) for the
-complete public method index.
+## Connect
 
-## REST Requests
+### Local Managed Daemon
 
-Create a client with the daemon URL, Basic Auth username, password, and client identity.
-The client uses this configuration for REST requests and streams.
-
-Before you run a local Node.js or Bun application against the managed daemon,
-export its credentials and registered URL. These commands require `jq`:
+For a local Node.js or Bun application, export the managed daemon credentials
+and registered URL. These commands require `jq`:
 
 ```bash
 set -a
@@ -31,6 +34,16 @@ source "${XDG_CONFIG_HOME:-$HOME/.config}/wingman/service.env"
 WINGMAN_URL=$(jq -r .url "${XDG_STATE_HOME:-$HOME/.local/state}/wingman/registration.json")
 set +a
 ```
+
+### Explicit Server
+
+For a foreground or remote server, set the URL and credentials from that
+server. The base URL must be an HTTP or HTTPS origin. Do not include a path,
+query, fragment, or credentials.
+
+Before you send Basic Auth credentials to a remote server, use TLS or an SSH
+tunnel. Read [Authentication](/concepts/authentication) for credential and
+security details.
 
 ```ts
 import { createWingmanClient } from "@wingman-actor/client";
@@ -41,38 +54,34 @@ const client = createWingmanClient({
   password: process.env.WINGMAN_PASSWORD,
   clientName: "cli_wingcode",
 });
-
-await client.clients.ensure("cli_wingcode", "Wingcode");
-const sessions = await client.sessions.list();
 ```
 
-`clients.ensure` creates the client identity on the first start. On later
-starts, it reads and compares the existing identity. If the name differs, it
-throws an `APIError` with the `conflict` code.
+`username` is optional. The server defaults it to `wingman`.
 
-Resource methods return response data for successful requests. They throw an
-`APIError` for HTTP errors. The error has `status`, `code`, `message`,
-`requestId`, validation `details`, response `headers`, and `retryAfterMs` fields.
+## Client Identity
+
+At application startup, call `clients.ensure`. It creates the client identity
+on the first start. On later starts, it reads and compares the existing
+identity.
 
 ```ts
-import { APIError } from "@wingman-actor/client";
-
-try {
-  await client.sessions.create({ title: "Research" });
-} catch (error) {
-  if (error instanceof APIError && error.code === "invalid_request") {
-    console.error(error.details);
-  }
-  throw error;
-}
+await client.clients.ensure("cli_wingcode", "Wingcode");
 ```
 
-`username` is optional. The server defaults it to `wingman`. Use TLS or an SSH
-tunnel before sending Basic Auth credentials to a remote server. Read
-[Authentication](/concepts/authentication) for credential and security details.
+If the name differs, `clients.ensure` throws an `APIError` with the `conflict`
+code.
 
-The base URL must be an HTTP or HTTPS origin. Do not include a path, query,
-fragment, or credentials.
+`clientName` sets the default `X-Wingman-Client` header. A request header
+overrides this value.
+
+## REST Requests
+
+Resource methods return response data for successful requests. They throw an
+`APIError` for HTTP errors:
+
+```ts
+const sessions = await client.sessions.list();
+```
 
 ## Admit Messages Safely
 
@@ -148,6 +157,25 @@ for await (const result of client.sessions.streamEvents(sessionID, {
 If transport fails, reload the authoritative session and run. Reconnect only
 while the run is queued or running. Use the last saved durable sequence. Read
 [Streaming Events](/build-clients/streaming-events) for the event recovery contract.
+
+## Handle Errors
+
+Non-success responses throw `APIError`. It includes `status`, `code`,
+`message`, `requestId`, validation `details`, response `headers`, and
+`retryAfterMs`.
+
+```ts
+import { APIError } from "@wingman-actor/client";
+
+try {
+  await client.sessions.create({ title: "Research" });
+} catch (error) {
+  if (error instanceof APIError && error.code === "invalid_request") {
+    console.error(error.details);
+  }
+  throw error;
+}
+```
 
 ## Browser Use
 
