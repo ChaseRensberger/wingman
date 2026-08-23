@@ -15,7 +15,7 @@ complete public method index.
 Install the SDK version that matches the Wingman daemon:
 
 ```bash
-npm install @wingman-actor/client@0.1.52
+npm install @wingman-actor/client@0.1.53
 ```
 
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
@@ -187,4 +187,4 @@ credential in a remote browser application.
 
 The SDK is generated from the daemon OpenAPI contract. Until the API is stable,
 use the exact SDK version that matches the daemon release tag. For example,
-Wingman `v0.1.52` requires `@wingman-actor/client@0.1.52`.
+Wingman `v0.1.53` requires `@wingman-actor/client@0.1.53`.
