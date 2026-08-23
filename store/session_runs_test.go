@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestSessionRunsClaimInSequence(t *testing.T) {
@@ -203,7 +204,8 @@ func TestAdmitSessionRunIsAtomicAndIdempotent(t *testing.T) {
 	if err := data.CreateSession(session); err != nil {
 		t.Fatal(err)
 	}
-	admission, err := data.AdmitSessionRun(context.Background(), SessionRun{SessionID: session.ID, RequestID: "request-1", Message: "hello", Agent: Agent{ID: "agt_test", CreatedAt: "2026-07-30T12:00:00Z", UpdatedAt: "2026-07-30T12:00:00Z"}, OutputSchemaJSON: []byte(`{"type":"object"}`)})
+	resolvedAt := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	admission, err := data.AdmitSessionRun(context.Background(), SessionRun{SessionID: session.ID, RequestID: "request-1", Message: "hello", Agent: Agent{ID: "agt_test", CreatedAt: "2026-07-30T12:00:00Z", UpdatedAt: "2026-07-30T12:00:00Z"}, EffectiveInstructions: "effective", InstructionSources: []InstructionSource{{Kind: "project", Path: "/project/AGENTS.md", SHA256: "abc", ResolvedAt: resolvedAt, Order: 1}}, OutputSchemaJSON: []byte(`{"type":"object"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,10 +220,14 @@ func TestAdmitSessionRunIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatalf("aggregate events = %#v, error = %v", events, err)
 	}
 	projected, err := ProjectSessionRunAdmission(events[1])
-	if err != nil || projected.ID != admission.Run.ID || string(projected.OutputSchemaJSON) != `{"type":"object"}` {
+	if err != nil || projected.ID != admission.Run.ID || projected.EffectiveInstructions != "effective" || string(projected.OutputSchemaJSON) != `{"type":"object"}` || len(projected.InstructionSources) != 1 || projected.InstructionSources[0].ResolvedAt != resolvedAt {
 		t.Fatalf("projected run = %#v, error = %v", projected, err)
 	}
-	retry, err := data.AdmitSessionRun(context.Background(), SessionRun{SessionID: session.ID, RequestID: "request-1", Message: "hello", Agent: Agent{ID: "agt_test", CreatedAt: "2026-07-30T12:00:00Z", UpdatedAt: "2026-07-30T13:00:00Z"}, OutputSchemaJSON: []byte(`{"type":"object"}`)})
+	byRequestID, err := data.GetSessionRunByRequestID(context.Background(), session.ID, "request-1")
+	if err != nil || byRequestID.ID != admission.Run.ID {
+		t.Fatalf("run by request ID = %#v, error = %v", byRequestID, err)
+	}
+	retry, err := data.AdmitSessionRun(context.Background(), SessionRun{SessionID: session.ID, RequestID: "request-1", Message: "hello", Agent: Agent{ID: "agt_test", CreatedAt: "2026-07-30T12:00:00Z", UpdatedAt: "2026-07-30T13:00:00Z"}, EffectiveInstructions: "changed", InstructionSources: []InstructionSource{{Kind: "project", Path: "/project/AGENTS.md", SHA256: "different", ResolvedAt: resolvedAt.Add(time.Minute), Order: 1}}, OutputSchemaJSON: []byte(`{"type":"object"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

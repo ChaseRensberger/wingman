@@ -361,6 +361,88 @@ func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.
 	}
 }
 
+func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workDir := t.TempDir()
+	projectPath := filepath.Join(workDir, agentsFileName)
+	if err := os.WriteFile(projectPath, []byte("Initial project rules."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_instruction_snapshot", ClientID: client.ID, WorkDir: workDir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateAgent(&store.Agent{
+		ID: "agt_instruction_snapshot", Name: "Snapshot", Instructions: "Agent rules.", ModelRef: "test/model",
+		Options: map[string]any{agentOptionModelRoute: models.ModelInfo{
+			Provider: "test", ID: "model", API: models.APIOpenAICompatible, BaseURL: "http://127.0.0.1:1",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{Store: &admissionTestStore{Store: data}})
+	body := `{"request_id":"instruction-retry","agent_id":"agt_instruction_snapshot","message":"hello"}`
+	request := httptest.NewRequest(http.MethodPost, "/sessions/ses_instruction_snapshot/message", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+	var admitted api.MessageSessionResponse
+	if err := json.NewDecoder(response.Body).Decode(&admitted); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectPath, []byte("Changed project rules."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	retryResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(retryResponse, httptest.NewRequest(http.MethodPost, "/sessions/ses_instruction_snapshot/message", strings.NewReader(body)))
+	var retry api.MessageSessionResponse
+	if err := json.NewDecoder(retryResponse.Body).Decode(&retry); err != nil {
+		t.Fatal(err)
+	}
+	if retryResponse.Code != http.StatusAccepted || retry.RunID != admitted.RunID {
+		t.Fatalf("retry status = %d, retry = %#v", retryResponse.Code, retry)
+	}
+	if err := os.Remove(projectPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(projectPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unreadableRetry := httptest.NewRecorder()
+	server.router.ServeHTTP(unreadableRetry, httptest.NewRequest(http.MethodPost, "/sessions/ses_instruction_snapshot/message", strings.NewReader(body)))
+	if unreadableRetry.Code != http.StatusAccepted {
+		t.Fatalf("unreadable retry status = %d: %s", unreadableRetry.Code, unreadableRetry.Body.String())
+	}
+	run, err := data.GetSessionRun(context.Background(), "ses_instruction_snapshot", admitted.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Agent.Instructions != "Agent rules." {
+		t.Fatalf("authored agent instructions = %q", run.Agent.Instructions)
+	}
+	if !strings.Contains(run.EffectiveInstructions, "Initial project rules.") || strings.Contains(run.EffectiveInstructions, "Changed project rules.") {
+		t.Fatalf("effective instructions = %q", run.EffectiveInstructions)
+	}
+	if len(run.InstructionSources) != 1 || run.InstructionSources[0].Path != projectPath || run.InstructionSources[0].Kind != "project" {
+		t.Fatalf("instruction sources = %#v", run.InstructionSources)
+	}
+	getResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(getResponse, httptest.NewRequest(http.MethodGet, "/sessions/ses_instruction_snapshot/runs/"+admitted.RunID, nil))
+	var publicRun api.SessionRun
+	if err := json.NewDecoder(getResponse.Body).Decode(&publicRun); err != nil {
+		t.Fatal(err)
+	}
+	if getResponse.Code != http.StatusOK || !strings.Contains(publicRun.EffectiveInstructions, "Initial project rules.") || len(publicRun.InstructionSources) != 1 || publicRun.InstructionSources[0].SHA256 == "" {
+		t.Fatalf("status = %d, run = %#v", getResponse.Code, publicRun)
+	}
+}
+
 func TestMessageSessionRejectsDirectoryScopedAgentWithoutWorkingDirectory(t *testing.T) {
 	t.Parallel()
 

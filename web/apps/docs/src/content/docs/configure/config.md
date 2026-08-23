@@ -97,6 +97,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 | Route a cataloged provider through a gateway | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
 | Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |
 | Choose between `model_ref` and `model_route` | [Models](/configure/models) |
+| Add global or project `AGENTS.md` instructions | [Project Instructions](/configure/project-instructions) |
 | Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
 | Connect MCP servers and tools | [MCP Servers](/configure/mcp) |
 | View all supported configuration fields | [Config Schema](/reference/config-schema) |

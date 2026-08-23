@@ -31,7 +31,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"agents":              {"permissions_json"},
 		"sessions":            {"aggregate_version"},
 		"messages":            {"run_id"},
-		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type"},
+		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type", "effective_instructions", "instruction_sources_json"},
 		"model_calls":         {"run_id", "provider_request_id"},
 		"tool_uses":           {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "structured_json", "proposed_at"},
 		"permission_requests": {"session_id", "run_id", "tool_use_id", "resources_json", "resolved_at"},

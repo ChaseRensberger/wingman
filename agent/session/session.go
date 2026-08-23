@@ -89,7 +89,8 @@ type Session struct {
 	// outputSchema, if non-nil, constrains the assistant's reply on every
 	// loop turn to a JSON document conforming to the schema. See
 	// WithOutputSchema for details.
-	outputSchema *models.OutputSchema
+	outputSchema      *models.OutputSchema
+	appendCurrentDate bool
 
 	// store, if non-nil, provides message-level persistence. Hydration
 	// happens on the first Run when history is empty; upserts happen
@@ -151,10 +152,11 @@ type Option func(*Session)
 // behavior bundles such as compaction.New().
 func New(opts ...Option) *Session {
 	s := &Session{
-		id:           store.NewID(store.PrefixSession),
-		history:      []models.Message{},
-		partDecoders: models.BuiltinPartDecoders(),
-		closeDone:    make(chan struct{}),
+		id:                store.NewID(store.PrefixSession),
+		history:           []models.Message{},
+		partDecoders:      models.BuiltinPartDecoders(),
+		closeDone:         make(chan struct{}),
+		appendCurrentDate: true,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -206,6 +208,12 @@ func WithModel(c models.Client) Option {
 // WithSystem sets the system prompt sent on every turn.
 func WithSystem(prompt string) Option {
 	return func(s *Session) { s.system = prompt }
+}
+
+// WithCurrentDate controls whether Session appends the current date to the
+// system prompt. It is enabled by default.
+func WithCurrentDate(enabled bool) Option {
+	return func(s *Session) { s.appendCurrentDate = enabled }
 }
 
 // WithTools registers the tools the model may call.
@@ -581,11 +589,13 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	model := s.model
 	modelInfo := s.modelInfo
 	system := s.system
-	currentDate := "Current date: " + time.Now().Format(time.DateOnly) + "."
-	if system == "" {
-		system = currentDate
-	} else {
-		system += "\n\n" + currentDate
+	if s.appendCurrentDate {
+		currentDate := "Current date: " + time.Now().Format(time.DateOnly) + "."
+		if system == "" {
+			system = currentDate
+		} else {
+			system += "\n\n" + currentDate
+		}
 	}
 	tools := append([]tool.Tool(nil), s.tools...)
 	permissions := append(permission.Ruleset(nil), s.permissions...)

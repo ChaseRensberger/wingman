@@ -33,25 +33,26 @@ import (
 )
 
 type Server struct {
-	store              store.Store
-	router             *chi.Mux
-	protocol           huma.API
-	runs               *sessionRunManager
-	permissionRequests *permissionRequestManager
-	events             *sessionEventBroker
-	consoleDevURL      string
-	logger             *slog.Logger
-	logs               *observability.LogBuffer
-	scopes             *execution.Manager
-	providers          *provider.Registry
-	permissions        permission.Ruleset
-	agentPermissions   map[string]permission.Ruleset
-	oauth              *oauthManager
-	password           string
-	username           string
-	instanceID         string
-	version            string
-	ready              atomic.Bool
+	store                  store.Store
+	router                 *chi.Mux
+	protocol               huma.API
+	runs                   *sessionRunManager
+	permissionRequests     *permissionRequestManager
+	events                 *sessionEventBroker
+	consoleDevURL          string
+	logger                 *slog.Logger
+	logs                   *observability.LogBuffer
+	scopes                 *execution.Manager
+	providers              *provider.Registry
+	permissions            permission.Ruleset
+	agentPermissions       map[string]permission.Ruleset
+	oauth                  *oauthManager
+	password               string
+	username               string
+	instanceID             string
+	version                string
+	globalInstructionsPath string
+	ready                  atomic.Bool
 
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
@@ -86,6 +87,8 @@ type Config struct {
 	Username          string
 	InstanceID        string
 	Version           string
+	// GlobalInstructionsPath selects the optional daemon-wide AGENTS.md file.
+	GlobalInstructionsPath string
 }
 
 func New(cfg Config) *Server {
@@ -115,23 +118,24 @@ func New(cfg Config) *Server {
 		}
 	}
 	s := &Server{
-		store:            cfg.Store,
-		router:           chi.NewRouter(),
-		events:           newSessionEventBroker(),
-		consoleDevURL:    cfg.ConsoleDevURL,
-		logger:           logger,
-		logs:             cfg.Logs,
-		scopes:           cfg.Scopes,
-		providers:        providers,
-		permissions:      cfg.Permissions,
-		agentPermissions: cfg.AgentPermissions,
-		oauth:            newOAuthManager(ctx, cfg.Store),
-		password:         cfg.Password,
-		username:         cfg.Username,
-		instanceID:       cfg.InstanceID,
-		version:          cfg.Version,
-		shutdownCtx:      ctx,
-		shutdownCancel:   cancel,
+		store:                  cfg.Store,
+		router:                 chi.NewRouter(),
+		events:                 newSessionEventBroker(),
+		consoleDevURL:          cfg.ConsoleDevURL,
+		logger:                 logger,
+		logs:                   cfg.Logs,
+		scopes:                 cfg.Scopes,
+		providers:              providers,
+		permissions:            cfg.Permissions,
+		agentPermissions:       cfg.AgentPermissions,
+		oauth:                  newOAuthManager(ctx, cfg.Store),
+		password:               cfg.Password,
+		username:               cfg.Username,
+		instanceID:             cfg.InstanceID,
+		version:                cfg.Version,
+		globalInstructionsPath: cfg.GlobalInstructionsPath,
+		shutdownCtx:            ctx,
+		shutdownCancel:         cancel,
 	}
 	s.runs = newSessionRunManager(s)
 	s.permissionRequests = newPermissionRequestManager(s, cfg.PermissionTimeout)

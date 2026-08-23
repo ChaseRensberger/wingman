@@ -119,11 +119,19 @@ func apiModelCalls(values []store.ModelCall) []api.ModelCall {
 }
 
 func apiSessionRun(value store.SessionRun) api.SessionRun {
+	sources := make([]api.InstructionSource, len(value.InstructionSources))
+	for i, source := range value.InstructionSources {
+		sources[i] = api.InstructionSource{
+			Kind: source.Kind, Path: source.Path, SHA256: source.SHA256,
+			ResolvedAt: source.ResolvedAt, Order: source.Order,
+		}
+	}
 	return api.SessionRun{
 		ID: value.ID, SessionID: value.SessionID, RequestID: value.RequestID,
 		AdmittedVersion: value.AdmittedVersion, WorkDir: value.WorkDir, WorkspaceID: value.WorkspaceID,
 		ClientID: value.ClientID, Sequence: value.Sequence, Status: value.Status, Message: value.Message,
 		Agent: apiAgent(&value.Agent), ErrorType: value.ErrorType, ErrorMessage: value.ErrorMessage,
+		EffectiveInstructions: value.EffectiveInstructions, InstructionSources: sources,
 		CreatedAt: value.CreatedAt, StartedAt: value.StartedAt, CompletedAt: value.CompletedAt, UpdatedAt: value.UpdatedAt,
 	}
 }

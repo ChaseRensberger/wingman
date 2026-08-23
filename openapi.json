@@ -687,6 +687,36 @@
         ],
         "type": "object"
       },
+      "InstructionSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "order": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "sha256",
+          "resolved_at",
+          "order"
+        ],
+        "type": "object"
+      },
       "LabInfo": {
         "additionalProperties": false,
         "properties": {
@@ -3134,6 +3164,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "effective_instructions": {
+            "type": "string"
+          },
           "error_message": {
             "type": "string"
           },
@@ -3142,6 +3175,15 @@
           },
           "id": {
             "type": "string"
+          },
+          "instruction_sources": {
+            "items": {
+              "$ref": "#/components/schemas/InstructionSource"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "message": {
             "type": "string"
@@ -3182,6 +3224,7 @@
           "status",
           "message",
           "agent",
+          "effective_instructions",
           "created_at",
           "updated_at"
         ],

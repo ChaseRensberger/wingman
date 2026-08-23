@@ -286,6 +286,15 @@ type ImagePart struct {
 // ImagePartType defines model for ImagePart.Type.
 type ImagePartType string
 
+// InstructionSource defines model for InstructionSource.
+type InstructionSource struct {
+	Kind       string    `json:"kind"`
+	Order      int64     `json:"order"`
+	Path       string    `json:"path"`
+	ResolvedAt time.Time `json:"resolved_at"`
+	Sha256     string    `json:"sha256"`
+}
+
 // LabInfo defines model for LabInfo.
 type LabInfo struct {
 	Description string  `json:"description"`
@@ -816,23 +825,25 @@ type SessionDetail struct {
 
 // SessionRun defines model for SessionRun.
 type SessionRun struct {
-	AdmittedVersion int64      `json:"admitted_version"`
-	Agent           Agent      `json:"agent"`
-	ClientId        *string    `json:"client_id,omitempty"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	ErrorMessage    *string    `json:"error_message,omitempty"`
-	ErrorType       *string    `json:"error_type,omitempty"`
-	Id              string     `json:"id"`
-	Message         string     `json:"message"`
-	RequestId       *string    `json:"request_id,omitempty"`
-	Sequence        int64      `json:"sequence"`
-	SessionId       string     `json:"session_id"`
-	StartedAt       *time.Time `json:"started_at,omitempty"`
-	Status          string     `json:"status"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	WorkDir         *string    `json:"work_dir,omitempty"`
-	WorkspaceId     *string    `json:"workspace_id,omitempty"`
+	AdmittedVersion       int64                `json:"admitted_version"`
+	Agent                 Agent                `json:"agent"`
+	ClientId              *string              `json:"client_id,omitempty"`
+	CompletedAt           *time.Time           `json:"completed_at,omitempty"`
+	CreatedAt             time.Time            `json:"created_at"`
+	EffectiveInstructions string               `json:"effective_instructions"`
+	ErrorMessage          *string              `json:"error_message,omitempty"`
+	ErrorType             *string              `json:"error_type,omitempty"`
+	Id                    string               `json:"id"`
+	InstructionSources    *[]InstructionSource `json:"instruction_sources,omitempty"`
+	Message               string               `json:"message"`
+	RequestId             *string              `json:"request_id,omitempty"`
+	Sequence              int64                `json:"sequence"`
+	SessionId             string               `json:"session_id"`
+	StartedAt             *time.Time           `json:"started_at,omitempty"`
+	Status                string               `json:"status"`
+	UpdatedAt             time.Time            `json:"updated_at"`
+	WorkDir               *string              `json:"work_dir,omitempty"`
+	WorkspaceId           *string              `json:"workspace_id,omitempty"`
 }
 
 // SetProvidersAuthRequest defines model for SetProvidersAuthRequest.

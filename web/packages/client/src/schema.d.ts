@@ -1029,6 +1029,15 @@ export interface components {
             type: "image";
             url?: string;
         };
+        InstructionSource: {
+            kind: string;
+            /** Format: int64 */
+            order: number;
+            path: string;
+            /** Format: date-time */
+            resolved_at: string;
+            sha256: string;
+        };
         LabInfo: {
             description: string;
             id: string;
@@ -1728,9 +1737,11 @@ export interface components {
             completed_at?: string;
             /** Format: date-time */
             created_at: string;
+            effective_instructions: string;
             error_message?: string;
             error_type?: string;
             id: string;
+            instruction_sources?: components["schemas"]["InstructionSource"][] | null;
             message: string;
             request_id?: string;
             /** Format: int64 */

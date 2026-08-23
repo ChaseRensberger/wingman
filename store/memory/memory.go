@@ -144,6 +144,21 @@ func (s *Store) GetSessionRun(ctx context.Context, sessionID, runID string) (*st
 	return &cp, nil
 }
 
+func (s *Store) GetSessionRunByRequestID(ctx context.Context, sessionID, requestID string) (*store.SessionRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	for _, run := range s.runs {
+		if run.SessionID == sessionID && run.RequestID == requestID {
+			cp := copySessionRun(run)
+			return &cp, nil
+		}
+	}
+	return nil, store.ErrSessionRunNotFound
+}
+
 func (s *Store) ListSessionRuns(ctx context.Context, sessionID string) ([]store.SessionRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -372,6 +387,7 @@ func copyAgent(a *store.Agent) *store.Agent {
 func copySessionRun(run *store.SessionRun) store.SessionRun {
 	cp := *run
 	cp.Agent = *copyAgent(&run.Agent)
+	cp.InstructionSources = append([]store.InstructionSource(nil), run.InstructionSources...)
 	cp.OutputSchemaJSON = append([]byte(nil), run.OutputSchemaJSON...)
 	return cp
 }

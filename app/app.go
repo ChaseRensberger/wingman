@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/chaserensberger/wingman/execution"
+	"github.com/chaserensberger/wingman/internal/daemonstate"
 	"github.com/chaserensberger/wingman/internal/observability"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
 	provider "github.com/chaserensberger/wingman/models/providers"
@@ -54,6 +56,9 @@ type Config struct {
 	Username          string
 	InstanceID        string
 	Version           string
+	// GlobalInstructionsPath selects the daemon-wide AGENTS.md file. An empty
+	// path uses the Wingman configuration directory.
+	GlobalInstructionsPath string
 }
 
 type lifecycleServer interface {
@@ -172,11 +177,20 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		return fail(fmt.Errorf("initialize execution scopes: %w", err))
 	}
 	rollback = append(rollback, func() error { return a.scopes.close(context.Background()) })
+	globalInstructionsPath := cfg.GlobalInstructionsPath
+	if globalInstructionsPath == "" {
+		configDir, pathErr := daemonstate.DefaultConfigDir()
+		if pathErr != nil {
+			return fail(fmt.Errorf("resolve global instructions path: %w", pathErr))
+		}
+		globalInstructionsPath = filepath.Join(configDir, "AGENTS.md")
+	}
 	a.server = f.newServer(server.Config{
 		RootContext: root, Store: a.store.store, ConsoleDevURL: cfg.ConsoleDevURL,
 		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
 		Password: cfg.Password, Username: cfg.Username, InstanceID: cfg.InstanceID, Version: cfg.Version,
+		GlobalInstructionsPath: globalInstructionsPath,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

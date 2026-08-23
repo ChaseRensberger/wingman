@@ -31,6 +31,15 @@ type Session struct {
 	AggregateVersion int64  `json:"version"`
 }
 
+// InstructionSource identifies one file included in effective run instructions.
+type InstructionSource struct {
+	Kind       string    `json:"kind"`
+	Path       string    `json:"path"`
+	SHA256     string    `json:"sha256"`
+	ResolvedAt time.Time `json:"resolved_at"`
+	Order      int       `json:"order"`
+}
+
 const (
 	SessionRunStatusQueued    = "queued"
 	SessionRunStatusRunning   = "running"
@@ -155,25 +164,27 @@ func (u ToolUse) MarshalJSON() ([]byte, error) {
 // SessionRun is a durably admitted prompt and its immutable effective agent
 // configuration. Runs are claimed in sequence order per session.
 type SessionRun struct {
-	ID               string    `json:"id"`
-	SessionID        string    `json:"session_id"`
-	RequestID        string    `json:"request_id,omitempty"`
-	RequestHash      string    `json:"-"`
-	AdmittedVersion  int64     `json:"admitted_version"`
-	WorkDir          string    `json:"work_dir,omitempty"`
-	WorkspaceID      string    `json:"workspace_id,omitempty"`
-	ClientID         string    `json:"client_id,omitempty"`
-	Sequence         int       `json:"sequence"`
-	Status           string    `json:"status"`
-	Message          string    `json:"message"`
-	Agent            Agent     `json:"agent"`
-	OutputSchemaJSON []byte    `json:"-"`
-	ErrorType        string    `json:"error_type,omitempty"`
-	ErrorMessage     string    `json:"error_message,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	StartedAt        time.Time `json:"started_at,omitempty"`
-	CompletedAt      time.Time `json:"completed_at,omitempty"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                    string              `json:"id"`
+	SessionID             string              `json:"session_id"`
+	RequestID             string              `json:"request_id,omitempty"`
+	RequestHash           string              `json:"-"`
+	AdmittedVersion       int64               `json:"admitted_version"`
+	WorkDir               string              `json:"work_dir,omitempty"`
+	WorkspaceID           string              `json:"workspace_id,omitempty"`
+	ClientID              string              `json:"client_id,omitempty"`
+	Sequence              int                 `json:"sequence"`
+	Status                string              `json:"status"`
+	Message               string              `json:"message"`
+	Agent                 Agent               `json:"agent"`
+	EffectiveInstructions string              `json:"effective_instructions"`
+	InstructionSources    []InstructionSource `json:"instruction_sources,omitempty"`
+	OutputSchemaJSON      []byte              `json:"-"`
+	ErrorType             string              `json:"error_type,omitempty"`
+	ErrorMessage          string              `json:"error_message,omitempty"`
+	CreatedAt             time.Time           `json:"created_at"`
+	StartedAt             time.Time           `json:"started_at,omitempty"`
+	CompletedAt           time.Time           `json:"completed_at,omitempty"`
+	UpdatedAt             time.Time           `json:"updated_at"`
 }
 
 // SessionRunAdmission is the result of admitting a run to a session queue.

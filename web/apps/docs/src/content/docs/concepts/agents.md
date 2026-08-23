@@ -23,3 +23,6 @@ wingman api createAgent -d '{
 ```
 
 For agent use, see [Sessions](/concepts/sessions).
+
+For global and project `AGENTS.md` instructions, see
+[Project Instructions](/configure/project-instructions).

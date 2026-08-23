@@ -95,7 +95,7 @@ The endpoint returns `202 Accepted` when it durably queues the message. The resp
 
 `request_id` is optional and applies to one session. Retrying the same effective input with the same ID returns the existing run. It does not publish another queued event. Reusing the ID after you change the prompt, effective Agent, model, output schema, client, or session placement returns `409 Conflict`. If you omit it, Wingman always admits a new run.
 
-Admission stores a snapshot of the effective Agent, output schema, working directory, Workspace, and client. Moving the session or editing the Agent later affects future admissions only. Queued work runs from its snapshot.
+Admission stores the authored Agent snapshot separately from the resolved [`AGENTS.md` instructions](/configure/project-instructions). It also stores the output schema, working directory, Workspace, and client. Moving the session or editing the Agent or instruction files later affects future admissions only. Queued work runs from its snapshot.
 
 ## Per-Message Agent and Model
 

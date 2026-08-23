@@ -380,7 +380,56 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	effectiveAgent := s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
-	validationSession, err := s.buildSession(r.Context(), effectiveAgent, sess)
+	var outputSchemaJSON []byte
+	if req.OutputSchema != nil {
+		outputSchemaJSON, err = json.Marshal(req.OutputSchema)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, "invalid output schema")
+			return
+		}
+	}
+	candidate := store.SessionRun{
+		SessionID: id, RequestID: req.RequestID, Message: req.Message,
+		Agent: *effectiveAgent, OutputSchemaJSON: outputSchemaJSON,
+	}
+	if existing, retryErr := s.findAdmissionRetry(r.Context(), sess, candidate); retryErr != nil {
+		if errors.Is(retryErr, store.ErrSessionRunAdmissionConflict) {
+			s.writeError(w, http.StatusConflict, retryErr.Error())
+		} else {
+			s.writeError(w, http.StatusInternalServerError, retryErr.Error())
+		}
+		return
+	} else if existing != nil {
+		if existing.Status == store.SessionRunStatusQueued {
+			s.runs.wake(id)
+		}
+		writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
+		return
+	}
+	effectiveInstructions, instructionSources, err := s.resolveInstructions(effectiveAgent, sess.WorkDir)
+	if err != nil {
+		existing, retryErr := s.findAdmissionRetry(r.Context(), sess, candidate)
+		if retryErr != nil {
+			if errors.Is(retryErr, store.ErrSessionRunAdmissionConflict) {
+				s.writeError(w, http.StatusConflict, retryErr.Error())
+			} else {
+				s.writeError(w, http.StatusInternalServerError, retryErr.Error())
+			}
+			return
+		}
+		if existing != nil {
+			if existing.Status == store.SessionRunStatusQueued {
+				s.runs.wake(id)
+			}
+			writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
+			return
+		}
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	runtimeAgent := *effectiveAgent
+	runtimeAgent.Instructions = effectiveInstructions
+	validationSession, err := s.buildSession(r.Context(), &runtimeAgent, sess)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -392,21 +441,9 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "close admission validation session")
 		return
 	}
-	var outputSchemaJSON []byte
-	if req.OutputSchema != nil {
-		outputSchemaJSON, err = json.Marshal(req.OutputSchema)
-		if err != nil {
-			s.writeError(w, http.StatusBadRequest, "invalid output schema")
-			return
-		}
-	}
-	admission, err := s.store.AdmitSessionRun(r.Context(), store.SessionRun{
-		SessionID:        id,
-		RequestID:        req.RequestID,
-		Message:          req.Message,
-		Agent:            *effectiveAgent,
-		OutputSchemaJSON: outputSchemaJSON,
-	})
+	candidate.EffectiveInstructions = effectiveInstructions
+	candidate.InstructionSources = instructionSources
+	admission, err := s.store.AdmitSessionRun(r.Context(), candidate)
 	if err != nil {
 		if errors.Is(err, store.ErrSessionRunAdmissionConflict) {
 			s.writeError(w, http.StatusConflict, err.Error())
@@ -426,6 +463,28 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		s.runs.wake(id)
 	}
 	writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: admission.Run.ID, Status: admission.Run.Status, SessionVersion: admission.SessionVersion})
+}
+
+func (s *Server) findAdmissionRetry(ctx context.Context, sess *store.Session, candidate store.SessionRun) (*store.SessionRun, error) {
+	if candidate.RequestID == "" {
+		return nil, nil
+	}
+	existing, err := s.store.GetSessionRunByRequestID(ctx, candidate.SessionID, candidate.RequestID)
+	if errors.Is(err, store.ErrSessionRunNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	candidate.WorkDir, candidate.WorkspaceID, candidate.ClientID = sess.WorkDir, sess.WorkspaceID, sess.ClientID
+	hash, err := store.SessionRunRequestHash(candidate)
+	if err != nil {
+		return nil, err
+	}
+	if hash != existing.RequestHash {
+		return nil, &store.SessionRunAdmissionConflict{SessionID: candidate.SessionID, RequestID: candidate.RequestID}
+	}
+	return existing, nil
 }
 
 func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
@@ -575,6 +634,12 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		Title:   "ephemeral",
 		WorkDir: workDir,
 	}
+	effectiveInstructions, _, err := s.resolveInstructions(storedAgent, workDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	storedAgent.Instructions = effectiveInstructions
 
 	runSession, err := s.buildEphemeralSession(r.Context(), storedAgent, sess)
 	if err != nil {
@@ -818,6 +883,7 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		session.WithClient(client),
 		session.WithModelRef(modelRef, modelInfo),
 		session.WithSystem(stored.Instructions),
+		session.WithCurrentDate(false),
 		session.WithWorkDir(workDir),
 		session.WithPermissions(s.effectivePermissions(stored)),
 		session.WithPermissionPrompter(prompter),

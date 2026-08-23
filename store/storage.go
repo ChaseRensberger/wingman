@@ -66,6 +66,7 @@ type Store interface {
 	PurgeSession(ctx context.Context, id string, expectedVersion int64) error
 	AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error)
 	GetSessionRun(ctx context.Context, sessionID, runID string) (*SessionRun, error)
+	GetSessionRunByRequestID(ctx context.Context, sessionID, requestID string) (*SessionRun, error)
 	ListSessionRuns(ctx context.Context, sessionID string) ([]SessionRun, error)
 	ClaimNextSessionRun(ctx context.Context, sessionID string) (SessionRunTransition, error)
 	SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error)
