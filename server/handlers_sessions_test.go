@@ -429,7 +429,11 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 	if !strings.Contains(run.EffectiveInstructions, "Initial project rules.") || strings.Contains(run.EffectiveInstructions, "Changed project rules.") {
 		t.Fatalf("effective instructions = %q", run.EffectiveInstructions)
 	}
-	if len(run.InstructionSources) != 1 || run.InstructionSources[0].Path != projectPath || run.InstructionSources[0].Kind != "project" {
+	canonicalProjectPath, err := filepath.EvalSymlinks(projectPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(run.InstructionSources) != 1 || run.InstructionSources[0].Path != canonicalProjectPath || run.InstructionSources[0].Kind != "project" {
 		t.Fatalf("instruction sources = %#v", run.InstructionSources)
 	}
 	getResponse := httptest.NewRecorder()

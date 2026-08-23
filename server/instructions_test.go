@@ -46,7 +46,11 @@ func TestResolveInstructionsOrdersAndDescribesSources(t *testing.T) {
 		t.Fatalf("sources = %#v", sources)
 	}
 	wantHash := sha256.Sum256([]byte("Use global rules."))
-	if sources[0].Path != globalPath || sources[0].SHA256 != fmt.Sprintf("%x", wantHash) || sources[0].ResolvedAt.IsZero() {
+	canonicalGlobalPath, err := filepath.EvalSymlinks(globalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sources[0].Path != canonicalGlobalPath || sources[0].SHA256 != fmt.Sprintf("%x", wantHash) || sources[0].ResolvedAt.IsZero() {
 		t.Fatalf("global source = %#v", sources[0])
 	}
 }
