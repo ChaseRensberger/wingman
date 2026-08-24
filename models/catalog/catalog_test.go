@@ -53,6 +53,44 @@ func TestOpenCodeNemotron3UltraFree(t *testing.T) {
 	t.Fatal("canonical Nemotron 3 Ultra Free model not found")
 }
 
+func TestOpenAIVariants(t *testing.T) {
+	model, ok := Get("openai", "gpt-5.6-terra")
+	if !ok {
+		t.Fatal("GPT-5.6 Terra route not found")
+	}
+	want := []string{"none", "low", "medium", "high", "xhigh", "max"}
+	if len(model.Variants) != len(want) {
+		t.Fatalf("variants = %#v", model.Variants)
+	}
+	for i, id := range want {
+		variant := model.Variants[i]
+		if variant.ID != id {
+			t.Errorf("variant %d = %q, want %q", i, variant.ID, id)
+		}
+		reasoning, ok := variant.ProviderOptions["reasoning"].(map[string]any)
+		if !ok || reasoning["effort"] != id {
+			t.Errorf("variant %q options = %#v", id, variant.ProviderOptions)
+		}
+	}
+}
+
+func TestNewRejectsInvalidOverlayVariants(t *testing.T) {
+	for _, variants := range [][]models.ModelVariant{
+		{{ID: ""}},
+		{{ID: "high"}, {ID: "high"}},
+	} {
+		_, err := New(map[string]ProviderOverlay{"example": {
+			BaseURL: "https://example.test/v1",
+			Models: map[string]models.ModelInfo{"chat": {
+				Provider: "example", ID: "chat", API: models.APIOpenAICompatible, Variants: variants,
+			}},
+		}})
+		if err == nil {
+			t.Fatalf("New accepted variants %#v", variants)
+		}
+	}
+}
+
 func TestProviderBaseURLOverlayRewritesBuiltInRoutes(t *testing.T) {
 	c, err := New(map[string]ProviderOverlay{"openai": {BaseURL: "https://gateway.test/v1"}})
 	if err != nil {

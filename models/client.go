@@ -31,12 +31,37 @@ func Generate(ctx context.Context, c Client, req Request) (*Message, error) {
 	return stream.Drain()
 }
 
-// ParseModelRef splits a provider-qualified model ref like "openai/gpt-5.6-terra".
+// ParseModelRef splits a provider-qualified model ref with an optional variant.
 func ParseModelRef(ref string) (ModelRef, bool) {
+	providerEnd := -1
 	for i := 0; i < len(ref); i++ {
-		if ref[i] == '/' && i > 0 && i+1 < len(ref) {
-			return ModelRef{Provider: ref[:i], ID: ref[i+1:]}, true
+		if ref[i] == '#' {
+			return ModelRef{}, false
+		}
+		if ref[i] == '/' {
+			providerEnd = i
+			break
 		}
 	}
-	return ModelRef{}, false
+	if providerEnd <= 0 || providerEnd+1 >= len(ref) {
+		return ModelRef{}, false
+	}
+	provider := ref[:providerEnd]
+	remainder := ref[providerEnd+1:]
+	variantStart := -1
+	for i := 0; i < len(remainder); i++ {
+		if remainder[i] == '#' {
+			if variantStart >= 0 {
+				return ModelRef{}, false
+			}
+			variantStart = i
+		}
+	}
+	if variantStart < 0 {
+		return ModelRef{Provider: provider, ID: remainder}, true
+	}
+	if variantStart == 0 || variantStart+1 >= len(remainder) {
+		return ModelRef{}, false
+	}
+	return ModelRef{Provider: provider, ID: remainder[:variantStart], Variant: remainder[variantStart+1:]}, true
 }

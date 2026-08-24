@@ -288,6 +288,14 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	if err != nil {
 		return nil, err
 	}
+	var variant models.ModelVariant
+	if ref.Variant != "" {
+		var ok bool
+		variant, ok = info.Variant(ref.Variant)
+		if !ok {
+			return nil, fmt.Errorf("variant unavailable for %s/%s: %s", ref.Provider, ref.ID, ref.Variant)
+		}
+	}
 	var cfg ProviderConfig
 	if providerCfg, ok := c.registry.configs[info.Provider]; ok {
 		cfg = providerCfg
@@ -329,6 +337,7 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	}
 	return &httpmodel.Model{
 		Info_:           info,
+		Variant:         variant,
 		Protocol:        protocol,
 		BaseURL:         info.BaseURL,
 		APIKey:          apiKey,
@@ -441,9 +450,51 @@ func cloneConfig(cfg ProviderConfig) ProviderConfig {
 	cfg.Models = make(map[string]models.ModelInfo, len(modelsByID))
 	for id, info := range modelsByID {
 		info.Env = append([]string(nil), info.Env...)
+		info.Variants = cloneVariants(info.Variants)
 		cfg.Models[id] = info
 	}
 	return cfg
+}
+
+func cloneVariants(in []models.ModelVariant) []models.ModelVariant {
+	if in == nil {
+		return nil
+	}
+	out := make([]models.ModelVariant, len(in))
+	for i, variant := range in {
+		out[i] = variant
+		out[i].ProviderOptions = cloneJSONMap(variant.ProviderOptions)
+		out[i].HTTP.Headers = cloneStrings(variant.HTTP.Headers)
+		out[i].HTTP.Query = cloneStrings(variant.HTTP.Query)
+		out[i].HTTP.Body = cloneJSONMap(variant.HTTP.Body)
+	}
+	return out
+}
+
+func cloneJSONMap(in map[string]any) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = cloneJSONValue(value)
+	}
+	return out
+}
+
+func cloneJSONValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(value)
+	case []any:
+		out := make([]any, len(value))
+		for i, item := range value {
+			out[i] = cloneJSONValue(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func cloneStrings(in map[string]string) map[string]string {

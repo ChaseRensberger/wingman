@@ -64,6 +64,31 @@ func TestClientReportsOpenAIReasoningSummaryLowering(t *testing.T) {
 	}
 }
 
+func TestOpenAIVariantPrepare(t *testing.T) {
+	client := provider.NewClient(map[string]string{openai.ID: "test-key"})
+	prepared, err := client.Prepare(context.Background(), models.Request{
+		Model:        models.ModelRef{Provider: "openai", ID: "gpt-5.6-terra", Variant: "high"},
+		Capabilities: models.Capabilities{Thinking: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasoning, ok := prepared.Body["reasoning"].(map[string]any)
+	if !ok || reasoning["summary"] != "auto" || reasoning["effort"] != "high" {
+		t.Fatalf("reasoning = %#v", prepared.Body["reasoning"])
+	}
+	if prepared.Model.Ref() != "openai/gpt-5.6-terra#high" {
+		t.Fatalf("model ref = %q", prepared.Model.Ref())
+	}
+
+	_, err = client.Prepare(context.Background(), models.Request{
+		Model: models.ModelRef{Provider: "openai", ID: "gpt-5.6-terra", Variant: "ultra"},
+	})
+	if err == nil {
+		t.Fatal("unknown variant succeeded")
+	}
+}
+
 func TestRegistrySnapshotsConfigWithoutLeakingToOtherGenerations(t *testing.T) {
 	env := []string{"EXAMPLE_KEY"}
 	configs := map[string]provider.ProviderConfig{
@@ -102,6 +127,41 @@ func TestRegistrySnapshotsConfigWithoutLeakingToOtherGenerations(t *testing.T) {
 	}
 	if _, ok := clean.Catalog().Get("example", "chat"); ok {
 		t.Fatal("custom model leaked to next generation")
+	}
+}
+
+func TestRegistryConfigDeepClonesVariants(t *testing.T) {
+	configs := map[string]provider.ProviderConfig{
+		"example": {
+			Options: provider.ProviderOptions{BaseURL: "https://example.test/v1"},
+			Models: map[string]models.ModelInfo{"chat": {
+				API: models.APIOpenAICompatible,
+				Variants: []models.ModelVariant{{
+					ID:              "high",
+					ProviderOptions: map[string]any{"reasoning": map[string]any{"effort": "high"}},
+					HTTP:            models.HTTPOptions{Headers: map[string]string{"x-variant": "high"}},
+				}},
+			}},
+		},
+	}
+	registry, err := provider.NewRegistry(configs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, ok := registry.Config("example")
+	if !ok {
+		t.Fatal("example config not found")
+	}
+	configured.Models["chat"].Variants[0].ProviderOptions["reasoning"].(map[string]any)["effort"] = "low"
+	configured.Models["chat"].Variants[0].HTTP.Headers["x-variant"] = "low"
+
+	configured, ok = registry.Config("example")
+	if !ok {
+		t.Fatal("example config not found")
+	}
+	variant := configured.Models["chat"].Variants[0]
+	if variant.ProviderOptions["reasoning"].(map[string]any)["effort"] != "high" || variant.HTTP.Headers["x-variant"] != "high" {
+		t.Fatalf("variant = %#v", variant)
 	}
 }
 

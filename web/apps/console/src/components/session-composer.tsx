@@ -3,7 +3,8 @@ import { type RefObject } from "react";
 
 import type { Agent, Provider, ProviderModel } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@wingman/core/components/core/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@wingman/core/components/core/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@wingman/core/components/core/select";
 import { Textarea } from "@wingman/core/components/core/textarea";
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
 	selectedAgentName?: string;
 	selectedProvider: string;
 	selectedModel: string;
+	selectedVariant: string | null;
 	selectedProviderName?: string;
 	agents: Agent[];
 	providers: Provider[];
@@ -22,15 +24,14 @@ type Props = {
 	isNearTranscriptBottom: boolean;
 	onMessageChange: (value: string) => void;
 	onAgentChange: (agentId: string) => void;
-	onModelChange: (modelRef: string) => void;
+	onModelChange: (modelRef: string, variant?: string | null) => void;
 	onSubmit: () => void;
 	onAbort: () => void;
 	onJumpToBottom: () => void;
 };
 
 export function SessionComposer(props: Props) {
-	const modelValue = props.selectedProvider && props.selectedModel ? `${props.selectedProvider}/${props.selectedModel}` : "";
-	const modelLabel = props.selectedProviderName && props.selectedModel ? `${props.selectedProviderName} / ${props.selectedModel}` : undefined;
+	const modelLabel = props.selectedProviderName && props.selectedModel ? `${props.selectedProviderName} / ${props.selectedModel}${props.selectedVariant ? ` · ${props.selectedVariant}` : ""}` : "Select model";
 	return (
 		<form onSubmit={(event) => { event.preventDefault(); props.onSubmit(); }} className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
 			<div className="relative mx-auto max-w-4xl rounded-xl border bg-card p-2 shadow-lg shadow-primary/10">
@@ -39,7 +40,7 @@ export function SessionComposer(props: Props) {
 				<div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
 					<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 						<Select value={props.selectedAgent} onValueChange={(value) => props.onAgentChange(value ?? "")}><SelectTrigger className="h-8 w-40 border-0 bg-muted/60 text-xs shadow-none sm:w-56"><SelectValue placeholder="Select agent">{props.selectedAgentName}</SelectValue></SelectTrigger><SelectContent>{props.agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent></Select>
-						<Select value={modelValue} onValueChange={(value) => props.onModelChange(value ?? "")} disabled={!props.hasModels}><SelectTrigger className="h-8 w-44 border-0 bg-muted/60 text-xs shadow-none sm:w-72"><SelectValue placeholder="Select model">{modelLabel}</SelectValue></SelectTrigger><SelectContent>{props.providers.map((provider) => <SelectGroup key={provider.id}><SelectLabel>{provider.name}</SelectLabel>{(props.models[provider.id] ?? []).map((model) => <SelectItem key={`${provider.id}/${model.id}`} value={`${provider.id}/${model.id}`}>{model.id}</SelectItem>)}</SelectGroup>)}</SelectContent></Select>
+						<DropdownMenu><DropdownMenuTrigger render={<Button type="button" variant="ghost" disabled={!props.hasModels} className="h-8 w-44 justify-between bg-muted/60 px-2 text-xs font-normal shadow-none sm:w-72" />}>{modelLabel}</DropdownMenuTrigger><DropdownMenuContent className="max-h-80 w-72">{props.providers.map((provider) => <DropdownMenuGroup key={provider.id}><DropdownMenuLabel>{provider.name}</DropdownMenuLabel>{(props.models[provider.id] ?? []).map((model) => { const modelRef = `${provider.id}/${model.id}`; return model.variants?.length ? <DropdownMenuSub key={modelRef}><DropdownMenuSubTrigger>{model.id}</DropdownMenuSubTrigger><DropdownMenuSubContent><DropdownMenuItem onClick={() => props.onModelChange(modelRef, null)}>Provider default</DropdownMenuItem>{model.variants.map((variant) => <DropdownMenuItem key={variant} onClick={() => props.onModelChange(modelRef, variant)}>{variant}</DropdownMenuItem>)}</DropdownMenuSubContent></DropdownMenuSub> : <DropdownMenuItem key={modelRef} onClick={() => props.onModelChange(modelRef, null)}>{model.id}</DropdownMenuItem>; })}</DropdownMenuGroup>)}</DropdownMenuContent></DropdownMenu>
 					</div>
 					<div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
 						{props.isStreaming ? <Button size="icon-sm" variant="destructive" type="button" onClick={props.onAbort} aria-label="Stop generation" title="Stop generation"><StopIcon className="size-4" /></Button> : <Button size="icon-sm" type="submit" aria-label="Send message" title="Send message" disabled={!props.messageText.trim() || !props.selectedAgent}><PaperPlaneIcon className="size-4" /></Button>}

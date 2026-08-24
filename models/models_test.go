@@ -9,6 +9,25 @@ import (
 	"time"
 )
 
+func TestParseModelRefVariant(t *testing.T) {
+	ref, ok := ParseModelRef("openrouter/anthropic/claude#high")
+	if !ok {
+		t.Fatal("ParseModelRef rejected a valid variant")
+	}
+	if ref.Provider != "openrouter" || ref.ID != "anthropic/claude" || ref.Variant != "high" {
+		t.Fatalf("ref = %#v", ref)
+	}
+	if ref.Ref() != "openrouter/anthropic/claude#high" {
+		t.Fatalf("Ref() = %q", ref.Ref())
+	}
+
+	for _, input := range []string{"openai/gpt#", "openai/#high", "openai/gpt#high#max", "open#ai/gpt"} {
+		if _, ok := ParseModelRef(input); ok {
+			t.Errorf("ParseModelRef(%q) succeeded", input)
+		}
+	}
+}
+
 func TestEventStreamPushStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := NewEventStream[int, struct{}](1)

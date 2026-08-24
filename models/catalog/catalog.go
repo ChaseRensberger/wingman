@@ -20,16 +20,17 @@ import (
 var fs embed.FS
 
 type modelFile struct {
-	ID            string   `toml:"id"`
-	Provider      string   `toml:"provider"`
-	API           string   `toml:"api"`
-	BaseURL       string   `toml:"base_url"`
-	Env           []string `toml:"env"`
-	ContextWindow int      `toml:"context_window"`
-	MaxOutput     int      `toml:"max_output"`
-	InputCost     float64  `toml:"input_cost_per_mtok"`
-	OutputCost    float64  `toml:"output_cost_per_mtok"`
-	BaseModel     string   `toml:"base_model"`
+	ID            string                `toml:"id"`
+	Provider      string                `toml:"provider"`
+	API           string                `toml:"api"`
+	BaseURL       string                `toml:"base_url"`
+	Env           []string              `toml:"env"`
+	ContextWindow int                   `toml:"context_window"`
+	MaxOutput     int                   `toml:"max_output"`
+	InputCost     float64               `toml:"input_cost_per_mtok"`
+	OutputCost    float64               `toml:"output_cost_per_mtok"`
+	BaseModel     string                `toml:"base_model"`
+	Variants      []models.ModelVariant `toml:"variants"`
 	Capabilities  struct {
 		Tools            bool `toml:"tools"`
 		Images           bool `toml:"images"`
@@ -175,7 +176,10 @@ func loadEmbedded(c *Catalog) error {
 					return fmt.Errorf("%s: unknown base_model %q", path, src.BaseModel)
 				}
 			}
-			info := models.ModelInfo{Provider: src.Provider, ID: src.ID, API: models.API(src.API), BaseURL: src.BaseURL, Env: append([]string(nil), src.Env...), ContextWindow: src.ContextWindow, MaxOutput: src.MaxOutput, InputCostPerMTok: src.InputCost, OutputCostPerMTok: src.OutputCost, Capabilities: models.ModelCapabilities{Tools: src.Capabilities.Tools, Images: src.Capabilities.Images, Reasoning: src.Capabilities.Reasoning, StructuredOutput: src.Capabilities.StructuredOutput}}
+			if err := validateVariants(src.Variants); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			info := models.ModelInfo{Provider: src.Provider, ID: src.ID, API: models.API(src.API), BaseURL: src.BaseURL, Env: append([]string(nil), src.Env...), ContextWindow: src.ContextWindow, MaxOutput: src.MaxOutput, InputCostPerMTok: src.InputCost, OutputCostPerMTok: src.OutputCost, Variants: cloneVariants(src.Variants), Capabilities: models.ModelCapabilities{Tools: src.Capabilities.Tools, Images: src.Capabilities.Images, Reasoning: src.Capabilities.Reasoning, StructuredOutput: src.Capabilities.StructuredOutput}}
 			c.addRoute(info, src.BaseModel)
 		}
 	}
@@ -183,6 +187,8 @@ func loadEmbedded(c *Catalog) error {
 }
 
 func (c *Catalog) addRoute(info models.ModelInfo, baseModel string) {
+	info.Env = append([]string(nil), info.Env...)
+	info.Variants = cloneVariants(info.Variants)
 	c.byRef[info.Provider+"/"+info.ID] = info
 	if c.byProv[info.Provider] == nil {
 		c.byProv[info.Provider] = map[string]models.ModelInfo{}
@@ -337,26 +343,46 @@ func New(overlays map[string]ProviderOverlay) (*Catalog, error) {
 			if info.BaseURL == "" {
 				return nil, fmt.Errorf("provider %q model %q: base URL is required", id, modelID)
 			}
+			if err := validateVariants(info.Variants); err != nil {
+				return nil, fmt.Errorf("provider %q model %q: %w", id, modelID, err)
+			}
 			info.Env = append([]string(nil), info.Env...)
 			c.addRoute(info, "")
 		}
 	}
 	return c, nil
 }
+
+func validateVariants(variants []models.ModelVariant) error {
+	seen := make(map[string]struct{}, len(variants))
+	for _, variant := range variants {
+		if variant.ID == "" {
+			return errors.New("variant ID is required")
+		}
+		if _, exists := seen[variant.ID]; exists {
+			return fmt.Errorf("duplicate variant %q", variant.ID)
+		}
+		seen[variant.ID] = struct{}{}
+	}
+	return nil
+}
 func (c *Catalog) clone() *Catalog {
 	out := &Catalog{byRef: map[string]models.ModelInfo{}, byProv: map[string]map[string]models.ModelInfo{}, byDefault: map[string]providerFile{}, labs: map[string]LabInfo{}, canonicalModels: map[string]ModelMetadata{}, routes: make([]RouteInfo, len(c.routes))}
 	for i, route := range c.routes {
 		route.Env = append([]string(nil), route.Env...)
+		route.Variants = cloneVariants(route.Variants)
 		out.routes[i] = route
 	}
 	for k, v := range c.byRef {
 		v.Env = append([]string(nil), v.Env...)
+		v.Variants = cloneVariants(v.Variants)
 		out.byRef[k] = v
 	}
 	for p, m := range c.byProv {
 		out.byProv[p] = map[string]models.ModelInfo{}
 		for id, v := range m {
 			v.Env = append([]string(nil), v.Env...)
+			v.Variants = cloneVariants(v.Variants)
 			out.byProv[p][id] = v
 		}
 	}
@@ -378,6 +404,7 @@ func (c *Catalog) GetRef(ref string) (models.ModelInfo, bool) {
 	info, ok := c.byRef[ref]
 	if ok {
 		info.Env = append([]string(nil), info.Env...)
+		info.Variants = cloneVariants(info.Variants)
 	}
 	return info, ok
 }
@@ -391,6 +418,7 @@ func (c *Catalog) GetModels(provider string) (map[string]models.ModelInfo, bool)
 	out := make(map[string]models.ModelInfo, len(m))
 	for id, info := range m {
 		info.Env = append([]string(nil), info.Env...)
+		info.Variants = cloneVariants(info.Variants)
 		out[id] = info
 	}
 	return out, true
@@ -446,8 +474,61 @@ func (c *Catalog) ListRoutes() []RouteInfo {
 	out := append([]RouteInfo(nil), c.routes...)
 	for i := range out {
 		out[i].Env = append([]string(nil), out[i].Env...)
+		out[i].Variants = cloneVariants(out[i].Variants)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Provider+"/"+out[i].ID < out[j].Provider+"/"+out[j].ID })
+	return out
+}
+
+func cloneVariants(in []models.ModelVariant) []models.ModelVariant {
+	if in == nil {
+		return nil
+	}
+	out := make([]models.ModelVariant, len(in))
+	for i, variant := range in {
+		out[i] = variant
+		out[i].ProviderOptions = cloneJSONMap(variant.ProviderOptions)
+		out[i].HTTP.Headers = cloneStringMap(variant.HTTP.Headers)
+		out[i].HTTP.Query = cloneStringMap(variant.HTTP.Query)
+		out[i].HTTP.Body = cloneJSONMap(variant.HTTP.Body)
+	}
+	return out
+}
+
+func cloneJSONMap(in map[string]any) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = cloneJSONValue(value)
+	}
+	return out
+}
+
+func cloneJSONValue(value any) any {
+	switch value := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(value)
+	case []any:
+		out := make([]any, len(value))
+		for i, item := range value {
+			out[i] = cloneJSONValue(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
 	return out
 }
 

@@ -216,9 +216,10 @@ function AgentsPage() {
               )}
             />
             <form.Subscribe
-              selector={(state) => state.values.provider}
-              children={(provider) => {
+              selector={(state) => [state.values.provider, state.values.model] as const}
+              children={([provider, selectedModel]) => {
                 const providerModels = models[provider] ?? [];
+                const variants = providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
                 return (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <form.Field
@@ -231,6 +232,7 @@ function AgentsPage() {
                             onValueChange={(value) => {
                               field.handleChange(value ?? "");
                               form.setFieldValue("model", "");
+                              form.setFieldValue("variant", "");
                             }}
                           >
                             <SelectTrigger>
@@ -255,7 +257,10 @@ function AgentsPage() {
                           <FieldLabel className="text-xs">Model</FieldLabel>
                           <Select
                             value={field.state.value}
-                            onValueChange={(value) => field.handleChange(value ?? "")}
+                            onValueChange={(value) => {
+                              field.handleChange(value ?? "");
+                              form.setFieldValue("variant", "");
+                            }}
                             disabled={!provider || providerModels.length === 0}
                           >
                             <SelectTrigger>
@@ -273,6 +278,33 @@ function AgentsPage() {
                         </Field>
                       )}
                     />
+                    {variants.length > 0 && (
+                      <form.Field
+                        name="variant"
+                        children={(field) => (
+                          <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                            <FieldLabel className="text-xs">Variant</FieldLabel>
+                            <Select
+                              value={field.state.value || null}
+                              onValueChange={(value) => field.handleChange(value ?? "")}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select variant">{(value) => value ?? "Provider default"}</SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem>Provider default</SelectItem>
+                                {variants.map((variant) => (
+                                  <SelectItem key={variant} value={variant}>
+                                    {variant}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                          </Field>
+                        )}
+                      />
+                    )}
                   </div>
                 );
               }}

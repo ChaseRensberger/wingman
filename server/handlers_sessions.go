@@ -969,6 +969,11 @@ func (s *Server) buildModelClient(stored *store.Agent, providers *provider.Regis
 
 func (s *Server) resolveModelInfo(modelCatalog *catalog.Catalog, ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
 	if info, ok := modelCatalog.Get(ref.Provider, ref.ID); ok {
+		if ref.Variant != "" {
+			if _, exists := info.Variant(ref.Variant); !exists {
+				return models.ModelInfo{}, fmt.Errorf("variant unavailable for %s/%s: %s", ref.Provider, ref.ID, ref.Variant)
+			}
+		}
 		return info, nil
 	}
 	info, ok, err := modelRouteFromOptions(options)

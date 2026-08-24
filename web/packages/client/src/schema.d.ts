@@ -1018,6 +1018,17 @@ export interface components {
             /** Format: int64 */
             watermark: number;
         };
+        HTTPOptions: {
+            body?: {
+                [key: string]: unknown;
+            };
+            headers?: {
+                [key: string]: string;
+            };
+            query?: {
+                [key: string]: string;
+            };
+        };
         ImagePart: {
             base64?: string;
             id?: string;
@@ -1174,6 +1185,7 @@ export interface components {
             reasoning: boolean;
             structured_output: boolean;
             tools: boolean;
+            variants?: string[] | null;
         };
         ModelInfo: {
             api?: string;
@@ -1190,6 +1202,7 @@ export interface components {
             /** Format: double */
             output_cost_per_mtok?: number;
             provider: string;
+            variants?: components["schemas"]["ModelVariant"][] | null;
         };
         ModelMetadata: {
             description: string;
@@ -1210,6 +1223,14 @@ export interface components {
             /** Format: int64 */
             max_output?: number;
             provider?: string;
+            variant?: string;
+        };
+        ModelVariant: {
+            http?: components["schemas"]["HTTPOptions"];
+            id: string;
+            provider_options?: {
+                [key: string]: unknown;
+            };
         };
         MoveSessionRequest: {
             /** Format: int64 */
@@ -1379,6 +1400,7 @@ export interface components {
             /** Format: double */
             output_cost_per_mtok?: number;
             provider: string;
+            variants?: components["schemas"]["ModelVariant"][] | null;
         };
         Rule: {
             action: string;

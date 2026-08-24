@@ -399,6 +399,27 @@ func TestOpenAIResponsesBodyRequestsReasoningSummary(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesVariantMergesWithReasoningSummary(t *testing.T) {
+	model := &Model{
+		Protocol: OpenAIResponses,
+		Info_:    models.ModelInfo{Provider: "openai", ID: "test"},
+		Variant: models.ModelVariant{ID: "high", ProviderOptions: map[string]any{
+			"reasoning": map[string]any{"effort": "high"},
+		}},
+	}
+	body, err := model.body(models.Request{
+		Capabilities:    models.Capabilities{Thinking: true},
+		ProviderOptions: models.ProviderBag{"openai": {"reasoning": map[string]any{"effort": "low"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasoning, ok := body["reasoning"].(map[string]any)
+	if !ok || reasoning["summary"] != "auto" || reasoning["effort"] != "low" {
+		t.Fatalf("reasoning = %#v", body["reasoning"])
+	}
+}
+
 func TestAnthropicBodyUsesAdaptiveThinking(t *testing.T) {
 	model := &Model{Protocol: AnthropicMessages, Info_: models.ModelInfo{ID: "test"}}
 	body, err := model.body(models.Request{Capabilities: models.Capabilities{Thinking: true}})

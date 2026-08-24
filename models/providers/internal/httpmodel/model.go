@@ -23,6 +23,7 @@ const (
 // Model is a small HTTP/SSE-backed implementation for the supported providers.
 type Model struct {
 	Info_           models.ModelInfo
+	Variant         models.ModelVariant
 	Protocol        Protocol
 	BaseURL         string
 	APIKey          string
@@ -33,6 +34,7 @@ type Model struct {
 
 // Stream sends a streaming request and parses provider SSE into WingModels parts.
 func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	req = m.withVariantHTTP(req)
 	route := m.route(req)
 	body, err := m.body(req)
 	if err != nil {
@@ -89,6 +91,7 @@ func responseRequestID(headers http.Header) string {
 // Prepare lowers a provider-neutral request into the provider JSON body without
 // sending it.
 func (m *Model) Prepare(ctx context.Context, req models.Request) (*models.PreparedRequest, error) {
+	req = m.withVariantHTTP(req)
 	route := m.route(req)
 	body, err := m.body(req)
 	if err != nil {
@@ -105,6 +108,7 @@ func (m *Model) Prepare(ctx context.Context, req models.Request) (*models.Prepar
 		Model: models.ModelRef{
 			Provider:      m.Info_.Provider,
 			ID:            m.Info_.ID,
+			Variant:       m.Variant.ID,
 			API:           m.Info_.API,
 			BaseURL:       m.BaseURL,
 			Env:           m.Info_.Env,
@@ -531,8 +535,16 @@ type geminiFunctionResponse struct {
 }
 
 func (m *Model) applyRequestOptions(body map[string]any, req models.Request) map[string]any {
-	body = overlay(body, req.ProviderOptions[m.Info_.Provider])
-	return overlay(body, req.HTTP.Body)
+	body = deepOverlay(body, m.Variant.ProviderOptions)
+	body = deepOverlay(body, m.Variant.HTTP.Body)
+	body = deepOverlay(body, req.ProviderOptions[m.Info_.Provider])
+	return deepOverlay(body, req.HTTP.Body)
+}
+
+func (m *Model) withVariantHTTP(req models.Request) models.Request {
+	req.HTTP.Headers = mergeStrings(m.Variant.HTTP.Headers, req.HTTP.Headers)
+	req.HTTP.Query = mergeStrings(m.Variant.HTTP.Query, req.HTTP.Query)
+	return req
 }
 
 type parseState struct {
@@ -1089,11 +1101,33 @@ func generationConfig(body map[string]any) map[string]any {
 	return config
 }
 
-func overlay(base map[string]any, patch map[string]any) map[string]any {
-	for k, v := range patch {
-		base[k] = v
+func deepOverlay(base map[string]any, patch map[string]any) map[string]any {
+	if base == nil {
+		base = make(map[string]any, len(patch))
+	}
+	for key, value := range patch {
+		if patchMap, ok := value.(map[string]any); ok {
+			baseMap, _ := base[key].(map[string]any)
+			base[key] = deepOverlay(baseMap, patchMap)
+			continue
+		}
+		base[key] = value
 	}
 	return base
+}
+
+func mergeStrings(base, patch map[string]string) map[string]string {
+	if len(base) == 0 && len(patch) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(base)+len(patch))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range patch {
+		out[key] = value
+	}
+	return out
 }
 
 func maxOutput(req models.Request, fallback int) int {

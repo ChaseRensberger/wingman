@@ -273,6 +273,13 @@ type ErrorResponse struct {
 	Error Error `json:"error"`
 }
 
+// HTTPOptions defines model for HTTPOptions.
+type HTTPOptions struct {
+	Body    *map[string]interface{} `json:"body,omitempty"`
+	Headers *map[string]string      `json:"headers,omitempty"`
+	Query   *map[string]string      `json:"query,omitempty"`
+}
+
 // ImagePart defines model for ImagePart.
 type ImagePart struct {
 	Base64           *string                 `json:"base64,omitempty"`
@@ -411,16 +418,17 @@ type ModelCapabilities struct {
 
 // ModelDTO defines model for ModelDTO.
 type ModelDTO struct {
-	ContextWindow     *int64   `json:"context_window,omitempty"`
-	Id                string   `json:"id"`
-	Images            bool     `json:"images"`
-	InputCostPerMtok  *float64 `json:"input_cost_per_mtok,omitempty"`
-	MaxOutput         *int64   `json:"max_output,omitempty"`
-	OutputCostPerMtok *float64 `json:"output_cost_per_mtok,omitempty"`
-	Provider          string   `json:"provider"`
-	Reasoning         bool     `json:"reasoning"`
-	StructuredOutput  bool     `json:"structured_output"`
-	Tools             bool     `json:"tools"`
+	ContextWindow     *int64    `json:"context_window,omitempty"`
+	Id                string    `json:"id"`
+	Images            bool      `json:"images"`
+	InputCostPerMtok  *float64  `json:"input_cost_per_mtok,omitempty"`
+	MaxOutput         *int64    `json:"max_output,omitempty"`
+	OutputCostPerMtok *float64  `json:"output_cost_per_mtok,omitempty"`
+	Provider          string    `json:"provider"`
+	Reasoning         bool      `json:"reasoning"`
+	StructuredOutput  bool      `json:"structured_output"`
+	Tools             bool      `json:"tools"`
+	Variants          *[]string `json:"variants,omitempty"`
 }
 
 // ModelInfo defines model for ModelInfo.
@@ -435,6 +443,7 @@ type ModelInfo struct {
 	MaxOutput         *int64            `json:"max_output,omitempty"`
 	OutputCostPerMtok *float64          `json:"output_cost_per_mtok,omitempty"`
 	Provider          string            `json:"provider"`
+	Variants          *[]ModelVariant   `json:"variants,omitempty"`
 }
 
 // ModelMetadata defines model for ModelMetadata.
@@ -457,6 +466,14 @@ type ModelRef struct {
 	Id            *string            `json:"id,omitempty"`
 	MaxOutput     *int64             `json:"max_output,omitempty"`
 	Provider      *string            `json:"provider,omitempty"`
+	Variant       *string            `json:"variant,omitempty"`
+}
+
+// ModelVariant defines model for ModelVariant.
+type ModelVariant struct {
+	Http            *HTTPOptions            `json:"http,omitempty"`
+	Id              string                  `json:"id"`
+	ProviderOptions *map[string]interface{} `json:"provider_options,omitempty"`
 }
 
 // MoveSessionRequest defines model for MoveSessionRequest.
@@ -640,6 +657,7 @@ type RouteInfo struct {
 	MaxOutput         *int64            `json:"max_output,omitempty"`
 	OutputCostPerMtok *float64          `json:"output_cost_per_mtok,omitempty"`
 	Provider          string            `json:"provider"`
+	Variants          *[]ModelVariant   `json:"variants,omitempty"`
 }
 
 // Rule defines model for Rule.

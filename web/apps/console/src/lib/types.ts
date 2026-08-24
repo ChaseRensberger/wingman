@@ -61,6 +61,7 @@ export interface ProviderAuthStatus {
 export interface ProviderModel {
   provider: string;
   id: string;
+  variants?: string[];
   context_window?: number;
   max_output?: number;
   tools: boolean;

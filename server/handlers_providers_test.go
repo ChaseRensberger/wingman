@@ -7,8 +7,16 @@ import (
 	"testing"
 
 	"github.com/chaserensberger/wingman/execution"
+	"github.com/chaserensberger/wingman/models"
 	provider "github.com/chaserensberger/wingman/models/providers"
 )
+
+func TestModelToDTOListsVariantIDs(t *testing.T) {
+	dto := modelToDTO(models.ModelInfo{Variants: []models.ModelVariant{{ID: "low"}, {ID: "high"}}})
+	if len(dto.Variants) != 2 || dto.Variants[0] != "low" || dto.Variants[1] != "high" {
+		t.Fatalf("variants = %#v", dto.Variants)
+	}
+}
 
 func TestListProviderModelsReturnsEmptyMapForValidProviderWithoutModels(t *testing.T) {
 	t.Parallel()

@@ -658,6 +658,28 @@
         ],
         "type": "object"
       },
+      "HTTPOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "query": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "ImagePart": {
         "additionalProperties": false,
         "properties": {
@@ -1123,6 +1145,15 @@
           },
           "tools": {
             "type": "boolean"
+          },
+          "variants": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1177,6 +1208,15 @@
           },
           "provider": {
             "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVariant"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1250,8 +1290,30 @@
           },
           "provider": {
             "type": "string"
+          },
+          "variant": {
+            "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ModelVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "http": {
+            "$ref": "#/components/schemas/HTTPOptions"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider_options": {
+            "additionalProperties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "id"
+        ],
         "type": "object"
       },
       "MoveSessionRequest": {
@@ -1862,6 +1924,15 @@
           },
           "provider": {
             "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVariant"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [

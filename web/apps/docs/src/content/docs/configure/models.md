@@ -25,6 +25,36 @@ opencode-go/kimi-k3
 
 The provider selects a catalog entry. The model selects a model from that entry.
 
+## Model Variants
+
+A catalog model can provide named request variants. Add `#variant` to the model
+reference:
+
+```text
+openai/gpt-5.6-terra#high
+```
+
+The catalog lists the valid variants for each route. Wingman returns an error
+before the provider call when a selected variant is not available.
+
+The initial variant catalog supports `none`, `low`, `medium`, `high`, `xhigh`,
+and `max` for the built-in OpenAI GPT-5.6 routes. These names select OpenAI
+reasoning-effort values. They do not specify a fixed token count or latency.
+
+Request provider options and final HTTP values can override a variant. The full
+model reference, including the variant, remains in the model-call record.
+
+### Select a Variant in the Console
+
+1. In the Session composer, open the model menu.
+2. Select a model, then select its variant when it has variants.
+3. Select **Provider default** to use the model without a named variant.
+
+The Agent editor has separate model and Variant menus.
+
+The Session composer remembers the last variant for each model. It ignores a
+saved variant when the current catalog does not list that variant.
+
 ## Agent Default Model
 
 Agents can have a default `model_ref`:

@@ -12,3 +12,27 @@ tools = true
 images = true
 reasoning = true
 structured_output = true
+
+[[variants]]
+id = "none"
+provider_options = { reasoning = { effort = "none" } }
+
+[[variants]]
+id = "low"
+provider_options = { reasoning = { effort = "low" } }
+
+[[variants]]
+id = "medium"
+provider_options = { reasoning = { effort = "medium" } }
+
+[[variants]]
+id = "high"
+provider_options = { reasoning = { effort = "high" } }
+
+[[variants]]
+id = "xhigh"
+provider_options = { reasoning = { effort = "xhigh" } }
+
+[[variants]]
+id = "max"
+provider_options = { reasoning = { effort = "max" } }

@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { buildModelRef } from "@/lib/utils";
 
 export interface AgentForm {
   name: string;
   instructions: string;
   provider: string;
   model: string;
+  variant: string;
   tools: string[];
   outputSchema: string;
 }
@@ -14,6 +16,7 @@ export const emptyForm: AgentForm = {
   instructions: "",
   provider: "",
   model: "",
+  variant: "",
   tools: [],
   outputSchema: "",
 };
@@ -25,6 +28,7 @@ export const agentFormSchema = z.object({
   instructions: z.string(),
   provider: z.string(),
   model: z.string(),
+  variant: z.string(),
   tools: z.array(z.string()),
   outputSchema: z.string().refine(
     (val) => {
@@ -48,7 +52,7 @@ export function buildAgentPayload(form: AgentForm) {
   return {
     name: form.name.trim(),
     instructions: form.instructions,
-    model_ref: form.provider && form.model ? `${form.provider}/${form.model}` : "",
+    model_ref: buildModelRef(form.provider, form.model, form.variant),
     tools: form.tools,
     output_schema,
   };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatSessionError, reasoningSummary, shouldShowThinking, withFailedUserMessage } from "./session-detail";
+import { formatSessionError, modelRefExists, reasoningSummary, shouldShowThinking, withFailedUserMessage } from "./session-detail";
 
 describe("reasoningSummary", () => {
 	test("extracts a provider reasoning-summary heading", () => {
@@ -40,4 +40,13 @@ test("formatSessionError explains how to fix a missing working directory", () =>
 	expect(formatSessionError(new Error('session cannot start: tool "read" requires a working directory, but session has none'))).toBe(
 		"This session has no working directory. Set its working directory before using this agent.",
 	);
+});
+
+test("modelRefExists accepts only advertised variants", () => {
+	const models = {
+		openai: [{ id: "gpt-5.6-terra", variants: ["low", "high"] }],
+	} as Parameters<typeof modelRefExists>[0];
+	expect(modelRefExists(models, "openai/gpt-5.6-terra")).toBe(true);
+	expect(modelRefExists(models, "openai/gpt-5.6-terra#high")).toBe(true);
+	expect(modelRefExists(models, "openai/gpt-5.6-terra#max")).toBe(false);
 });

@@ -227,22 +227,28 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 // which changes frequently and contains internal pricing/limit details that
 // are not part of the public API contract.
 type ModelDTO struct {
-	Provider          string  `json:"provider"`
-	ID                string  `json:"id"`
-	ContextWindow     int     `json:"context_window,omitempty"`
-	MaxOutput         int     `json:"max_output,omitempty"`
-	Tools             bool    `json:"tools"`
-	Images            bool    `json:"images"`
-	Reasoning         bool    `json:"reasoning"`
-	StructuredOutput  bool    `json:"structured_output"`
-	InputCostPerMTok  float64 `json:"input_cost_per_mtok,omitempty"`
-	OutputCostPerMTok float64 `json:"output_cost_per_mtok,omitempty"`
+	Provider          string   `json:"provider"`
+	ID                string   `json:"id"`
+	Variants          []string `json:"variants,omitempty"`
+	ContextWindow     int      `json:"context_window,omitempty"`
+	MaxOutput         int      `json:"max_output,omitempty"`
+	Tools             bool     `json:"tools"`
+	Images            bool     `json:"images"`
+	Reasoning         bool     `json:"reasoning"`
+	StructuredOutput  bool     `json:"structured_output"`
+	InputCostPerMTok  float64  `json:"input_cost_per_mtok,omitempty"`
+	OutputCostPerMTok float64  `json:"output_cost_per_mtok,omitempty"`
 }
 
 func modelToDTO(info models.ModelInfo) ModelDTO {
+	variants := make([]string, len(info.Variants))
+	for i, variant := range info.Variants {
+		variants[i] = variant.ID
+	}
 	return ModelDTO{
 		Provider:          info.Provider,
 		ID:                info.ID,
+		Variants:          variants,
 		ContextWindow:     info.ContextWindow,
 		MaxOutput:         info.MaxOutput,
 		Tools:             info.Capabilities.Tools,

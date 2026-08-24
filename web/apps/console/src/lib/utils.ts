@@ -23,11 +23,19 @@ export function timeAgo(dateStr: string): string {
 export function splitModelRef(modelRef?: string) {
   const index = modelRef?.indexOf("/") ?? -1;
   if (!modelRef || index <= 0 || index === modelRef.length - 1)
-    return { provider: "", model: "" };
+    return { provider: "", model: "", variant: "" };
+  const variantIndex = modelRef.indexOf("#", index + 1);
   return {
     provider: modelRef.slice(0, index),
-    model: modelRef.slice(index + 1),
+    model: modelRef.slice(index + 1, variantIndex < 0 ? undefined : variantIndex),
+    variant: variantIndex < 0 ? "" : modelRef.slice(variantIndex + 1),
   };
+}
+
+export function buildModelRef(provider: string, model: string, variant?: string | null) {
+  if (!provider || !model) return "";
+  const ref = `${provider}/${model}`;
+  return variant ? `${ref}#${variant}` : ref;
 }
 
 export function latestAssistantUsage(history: Message[]): Usage | undefined {

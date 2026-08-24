@@ -674,6 +674,7 @@ type Request struct {
 type ModelRef struct {
 	Provider      string            `json:"provider,omitempty"`
 	ID            string            `json:"id,omitempty"`
+	Variant       string            `json:"variant,omitempty"`
 	API           API               `json:"api,omitempty"`
 	BaseURL       string            `json:"base_url,omitempty"`
 	Env           []string          `json:"env,omitempty"`
@@ -687,7 +688,11 @@ func (m ModelRef) Ref() string {
 	if m.Provider == "" || m.ID == "" {
 		return ""
 	}
-	return m.Provider + "/" + m.ID
+	ref := m.Provider + "/" + m.ID
+	if m.Variant != "" {
+		ref += "#" + m.Variant
+	}
+	return ref
 }
 
 // Generation contains portable sampling/output knobs.
@@ -703,9 +708,9 @@ type ProviderBag map[string]map[string]any
 
 // HTTPOptions is a last-resort request overlay for advanced provider knobs.
 type HTTPOptions struct {
-	Headers map[string]string `json:"headers,omitempty"`
-	Query   map[string]string `json:"query,omitempty"`
-	Body    map[string]any    `json:"body,omitempty"`
+	Headers map[string]string `json:"headers,omitempty" toml:"headers"`
+	Query   map[string]string `json:"query,omitempty" toml:"query"`
+	Body    map[string]any    `json:"body,omitempty" toml:"body"`
 }
 
 // ResponseFormat describes requested output constraints.
@@ -830,6 +835,24 @@ type ModelInfo struct {
 	Capabilities      ModelCapabilities `json:"capabilities"`
 	InputCostPerMTok  float64           `json:"input_cost_per_mtok,omitempty"`
 	OutputCostPerMTok float64           `json:"output_cost_per_mtok,omitempty"`
+	Variants          []ModelVariant    `json:"variants,omitempty"`
+}
+
+// ModelVariant is a named request overlay for one catalog model.
+type ModelVariant struct {
+	ID              string         `json:"id" toml:"id"`
+	ProviderOptions map[string]any `json:"provider_options,omitempty" toml:"provider_options"`
+	HTTP            HTTPOptions    `json:"http,omitempty" toml:"http"`
+}
+
+// Variant returns the named variant for this model.
+func (m ModelInfo) Variant(id string) (ModelVariant, bool) {
+	for _, variant := range m.Variants {
+		if variant.ID == id {
+			return variant, true
+		}
+	}
+	return ModelVariant{}, false
 }
 
 type ModelCapabilities struct {

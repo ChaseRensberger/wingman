@@ -3,12 +3,12 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
 import { isProviderSelectable } from "@/lib/providers";
-import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, shouldAutoGenerateTitle, withFailedUserMessage, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
+import { agentExists, buildUserMessage, modelRefExists, persistLastAgentId, persistLastModelRef, persistModelVariant, shouldAutoGenerateTitle, storedModelVariant, withFailedUserMessage, LAST_AGENT_ID_KEY, LAST_MODEL_REF_KEY } from "@/lib/session-detail";
 import { generateSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type { Session, SessionSummary, Agent, Workspace, ModelCall, Provider, ProviderModel, ToolCallPart, ToolResultPart } from "@/lib/types";
 import { toolActivityKey } from "@/lib/tool-activity-state";
-import { contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
+import { buildModelRef, contextTokenCount, formatContextPercent, formatTokenCount, latestAssistantUsage, splitModelRef } from "@/lib/utils";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
@@ -45,6 +45,7 @@ function SessionDetailPage() {
 	const [selectedAgent, setSelectedAgent] = useState("");
 	const [selectedProvider, setSelectedProvider] = useState("");
 	const [selectedModel, setSelectedModel] = useState("");
+	const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
 	const [messageText, setMessageText] = useState("");
 	const [streamingTitle, setStreamingTitle] = useState("");
 	const [isTitleStreaming, setIsTitleStreaming] = useState(false);
@@ -182,7 +183,7 @@ function SessionDetailPage() {
 					} else {
 						setWorkspace(null);
 					}
-					const modelMap = Object.fromEntries(modelEntries);
+					const modelMap: Record<string, ProviderModel[]> = Object.fromEntries(modelEntries);
 					setAgents(agentsData);
 					setProviders(providerData);
 					setModels(modelMap);
@@ -200,6 +201,9 @@ function SessionDetailPage() {
 						const modelRef = splitModelRef(initialModelRef);
 						setSelectedProvider(modelRef.provider);
 						setSelectedModel(modelRef.model);
+						const variants = modelMap[modelRef.provider]?.find((model) => model.id === modelRef.model)?.variants ?? [];
+						const preferredVariant = modelRef.variant || storedModelVariant(modelRef.provider, modelRef.model);
+						setSelectedVariant(preferredVariant && variants.includes(preferredVariant) ? preferredVariant : null);
 					}
 				}
 			} catch (err) {
@@ -248,7 +252,7 @@ function SessionDetailPage() {
 		if (e) e.preventDefault();
 		const outboundText = retry?.message ?? messageText.trim();
 		const outboundAgentId = retry?.agentId ?? selectedAgent;
-		const outboundModelRef = retry?.modelRef ?? (selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : "");
+		const outboundModelRef = retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
 		if (!outboundText || !outboundAgentId) return;
 
 		const shouldGenerateTitle = shouldAutoGenerateTitle(session);
@@ -455,7 +459,7 @@ function SessionDetailPage() {
 		<div className="relative flex h-full min-h-0 flex-col bg-background">
 			<SessionHeader session={session} workspace={workspace} calls={modelCalls} isDraft={isDraft} title={sessionTitle} contextLabel={contextLabel} jsonMode={jsonMode} copiedValue={copiedValue} onJsonModeChange={() => setJSONMode((value) => !value)} onCopy={(value, kind) => void copySessionValue(value, kind)} onEdit={openEditSession} onDelete={() => setDeleteSessionOpen(true)} />
 			<SessionTranscript messages={transcriptHistory} rawMessages={session.history} jsonMode={jsonMode} greeting={greeting} streamingText={visibleStreamingText} streamingReasoning={run.streamingReasoning} isStreaming={run.isStreaming} toolCallsById={toolCallsById} toolResultsById={toolResultsById} toolActivitiesById={run.toolActivities} modelCallsByMessageId={modelCallsByMessageId} agentNames={agentNames} failedRun={run.failedRun} permissionRequests={run.permissionRequests} permissionRepliesInFlight={run.permissionRepliesInFlight} onReplyPermission={(requestID, response) => void handleReplyPermission(requestID, response)} copiedFailedRunError={copiedFailedRunError} onCopyFailedRunError={() => void copyFailedRunError()} onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)} scroll={transcriptScroll} />
-			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef) => { const ref = splitModelRef(modelRef); setSelectedProvider(ref.provider); setSelectedModel(ref.model); persistLastModelRef(modelRef); }} onSubmit={() => void handleSend()} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
+			<SessionComposer composerRef={composerRef} messageText={messageText} selectedAgent={selectedAgent} selectedAgentName={selectedAgentName} selectedProvider={selectedProvider} selectedModel={selectedModel} selectedVariant={selectedVariant} selectedProviderName={selectedProviderName} agents={agents} providers={selectableProviders} models={models} hasModels={hasModels} isStreaming={run.isStreaming} isNearTranscriptBottom={transcriptScroll.isNearBottom} onMessageChange={setMessageText} onAgentChange={(agentId) => { setSelectedAgent(agentId); persistLastAgentId(agentId); }} onModelChange={(modelRef, selectedVariant) => { const ref = splitModelRef(modelRef); const variants = models[ref.provider]?.find((model) => model.id === ref.model)?.variants ?? []; const preferredVariant = storedModelVariant(ref.provider, ref.model); const variant = selectedVariant === undefined ? (preferredVariant && variants.includes(preferredVariant) ? preferredVariant : null) : selectedVariant; setSelectedProvider(ref.provider); setSelectedModel(ref.model); setSelectedVariant(variant); persistModelVariant(ref.provider, ref.model, variant); persistLastModelRef(buildModelRef(ref.provider, ref.model, variant)); }} onSubmit={() => void handleSend()} onAbort={handleAbort} onJumpToBottom={transcriptScroll.jumpToBottom} />
 			<SessionDialogs session={session} editing={editingSession} saving={savingSession} deleteOpen={deleteSessionOpen} deleting={deletingSession} onEditingChange={setEditingSession} onDeleteOpenChange={setDeleteSessionOpen} onSave={(title, workDir) => void handleSaveSession(title, workDir)} onDelete={() => void handleDeleteSession()} />
 		</div>
 	);

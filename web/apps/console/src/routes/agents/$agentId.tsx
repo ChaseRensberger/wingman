@@ -40,6 +40,7 @@ function formFromAgent(agent: Agent) {
     instructions: agent.instructions ?? "",
     provider: modelRef.provider,
     model: modelRef.model,
+    variant: modelRef.variant,
     tools: agent.tools ?? [],
     outputSchema:
       agent.output_schema && Object.keys(agent.output_schema).length > 0
@@ -100,7 +101,6 @@ function AgentDetailPage() {
         client.tools.list() as Promise<ToolsResponse>,
       ]);
       setAgent(agentData);
-      form.reset(formFromAgent(agentData));
       setProviders(providerData);
       setToolCatalog(toolData.tools ?? []);
       const selectableProviders = providerData.filter(isProviderSelectable);
@@ -114,7 +114,12 @@ function AgentDetailPage() {
           }
         }),
       );
-      setModels(Object.fromEntries(modelEntries));
+      const modelMap: Record<string, ProviderModel[]> = Object.fromEntries(modelEntries);
+      const values = formFromAgent(agentData);
+      const variants = modelMap[values.provider]?.find((model) => model.id === values.model)?.variants ?? [];
+      if (values.variant && !variants.includes(values.variant)) values.variant = "";
+      form.reset(values);
+      setModels(modelMap);
     } finally {
       setLoading(false);
     }
@@ -217,9 +222,10 @@ function AgentDetailPage() {
             )}
           />
           <form.Subscribe
-            selector={(state) => state.values.provider}
-            children={(provider) => {
+            selector={(state) => [state.values.provider, state.values.model] as const}
+            children={([provider, selectedModel]) => {
               const providerModels = models[provider] ?? [];
+              const variants = providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
               return (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <form.Field
@@ -232,6 +238,7 @@ function AgentDetailPage() {
                           onValueChange={(value) => {
                             field.handleChange(value ?? "");
                             form.setFieldValue("model", "");
+                            form.setFieldValue("variant", "");
                           }}
                         >
                           <SelectTrigger>
@@ -256,7 +263,10 @@ function AgentDetailPage() {
                         <FieldLabel className="text-xs">Model</FieldLabel>
                         <Select
                           value={field.state.value}
-                          onValueChange={(value) => field.handleChange(value ?? "")}
+                          onValueChange={(value) => {
+                            field.handleChange(value ?? "");
+                            form.setFieldValue("variant", "");
+                          }}
                           disabled={!provider || providerModels.length === 0}
                         >
                           <SelectTrigger>
@@ -274,6 +284,33 @@ function AgentDetailPage() {
                       </Field>
                     )}
                   />
+                  {variants.length > 0 && (
+                    <form.Field
+                      name="variant"
+                      children={(field) => (
+                        <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                          <FieldLabel className="text-xs">Variant</FieldLabel>
+                          <Select
+                            value={field.state.value || null}
+                            onValueChange={(value) => field.handleChange(value ?? "")}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select variant">{(value) => value ?? "Provider default"}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem>Provider default</SelectItem>
+                              {variants.map((variant) => (
+                                <SelectItem key={variant} value={variant}>
+                                  {variant}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                        </Field>
+                      )}
+                    />
+                  )}
                 </div>
               );
             }}
