@@ -545,7 +545,7 @@ function NavLink(navItem: {
 function Hero() {
 	return (
 		<main className="min-h-screen flex flex-col md:max-w-4xl lg:max-w-5xl mx-auto border">
-			<nav className="sticky top-0 bg-background flex items-center justify-between px-6 py-2 w-full border-b">
+			<nav className="sticky top-0 z-50 flex w-full items-center justify-between border-b bg-background/80 px-6 py-2 backdrop-blur-sm">
 				<img src={WingmanIcon} className="w-12 h-12" />
 				<div className="flex items-center gap-6">
 					<NavLink name="GitHub" url={GITHUB_URL} />
