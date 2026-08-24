@@ -13,6 +13,7 @@ import {
 } from "@wingman/core/components/core/alert-dialog";
 import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
+import { Card } from "@wingman/core/components/core/card";
 import { Input } from "@wingman/core/components/core/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
@@ -132,12 +133,12 @@ function ProviderDetailPage() {
         <div className="py-8 text-sm text-muted-foreground">Provider not found.</div>
       ) : (
         <div className="grid gap-4">
-          <div className="grid gap-4 rounded-lg border bg-card p-4">
+			<Card size="sm" className="px-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-medium">{provider.name}</div>
                 <div className="font-mono text-xs text-muted-foreground">{provider.id}</div>
-              </div>
+				</div>
               <Badge variant={configured || provider.auth.source === "disabled" ? "default" : "secondary"}>
                 {configured || provider.auth.source === "disabled" ? "Configured" : "Unconfigured"}
               </Badge>
@@ -228,7 +229,7 @@ function ProviderDetailPage() {
             {!supportsApiKey && (
               <div className="text-sm text-muted-foreground">This provider does not support API key auth.</div>
             )}
-          </div>
+			</Card>
 
           <Table>
             <TableHeader>

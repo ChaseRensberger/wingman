@@ -8,7 +8,7 @@ function Menubar({ className, ...props }: MenubarPrimitive.Props) {
 		<MenubarPrimitive
 			data-slot="menubar"
 			className={cn(
-				"flex h-9 items-center gap-1 rounded-lg border border-border bg-muted p-1",
+				"flex h-8 items-center gap-1 rounded-md border bg-muted p-1",
 				className
 			)}
 			{...props}
@@ -25,7 +25,7 @@ function MenubarTrigger({ className, ...props }: MenuPrimitive.Trigger.Props) {
 		<MenuPrimitive.Trigger
 			data-slot="menubar-trigger"
 			className={cn(
-				"flex items-center rounded-md px-2.5 py-1 text-sm font-medium outline-none select-none hover:bg-background hover:shadow-xs data-popup-open:bg-background data-popup-open:shadow-xs",
+				"flex items-center rounded-sm px-2 py-1 text-sm font-medium outline-none select-none transition-[color,background-color,box-shadow] duration-150 hover:bg-background hover:shadow-sm focus-visible:bg-background focus-visible:shadow-sm data-popup-open:bg-background data-popup-open:shadow-sm",
 				className
 			)}
 			{...props}
@@ -57,7 +57,7 @@ function MenubarContent({
 				<MenuPrimitive.Popup
 					data-slot="menubar-content"
 					className={cn(
-						"z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95",
+						"z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-sm outline-none",
 						className
 					)}
 					{...props}
@@ -77,7 +77,7 @@ function MenubarItem({
 			data-slot="menubar-item"
 			data-inset={inset}
 			className={cn(
-				"relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"relative flex cursor-pointer items-center gap-1.5 rounded-sm px-1.5 py-1 text-sm outline-hidden select-none transition-[color,background-color,box-shadow] duration-150 focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				className
 			)}
 			{...props}
@@ -137,7 +137,7 @@ function MenubarCheckboxItem({
 		<MenuPrimitive.CheckboxItem
 			data-slot="menubar-checkbox-item"
 			className={cn(
-				"relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"relative flex cursor-pointer items-center gap-1.5 rounded-sm py-1 pr-8 pl-1.5 text-sm outline-hidden select-none transition-[color,background-color,box-shadow] duration-150 focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				className
 			)}
 			checked={checked}
@@ -166,7 +166,7 @@ function MenubarRadioItem({
 		<MenuPrimitive.RadioItem
 			data-slot="menubar-radio-item"
 			className={cn(
-				"relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"relative flex cursor-pointer items-center gap-1.5 rounded-sm py-1 pr-8 pl-1.5 text-sm outline-hidden select-none transition-[color,background-color,box-shadow] duration-150 focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				className
 			)}
 			{...props}
@@ -196,7 +196,7 @@ function MenubarSubTrigger({
 			data-slot="menubar-sub-trigger"
 			data-inset={inset}
 			className={cn(
-				"flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"flex cursor-pointer items-center gap-1.5 rounded-sm px-1.5 py-1 text-sm outline-hidden select-none transition-[color,background-color,box-shadow] duration-150 focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				className
 			)}
 			{...props}

@@ -26,7 +26,7 @@ function DialogOverlay({
 		<DialogPrimitive.Backdrop
 			data-slot="dialog-overlay"
 			className={cn(
-				"fixed inset-0 z-50 bg-black/50 data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0",
+				"fixed inset-0 z-50 bg-overlay",
 				className
 			)}
 			{...props}
@@ -61,14 +61,14 @@ function DialogContent({
 			<DialogPrimitive.Popup
 				data-slot="dialog-content"
 				className={cn(
-					"fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 sm:max-w-lg",
+					"fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-3 rounded-[var(--radius)] border bg-popover p-4 shadow-sm sm:max-w-lg",
 					className
 				)}
 				{...props}
 			>
 				{children}
 				{showCloseButton && (
-					<DialogClose className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none">
+					<DialogClose className="absolute top-3 right-3 rounded-[var(--radius)] opacity-70 transition-[color,background-color,box-shadow] duration-150 hover:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none">
 						<X className="size-4" />
 						<span className="sr-only">Close</span>
 					</DialogClose>

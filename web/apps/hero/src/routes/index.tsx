@@ -1,9 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from "react";
 import { CopyIcon, CheckIcon } from "@phosphor-icons/react";
+import { Alert, AlertDescription, AlertTitle } from "@wingman/core/components/core/alert";
 import { Button } from "@wingman/core/components/core/button";
+import { Card, CardDescription, CardTitle } from "@wingman/core/components/core/card";
 import { Markdown } from "@wingman/core/components/core/markdown";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@wingman/core/components/core/tabs";
+import { TypographyH2 } from "@wingman/core/components/core/typography";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from '../components/ascii-logo';
 
@@ -133,7 +136,7 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 	};
 
 	return (
-		<div className="flex items-center gap-3 bg-card border rounded-sm px-4 py-3 font-mono text-sm">
+		<Card size="sm" className="text-sm flex-row items-center gap-3 px-3 py-3">
 			<span className="text-muted-foreground select-none">$</span>
 			<code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap scrollbar-hide text-muted-foreground">
 				{children}
@@ -151,7 +154,7 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 					<CopyIcon className="size-4" />
 				)}
 			</Button>
-		</div>
+		</Card>
 	);
 }
 
@@ -188,7 +191,7 @@ function SectionMarker({ id, title }: { id: string; title: string }) {
 function SectionHeader({ title, markerId, markerTitle = title }: { title: string; markerId: string; markerTitle?: string }) {
 	return (
 		<div className="flex items-center justify-between gap-4">
-			<h2 className="font-extrabold text-lg">{title}</h2>
+			<TypographyH2 className="text-lg font-extrabold">{title}</TypographyH2>
 			<SectionMarker id={markerId} title={markerTitle} />
 		</div>
 	);
@@ -208,15 +211,17 @@ function LinkCard({
 			href={href}
 			target="_blank"
 			rel="noreferrer"
-			className="block rounded-sm border bg-card p-4 transition-colors hover:border-primary hover:text-primary"
+			className="block"
 		>
-			<div className="flex items-start gap-2">
-				<span className="text-primary">[*]</span>
-				<div className="space-y-1">
-					<h3 className="font-semibold">{title}</h3>
-					<p className="text-sm text-muted-foreground">{description}</p>
+			<Card size="sm" className="h-full px-3 transition-[color,border-color] duration-150 hover:border-primary hover:text-primary">
+				<div className="flex items-start gap-2">
+					<span className="text-primary">[*]</span>
+					<div className="space-y-1">
+						<CardTitle>{title}</CardTitle>
+						<CardDescription>{description}</CardDescription>
+					</div>
 				</div>
-			</div>
+			</Card>
 		</a>
 	);
 }
@@ -263,15 +268,15 @@ function FeaturesSection() {
 			<SectionHeader title="Features" markerId="02" />
 			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 				{FEATURES.map((feature) => (
-					<div key={feature.title} className="rounded-sm border bg-card p-4">
+					<Card key={feature.title} size="sm" className="px-3">
 						<div className="flex items-start gap-2">
 							<span className="text-primary">[*]</span>
 							<div className="space-y-1">
-								<h3 className="font-semibold">{feature.title}</h3>
-								<p className="text-sm text-muted-foreground">{feature.description}</p>
+								<CardTitle>{feature.title}</CardTitle>
+								<CardDescription>{feature.description}</CardDescription>
 							</div>
 						</div>
-					</div>
+					</Card>
 				))}
 			</div>
 		</section>
@@ -286,7 +291,7 @@ function ReliableExecutionSection() {
 				Each prompt gets a durable run. Wingman records its state as it runs. After a restart, queued runs continue.
 			</p>
 			<div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
-				<div className="border bg-card font-mono text-xs">
+				<Card size="sm" className="gap-0 overflow-hidden p-0 text-xs">
 					<div className="flex items-center justify-between border-b px-4 py-3 text-muted-foreground">
 						<span>RUN / run_01H...</span>
 						<span className="text-primary">COMPLETED</span>
@@ -297,15 +302,15 @@ function ReliableExecutionSection() {
 						<ExecutionRow state="03" title="Tool use" detail="bash · authorized · completed" />
 						<ExecutionRow state="04" title="Settled" detail="Run and final message committed together" active />
 					</div>
-				</div>
-				<div className="border bg-card p-4 space-y-4">
+				</Card>
+				<Card size="sm" className="px-3">
 					<p className="text-xs uppercase tracking-wider text-muted-foreground">After a restart</p>
 					<ul className="space-y-3 text-sm text-muted-foreground">
 						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Queued runs continue.</span></li>
 						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Started provider calls and tool uses become interrupted.</span></li>
 						<li className="flex gap-2"><span className="text-primary">[*]</span><span>Clients reload session state after an event resync.</span></li>
 					</ul>
-				</div>
+				</Card>
 			</div>
 		</section>
 	)
@@ -385,7 +390,7 @@ function ConnectSection() {
 		<section className="px-6 py-8 border-b space-y-4 sm:px-12">
 			<SectionHeader title="Connect to Wingman" markerId="05" />
 			<Tabs defaultValue="wingman-cli">
-				<TabsList className="w-full justify-start overflow-x-auto">
+				<TabsList>
 					<TabsTrigger value="wingman-cli">Wingman CLI</TabsTrigger>
 					<TabsTrigger value="http">HTTP</TabsTrigger>
 					<TabsTrigger value="typescript">TypeScript</TabsTrigger>
@@ -444,10 +449,10 @@ function ClientsSection() {
 				<SectionHeader title="Clients" markerId="07" />
 				<p className="text-sm text-muted-foreground">Applications that rely on Wingman. If you build one, open up a PR to add it to this section.</p>
 			</div>
-			<div className="rounded-sm border bg-card p-4 space-y-4">
+			<Card size="sm" className="px-3">
 				<div className="flex items-start gap-2">
 					<span className="text-primary">[*]</span>
-					<h3 className="font-semibold">Console - Ships with the Wingman binary</h3>
+					<CardTitle>Console - Ships with the Wingman binary</CardTitle>
 				</div>
 				<div className="space-y-2">
 					<img
@@ -456,7 +461,7 @@ function ClientsSection() {
 						alt="Wingman console session showing a technical explanation and message composer"
 					/>
 				</div>
-			</div>
+			</Card>
 		</section>
 	);
 }
@@ -548,9 +553,10 @@ function Hero() {
 					<NavLink name="Discord" url={DISCORD_URL} />
 				</div>
 			</nav>
-			<div className="border-b bg-primary/10 px-6 py-3 text-sm text-primary sm:px-12">
-				<strong>Wingman is not production ready.</strong> Expect frequent changes to apis and data models for the time being.
-			</div>
+			<Alert className="rounded-none border-x-0 border-t-0 bg-primary/15 px-6 text-primary sm:px-12">
+				<AlertTitle className="line-clamp-none">Wingman is not production ready.</AlertTitle>
+				<AlertDescription className="text-primary">Expect frequent changes to APIs and data models for the time being.</AlertDescription>
+			</Alert>
 			<section className="border-b p-12 py-24 space-y-8">
 				<div className="space-y-2">
 					<div className="overflow-y-hidden mx-auto w-full max-w-full overflow-x-auto text-[0.5rem] sm:text-[0.6rem] md:text-[0.7rem] lg:text-[0.875rem]">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
+import { Card } from "@wingman/core/components/core/card";
 import {
 	Table,
 	TableBody,
@@ -91,7 +92,7 @@ function ToolsPage() {
 				<PageBreadcrumb items={[{ label: "Tools" }]} />
 			</div>
 
-			<section className="mb-6 rounded-xl border bg-card p-4">
+			<Card size="sm" className="mb-6 px-3">
 				<div className="mb-3 flex items-center justify-between gap-3">
 					<div>
 						<h2 className="text-sm font-semibold">RPC plugins</h2>
@@ -102,7 +103,7 @@ function ToolsPage() {
 					</Button>
 				</div>
 				{pluginErrors?.map((item) => (
-					<div key={`${item.path}:${item.error}`} className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+					<div key={`${item.path}:${item.error}`} className="mb-3 rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
 						<span className="font-mono">{item.path}</span>: {item.error}
 					</div>
 				))}
@@ -140,10 +141,10 @@ function ToolsPage() {
 						</TableBody>
 					</Table>
 				)}
-			</section>
+			</Card>
 
 			{servers.length > 0 && (
-				<section className="mb-6 rounded-xl border bg-card p-4">
+				<Card size="sm" className="mb-6 px-3">
 					<div className="mb-3 flex items-center justify-between gap-3">
 						<div>
 							<h2 className="text-sm font-semibold">MCP servers</h2>
@@ -189,7 +190,7 @@ function ToolsPage() {
 							))}
 						</TableBody>
 					</Table>
-				</section>
+				</Card>
 			)}
 
 			{loading ? (
@@ -205,7 +206,7 @@ function ToolsPage() {
 			) : (
 				<div className="grid gap-5">
 					{grouped.map(([group, items]) => (
-						<section key={group} className="rounded-xl border bg-card p-4">
+						<Card key={group} size="sm" className="px-3">
 							<div className="mb-3 flex items-center justify-between gap-3">
 								<h2 className="text-sm font-semibold">{groupLabel(group)}</h2>
 								<Badge variant="outline">{items.length} tools</Badge>
@@ -236,7 +237,7 @@ function ToolsPage() {
 									))}
 								</TableBody>
 							</Table>
-						</section>
+						</Card>
 					))}
 				</div>
 			)}

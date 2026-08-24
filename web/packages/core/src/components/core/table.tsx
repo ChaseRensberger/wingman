@@ -5,7 +5,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
 	return (
 		<div
 			data-slot="table-wrapper"
-			className="relative w-full overflow-auto rounded-lg border bg-card shadow-sm shadow-primary/5"
+			className="relative w-full overflow-auto rounded-[var(--radius)] border bg-card shadow-sm"
 		>
 			<table
 				data-slot="table"
@@ -20,7 +20,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
 	return (
 		<thead
 			data-slot="table-header"
-			className={cn("bg-muted/45 text-muted-foreground", className)}
+			className={cn("bg-muted text-muted-foreground", className)}
 			{...props}
 		/>
 	)
@@ -54,7 +54,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 		<tr
 			data-slot="table-row"
 			className={cn(
-				"group transition-colors hover:bg-primary/5 data-[state=selected]:bg-primary/10 [&>td]:border-b [&>td]:border-border/70",
+				"group hover:bg-primary/15 data-[state=selected]:bg-primary/15 [&>td]:border-b [&>td]:border-border",
 				className
 			)}
 			{...props}

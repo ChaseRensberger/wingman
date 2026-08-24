@@ -22,7 +22,7 @@ function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
 		<ComboboxPrimitive.Input
 			data-slot="combobox-input"
 			className={cn(
-				"flex h-8 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 pr-8 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+				"flex h-9 w-full rounded-[var(--radius)] border border-input bg-background px-2.5 py-1 pr-8 text-sm shadow-xs transition-[color,box-shadow] duration-150 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
 				className
 			)}
 			{...props}
@@ -50,7 +50,7 @@ function ComboboxPopup({ className, ...props }: ComboboxPrimitive.Popup.Props) {
 				<ComboboxPrimitive.Popup
 					data-slot="combobox-popup"
 					className={cn(
-						"z-50 max-h-60 w-(--anchor-width) min-w-32 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+						"z-50 max-h-60 w-(--anchor-width) min-w-32 overflow-y-auto rounded-[var(--radius)] border bg-popover p-1 text-popover-foreground shadow-sm outline-none",
 						className
 					)}
 					{...props}
@@ -65,7 +65,7 @@ function ComboboxItem({ className, ...props }: ComboboxPrimitive.Item.Props) {
 		<ComboboxPrimitive.Item
 			data-slot="combobox-item"
 			className={cn(
-				"relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 pl-7 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-selected:font-medium",
+				"relative flex cursor-pointer items-center gap-1.5 rounded-[var(--radius)] px-1.5 py-1 pl-7 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 data-selected:font-medium",
 				className
 			)}
 			{...props}

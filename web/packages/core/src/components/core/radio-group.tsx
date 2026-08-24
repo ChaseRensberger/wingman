@@ -25,10 +25,10 @@ function RadioGroupItem({
 		<RadioPrimitive.Root
 			data-slot="radio-group-item"
 			className={cn(
-				"peer size-4 shrink-0 rounded-full border border-input shadow-xs transition-shadow outline-none",
+				"peer size-4 shrink-0 rounded-full border border-input shadow-xs transition-[color,box-shadow] duration-150 outline-none",
 				"data-checked:bg-primary data-checked:border-primary data-checked:text-primary-foreground",
 				"focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-				"aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+				"aria-invalid:border-destructive aria-invalid:ring-destructive/20",
 				"data-disabled:cursor-not-allowed data-disabled:opacity-50",
 				className
 			)}

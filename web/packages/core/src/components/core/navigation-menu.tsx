@@ -49,7 +49,7 @@ function NavigationMenuTrigger({
 		<NavigationMenuPrimitive.Trigger
 			data-slot="navigation-menu-trigger"
 			className={cn(
-				"inline-flex h-9 items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50 data-active:bg-accent/50 data-popup-open:bg-accent/50",
+                "inline-flex h-9 items-center justify-center rounded-[var(--radius)] bg-background px-3 py-1 text-sm font-medium transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none disabled:pointer-events-none disabled:opacity-50 data-active:bg-primary/15 data-popup-open:bg-primary/15",
 				className
 			)}
 			{...props}
@@ -70,11 +70,11 @@ function NavigationMenuContent({
 				<NavigationMenuPrimitive.Viewport>
 					<NavigationMenuPrimitive.Popup
 						data-slot="navigation-menu-popup"
-						className="w-auto min-w-48 rounded-lg border bg-popover shadow-lg ring-1 ring-foreground/5 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+                        className="w-auto min-w-48 rounded-[var(--radius)] border bg-popover p-1 shadow-sm"
 					>
 						<NavigationMenuPrimitive.Content
 							data-slot="navigation-menu-content"
-							className={cn("p-2", className)}
+                            className={cn("p-1", className)}
 							{...props}
 						/>
 					</NavigationMenuPrimitive.Popup>

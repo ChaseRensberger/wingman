@@ -25,7 +25,7 @@ export function ThemePreviewSwitcher() {
           <RadioGroup
             value={colorMode}
             onValueChange={(value) => setColorMode(value as ColorMode)}
-            className="inline-grid w-full max-w-md grid-cols-3 rounded-xl border bg-muted/45 p-1"
+            className="inline-grid w-full max-w-md grid-cols-3 rounded-[var(--radius)] border bg-muted p-1"
           >
             {colorModeOptions.map((option) => {
               const Icon = option.icon
@@ -36,7 +36,7 @@ export function ThemePreviewSwitcher() {
                 <label
                   key={option.value}
                   className={cn(
-                    "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                    "flex items-center justify-center gap-2 rounded-[var(--radius)] px-3 py-2 text-sm font-medium transition-[color,background-color,box-shadow] duration-150",
                     available ? "cursor-pointer" : "cursor-not-allowed opacity-45",
                     active
                       ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
@@ -66,8 +66,8 @@ export function ThemePreviewSwitcher() {
                 <label
                   key={option.id}
                   className={cn(
-                    "cursor-pointer rounded-lg border p-3 transition-colors",
-                    active ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "hover:bg-muted/45"
+                    "cursor-pointer rounded-[var(--radius)] border p-3 transition-[color,background-color,box-shadow] duration-150",
+                    active ? "border-primary bg-primary/15 ring-1 ring-primary/30" : "hover:bg-muted"
                   )}
                 >
                   <RadioGroupItem value={option.id} className="sr-only" />

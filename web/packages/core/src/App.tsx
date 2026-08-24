@@ -74,7 +74,7 @@ export default function App() {
 					</a>
 				</div>
 			</nav>
-			<div className="px-8 py-4 max-w-5xl mx-auto space-y-4">
+			<div className="mx-auto max-w-5xl divide-y divide-border px-8 py-4">
 				<ButtonShowcase />
 				<ButtonGroupShowcase />
 				<TypographyShowcase />

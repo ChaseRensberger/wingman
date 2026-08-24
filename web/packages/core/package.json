@@ -23,15 +23,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@base-ui/react": "^1.4.1",
+    "@base-ui/react": "^1.7.0",
     "@fontsource-variable/fira-code": "^5.2.7",
-    "@headlessui/react": "^2.2.10",
-    "@heroicons/react": "^2.2.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/vite": "^4.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "motion": "^12.38.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",

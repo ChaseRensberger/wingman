@@ -1,6 +1,5 @@
 import * as React from "react"
 import { ArrowUp, ArrowDown, ArrowsDownUp } from "@phosphor-icons/react"
-import { cn } from "#lib/utils"
 import {
   Table,
   TableHeader,
@@ -62,19 +61,27 @@ function DataTable<T extends Record<string, unknown>>({
           {columns.map((col) => (
             <TableHead
               key={String(col.key)}
-              className={cn(col.sortable && "cursor-pointer select-none", col.className)}
-              onClick={() => col.sortable && handleSort(col.key)}
+              aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+              className={col.className}
             >
-              <span className="flex items-center gap-1">
-                {col.header}
-                {col.sortable && (
-                  sortKey === col.key ? (
+              {col.sortable ? (
+                <button
+                  type="button"
+                  onClick={() => handleSort(col.key)}
+                  className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1 rounded-[var(--radius)] px-1 text-left focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {col.header}
+                  {sortKey === col.key ? (
                     sortDir === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
                   ) : (
                     <ArrowsDownUp className="size-3 text-muted-foreground/50" />
-                  )
-                )}
-              </span>
+                  )}
+                </button>
+              ) : (
+                <span className="flex items-center gap-1">
+                {col.header}
+                </span>
+              )}
             </TableHead>
           ))}
         </TableRow>

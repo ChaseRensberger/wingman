@@ -1,4 +1,4 @@
-import { OTPFieldPreview as OtpFieldPrimitive } from "@base-ui/react/otp-field"
+import { OTPField as OtpFieldPrimitive } from "@base-ui/react/otp-field"
 import { cn } from "#lib/utils"
 
 function InputOTP({
@@ -22,7 +22,7 @@ function InputOTPSlot({
 		<OtpFieldPrimitive.Input
 			data-slot="input-otp-slot"
 			className={cn(
-				"relative flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-sm font-medium shadow-sm transition-all text-center caret-transparent outline-none data-active:ring-2 data-active:ring-ring data-active:ring-offset-1 data-disabled:pointer-events-none data-disabled:opacity-50",
+				"relative flex size-9 items-center justify-center rounded-[var(--radius)] border border-input bg-background text-sm font-medium shadow-sm text-center caret-transparent outline-none transition-[color,box-shadow] duration-150 data-active:ring-3 data-active:ring-ring/50 data-disabled:pointer-events-none data-disabled:opacity-50",
 				className
 			)}
 			{...props}

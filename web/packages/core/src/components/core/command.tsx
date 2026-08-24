@@ -7,7 +7,7 @@ function Command({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="command"
 			className={cn(
-				"flex flex-col overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md",
+				"flex flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-sm",
 				className
 			)}
 			{...props}
@@ -17,12 +17,12 @@ function Command({ className, ...props }: React.ComponentProps<"div">) {
 
 function CommandInput({ className, ...props }: React.ComponentProps<"input">) {
 	return (
-		<div className="flex items-center gap-2 border-b px-3" data-slot="command-input-wrapper">
+		<div className="flex items-center gap-2 border-b px-2" data-slot="command-input-wrapper">
 			<MagnifyingGlassIcon className="size-4 shrink-0 text-muted-foreground" />
 			<input
 				data-slot="command-input"
 				className={cn(
-					"flex h-10 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+					"flex h-8 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
 					className
 				)}
 				{...props}
@@ -77,7 +77,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<"div">) {
 			data-slot="command-item"
 			role="option"
 			className={cn(
-				"relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1 text-sm outline-none transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				className
 			)}
 			{...props}

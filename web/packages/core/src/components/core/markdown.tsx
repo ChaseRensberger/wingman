@@ -125,9 +125,9 @@ function useCodeTheme() {
 
 function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
-    <div className="my-4 overflow-hidden rounded-xl border bg-card shadow-sm shadow-primary/5">
+    <div className="my-4 overflow-hidden rounded-md border bg-card shadow-sm">
       {lang && (
-        <div className="border-b bg-muted/45 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="border-b bg-muted px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           {lang}
         </div>
       )}
@@ -173,9 +173,9 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   if (highlightedCode?.key !== highlightKey) return <PlainCodeBlock code={code} lang={lang} />
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border bg-card shadow-sm shadow-primary/5">
+    <div className="my-4 overflow-hidden rounded-md border bg-card shadow-sm">
       {lang && (
-        <div className="border-b bg-muted/45 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="border-b bg-muted px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           {lang}
         </div>
       )}
@@ -213,7 +213,7 @@ function Markdown({ children, className, ...props }: MarkdownProps) {
 
             if (!match) {
               return (
-                <code className="rounded-md border bg-muted/55 px-1.5 py-0.5 text-[0.82em] font-medium text-foreground">
+                <code className="rounded-sm border bg-muted px-1.5 py-0.5 text-[0.82em] font-medium text-foreground">
                   {children}
                 </code>
               )

@@ -33,7 +33,7 @@ function DrawerOverlay({
 		<DrawerPrimitive.Backdrop
 			data-slot="drawer-overlay"
 			className={cn(
-				"fixed inset-0 z-50 bg-black/50 data-closed:animate-out data-closed:fade-out-0 data-open:animate-in data-open:fade-in-0",
+				"fixed inset-0 z-50 bg-overlay",
 				className
 			)}
 			{...props}
@@ -52,12 +52,12 @@ function DrawerContent({
 			<DrawerPrimitive.Popup
 				data-slot="drawer-popup"
 				className={cn(
-					"group/drawer-popup fixed inset-x-0 bottom-0 z-50 flex h-auto flex-col rounded-t-lg border-t bg-background shadow-lg outline-none data-closed:animate-out data-closed:slide-out-to-bottom data-closed:fade-out-0 data-open:animate-in data-open:slide-in-from-bottom data-open:fade-in-0",
+					"group/drawer-popup fixed inset-x-0 bottom-0 z-50 flex h-auto flex-col rounded-t-[var(--radius)] border-x border-t bg-popover shadow-sm outline-none",
 					className
 				)}
 				{...props}
 			>
-				<div className="mx-auto mt-4 h-2 w-[100px] shrink-0 rounded-full bg-muted" />
+				<div className="mx-auto mt-3 h-1.5 w-16 shrink-0 rounded-full bg-muted" />
 				{children}
 			</DrawerPrimitive.Popup>
 		</DrawerPortal>
@@ -69,7 +69,7 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="drawer-header"
 			className={cn(
-				"flex flex-col gap-2 p-4 text-center sm:text-left",
+				"flex flex-col gap-1.5 p-3 text-center sm:text-left",
 				className
 			)}
 			{...props}
@@ -82,7 +82,7 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
 		<div
 			data-slot="drawer-footer"
 			className={cn(
-				"mt-auto flex flex-col gap-2 p-4",
+				"mt-auto flex flex-col gap-2 p-3",
 				className
 			)}
 			{...props}

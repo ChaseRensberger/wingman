@@ -4,6 +4,7 @@ import { StackIcon } from "@phosphor-icons/react";
 import type { CallTrace, ModelCall, Session } from "@/lib/types";
 import { formatTokenCount } from "@/lib/utils";
 import { Button } from "@wingman/core/components/core/button";
+import { Card } from "@wingman/core/components/core/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@wingman/core/components/core/collapsible";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@wingman/core/components/core/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@wingman/core/components/core/tooltip";
@@ -37,10 +38,10 @@ function ContextRing({ percent }: { percent: number }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
 	return (
-		<div className="min-w-0 rounded-lg border bg-muted/25 px-3 py-2">
+		<Card size="sm" className="min-w-0 gap-0 bg-muted/25 px-3 py-2">
 			<div className="text-xs text-muted-foreground">{label}</div>
 			<div className="mt-1 truncate text-sm font-medium" title={value}>{value}</div>
-		</div>
+		</Card>
 	);
 }
 

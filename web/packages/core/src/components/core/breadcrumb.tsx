@@ -11,7 +11,7 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
     <ol
       data-slot="breadcrumb-list"
       className={cn(
-        "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
+        "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground",
         className
       )}
       {...props}
@@ -36,7 +36,7 @@ function BreadcrumbLink({
   return (
     <a
       data-slot="breadcrumb-link"
-      className={cn("transition-colors hover:text-foreground", className)}
+      className={cn("hover:text-foreground", className)}
       {...props}
     />
   )

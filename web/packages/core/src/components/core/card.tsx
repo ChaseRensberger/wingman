@@ -4,12 +4,12 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "#lib/utils"
 
 const cardVariants = cva(
-  "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border shadow-sm",
+  "bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-[var(--radius)] border py-(--card-spacing) shadow-sm",
   {
     variants: {
       size: {
-        default: "p-6",
-        sm: "p-4",
+        default: "[--card-spacing:--spacing(4)]",
+        sm: "[--card-spacing:--spacing(3)]",
       },
     },
     defaultVariants: {
@@ -37,7 +37,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "grid grid-cols-[1fr_auto] items-start gap-1.5 has-[data-slot=card-action]:grid-cols-[1fr_auto]",
+        "grid grid-cols-[1fr_auto] items-start gap-1.5 px-(--card-spacing) has-[data-slot=card-action]:grid-cols-[1fr_auto]",
         className
       )}
       {...props}
@@ -79,7 +79,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("", className)}
+      className={cn("px-(--card-spacing)", className)}
       {...props}
     />
   )
@@ -89,7 +89,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
-      className={cn("flex items-center", className)}
+      className={cn("flex items-center px-(--card-spacing)", className)}
       {...props}
     />
   )

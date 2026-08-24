@@ -2,6 +2,7 @@ import {
 	ContextMenu,
 	ContextMenuTrigger,
 	ContextMenuContent,
+	ContextMenuGroup,
 	ContextMenuItem,
 	ContextMenuSeparator,
 	ContextMenuLabel,
@@ -18,9 +19,11 @@ export function ContextMenuShowcase() {
 					</div>
 				</ContextMenuTrigger>
 				<ContextMenuContent>
-					<ContextMenuLabel>Actions</ContextMenuLabel>
-					<ContextMenuItem>Open</ContextMenuItem>
-					<ContextMenuItem>Copy link</ContextMenuItem>
+					<ContextMenuGroup>
+						<ContextMenuLabel>Actions</ContextMenuLabel>
+						<ContextMenuItem>Open</ContextMenuItem>
+						<ContextMenuItem>Copy link</ContextMenuItem>
+					</ContextMenuGroup>
 					<ContextMenuSeparator />
 					<ContextMenuItem>Share</ContextMenuItem>
 					<ContextMenuSeparator />

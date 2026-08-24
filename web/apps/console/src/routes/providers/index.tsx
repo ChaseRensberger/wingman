@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Input } from "@wingman/core/components/core/input";
 import { Badge } from "@wingman/core/components/core/badge";
+import { Card } from "@wingman/core/components/core/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
@@ -67,18 +68,18 @@ function ProvidersPage() {
           <PageBreadcrumb items={[{ label: "Providers" }]} />
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <div className="rounded-lg border bg-card px-3 py-2">
+			<Card size="sm" className="gap-0 px-3 py-2">
             <div className="text-xs text-muted-foreground">Providers</div>
             <div className="text-lg font-semibold">{providers.length}</div>
-          </div>
-          <div className="rounded-lg border bg-card px-3 py-2">
+			</Card>
+			<Card size="sm" className="gap-0 px-3 py-2">
             <div className="text-xs text-muted-foreground">Configured</div>
             <div className="text-lg font-semibold">{configuredCount}</div>
-          </div>
-          <div className="rounded-lg border bg-card px-3 py-2">
+			</Card>
+			<Card size="sm" className="gap-0 px-3 py-2">
             <div className="text-xs text-muted-foreground">Models</div>
             <div className="text-lg font-semibold">{modelCount}</div>
-          </div>
+			</Card>
         </div>
       </div>
 

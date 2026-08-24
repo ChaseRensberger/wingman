@@ -55,7 +55,7 @@ function Sidebar({ className, children, ...props }: React.ComponentProps<"aside"
       data-slot="sidebar"
       data-open={open}
       className={cn(
-        "flex flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200",
+        "flex flex-col border-r bg-card text-card-foreground transition-[width] duration-150",
         open ? "w-64" : "w-14",
         className
       )}
@@ -112,7 +112,7 @@ function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"span">
     <span
       data-slot="sidebar-group-label"
       className={cn(
-        "px-2 py-1 text-xs font-medium uppercase tracking-widest text-sidebar-foreground/50 transition-opacity",
+        "px-2 py-1 text-xs font-medium uppercase tracking-widest text-muted-foreground transition-opacity",
         !open && "opacity-0",
         className
       )}
@@ -131,9 +131,8 @@ function SidebarItem({
       data-slot="sidebar-item"
       data-active={active}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm cursor-pointer select-none transition-colors",
-        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        active && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
+        "flex select-none items-center gap-2.5 rounded-[var(--radius)] px-2.5 py-1.5 text-sm",
+        active && "bg-primary/15 text-primary",
         className
       )}
       {...props}
@@ -173,7 +172,7 @@ function SidebarTrigger({ className, ...props }: React.ComponentProps<"button">)
       data-slot="sidebar-trigger"
       onClick={() => setOpen(!open)}
       className={cn(
-        "inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors",
+        "inline-flex items-center justify-center rounded-[var(--radius)] p-1.5 text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
         className
       )}
       aria-label={open ? "Collapse sidebar" : "Expand sidebar"}

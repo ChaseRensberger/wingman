@@ -3,6 +3,7 @@ import {
 	MenubarMenu,
 	MenubarTrigger,
 	MenubarContent,
+	MenubarGroup,
 	MenubarItem,
 	MenubarSeparator,
 	MenubarLabel,
@@ -16,9 +17,11 @@ export function MenubarShowcase() {
 				<MenubarMenu>
 					<MenubarTrigger>File</MenubarTrigger>
 					<MenubarContent>
-						<MenubarLabel>File Actions</MenubarLabel>
-						<MenubarItem>New File</MenubarItem>
-						<MenubarItem>Open...</MenubarItem>
+						<MenubarGroup>
+							<MenubarLabel>File Actions</MenubarLabel>
+							<MenubarItem>New File</MenubarItem>
+							<MenubarItem>Open...</MenubarItem>
+						</MenubarGroup>
 						<MenubarSeparator />
 						<MenubarItem>Save</MenubarItem>
 						<MenubarItem>Save As...</MenubarItem>

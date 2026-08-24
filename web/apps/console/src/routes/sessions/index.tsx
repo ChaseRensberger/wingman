@@ -26,6 +26,7 @@ import {
 	AlertDialogTitle,
 } from "@wingman/core/components/core/alert-dialog";
 import { Button } from "@wingman/core/components/core/button";
+import { Card } from "@wingman/core/components/core/card";
 import {
 	Dialog,
 	DialogContent,
@@ -384,7 +385,7 @@ function SessionsPage() {
 					</div>
 
 					{selectedWorkspace && (
-						<div className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+						<Card size="sm" className="flex-row gap-3 px-4 py-3 sm:items-center sm:justify-between">
 							<div className="min-w-0 font-mono text-sm">
 								<div className="flex min-w-0 items-center gap-2">
 									<span className={cn("size-2 rounded-sm", selectedWorkspaceColor)} />
@@ -395,11 +396,11 @@ function SessionsPage() {
 							<Button variant="outline" size="sm" onClick={() => openEditWorkspace(selectedWorkspace)}>
 								<PencilSimpleIcon className="size-4" />Edit
 							</Button>
-						</div>
+						</Card>
 					)}
 
 					{filteredSessions.length === 0 ? (
-						<div className="rounded-lg border bg-card px-5 py-12 text-center text-sm text-muted-foreground">No sessions found.</div>
+						<Card size="sm" className="px-5 py-12 text-center text-sm text-muted-foreground">No sessions found.</Card>
 					) : (
 						<Table>
 							<TableHeader>

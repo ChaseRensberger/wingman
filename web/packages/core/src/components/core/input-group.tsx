@@ -16,8 +16,7 @@ function InputGroupAddon({ className, ...props }: React.ComponentProps<"span">) 
     <span
       data-slot="input-group-addon"
       className={cn(
-        "inline-flex items-center justify-center px-2.5 text-sm text-muted-foreground border border-input bg-muted first:rounded-l-lg first:border-r-0 last:rounded-r-lg last:border-l-0",
-        "h-8",
+        "inline-flex h-9 items-center justify-center border border-input bg-muted px-2.5 text-sm text-muted-foreground first:rounded-l-[var(--radius)] first:border-r-0 last:rounded-r-[var(--radius)] last:border-l-0",
         className
       )}
       {...props}
