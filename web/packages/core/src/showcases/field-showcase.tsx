@@ -19,20 +19,12 @@ export function FieldShowcase() {
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="name">Full name</FieldLabel>
-            <Input
-              id="name"
-              autoComplete="off"
-              placeholder="Evil Rabbit"
-            />
+            <Input id="name" autoComplete="off" placeholder="Evil Rabbit" />
             <FieldDescription>This appears on invoices and emails.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="username">Username</FieldLabel>
-            <Input
-              id="username"
-              autoComplete="off"
-              aria-invalid
-            />
+            <Input id="username" autoComplete="off" aria-invalid />
             <FieldError>Choose another username.</FieldError>
           </Field>
         </FieldGroup>
