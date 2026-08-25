@@ -38,17 +38,22 @@ func TestManagerRPCProcessHelper(t *testing.T) {
 	config, _ := plugin["config"].(map[string]any)
 	scenario, _ := config["scenario"].(string)
 	id, _ := plugin["id"].(string)
+	invalidInitialize := false
 	if scenario == "bad-protocol" {
 		respond(init, map[string]any{"protocol_version": 2, "plugin": map[string]any{"id": id}})
-		return
-	}
-	if scenario == "bad-id" {
+		invalidInitialize = true
+	} else if scenario == "bad-id" {
 		respond(init, map[string]any{"protocol_version": 1, "plugin": map[string]any{"id": "other"}})
-		return
-	}
-	if scenario == "unsupported-capability" {
+		invalidInitialize = true
+	} else if scenario == "unsupported-capability" {
 		respond(init, map[string]any{"protocol_version": 1, "plugin": map[string]any{"id": id}, "capabilities": []string{"nope"}})
-		return
+		invalidInitialize = true
+	}
+	if invalidInitialize {
+		// Keep stdout open until the host validates the malformed response.
+		for {
+			read()
+		}
 	}
 	name := "authoritative-" + id
 	if scenario == "collision" {
