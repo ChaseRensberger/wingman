@@ -41,7 +41,6 @@ import { SliderShowcase } from "./showcases/slider-showcase";
 import { SkeletonShowcase } from "./showcases/skeleton-showcase";
 import { SelectShowcase } from "./showcases/select-showcase";
 import { ComboboxShowcase } from "./showcases/combobox-showcase";
-import { CommandShowcase } from "./showcases/command-showcase";
 import { NativeSelectShowcase } from "./showcases/native-select-showcase";
 import { BreadcrumbShowcase } from "./showcases/breadcrumb-showcase";
 import { PaginationShowcase } from "./showcases/pagination-showcase";
@@ -95,7 +94,6 @@ export default function App() {
         <ToggleShowcase />
         <ToggleGroupShowcase />
         <DropdownMenuShowcase />
-        <CommandShowcase />
         <MenubarShowcase />
         <NavigationMenuShowcase />
         <ContextMenuShowcase />
