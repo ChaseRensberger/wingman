@@ -84,11 +84,11 @@ func TestModelCallLifecycleStartErrorPreventsDispatch(t *testing.T) {
 func TestModelCallLifecycleFinishesPhysicalOutcomes(t *testing.T) {
 	providerErr := errors.New("provider failed")
 	for _, test := range []struct {
-		name      string
-		stream    func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error)
-		wantErr   error
-		requestID string
-		cancelled bool
+		name             string
+		stream           func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error)
+		wantErr          error
+		requestID        string
+		cancelAfterStart bool
 	}{
 		{name: "success", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 			return completedStream(models.Message{Role: models.RoleAssistant}), nil
@@ -104,22 +104,22 @@ func TestModelCallLifecycleFinishesPhysicalOutcomes(t *testing.T) {
 		{name: "cancellation", stream: func(ctx context.Context, _ models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
-		}, wantErr: context.Canceled, cancelled: true},
+		}, wantErr: context.Canceled, cancelAfterStart: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
-			if test.cancelled {
-				var cancel context.CancelFunc
+			var cancel context.CancelFunc
+			if test.cancelAfterStart {
 				ctx, cancel = context.WithCancel(ctx)
-				go func() {
-					time.Sleep(time.Millisecond)
-					cancel()
-				}()
+				defer cancel()
 			}
 			var finishes []ModelCallFinishInfo
 			result, err := Run(ctx, Config{
 				Client: &modelCallTestClient{stream: test.stream}, Model: testModel,
 				ModelCallLifecycle: modelCallLifecycleFuncs{start: func(context.Context, ModelCallStartInfo) (string, error) {
+					if test.cancelAfterStart {
+						cancel()
+					}
 					return "call_1", nil
 				}, finish: func(finishCtx context.Context, info ModelCallFinishInfo) error {
 					if finishCtx.Err() != nil {
