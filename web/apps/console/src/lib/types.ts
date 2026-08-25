@@ -189,7 +189,14 @@ export interface ToolUse {
   ordinal: number;
   call_id?: string;
   name: string;
-  status: "proposed" | "authorized" | "started" | "completed" | "failed" | "interrupted" | "declined";
+  status:
+    | "proposed"
+    | "authorized"
+    | "started"
+    | "completed"
+    | "failed"
+    | "interrupted"
+    | "declined";
   input?: Record<string, unknown>;
   output?: string;
   structured?: unknown;
@@ -214,9 +221,9 @@ export interface Workspace {
 }
 
 export interface DirectoryListing {
-	path: string;
-	parent?: string;
-	entries: Array<{ name: string; path: string }>;
+  path: string;
+  parent?: string;
+  entries: Array<{ name: string; path: string }>;
 }
 
 export interface Message {
@@ -346,8 +353,8 @@ export interface ToolPart {
   input: Record<string, unknown>;
   input_raw?: string;
   output?: string;
-	output_parts?: Part[];
-	structured?: unknown;
+  output_parts?: Part[];
+  structured?: unknown;
   metadata?: Record<string, unknown>;
   error?: string;
   started_at?: number;
@@ -371,13 +378,13 @@ export interface ToolActivity {
 }
 
 export interface ToolResultPart {
-	id?: string;
-	type: "tool_result";
+  id?: string;
+  type: "tool_result";
   tool_use_id?: string;
-	call_id: string;
-	name?: string;
+  call_id: string;
+  name?: string;
   output: Part[];
-	structured?: unknown;
+  structured?: unknown;
   is_error?: boolean;
   metadata?: Record<string, unknown>;
   provider_options?: unknown;

@@ -36,8 +36,16 @@ body::before {
   height: 30rem;
   content: "";
   background:
-    radial-gradient(circle at 22% 20%, color-mix(in oklch, var(--primary) 24%, transparent), transparent 34%),
-    radial-gradient(circle at 78% 8%, color-mix(in oklch, var(--secondary) 70%, transparent), transparent 36%);
+    radial-gradient(
+      circle at 22% 20%,
+      color-mix(in oklch, var(--primary) 24%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 78% 8%,
+      color-mix(in oklch, var(--secondary) 70%, transparent),
+      transparent 36%
+    );
   filter: blur(18px);
 }
 

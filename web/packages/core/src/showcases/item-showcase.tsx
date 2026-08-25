@@ -1,6 +1,13 @@
-import { Item, ItemIcon, ItemContent, ItemLabel, ItemDescription, ItemAction } from "#components/core/item"
-import { Badge } from "#components/core/badge"
-import { FileIcon, FolderIcon, ImageIcon } from "@phosphor-icons/react"
+import {
+  Item,
+  ItemIcon,
+  ItemContent,
+  ItemLabel,
+  ItemDescription,
+  ItemAction,
+} from "#components/core/item";
+import { Badge } from "#components/core/badge";
+import { FileIcon, FolderIcon, ImageIcon } from "@phosphor-icons/react";
 
 export function ItemShowcase() {
   return (
@@ -8,14 +15,18 @@ export function ItemShowcase() {
       <h2 className="text-2xl font-semibold">Item</h2>
       <div className="space-y-0.5 max-w-sm rounded-lg border border-border">
         <Item>
-          <ItemIcon><FolderIcon /></ItemIcon>
+          <ItemIcon>
+            <FolderIcon />
+          </ItemIcon>
           <ItemContent>
             <ItemLabel>Documents</ItemLabel>
             <ItemDescription>12 files</ItemDescription>
           </ItemContent>
         </Item>
         <Item>
-          <ItemIcon><ImageIcon /></ItemIcon>
+          <ItemIcon>
+            <ImageIcon />
+          </ItemIcon>
           <ItemContent>
             <ItemLabel>Photos</ItemLabel>
             <ItemDescription>238 files</ItemDescription>
@@ -25,7 +36,9 @@ export function ItemShowcase() {
           </ItemAction>
         </Item>
         <Item>
-          <ItemIcon><FileIcon /></ItemIcon>
+          <ItemIcon>
+            <FileIcon />
+          </ItemIcon>
           <ItemContent>
             <ItemLabel>README.md</ItemLabel>
             <ItemDescription>Modified 2 days ago</ItemDescription>
@@ -33,5 +46,5 @@ export function ItemShowcase() {
         </Item>
       </div>
     </section>
-  )
+  );
 }

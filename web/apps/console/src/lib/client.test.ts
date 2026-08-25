@@ -13,5 +13,4 @@ describe("daemon connection failures", () => {
     expect(isDaemonConnectionFailure(500)).toBe(true);
     expect(isDaemonConnectionFailure(401)).toBe(false);
   });
-
 });

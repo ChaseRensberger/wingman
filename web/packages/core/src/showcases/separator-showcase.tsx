@@ -1,4 +1,4 @@
-import { Separator } from "#components/core/separator"
+import { Separator } from "#components/core/separator";
 
 export function SeparatorShowcase() {
   return (
@@ -19,5 +19,5 @@ export function SeparatorShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import { Markdown } from "#components/core/markdown"
+import { Markdown } from "#components/core/markdown";
 
 const sampleMarkdown = `# Markdown
 
@@ -29,7 +29,7 @@ function StatusBadge({ status }: { status: Status }) {
   return <span data-status={status}>{status}</span>
 }
 \`\`\`
-`
+`;
 
 export function MarkdownShowcase() {
   return (
@@ -39,5 +39,5 @@ export function MarkdownShowcase() {
         <Markdown>{sampleMarkdown}</Markdown>
       </div>
     </section>
-  )
+  );
 }

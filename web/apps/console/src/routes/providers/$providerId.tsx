@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertDialog,
@@ -15,7 +15,14 @@ import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import { Input } from "@wingman/core/components/core/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@wingman/core/components/core/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@wingman/core/components/core/table";
 import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
@@ -36,12 +43,15 @@ function ProviderDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [oauthAttempt, setOAuthAttempt] = useState<ProviderOAuthAttempt | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      const providerData = await client.providers.list() as Provider[];
+      const providerData = (await client.providers.list()) as Provider[];
       setProvider(providerData.find((item) => item.id === providerId) ?? null);
       try {
-        const modelData = await client.providers.models.list(providerId) as Record<string, ProviderModel>;
+        const modelData = (await client.providers.models.list(providerId)) as Record<
+          string,
+          ProviderModel
+        >;
         setModels(Object.values(modelData).sort((a, b) => a.id.localeCompare(b.id)));
       } catch {
         setModels([]);
@@ -49,16 +59,17 @@ function ProviderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [providerId]);
 
   useEffect(() => {
     load().catch((err) => showErrorToast(err));
-  }, [providerId]);
+  }, [load]);
 
   useEffect(() => {
     if (!oauthAttempt || oauthAttempt.status !== "pending" || !provider) return;
     const interval = window.setInterval(() => {
-      client.providers.oauth.get(provider.id, oauthAttempt.id)
+      client.providers.oauth
+        .get(provider.id, oauthAttempt.id)
         .then((attempt) => {
           const next = attempt as ProviderOAuthAttempt;
           setOAuthAttempt(next);
@@ -67,13 +78,15 @@ function ProviderDetailPage() {
         .catch((err) => showErrorToast(err));
     }, 1500);
     return () => window.clearInterval(interval);
-  }, [oauthAttempt?.id, oauthAttempt?.status, provider?.id]);
+  }, [load, oauthAttempt, provider]);
 
   async function saveKey() {
     if (!provider || !key.trim()) return;
     setSaving(true);
     try {
-      await client.providers.auth.set({ providers: { [provider.id]: { type: "api_key", key: key.trim() } } });
+      await client.providers.auth.set({
+        providers: { [provider.id]: { type: "api_key", key: key.trim() } },
+      });
       setKey("");
       await load();
     } catch (err) {
@@ -99,9 +112,12 @@ function ProviderDetailPage() {
   async function startOAuth(method: "browser" | "device") {
     if (!provider) return;
     try {
-      const attempt = await client.providers.oauth.authorize(provider.id, { method }) as ProviderOAuthAttempt;
+      const attempt = (await client.providers.oauth.authorize(provider.id, {
+        method,
+      })) as ProviderOAuthAttempt;
       setOAuthAttempt(attempt);
-      if (method === "browser" && attempt.url) window.open(attempt.url, "_blank", "noopener,noreferrer");
+      if (method === "browser" && attempt.url)
+        window.open(attempt.url, "_blank", "noopener,noreferrer");
     } catch (err) {
       showErrorToast(err);
     }
@@ -109,7 +125,8 @@ function ProviderDetailPage() {
 
   const configured = provider?.auth.configured ?? false;
   const storedKeyConfigured = provider?.auth.source === "stored";
-  const supportsApiKey = provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
+  const supportsApiKey =
+    provider?.auth_types.some((authType) => authType.type === "api_key") ?? false;
   const supportsOAuth = provider?.auth_types.some((authType) => authType.type === "oauth") ?? false;
   const crumbLabel = provider?.name || providerId;
 
@@ -133,21 +150,29 @@ function ProviderDetailPage() {
         <div className="py-8 text-sm text-muted-foreground">Provider not found.</div>
       ) : (
         <div className="grid gap-4">
-			<Card size="sm" className="px-3">
+          <Card size="sm" className="px-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-medium">{provider.name}</div>
                 <div className="font-mono text-xs text-muted-foreground">{provider.id}</div>
-				</div>
-              <Badge variant={configured || provider.auth.source === "disabled" ? "default" : "secondary"}>
+              </div>
+              <Badge
+                variant={
+                  configured || provider.auth.source === "disabled" ? "default" : "secondary"
+                }
+              >
                 {configured || provider.auth.source === "disabled" ? "Configured" : "Unconfigured"}
               </Badge>
             </div>
             <div className="grid gap-3 rounded-md border bg-muted/25 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Effective route</div>
-                  <div className="mt-1 break-all font-mono text-sm">{provider.route.base_url || "-"}</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Effective route
+                  </div>
+                  <div className="mt-1 break-all font-mono text-sm">
+                    {provider.route.base_url || "-"}
+                  </div>
                 </div>
                 <Badge variant={provider.route.base_url_source === "config" ? "default" : "ghost"}>
                   {provider.route.base_url_source === "config" ? "Configured URL" : "Catalog URL"}
@@ -155,7 +180,8 @@ function ProviderDetailPage() {
               </div>
               <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                 <span>
-                  Request auth: <span className="text-foreground">
+                  Request auth:{" "}
+                  <span className="text-foreground">
                     {provider.route.auth_enabled ? "enabled" : "disabled"}
                   </span>
                 </span>
@@ -166,29 +192,59 @@ function ProviderDetailPage() {
             </div>
             {provider.auth.source === "env" && (
               <div className="text-sm text-muted-foreground">
-                Using server environment variable {provider.auth.env ? <code>{provider.auth.env}</code> : "for this provider"}.
-                Save a key here to override it.
+                Using server environment variable{" "}
+                {provider.auth.env ? <code>{provider.auth.env}</code> : "for this provider"}. Save a
+                key here to override it.
               </div>
             )}
             {provider.auth.source === "disabled" && (
               <div className="text-sm text-muted-foreground">
-                Stored and environment credentials are disabled for this provider route by server config.
+                Stored and environment credentials are disabled for this provider route by server
+                config.
               </div>
             )}
             {supportsOAuth && (
               <div className="grid gap-2 rounded-md border bg-muted/25 p-3">
                 <div>
                   <div className="text-sm font-medium">ChatGPT subscription</div>
-                  <div className="text-sm text-muted-foreground">Use ChatGPT Pro or Plus through Codex OAuth.</div>
+                  <div className="text-sm text-muted-foreground">
+                    Use ChatGPT Pro or Plus through Codex OAuth.
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void startOAuth("browser")} disabled={oauthAttempt?.status === "pending"}>Connect in browser</Button>
-                  <Button variant="outline" onClick={() => void startOAuth("device")} disabled={oauthAttempt?.status === "pending"}>Connect headless</Button>
+                  <Button
+                    onClick={() => void startOAuth("browser")}
+                    disabled={oauthAttempt?.status === "pending"}
+                  >
+                    Connect in browser
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void startOAuth("device")}
+                    disabled={oauthAttempt?.status === "pending"}
+                  >
+                    Connect headless
+                  </Button>
                 </div>
                 {oauthAttempt && (
                   <div className="text-sm text-muted-foreground">
-                    {oauthAttempt.status === "pending" ? oauthAttempt.instructions : oauthAttempt.status === "completed" ? "Connected to ChatGPT." : oauthAttempt.error || "OAuth attempt cancelled."}
-                    {oauthAttempt.status === "pending" && oauthAttempt.url && <div className="mt-1 break-all"><a className="text-foreground underline" href={oauthAttempt.url} target="_blank" rel="noreferrer">{oauthAttempt.url}</a></div>}
+                    {oauthAttempt.status === "pending"
+                      ? oauthAttempt.instructions
+                      : oauthAttempt.status === "completed"
+                        ? "Connected to ChatGPT."
+                        : oauthAttempt.error || "OAuth attempt cancelled."}
+                    {oauthAttempt.status === "pending" && oauthAttempt.url && (
+                      <div className="mt-1 break-all">
+                        <a
+                          className="text-foreground underline"
+                          href={oauthAttempt.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {oauthAttempt.url}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -213,12 +269,17 @@ function ProviderDetailPage() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete API key?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will remove the saved API key for {provider.name}. You will need to enter a new key before using this provider again.
+                        This will remove the saved API key for {provider.name}. You will need to
+                        enter a new key before using this provider again.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-                      <AlertDialogAction variant="destructive" onClick={deleteKey} disabled={deleting}>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={deleteKey}
+                        disabled={deleting}
+                      >
                         {deleting ? "Deleting..." : "Delete key"}
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -227,9 +288,11 @@ function ProviderDetailPage() {
               )}
             </div>
             {!supportsApiKey && (
-              <div className="text-sm text-muted-foreground">This provider does not support API key auth.</div>
+              <div className="text-sm text-muted-foreground">
+                This provider does not support API key auth.
+              </div>
             )}
-			</Card>
+          </Card>
 
           <Table>
             <TableHeader>
@@ -245,7 +308,9 @@ function ProviderDetailPage() {
               {models.map((model) => (
                 <TableRow key={model.id}>
                   <TableCell className="font-medium">{model.id}</TableCell>
-                  <TableCell className="text-muted-foreground">{model.context_window || "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {model.context_window || "-"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{model.max_output || "-"}</TableCell>
                   <TableCell className="text-muted-foreground">{formatCost(model)}</TableCell>
                   <TableCell>

@@ -15,15 +15,15 @@ type DaemonReadiness = {
 export type DaemonTransport = { origin: string; username: string; password: string };
 
 function basicAuthorization(username: string, password: string): string {
-	const bytes = new TextEncoder().encode(`${username}:${password}`);
-	let value = "";
-	for (const byte of bytes) value += String.fromCharCode(byte);
-	return `Basic ${btoa(value)}`;
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let value = "";
+  for (const byte of bytes) value += String.fromCharCode(byte);
+  return `Basic ${btoa(value)}`;
 }
 
 type Dependencies = {
   stateDir: () => string;
-	serviceConfigPath: () => string;
+  serviceConfigPath: () => string;
   readTextFile: (path: string) => Promise<string>;
   fetch: typeof fetch;
   now?: () => number;
@@ -70,7 +70,8 @@ export class DaemonDiscovery {
   }
 
   transport(): Promise<DaemonTransport> {
-    if (this.cached && this.cached.expiresAt > this.now()) return Promise.resolve(this.cached.value);
+    if (this.cached && this.cached.expiresAt > this.now())
+      return Promise.resolve(this.cached.value);
     if (this.pending) return this.pending;
     const pending = this.load();
     this.pending = pending;
@@ -85,38 +86,50 @@ export class DaemonDiscovery {
 
   private async load(): Promise<DaemonTransport> {
     const state = this.deps.stateDir();
-		const [rawRegistration, rawCredentials] = await Promise.all([
-			this.deps.readTextFile(`${state}/registration.json`),
-			this.deps.readTextFile(this.deps.serviceConfigPath()),
+    const [rawRegistration, rawCredentials] = await Promise.all([
+      this.deps.readTextFile(`${state}/registration.json`),
+      this.deps.readTextFile(this.deps.serviceConfigPath()),
     ]);
     const registration = JSON.parse(rawRegistration) as DaemonRegistration;
     const origin = new URL(registration.url);
-    if ((origin.protocol !== "http:" && origin.protocol !== "https:") || !registration.instance_id) {
+    if (
+      (origin.protocol !== "http:" && origin.protocol !== "https:") ||
+      !registration.instance_id
+    ) {
       throw new Error("invalid Wingman daemon registration");
     }
-		const credentials = serviceCredentials(rawCredentials);
+    const credentials = serviceCredentials(rawCredentials);
 
     const response = await this.deps.fetch(`${origin.origin}/ready`, {
-			headers: { Authorization: basicAuthorization(credentials.username, credentials.password) },
+      headers: { Authorization: basicAuthorization(credentials.username, credentials.password) },
       signal: this.timeoutSignal(),
     });
-    if (response.status !== 200) throw new Error(`Wingman daemon is not ready: HTTP ${response.status}`);
-    const readiness = await response.json() as DaemonReadiness;
-    if (!readiness.ready || readiness.instance_id !== registration.instance_id || readiness.version !== registration.version) {
+    if (response.status !== 200)
+      throw new Error(`Wingman daemon is not ready: HTTP ${response.status}`);
+    const readiness = (await response.json()) as DaemonReadiness;
+    if (
+      !readiness.ready ||
+      readiness.instance_id !== registration.instance_id ||
+      readiness.version !== registration.version
+    ) {
       throw new Error("Wingman daemon readiness does not match registration");
     }
 
-		const value = { origin: origin.origin, ...credentials };
+    const value = { origin: origin.origin, ...credentials };
     this.cached = { value, expiresAt: this.now() + 1_000 };
     return value;
   }
 }
 
-export async function proxyDaemonRequest(discovery: DaemonDiscovery, request: Request, fetchRequest: typeof fetch = fetch): Promise<Response> {
+export async function proxyDaemonRequest(
+  discovery: DaemonDiscovery,
+  request: Request,
+  fetchRequest: typeof fetch = fetch,
+): Promise<Response> {
   const url = new URL(request.url);
   const transport = await discovery.transport();
   const target = new Request(`${transport.origin}${url.pathname}${url.search}`, request);
-	target.headers.set("Authorization", basicAuthorization(transport.username, transport.password));
+  target.headers.set("Authorization", basicAuthorization(transport.username, transport.password));
   try {
     const response = await fetchRequest(target);
     if (response.status === 401 || response.status === 503) discovery.invalidate();

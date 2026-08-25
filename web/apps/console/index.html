@@ -1,22 +1,30 @@
 <!doctype html>
 <html lang="en">
   <head>
-		<meta charset="UTF-8" />
-		<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wingman</title>
-		<script>
-			try {
-				const theme = localStorage.getItem("wingman-theme") || "default";
-				const mode = localStorage.getItem("wingman-theme-mode") || "system";
-				const resolvedMode = mode === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : mode;
-				if (["default", "gruvbox", "dracula"].includes(theme) && ["light", "dark"].includes(resolvedMode)) {
-					document.documentElement.dataset.theme = theme;
-					document.documentElement.dataset.mode = theme === "dracula" ? "dark" : resolvedMode;
-					document.documentElement.classList.add(theme === "dracula" ? "dark" : resolvedMode);
-				}
-			} catch {}
-		</script>
+    <script>
+      try {
+        const theme = localStorage.getItem("wingman-theme") || "default";
+        const mode = localStorage.getItem("wingman-theme-mode") || "system";
+        const resolvedMode =
+          mode === "system"
+            ? matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : mode;
+        if (
+          ["default", "gruvbox", "dracula"].includes(theme) &&
+          ["light", "dark"].includes(resolvedMode)
+        ) {
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.dataset.mode = theme === "dracula" ? "dark" : resolvedMode;
+          document.documentElement.classList.add(theme === "dracula" ? "dark" : resolvedMode);
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

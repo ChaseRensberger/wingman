@@ -6,8 +6,8 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from '#components/core/card'
-import { Button } from '#components/core/button'
+} from "#components/core/card";
+import { Button } from "#components/core/button";
 
 export function CardShowcase() {
   return (
@@ -19,17 +19,24 @@ export function CardShowcase() {
             <CardTitle>Team Subscription</CardTitle>
             <CardDescription>Manage your team plan and billing.</CardDescription>
             <CardAction>
-              <Button variant="outline" size="sm">Manage</Button>
+              <Button variant="outline" size="sm">
+                Manage
+              </Button>
             </CardAction>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Your team is on the <strong className="text-foreground">Pro plan</strong>. Next billing date is June 1, 2026.
+              Your team is on the <strong className="text-foreground">Pro plan</strong>. Next
+              billing date is June 1, 2026.
             </p>
           </CardContent>
           <CardFooter className="gap-2">
-            <Button variant="default" size="sm">Upgrade</Button>
-            <Button variant="ghost" size="sm">Cancel</Button>
+            <Button variant="default" size="sm">
+              Upgrade
+            </Button>
+            <Button variant="ghost" size="sm">
+              Cancel
+            </Button>
           </CardFooter>
         </Card>
 
@@ -45,5 +52,5 @@ export function CardShowcase() {
         </Card>
       </div>
     </section>
-  )
+  );
 }

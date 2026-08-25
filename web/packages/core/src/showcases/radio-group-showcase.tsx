@@ -1,5 +1,5 @@
-import { RadioGroup, RadioGroupItem } from "#components/core/radio-group"
-import { Field, FieldLabel } from "#components/core/field"
+import { RadioGroup, RadioGroupItem } from "#components/core/radio-group";
+import { Field, FieldLabel } from "#components/core/field";
 
 export function RadioGroupShowcase() {
   return (
@@ -24,5 +24,5 @@ export function RadioGroupShowcase() {
         </Field>
       </RadioGroup>
     </section>
-  )
+  );
 }

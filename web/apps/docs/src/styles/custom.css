@@ -227,11 +227,7 @@ starlight-theme-select select:focus-visible {
 .card:hover,
 .sl-link-card:hover,
 .pagination-links a:hover {
-  border-color: color-mix(
-    in oklch,
-    var(--primary) 55%,
-    var(--border)
-  ) !important;
+  border-color: color-mix(in oklch, var(--primary) 55%, var(--border)) !important;
 }
 
 .hero {

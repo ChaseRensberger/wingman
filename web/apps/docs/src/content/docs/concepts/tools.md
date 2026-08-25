@@ -12,17 +12,17 @@ Tools are functions that the model can call during a session turn. An agent stor
 
 Wingman ships these built-ins:
 
-| Name | Purpose | Requires `work_dir` |
-|---|---|---|
-| `bash` | Execute a `bash -c` command with an optional timeout. | Yes |
-| `read` | Read a file or directory with `filePath`, optional `offset`, and optional `limit`. | Yes |
-| `write` | Write or overwrite `filePath`, creating parent directories as needed. | Yes |
-| `edit` | Replace `oldString` with `newString` in `filePath`. Optionally use `replaceAll`. | Yes |
-| `apply_patch` | Apply a file-oriented patch described by `patchText`. | Yes |
-| `glob` | List files matching a glob pattern. | Yes |
-| `grep` | Search text files with a regular expression. | Yes |
-| `webfetch` | Fetch HTTP(S) content as markdown, text, or HTML. | No |
-| `websearch` | Search the web for current information through a configured search provider. | No |
+| Name          | Purpose                                                                            | Requires `work_dir` |
+| ------------- | ---------------------------------------------------------------------------------- | ------------------- |
+| `bash`        | Execute a `bash -c` command with an optional timeout.                              | Yes                 |
+| `read`        | Read a file or directory with `filePath`, optional `offset`, and optional `limit`. | Yes                 |
+| `write`       | Write or overwrite `filePath`, creating parent directories as needed.              | Yes                 |
+| `edit`        | Replace `oldString` with `newString` in `filePath`. Optionally use `replaceAll`.   | Yes                 |
+| `apply_patch` | Apply a file-oriented patch described by `patchText`.                              | Yes                 |
+| `glob`        | List files matching a glob pattern.                                                | Yes                 |
+| `grep`        | Search text files with a regular expression.                                       | Yes                 |
+| `webfetch`    | Fetch HTTP(S) content as markdown, text, or HTML.                                  | No                  |
+| `websearch`   | Search the web for current information through a configured search provider.       | No                  |
 
 Directory-scoped tools require a session with a working directory. Before you allow file or shell tools, create the session with `working_directory` or `workspace_id`. You can also move the session with `POST /sessions/{id}/move`.
 

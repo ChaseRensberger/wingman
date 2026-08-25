@@ -9,35 +9,35 @@ Permissions control the result when an agent calls a tool.
 
 Wingman has two layers:
 
-| Layer | Purpose |
-|---|---|
-| Agent `tools` | Which tools the model can see and call. |
+| Layer            | Purpose                                                          |
+| ---------------- | ---------------------------------------------------------------- |
+| Agent `tools`    | Which tools the model can see and call.                          |
 | Permission rules | Whether a tool call is allowed, requests approval, or is denied. |
 
 ## Effects
 
 Each matching rule resolves to one effect:
 
-| Effect | Behavior |
-|---|---|
-| `allow` | Run the tool call. |
-| `deny` | Block the tool call and return a model-visible permission error. |
-| `ask` | Create a durable approval request and suspend before the tool is authorized. |
+| Effect  | Behavior                                                                     |
+| ------- | ---------------------------------------------------------------------------- |
+| `allow` | Run the tool call.                                                           |
+| `deny`  | Block the tool call and return a model-visible permission error.             |
+| `ask`   | Create a durable approval request and suspend before the tool is authorized. |
 
 ## Actions
 
 Rules match an action and a resource.
 
-| Action | Resource |
-|---|---|
-| `read` | File or directory path. |
-| `edit` | File path for `edit` and `write`. Every touched path for `apply_patch`. |
-| `grep` | Search pattern. |
-| `glob` | Glob pattern. |
-| `bash` | Shell command string. |
-| `webfetch` | URL. |
-| `websearch` | Search query. |
-| MCP or plugin tool name | `*` |
+| Action                  | Resource                                                                |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `read`                  | File or directory path.                                                 |
+| `edit`                  | File path for `edit` and `write`. Every touched path for `apply_patch`. |
+| `grep`                  | Search pattern.                                                         |
+| `glob`                  | Glob pattern.                                                           |
+| `bash`                  | Shell command string.                                                   |
+| `webfetch`              | URL.                                                                    |
+| `websearch`             | Search query.                                                           |
+| MCP or plugin tool name | `*`                                                                     |
 
 `edit`, `write`, and `apply_patch` use the `edit` action because they change a file.
 

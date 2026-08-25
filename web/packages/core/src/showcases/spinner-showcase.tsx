@@ -1,4 +1,4 @@
-import { Spinner } from "#components/core/spinner"
+import { Spinner } from "#components/core/spinner";
 
 export function SpinnerShowcase() {
   return (
@@ -11,5 +11,5 @@ export function SpinnerShowcase() {
         <Spinner size="xl" />
       </div>
     </section>
-  )
+  );
 }

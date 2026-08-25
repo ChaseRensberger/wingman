@@ -46,7 +46,7 @@ export default defineConfig({
           label: "Build Clients",
           items: [
             { label: "HTTP API Basics", slug: "build-clients/http-api-basics" },
-			{ label: "Go SDK", slug: "build-clients/go-sdk" },
+            { label: "Go SDK", slug: "build-clients/go-sdk" },
             { label: "TypeScript SDK", slug: "build-clients/typescript-sdk" },
             {
               label: "Streaming Events",
@@ -98,13 +98,13 @@ export default defineConfig({
         },
         {
           label: "Reference",
-           items: [
-             { label: "CLI", slug: "reference/cli" },
-             { label: "API", slug: "reference/referenceapi" },
-             { label: "Go Client API", slug: "reference/go-client-api" },
-             { label: "TypeScript Client API", slug: "reference/typescript-client-api" },
-             { label: "Config Schema", slug: "reference/config-schema" },
-           ],
+          items: [
+            { label: "CLI", slug: "reference/cli" },
+            { label: "API", slug: "reference/referenceapi" },
+            { label: "Go Client API", slug: "reference/go-client-api" },
+            { label: "TypeScript Client API", slug: "reference/typescript-client-api" },
+            { label: "Config Schema", slug: "reference/config-schema" },
+          ],
         },
       ],
     }),

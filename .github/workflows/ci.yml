@@ -35,6 +35,14 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile
 
+      - name: Check web formatting
+        working-directory: web
+        run: bun run format:check
+
+      - name: Lint web workspaces
+        working-directory: web
+        run: bun run lint
+
       - name: Build TypeScript workspaces
         working-directory: web
         run: bun run build
@@ -45,6 +53,14 @@ jobs:
       - name: Check browser client boundaries
         working-directory: web
         run: bun run --filter @wingman-actor/client test
+
+      - name: Test Console
+        working-directory: web
+        run: bun run --filter @wingman/console test
+
+      - name: Test Desktop
+        working-directory: web
+        run: bun run --filter @wingman/desktop test
 
       - name: Test npm package artifact
         run: bash scripts/test-client-package.sh

@@ -65,6 +65,6 @@ src/lib/utils.ts           Shared className helpers
 Apps import shared primitives directly from the workspace package:
 
 ```tsx
-import { Button } from "@wingman/core/components/core/button"
-import { cn } from "@wingman/core/lib/utils"
+import { Button } from "@wingman/core/components/core/button";
+import { cn } from "@wingman/core/lib/utils";
 ```

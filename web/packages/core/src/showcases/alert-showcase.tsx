@@ -1,10 +1,6 @@
-import { CheckCircle, WarningCircle, Info } from "@phosphor-icons/react"
+import { CheckCircle, WarningCircle, Info } from "@phosphor-icons/react";
 
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "#components/core/alert"
+import { Alert, AlertDescription, AlertTitle } from "#components/core/alert";
 
 export function AlertShowcase() {
   return (
@@ -14,15 +10,11 @@ export function AlertShowcase() {
         <Alert>
           <CheckCircle />
           <AlertTitle>Success! Your changes have been saved</AlertTitle>
-          <AlertDescription>
-            This is an alert with icon, title and description.
-          </AlertDescription>
+          <AlertDescription>This is an alert with icon, title and description.</AlertDescription>
         </Alert>
         <Alert>
           <Info />
-          <AlertTitle>
-            This Alert has a title and an icon. No description.
-          </AlertTitle>
+          <AlertTitle>This Alert has a title and an icon. No description.</AlertTitle>
         </Alert>
         <Alert variant="destructive">
           <WarningCircle />
@@ -33,5 +25,5 @@ export function AlertShowcase() {
         </Alert>
       </div>
     </section>
-  )
+  );
 }

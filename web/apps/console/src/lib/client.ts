@@ -1,8 +1,4 @@
-import {
-  APIError,
-  createWingmanClient,
-  type components,
-} from "@wingman-actor/client";
+import { APIError, createWingmanClient, type components } from "@wingman-actor/client";
 
 import type { SessionSummary } from "./types";
 
@@ -45,11 +41,18 @@ async function tokenAPIError(response: Response): Promise<APIError> {
       body.error?.details ?? [],
     );
   } catch {
-    return new APIError(response.status, "request_failed", text || `HTTP ${response.status}`, response.headers.get("X-Request-ID") ?? undefined);
+    return new APIError(
+      response.status,
+      "request_failed",
+      text || `HTTP ${response.status}`,
+      response.headers.get("X-Request-ID") ?? undefined,
+    );
   }
 }
 
-export async function rotateClientToken(id: string): Promise<components["schemas"]["CreateClientResponse"]> {
+export async function rotateClientToken(
+  id: string,
+): Promise<components["schemas"]["CreateClientResponse"]> {
   const response = await fetch(`/clients/${encodeURIComponent(id)}/token`, {
     method: "POST",
     credentials: "same-origin",
@@ -62,12 +65,24 @@ export async function rotateClientToken(id: string): Promise<components["schemas
   return response.json() as Promise<components["schemas"]["CreateClientResponse"]>;
 }
 
-export async function renameSession(session: Pick<SessionSummary, "id" | "version">, title: string): Promise<SessionSummary> {
-  return client.sessions.rename(session.id, { title, expected_version: session.version }) as Promise<SessionSummary>;
+export async function renameSession(
+  session: Pick<SessionSummary, "id" | "version">,
+  title: string,
+): Promise<SessionSummary> {
+  return client.sessions.rename(session.id, {
+    title,
+    expected_version: session.version,
+  }) as Promise<SessionSummary>;
 }
 
-export async function moveSession(session: Pick<SessionSummary, "id" | "version">, workingDirectory: string): Promise<SessionSummary> {
-  return client.sessions.move(session.id, { working_directory: workingDirectory, expected_version: session.version }) as Promise<SessionSummary>;
+export async function moveSession(
+  session: Pick<SessionSummary, "id" | "version">,
+  workingDirectory: string,
+): Promise<SessionSummary> {
+  return client.sessions.move(session.id, {
+    working_directory: workingDirectory,
+    expected_version: session.version,
+  }) as Promise<SessionSummary>;
 }
 
 export async function purgeSession(session: Pick<SessionSummary, "id" | "version">): Promise<void> {

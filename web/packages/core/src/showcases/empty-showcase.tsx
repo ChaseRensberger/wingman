@@ -1,6 +1,12 @@
-import { Empty, EmptyIcon, EmptyTitle, EmptyDescription, EmptyActions } from "#components/core/empty"
-import { Button } from "#components/core/button"
-import { FolderOpenIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
+import {
+  Empty,
+  EmptyIcon,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyActions,
+} from "#components/core/empty";
+import { Button } from "#components/core/button";
+import { FolderOpenIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 
 export function EmptyShowcase() {
   return (
@@ -31,11 +37,13 @@ export function EmptyShowcase() {
               We couldn't find anything matching your search. Try different terms.
             </EmptyDescription>
             <EmptyActions>
-              <Button variant="outline" size="sm">Clear search</Button>
+              <Button variant="outline" size="sm">
+                Clear search
+              </Button>
             </EmptyActions>
           </Empty>
         </div>
       </div>
     </section>
-  )
+  );
 }

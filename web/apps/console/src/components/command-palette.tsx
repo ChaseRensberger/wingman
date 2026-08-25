@@ -2,89 +2,100 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
-import { useTheme } from "@wingman/core/components/theme-provider";
+import { useTheme } from "@wingman/core/components/theme-context";
 import { themes } from "@wingman/core/themes/registry";
 import { navItems } from "@/lib/navigation";
 
 function isEditableTarget(target: EventTarget | null) {
-	return target instanceof HTMLElement && (
-		target.isContentEditable ||
-		["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
-	);
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+  );
 }
 
 export function CommandPalette() {
-	const navigate = useNavigate();
-	const { theme, colorMode, setColorMode, setTheme } = useTheme();
-	const [open, setOpen] = useState(false);
-	const toggle = useEffectEvent(() => setOpen((current) => !current));
+  const navigate = useNavigate();
+  const { theme, colorMode, setColorMode, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+  const toggle = useEffectEvent(() => setOpen((current) => !current));
 
-	useEffect(() => {
-		function handleKeyDown(event: KeyboardEvent) {
-			if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
-			if (!open && isEditableTarget(event.target)) return;
-			event.preventDefault();
-			toggle();
-		}
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
+      if (!open && isEditableTarget(event.target)) return;
+      event.preventDefault();
+      toggle();
+    }
 
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [open]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
 
-	function createSession() {
-		setOpen(false);
-		navigate({ to: "/sessions/$sessionId", params: { sessionId: "new" } });
-	}
+  function createSession() {
+    setOpen(false);
+    navigate({ to: "/sessions/$sessionId", params: { sessionId: "new" } });
+  }
 
-	function navigateTo(to: (typeof navItems)[number]["to"]) {
-		setOpen(false);
-		navigate({ to });
-	}
+  function navigateTo(to: (typeof navItems)[number]["to"]) {
+    setOpen(false);
+    navigate({ to });
+  }
 
-	function selectTheme(themeID: typeof theme.id) {
-		setTheme(themeID);
-		setOpen(false);
-	}
+  function selectTheme(themeID: typeof theme.id) {
+    setTheme(themeID);
+    setOpen(false);
+  }
 
-	function selectColorMode(colorMode: "light" | "dark" | "system") {
-		setColorMode(colorMode);
-		setOpen(false);
-	}
+  function selectColorMode(colorMode: "light" | "dark" | "system") {
+    setColorMode(colorMode);
+    setOpen(false);
+  }
 
-	return (
-		<Command.Dialog open={open} onOpenChange={setOpen} label="Command menu">
-			<Command.Input placeholder="Type a command..." />
-			<Command.List>
-				<Command.Empty>No commands found.</Command.Empty>
-				<Command.Group heading="Navigation">
-					{navItems.map(({ to, icon: Icon, label }) => (
-						<Command.Item key={to} value={label} onSelect={() => navigateTo(to)}>
-							<Icon className="size-4" />
-							<span>{label}</span>
-						</Command.Item>
-					))}
-				</Command.Group>
-				<Command.Group heading="Actions">
-					<Command.Item value="new session" onSelect={createSession}>
-						<PlusIcon className="size-4" />
-						<span>New session</span>
-					</Command.Item>
-				</Command.Group>
-				<Command.Group heading="Settings">
-					{themes.map((option) => (
-						<Command.Item key={option.id} value={`change theme ${option.label}`} onSelect={() => selectTheme(option.id)}>
-							<span>Change theme &gt; {option.label}</span>
-							{theme.id === option.id && <CheckIcon className="ml-auto size-4" weight="bold" />}
-						</Command.Item>
-					))}
-					{[...theme.modes, "system" as const].map((mode) => (
-						<Command.Item key={mode} value={`change color mode ${mode}`} onSelect={() => selectColorMode(mode)}>
-							<span>Change color mode &gt; {mode[0].toUpperCase()}{mode.slice(1)}</span>
-							{colorMode === mode && <CheckIcon className="ml-auto size-4" weight="bold" />}
-						</Command.Item>
-					))}
-				</Command.Group>
-			</Command.List>
-		</Command.Dialog>
-	);
+  return (
+    <Command.Dialog open={open} onOpenChange={setOpen} label="Command menu">
+      <Command.Input placeholder="Type a command..." />
+      <Command.List>
+        <Command.Empty>No commands found.</Command.Empty>
+        <Command.Group heading="Navigation">
+          {navItems.map(({ to, icon: Icon, label }) => (
+            <Command.Item key={to} value={label} onSelect={() => navigateTo(to)}>
+              <Icon className="size-4" />
+              <span>{label}</span>
+            </Command.Item>
+          ))}
+        </Command.Group>
+        <Command.Group heading="Actions">
+          <Command.Item value="new session" onSelect={createSession}>
+            <PlusIcon className="size-4" />
+            <span>New session</span>
+          </Command.Item>
+        </Command.Group>
+        <Command.Group heading="Settings">
+          {themes.map((option) => (
+            <Command.Item
+              key={option.id}
+              value={`change theme ${option.label}`}
+              onSelect={() => selectTheme(option.id)}
+            >
+              <span>Change theme &gt; {option.label}</span>
+              {theme.id === option.id && <CheckIcon className="ml-auto size-4" weight="bold" />}
+            </Command.Item>
+          ))}
+          {[...theme.modes, "system" as const].map((mode) => (
+            <Command.Item
+              key={mode}
+              value={`change color mode ${mode}`}
+              onSelect={() => selectColorMode(mode)}
+            >
+              <span>
+                Change color mode &gt; {mode[0].toUpperCase()}
+                {mode.slice(1)}
+              </span>
+              {colorMode === mode && <CheckIcon className="ml-auto size-4" weight="bold" />}
+            </Command.Item>
+          ))}
+        </Command.Group>
+      </Command.List>
+    </Command.Dialog>
+  );
 }

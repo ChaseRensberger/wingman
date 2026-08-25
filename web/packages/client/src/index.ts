@@ -8,15 +8,11 @@ export type Agent = components["schemas"]["Agent"];
 export type Client = components["schemas"]["Client"];
 export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type CreateClientRequest = components["schemas"]["CreateClientRequest"];
-export type CreateSessionRequest =
-  components["schemas"]["CreateSessionRequest"];
+export type CreateSessionRequest = components["schemas"]["CreateSessionRequest"];
 export type ErrorResponse = components["schemas"]["ErrorResponse"];
-export type MessageSessionRequest =
-  components["schemas"]["MessageSessionRequest"];
-export type PermissionReplyRequest =
-  components["schemas"]["PermissionReplyRequest"];
-export type MessageSessionResponse =
-  components["schemas"]["MessageSessionResponse"];
+export type MessageSessionRequest = components["schemas"]["MessageSessionRequest"];
+export type PermissionReplyRequest = components["schemas"]["PermissionReplyRequest"];
+export type MessageSessionResponse = components["schemas"]["MessageSessionResponse"];
 export type RunRequest = components["schemas"]["RunRequest"];
 export type RunStreamEvent = components["schemas"]["RunStreamEvent"];
 export type Session = components["schemas"]["Session"];
@@ -91,10 +87,7 @@ async function requestData<T>(request: APIResult<T>): Promise<T> {
     error && typeof error === "object" && "error" in error
       ? (error as ErrorResponse).error
       : undefined;
-  const fallback =
-    typeof error === "string" && error.trim()
-      ? error
-      : `HTTP ${response.status}`;
+  const fallback = typeof error === "string" && error.trim() ? error : `HTTP ${response.status}`;
   throw new APIError(
     response.status,
     detail?.code ?? "request_failed",
@@ -112,11 +105,7 @@ export async function* readSSE(
   maxEventBytes = 1 << 20,
 ): AsyncGenerator<SSEEvent> {
   if (!response.body)
-    throw new APIError(
-      response.status,
-      "stream_unavailable",
-      "response has no stream body",
-    );
+    throw new APIError(response.status, "stream_unavailable", "response has no stream body");
   if (!Number.isSafeInteger(maxEventBytes) || maxEventBytes <= 0) {
     throw new RangeError("maximum SSE event size must be a positive integer");
   }
@@ -145,17 +134,13 @@ export async function* readSSE(
   const consume = (line: string): SSEEvent | undefined => {
     eventBytes += encoder.encode(line).byteLength + 1;
     if (eventBytes > maxEventBytes) {
-      throw new StreamError(
-        "stream_too_large",
-        `server-sent event exceeds ${maxEventBytes} bytes`,
-      );
+      throw new StreamError("stream_too_large", `server-sent event exceeds ${maxEventBytes} bytes`);
     }
     if (line === "") return dispatch();
     if (line.startsWith(":")) return;
     const separator = line.indexOf(":");
     const field = separator < 0 ? line : line.slice(0, separator);
-    const value =
-      separator < 0 ? "" : line.slice(separator + 1).replace(/^ /, "");
+    const value = separator < 0 ? "" : line.slice(separator + 1).replace(/^ /, "");
     if (field === "event") event = value;
     if (field === "id" && !value.includes("\0")) id = value;
     if (field === "data") data.push(value);
@@ -229,9 +214,7 @@ const sessionEventTypes = new Set<SessionEvent["type"]>([
   "session.events.resync_required",
 ]);
 
-export function parseSessionEvent(
-  value: unknown,
-): ParsedSessionEvent | undefined {
+export function parseSessionEvent(value: unknown): ParsedSessionEvent | undefined {
   if (!value || typeof value !== "object") return;
   const event = value as Record<string, unknown>;
   if (
@@ -273,16 +256,10 @@ const runStreamEventTypes = new Set<RunStreamEvent["type"]>([
   "done",
 ]);
 
-export function parseRunStreamEvent(
-  value: unknown,
-): ParsedRunStreamEvent | undefined {
+export function parseRunStreamEvent(value: unknown): ParsedRunStreamEvent | undefined {
   if (!value || typeof value !== "object") return;
   const event = value as Record<string, unknown>;
-  if (
-    typeof event.type !== "string" ||
-    typeof event.version !== "number" ||
-    !isRecord(event.data)
-  )
+  if (typeof event.type !== "string" || typeof event.version !== "number" || !isRecord(event.data))
     return;
   const envelope = event as UnknownRunStreamEvent;
   return runStreamEventTypes.has(envelope.type as RunStreamEvent["type"])
@@ -292,7 +269,7 @@ export function parseRunStreamEvent(
 
 export type WingmanClientOptions = {
   baseUrl: string;
-	username?: string;
+  username?: string;
   password?: string;
   clientName?: string;
   headers?: HeadersInit;
@@ -318,10 +295,9 @@ export function createWingmanClient(options: WingmanClientOptions) {
   if (options.password !== undefined)
     headers.set(
       "Authorization",
-		`Basic ${base64((options.username ?? "wingman") + ":" + options.password)}`,
+      `Basic ${base64((options.username ?? "wingman") + ":" + options.password)}`,
     );
-  if (options.clientName !== undefined)
-    headers.set("X-Wingman-Client", options.clientName);
+  if (options.clientName !== undefined) headers.set("X-Wingman-Client", options.clientName);
   const api = createClient<paths>({
     baseUrl,
     headers,
@@ -337,31 +313,21 @@ export function createWingmanClient(options: WingmanClientOptions) {
   return {
     agents: {
       list: () => requestData(api.GET("/agents")),
-      create: (request: CreateAgentRequest) =>
-        requestData(api.POST("/agents", { body: request })),
-      get: (id: string) =>
-        requestData(api.GET("/agents/{id}", { params: { path: { id } } })),
-      update: (
-        id: string,
-        request: components["schemas"]["UpdateAgentRequest"],
-      ) =>
-        requestData(
-          api.PUT("/agents/{id}", { params: { path: { id } }, body: request }),
-        ),
-      delete: (id: string) =>
-        requestData(api.DELETE("/agents/{id}", { params: { path: { id } } })),
+      create: (request: CreateAgentRequest) => requestData(api.POST("/agents", { body: request })),
+      get: (id: string) => requestData(api.GET("/agents/{id}", { params: { path: { id } } })),
+      update: (id: string, request: components["schemas"]["UpdateAgentRequest"]) =>
+        requestData(api.PUT("/agents/{id}", { params: { path: { id } }, body: request })),
+      delete: (id: string) => requestData(api.DELETE("/agents/{id}", { params: { path: { id } } })),
     },
     clients: {
       list: () => requestData(api.GET("/clients")),
       create: (request: CreateClientRequest) =>
         requestData(api.POST("/clients", { body: request })),
-      get: (id: string) =>
-        requestData(api.GET("/clients/{id}", { params: { path: { id } } })),
+      get: (id: string) => requestData(api.GET("/clients/{id}", { params: { path: { id } } })),
       ensure: async (id: string, name: string) => {
         const request = { id: id.trim(), name: name.trim() };
         try {
-          return (await requestData(api.POST("/clients", { body: request })))
-            .client;
+          return (await requestData(api.POST("/clients", { body: request }))).client;
         } catch (error) {
           if (!(error instanceof APIError) || error.code !== "conflict") {
             throw error;
@@ -384,8 +350,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
       list: () => requestData(api.GET("/sessions")),
       create: (request: CreateSessionRequest) =>
         requestData(api.POST("/sessions", { body: request })),
-      get: (id: string) =>
-        requestData(api.GET("/sessions/{id}", { params: { path: { id } } })),
+      get: (id: string) => requestData(api.GET("/sessions/{id}", { params: { path: { id } } })),
       delete: (id: string, expectedVersion: number) =>
         requestData(
           api.DELETE("/sessions/{id}", {
@@ -396,9 +361,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
           }),
         ),
       abort: (id: string) =>
-        requestData(
-          api.POST("/sessions/{id}/abort", { params: { path: { id } } }),
-        ),
+        requestData(api.POST("/sessions/{id}/abort", { params: { path: { id } } })),
       listEvents: (id: string, query?: { after?: number; limit?: number }) =>
         requestData(
           api.GET("/sessions/{id}/events/history", {
@@ -429,14 +392,9 @@ export function createWingmanClient(options: WingmanClientOptions) {
       },
       modelCalls: {
         list: (id: string) =>
-          requestData(
-            api.GET("/sessions/{id}/model-calls", { params: { path: { id } } }),
-          ),
+          requestData(api.GET("/sessions/{id}/model-calls", { params: { path: { id } } })),
       },
-      move: (
-        id: string,
-        request: components["schemas"]["MoveSessionRequest"],
-      ) =>
+      move: (id: string, request: components["schemas"]["MoveSessionRequest"]) =>
         requestData(
           api.POST("/sessions/{id}/move", {
             params: { path: { id } },
@@ -458,11 +416,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
               params: { path: { id } },
             }),
           ),
-        reply: (
-          id: string,
-          requestID: string,
-          request: PermissionReplyRequest,
-        ) =>
+        reply: (id: string, requestID: string, request: PermissionReplyRequest) =>
           requestData(
             api.POST("/sessions/{id}/permission-requests/{requestID}/reply", {
               params: { path: { id, requestID } },
@@ -470,10 +424,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
             }),
           ),
       },
-      rename: (
-        id: string,
-        request: components["schemas"]["RenameSessionRequest"],
-      ) =>
+      rename: (id: string, request: components["schemas"]["RenameSessionRequest"]) =>
         requestData(
           api.POST("/sessions/{id}/rename", {
             params: { path: { id } },
@@ -482,9 +433,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
         ),
       runs: {
         list: (id: string) =>
-          requestData(
-            api.GET("/sessions/{id}/runs", { params: { path: { id } } }),
-          ),
+          requestData(api.GET("/sessions/{id}/runs", { params: { path: { id } } })),
         get: (id: string, runID: string) =>
           requestData(
             api.GET("/sessions/{id}/runs/{runID}", {
@@ -500,9 +449,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
       },
       toolUses: {
         list: (id: string) =>
-          requestData(
-            api.GET("/sessions/{id}/tool-uses", { params: { path: { id } } }),
-          ),
+          requestData(api.GET("/sessions/{id}/tool-uses", { params: { path: { id } } })),
       },
     },
     run: {
@@ -513,12 +460,8 @@ export function createWingmanClient(options: WingmanClientOptions) {
       list: () => requestData(api.GET("/workspaces")),
       create: (request: components["schemas"]["CreateWorkspaceRequest"]) =>
         requestData(api.POST("/workspaces", { body: request })),
-      get: (id: string) =>
-        requestData(api.GET("/workspaces/{id}", { params: { path: { id } } })),
-      update: (
-        id: string,
-        request: components["schemas"]["UpdateWorkspaceRequest"],
-      ) =>
+      get: (id: string) => requestData(api.GET("/workspaces/{id}", { params: { path: { id } } })),
+      update: (id: string, request: components["schemas"]["UpdateWorkspaceRequest"]) =>
         requestData(
           api.PUT("/workspaces/{id}", {
             params: { path: { id } },
@@ -526,22 +469,16 @@ export function createWingmanClient(options: WingmanClientOptions) {
           }),
         ),
       delete: (id: string) =>
-        requestData(
-          api.DELETE("/workspaces/{id}", { params: { path: { id } } }),
-        ),
+        requestData(api.DELETE("/workspaces/{id}", { params: { path: { id } } })),
       sessions: {
         list: (id: string) =>
-          requestData(
-            api.GET("/workspaces/{id}/sessions", { params: { path: { id } } }),
-          ),
+          requestData(api.GET("/workspaces/{id}/sessions", { params: { path: { id } } })),
       },
     },
     catalog: {
       get: () => requestData(api.GET("/catalog")),
       logo: (id: string) =>
-        requestData(
-          api.GET("/catalog/labs/{id}/logo", { params: { path: { id } } }),
-        ),
+        requestData(api.GET("/catalog/labs/{id}/logo", { params: { path: { id } } })),
     },
     current: {
       service: () => requestData(api.GET("/")),
@@ -550,34 +487,23 @@ export function createWingmanClient(options: WingmanClientOptions) {
     diagnostics: { get: () => requestData(api.GET("/diagnostics")) },
     filesystem: {
       directories: (path?: string) =>
-        requestData(
-          api.GET("/filesystem/directories", { params: { query: { path } } }),
-        ),
+        requestData(api.GET("/filesystem/directories", { params: { query: { path } } })),
     },
     health: {
       get: () => requestData(api.GET("/health")),
-      ready: (options?: ReadinessOptions) =>
-        requestData(api.GET("/ready", options)),
+      ready: (options?: ReadinessOptions) => requestData(api.GET("/ready", options)),
     },
     logs: { list: () => requestData(api.GET("/logs")) },
     mcp: {
       list: () => requestData(api.GET("/mcp")),
       authorize: (name: string) =>
-        requestData(
-          api.POST("/mcp/{name}/auth", { params: { path: { name } } }),
-        ),
+        requestData(api.POST("/mcp/{name}/auth", { params: { path: { name } } })),
       logout: (name: string) =>
-        requestData(
-          api.DELETE("/mcp/{name}/auth", { params: { path: { name } } }),
-        ),
+        requestData(api.DELETE("/mcp/{name}/auth", { params: { path: { name } } })),
       connect: (name: string) =>
-        requestData(
-          api.POST("/mcp/{name}/connect", { params: { path: { name } } }),
-        ),
+        requestData(api.POST("/mcp/{name}/connect", { params: { path: { name } } })),
       disconnect: (name: string) =>
-        requestData(
-          api.POST("/mcp/{name}/disconnect", { params: { path: { name } } }),
-        ),
+        requestData(api.POST("/mcp/{name}/disconnect", { params: { path: { name } } })),
     },
     plugins: {
       list: () => requestData(api.GET("/plugins")),
@@ -597,14 +523,10 @@ export function createWingmanClient(options: WingmanClientOptions) {
           ),
       },
       get: (name: string) =>
-        requestData(
-          api.GET("/provider/{name}", { params: { path: { name } } }),
-        ),
+        requestData(api.GET("/provider/{name}", { params: { path: { name } } })),
       models: {
         list: (name: string) =>
-          requestData(
-            api.GET("/provider/{name}/models", { params: { path: { name } } }),
-          ),
+          requestData(api.GET("/provider/{name}/models", { params: { path: { name } } })),
         get: (name: string, model: string) =>
           requestData(
             api.GET("/provider/{name}/models/{model}", {
@@ -613,10 +535,7 @@ export function createWingmanClient(options: WingmanClientOptions) {
           ),
       },
       oauth: {
-        authorize: (
-          name: string,
-          request: components["schemas"]["ProviderOAuthRequest"],
-        ) =>
+        authorize: (name: string, request: components["schemas"]["ProviderOAuthRequest"]) =>
           requestData(
             api.POST("/provider/{name}/oauth/authorize", {
               params: { path: { name } },
@@ -656,19 +575,13 @@ async function* streamRun(
   for await (const frame of readSSE(response, config.maxSSEEventBytes)) {
     const event = parseRunStreamEvent(frame.data);
     if (!event) continue;
-    if (
-      event.known &&
-      (event.event.type === "done" || event.event.type === "error")
-    ) {
+    if (event.known && (event.event.type === "done" || event.event.type === "error")) {
       terminal = true;
     }
     yield event;
   }
   if (!terminal) {
-    throw new StreamError(
-      "stream_interrupted",
-      "run stream ended without a terminal event",
-    );
+    throw new StreamError("stream_interrupted", "run stream ended without a terminal event");
   }
 }
 
@@ -708,8 +621,7 @@ async function streamFetch(
   init: RequestInit,
 ): Promise<Response> {
   const fetcher = config.fetch ?? globalThis.fetch;
-  if (!fetcher)
-    throw new Error("fetch is not available; provide options.fetch");
+  if (!fetcher) throw new Error("fetch is not available; provide options.fetch");
   const headers = new Headers(config.headers);
   new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   headers.set("Accept", "text/event-stream");
@@ -718,11 +630,7 @@ async function streamFetch(
     headers,
   });
   if (!response.ok) throw await apiErrorFromResponse(response);
-  const contentType = response.headers
-    .get("Content-Type")
-    ?.split(";", 1)[0]
-    ?.trim()
-    .toLowerCase();
+  const contentType = response.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase();
   if (contentType !== "text/event-stream") {
     response.body?.cancel();
     throw new StreamError(
@@ -733,9 +641,7 @@ async function streamFetch(
   return response;
 }
 
-export function newMessageAdmission(
-  request: MessageSessionRequest,
-): MessageSessionRequest {
+export function newMessageAdmission(request: MessageSessionRequest): MessageSessionRequest {
   if (request.request_id) return request;
   return { ...request, request_id: crypto.randomUUID() };
 }
@@ -745,9 +651,7 @@ function originURL(value: string): string {
   try {
     url = new URL(value);
   } catch {
-    throw new TypeError(
-      `base URL must be an HTTP or HTTPS origin: ${JSON.stringify(value)}`,
-    );
+    throw new TypeError(`base URL must be an HTTP or HTTPS origin: ${JSON.stringify(value)}`);
   }
   if (
     (url.protocol !== "http:" && url.protocol !== "https:") ||
@@ -758,9 +662,7 @@ function originURL(value: string): string {
     url.hash ||
     (url.pathname !== "" && url.pathname !== "/")
   ) {
-    throw new TypeError(
-      `base URL must be an HTTP or HTTPS origin: ${JSON.stringify(value)}`,
-    );
+    throw new TypeError(`base URL must be an HTTP or HTTPS origin: ${JSON.stringify(value)}`);
   }
   return url.origin;
 }

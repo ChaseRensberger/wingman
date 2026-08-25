@@ -1,7 +1,7 @@
-import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox"
-import { CheckIcon, MinusIcon } from "@phosphor-icons/react"
+import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { CheckIcon, MinusIcon } from "@phosphor-icons/react";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
 function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
   return (
@@ -14,7 +14,7 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
         "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         "aria-invalid:border-destructive aria-invalid:ring-destructive/20",
         "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
-        className
+        className,
       )}
       {...props}
     >
@@ -29,7 +29,7 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
         )}
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
-  )
+  );
 }
 
-export { Checkbox }
+export { Checkbox };

@@ -1,6 +1,6 @@
-import { Label } from "#components/core/label"
-import { Checkbox } from "#components/core/checkbox"
-import { Input } from "#components/core/input"
+import { Label } from "#components/core/label";
+import { Checkbox } from "#components/core/checkbox";
+import { Input } from "#components/core/input";
 
 export function LabelShowcase() {
   return (
@@ -17,5 +17,5 @@ export function LabelShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

@@ -1,5 +1,10 @@
 import { consoleAssets } from "./assets.generated.ts";
-import { DaemonDiscovery, daemonServiceConfigPath, daemonStateDir, proxyDaemonRequest } from "./daemon.ts";
+import {
+  DaemonDiscovery,
+  daemonServiceConfigPath,
+  daemonStateDir,
+  proxyDaemonRequest,
+} from "./daemon.ts";
 
 const consolePrefix = "/console";
 const daemon = new DaemonDiscovery({

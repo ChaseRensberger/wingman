@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState } from "react";
 import {
   SidebarProvider,
   Sidebar,
@@ -12,7 +12,7 @@ import {
   SidebarItemLabel,
   SidebarTrigger,
   SidebarInset,
-} from "#components/core/sidebar"
+} from "#components/core/sidebar";
 import {
   HouseIcon,
   ChartBarIcon,
@@ -20,17 +20,17 @@ import {
   UsersIcon,
   FileIcon,
   SidebarSimpleIcon,
-} from "@phosphor-icons/react"
+} from "@phosphor-icons/react";
 
 const navItems = [
   { icon: HouseIcon, label: "Dashboard", active: true },
   { icon: ChartBarIcon, label: "Analytics" },
   { icon: UsersIcon, label: "Users" },
   { icon: FileIcon, label: "Documents" },
-]
+];
 
 export function SidebarShowcase() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <section className="py-4 space-y-8">
@@ -49,7 +49,9 @@ export function SidebarShowcase() {
                 <SidebarGroupLabel>Navigation</SidebarGroupLabel>
                 {navItems.map((item) => (
                   <SidebarItem key={item.label} active={item.active}>
-                    <SidebarItemIcon><item.icon /></SidebarItemIcon>
+                    <SidebarItemIcon>
+                      <item.icon />
+                    </SidebarItemIcon>
                     <SidebarItemLabel>{item.label}</SidebarItemLabel>
                   </SidebarItem>
                 ))}
@@ -57,7 +59,9 @@ export function SidebarShowcase() {
             </SidebarContent>
             <SidebarFooter>
               <SidebarItem>
-                <SidebarItemIcon><GearIcon /></SidebarItemIcon>
+                <SidebarItemIcon>
+                  <GearIcon />
+                </SidebarItemIcon>
                 <SidebarItemLabel>Settings</SidebarItemLabel>
               </SidebarItem>
             </SidebarFooter>
@@ -70,5 +74,5 @@ export function SidebarShowcase() {
         </SidebarProvider>
       </div>
     </section>
-  )
+  );
 }

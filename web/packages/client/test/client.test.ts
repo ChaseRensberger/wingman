@@ -15,9 +15,7 @@ test("readSSE handles split, multiline, and comment frames", async () => {
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(
-        encoder.encode(
-          ': heartbeat\r\nid: 42\r\nevent: session.text.delta\r\ndata: {"delta":\r\n',
-        ),
+        encoder.encode(': heartbeat\r\nid: 42\r\nevent: session.text.delta\r\ndata: {"delta":\r\n'),
       );
       controller.enqueue(encoder.encode('data: "hello"}\r\n\r\n'));
       controller.close();
@@ -25,9 +23,7 @@ test("readSSE handles split, multiline, and comment frames", async () => {
   });
 
   const events = await Array.fromAsync(readSSE(new Response(body)));
-  expect(events).toEqual([
-    { id: "42", event: "session.text.delta", data: { delta: "hello" } },
-  ]);
+  expect(events).toEqual([{ id: "42", event: "session.text.delta", data: { delta: "hello" } }]);
 });
 
 test("parses known and unknown event envelopes", () => {
@@ -87,9 +83,7 @@ test("configured clients send Basic authentication and client headers", async ()
   });
   await client.agents.list();
   expect(request?.url).toBe("https://wingman.test/agents");
-  expect(request?.headers.get("Authorization")).toBe(
-    "Basic d2luZ21hbjpzZWNyZXQ=",
-  );
+  expect(request?.headers.get("Authorization")).toBe("Basic d2luZ21hbjpzZWNyZXQ=");
   expect(request?.headers.get("X-Wingman-Client")).toBe("console");
   expect(request?.headers.get("X-Trace-ID")).toBe("trace-1");
 });
@@ -111,9 +105,7 @@ test("resource methods return data and throw APIError", async () => {
             { status: 404 },
           ),
   });
-  await expect(client.agents.list()).resolves.toEqual([
-    { id: "agent-1", name: "Assistant" },
-  ]);
+  await expect(client.agents.list()).resolves.toEqual([{ id: "agent-1", name: "Assistant" }]);
   await expect(client.agents.get("missing")).rejects.toMatchObject({
     name: "APIError",
     status: 404,
@@ -126,13 +118,10 @@ test("APIError keeps retry metadata", async () => {
   const client = createWingmanClient({
     baseUrl: "https://wingman.test",
     fetch: async () =>
-      new Response(
-        JSON.stringify({ error: { code: "busy", message: "retry" } }),
-        {
-          status: 429,
-          headers: { "Retry-After": "3", "X-Request-ID": "req-1" },
-        },
-      ),
+      new Response(JSON.stringify({ error: { code: "busy", message: "retry" } }), {
+        status: 429,
+        headers: { "Retry-After": "3", "X-Request-ID": "req-1" },
+      }),
   });
 
   await expect(client.agents.list()).rejects.toMatchObject({
@@ -164,9 +153,10 @@ test("client ensure creates or verifies a client identity", async () => {
     },
   });
 
-  await expect(
-    client.clients.ensure(" cli_wingcode ", " Wingcode "),
-  ).resolves.toMatchObject({ id: "cli_wingcode", name: "Wingcode" });
+  await expect(client.clients.ensure(" cli_wingcode ", " Wingcode ")).resolves.toMatchObject({
+    id: "cli_wingcode",
+    name: "Wingcode",
+  });
 });
 
 test("client ensure rejects a mismatched client identity", async () => {
@@ -189,9 +179,7 @@ test("client ensure rejects a mismatched client identity", async () => {
     },
   });
 
-  await expect(
-    client.clients.ensure("cli_wingcode", "Wingcode"),
-  ).rejects.toMatchObject({
+  await expect(client.clients.ensure("cli_wingcode", "Wingcode")).rejects.toMatchObject({
     name: "APIError",
     status: 409,
     code: "conflict",
@@ -220,9 +208,7 @@ test("client stream methods inherit configured fetch and headers", async () => {
       lastEventID: 41,
     }),
   );
-  expect(request?.url).toBe(
-    "https://wingman.test/sessions/ses%20%2F1/events?after=42",
-  );
+  expect(request?.url).toBe("https://wingman.test/sessions/ses%20%2F1/events?after=42");
   expect(request?.headers.get("Last-Event-ID")).toBe("41");
   expect(request?.headers.get("X-Wingman-Client")).toBe("console");
   expect(request?.headers.get("X-Trace-ID")).toBe("trace-1");
@@ -252,9 +238,7 @@ test("stream requests reject non-SSE responses", async () => {
   });
 
   await expect(
-    client.run
-      .stream({ model_ref: "openai/gpt-5.6-terra", message: "hello" })
-      .next(),
+    client.run.stream({ model_ref: "openai/gpt-5.6-terra", message: "hello" }).next(),
   ).rejects.toMatchObject({
     name: "StreamError",
     code: "invalid_stream",
@@ -304,15 +288,15 @@ test("newMessageAdmission creates and preserves request IDs", () => {
 
 test("admit requires a request ID", () => {
   const client = createWingmanClient({ baseUrl: "https://wingman.test" });
-  expect(() =>
-    client.sessions.admit("ses_1", { agent_id: "agt_1", message: "hello" }),
-  ).toThrow("message admission requires a request_id");
+  expect(() => client.sessions.admit("ses_1", { agent_id: "agt_1", message: "hello" })).toThrow(
+    "message admission requires a request_id",
+  );
 });
 
 test("clients reject non-origin URLs", () => {
-  expect(() =>
-    createWingmanClient({ baseUrl: "https://wingman.test/api" }),
-  ).toThrow("base URL must be an HTTP or HTTPS origin");
+  expect(() => createWingmanClient({ baseUrl: "https://wingman.test/api" })).toThrow(
+    "base URL must be an HTTP or HTTPS origin",
+  );
 });
 
 test("stream requests expose API errors", async () => {
@@ -327,9 +311,7 @@ test("stream requests expose API errors", async () => {
       ),
   });
   await expect(
-    client.run
-      .stream({ model_ref: "openai/gpt-5.6-terra", message: "hello" })
-      .next(),
+    client.run.stream({ model_ref: "openai/gpt-5.6-terra", message: "hello" }).next(),
   ).rejects.toMatchObject({
     name: "APIError",
     status: 401,

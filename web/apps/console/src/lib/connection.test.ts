@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { daemonConnectionFailureMessage, daemonConnectionMessage, daemonFailurePhase, daemonRetryDelay } from "./connection";
+import {
+  daemonConnectionFailureMessage,
+  daemonConnectionMessage,
+  daemonFailurePhase,
+  daemonRetryDelay,
+} from "./connection";
 
 describe("daemon connection recovery", () => {
   test("caps exponential retry delays", () => {
@@ -24,8 +29,10 @@ describe("daemon connection recovery", () => {
   });
 
   test("explains actionable readiness failures", () => {
-		expect(daemonConnectionFailureMessage({ status: 401 })).toContain("browser prompt");
+    expect(daemonConnectionFailureMessage({ status: 401 })).toContain("browser prompt");
     expect(daemonConnectionFailureMessage({ status: 503 })).toContain("recovering");
-    expect(daemonConnectionMessage("failed", "This Console session is not authorized (401).")).toContain("authorized");
+    expect(
+      daemonConnectionMessage("failed", "This Console session is not authorized (401)."),
+    ).toContain("authorized");
   });
 });

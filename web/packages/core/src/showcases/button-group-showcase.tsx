@@ -1,6 +1,6 @@
-import { ButtonGroup } from "#components/core/button-group"
-import { Button } from "#components/core/button"
-import { TextAlignLeftIcon, TextAlignCenterIcon, TextAlignRightIcon } from "@phosphor-icons/react"
+import { ButtonGroup } from "#components/core/button-group";
+import { Button } from "#components/core/button";
+import { TextAlignLeftIcon, TextAlignCenterIcon, TextAlignRightIcon } from "@phosphor-icons/react";
 
 export function ButtonGroupShowcase() {
   return (
@@ -25,5 +25,5 @@ export function ButtonGroupShowcase() {
         </ButtonGroup>
       </div>
     </section>
-  )
+  );
 }

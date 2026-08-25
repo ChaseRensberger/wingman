@@ -1,7 +1,7 @@
 {
   "name": "@wingman/desktop",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "build": "bun run generate-assets && deno desktop --no-npm --allow-env --allow-read --allow-net --config deno.json main.ts",

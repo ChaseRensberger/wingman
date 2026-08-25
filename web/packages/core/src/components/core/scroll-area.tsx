@@ -1,12 +1,8 @@
-import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"
+import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
-function ScrollArea({
-  className,
-  children,
-  ...props
-}: ScrollAreaPrimitive.Root.Props) {
+function ScrollArea({ className, children, ...props }: ScrollAreaPrimitive.Root.Props) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -17,14 +13,12 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className="h-full w-full rounded-[inherit]"
       >
-        <ScrollAreaPrimitive.Content>
-          {children}
-        </ScrollAreaPrimitive.Content>
+        <ScrollAreaPrimitive.Content>{children}</ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
-  )
+  );
 }
 
 function ScrollBar({
@@ -38,11 +32,9 @@ function ScrollBar({
       orientation={orientation}
       className={cn(
         "flex touch-none select-none",
-        orientation === "vertical" &&
-          "h-full w-2.5 border-l border-l-transparent p-px",
-        orientation === "horizontal" &&
-          "h-2.5 flex-col border-t border-t-transparent p-px",
-        className
+        orientation === "vertical" && "h-full w-2.5 border-l border-l-transparent p-px",
+        orientation === "horizontal" && "h-2.5 flex-col border-t border-t-transparent p-px",
+        className,
       )}
       {...props}
     >
@@ -51,7 +43,7 @@ function ScrollBar({
         className="relative flex-1 rounded-full bg-border"
       />
     </ScrollAreaPrimitive.Scrollbar>
-  )
+  );
 }
 
-export { ScrollArea, ScrollBar }
+export { ScrollArea, ScrollBar };

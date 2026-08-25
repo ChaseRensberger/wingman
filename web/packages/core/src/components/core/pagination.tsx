@@ -1,7 +1,7 @@
-import * as React from "react"
-import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react"
-import { cn } from "#lib/utils"
-import { buttonVariants } from "#components/core/button"
+import * as React from "react";
+import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react";
+import { cn } from "#lib/utils";
+import { buttonVariants } from "#components/core/button-variants";
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -12,7 +12,7 @@ function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
       className={cn("mx-auto flex w-full justify-center", className)}
       {...props}
     />
-  )
+  );
 }
 
 function PaginationContent({ className, ...props }: React.ComponentProps<"ul">) {
@@ -22,11 +22,11 @@ function PaginationContent({ className, ...props }: React.ComponentProps<"ul">) 
       className={cn("flex flex-row items-center gap-1", className)}
       {...props}
     />
-  )
+  );
 }
 
 function PaginationItem({ className, ...props }: React.ComponentProps<"li">) {
-  return <li data-slot="pagination-item" className={cn("", className)} {...props} />
+  return <li data-slot="pagination-item" className={cn("", className)} {...props} />;
 }
 
 function PaginationLink({
@@ -35,20 +35,17 @@ function PaginationLink({
   size = "icon",
   ...props
 }: React.ComponentProps<"a"> & {
-  isActive?: boolean
-  size?: "default" | "sm" | "lg" | "icon"
+  isActive?: boolean;
+  size?: "default" | "sm" | "lg" | "icon";
 }) {
   return (
     <a
       data-slot="pagination-link"
       aria-current={isActive ? "page" : undefined}
-      className={cn(
-        buttonVariants({ variant: isActive ? "default" : "outline", size }),
-        className
-      )}
+      className={cn(buttonVariants({ variant: isActive ? "default" : "outline", size }), className)}
       {...props}
     />
-  )
+  );
 }
 
 function PaginationPrevious({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
@@ -63,7 +60,7 @@ function PaginationPrevious({ className, ...props }: React.ComponentProps<typeof
       <CaretLeftIcon className="size-4" />
       <span>Previous</span>
     </PaginationLink>
-  )
+  );
 }
 
 function PaginationNext({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
@@ -78,7 +75,7 @@ function PaginationNext({ className, ...props }: React.ComponentProps<typeof Pag
       <span>Next</span>
       <CaretRightIcon className="size-4" />
     </PaginationLink>
-  )
+  );
 }
 
 function PaginationEllipsis({ className, ...props }: React.ComponentProps<"span">) {
@@ -92,7 +89,7 @@ function PaginationEllipsis({ className, ...props }: React.ComponentProps<"span"
       <DotsThreeIcon className="size-4" />
       <span className="sr-only">More pages</span>
     </span>
-  )
+  );
 }
 
 export {
@@ -103,4 +100,4 @@ export {
   PaginationPrevious,
   PaginationNext,
   PaginationEllipsis,
-}
+};

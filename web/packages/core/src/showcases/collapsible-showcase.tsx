@@ -1,8 +1,4 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "#components/core/collapsible"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "#components/core/collapsible";
 
 export function CollapsibleShowcase() {
   return (
@@ -28,5 +24,5 @@ export function CollapsibleShowcase() {
         </CollapsibleContent>
       </Collapsible>
     </section>
-  )
+  );
 }

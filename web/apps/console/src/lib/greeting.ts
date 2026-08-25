@@ -28,7 +28,12 @@ const dayGreetings = [
   ["Happy Wednesday", "Happy Wednesday, {name}"],
   ["Happy Thursday", "Happy Thursday, {name}"],
   ["Happy Friday", "Happy Friday, {name}", "That Friday feeling", "That Friday feeling, {name}"],
-  ["Happy Saturday!", "Happy Saturday, {name}", "Welcome to the weekend", "Welcome to the weekend, {name}"],
+  [
+    "Happy Saturday!",
+    "Happy Saturday, {name}",
+    "Welcome to the weekend",
+    "Welcome to the weekend, {name}",
+  ],
 ];
 
 function timeGreetings(hour: number): string[] {
@@ -67,8 +72,9 @@ export function setDisplayName(name: string) {
 }
 
 export function selectGreeting(name = getDisplayName(), now = new Date()): string {
-  const groups = [dayGreetings[now.getDay()]!, timeGreetings(now.getHours()), generalGreetings]
-    .map((greetings) => greetings.filter((greeting) => name || !greeting.includes("{name}")));
+  const groups = [dayGreetings[now.getDay()]!, timeGreetings(now.getHours()), generalGreetings].map(
+    (greetings) => greetings.filter((greeting) => name || !greeting.includes("{name}")),
+  );
   const candidates = groups[Math.floor(Math.random() * groups.length)]!;
   const greeting = candidates[Math.floor(Math.random() * candidates.length)]!;
   return greeting.replaceAll("{name}", name);

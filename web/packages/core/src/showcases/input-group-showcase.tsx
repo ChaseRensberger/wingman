@@ -1,6 +1,6 @@
-import { InputGroup, InputGroupAddon } from "#components/core/input-group"
-import { Input } from "#components/core/input"
-import { MagnifyingGlassIcon, GlobeIcon } from "@phosphor-icons/react"
+import { InputGroup, InputGroupAddon } from "#components/core/input-group";
+import { Input } from "#components/core/input";
+import { MagnifyingGlassIcon, GlobeIcon } from "@phosphor-icons/react";
 
 export function InputGroupShowcase() {
   return (
@@ -26,5 +26,5 @@ export function InputGroupShowcase() {
         </InputGroup>
       </div>
     </section>
-  )
+  );
 }

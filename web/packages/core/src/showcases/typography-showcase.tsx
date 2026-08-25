@@ -9,7 +9,7 @@ import {
   TypographySmall,
   TypographyMuted,
   TypographyCode,
-} from "#components/core/typography"
+} from "#components/core/typography";
 
 export function TypographyShowcase() {
   return (
@@ -21,12 +21,14 @@ export function TypographyShowcase() {
         <TypographyH3>Heading 3</TypographyH3>
         <TypographyH4>Heading 4</TypographyH4>
         <TypographyLead>A lead paragraph for introducing sections.</TypographyLead>
-        <TypographyP>Regular paragraph text for body content. The quick brown fox jumps over the lazy dog.</TypographyP>
+        <TypographyP>
+          Regular paragraph text for body content. The quick brown fox jumps over the lazy dog.
+        </TypographyP>
         <TypographyLarge>Large text for emphasis</TypographyLarge>
         <TypographySmall>Small text for captions</TypographySmall>
         <TypographyMuted>Muted text for secondary info</TypographyMuted>
         <TypographyCode>inline code snippet</TypographyCode>
       </div>
     </section>
-  )
+  );
 }

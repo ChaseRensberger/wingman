@@ -108,13 +108,13 @@ Each event is a JSON object in the SSE `data:` body:
 
 Field meanings:
 
-| Field | Meaning |
-|---|---|
-| `id` | Unique event ID. |
-| `type` | Event type. Also used as the SSE event name. |
-| `time` | Event timestamp. |
+| Field    | Meaning                                                                            |
+| -------- | ---------------------------------------------------------------------------------- |
+| `id`     | Unique event ID.                                                                   |
+| `type`   | Event type. Also used as the SSE event name.                                       |
+| `time`   | Event timestamp.                                                                   |
 | `cursor` | Resume position. Present for durable events and nonzero stream control boundaries. |
-| `data` | Event-specific payload. |
+| `data`   | Event-specific payload.                                                            |
 
 For live-only activity without `cursor`, the SSE `id` is the event ID. Treat
 `type` as the payload discriminator. Ignore event types that the client does
@@ -124,9 +124,9 @@ not recognize. Do not interpret an unknown payload as a known event.
 
 Control events coordinate replay and recovery. Do not render them as session activity.
 
-| Event | Meaning |
-|---|---|
-| `session.events.synchronized` | Every durable event through this cursor was delivered. Subsequent frames are live. |
+| Event                            | Meaning                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `session.events.synchronized`    | Every durable event through this cursor was delivered. Subsequent frames are live.          |
 | `session.events.resync_required` | Delivery overflowed or the cursor did not reconcile. Reload authoritative state. Reconnect. |
 
 The server disconnects after `session.events.resync_required`. Keep the last
@@ -138,25 +138,25 @@ tracked run. Reconnect. Never move a saved cursor backward.
 The server stores and replays durable events. These events reconstruct the
 transcript and final run state after a reconnect.
 
-| Event | Meaning |
-|---|---|
-| `session.run.queued` | A message run was durably queued. |
-| `session.run.started` | A session run started. |
-| `session.step.started` | A model/tool loop step started. |
-| `session.step.completed` | A model/tool loop step completed. |
-| `session.text.completed` | A text block reached its final value. |
-| `session.reasoning.completed` | A reasoning block reached its final value. |
-| `session.tool.called` | The model requested a tool. |
-| `session.tool.updated` | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`. |
-| `session.tool.completed` | A tool finished successfully. |
-| `session.tool.failed` | A tool failed. |
-| `session.permission.requested` | A tool is waiting for an interactive permission reply. |
-| `session.permission.resolved` | A permission request was approved, rejected, timed out, or interrupted. |
-| `session.message.created` | A message was appended to history. |
-| `session.structured_output.completed` | Output schema parsing succeeded. |
-| `session.run.completed` | The run finished successfully. |
-| `session.run.failed` | The run failed. |
-| `session.run.aborted` | The run was canceled or interrupted. |
+| Event                                 | Meaning                                                                                                  |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `session.run.queued`                  | A message run was durably queued.                                                                        |
+| `session.run.started`                 | A session run started.                                                                                   |
+| `session.step.started`                | A model/tool loop step started.                                                                          |
+| `session.step.completed`              | A model/tool loop step completed.                                                                        |
+| `session.text.completed`              | A text block reached its final value.                                                                    |
+| `session.reasoning.completed`         | A reasoning block reached its final value.                                                               |
+| `session.tool.called`                 | The model requested a tool.                                                                              |
+| `session.tool.updated`                | A tool reached `proposed`, `authorized`, `started`, `completed`, `failed`, `interrupted`, or `declined`. |
+| `session.tool.completed`              | A tool finished successfully.                                                                            |
+| `session.tool.failed`                 | A tool failed.                                                                                           |
+| `session.permission.requested`        | A tool is waiting for an interactive permission reply.                                                   |
+| `session.permission.resolved`         | A permission request was approved, rejected, timed out, or interrupted.                                  |
+| `session.message.created`             | A message was appended to history.                                                                       |
+| `session.structured_output.completed` | Output schema parsing succeeded.                                                                         |
+| `session.run.completed`               | The run finished successfully.                                                                           |
+| `session.run.failed`                  | The run failed.                                                                                          |
+| `session.run.aborted`                 | The run was canceled or interrupted.                                                                     |
 
 Durable events store boundaries, not token streams. A completed text event
 stores the final text for that block. It does not store each partial token delta.
@@ -169,12 +169,12 @@ structured content, metadata, error, and timing.
 Live events are not replayed. They provide latency-sensitive rendering while the
 client is connected.
 
-| Event | Meaning |
-|---|---|
-| `session.text.delta` | Partial assistant text. |
-| `session.reasoning.delta` | Partial reasoning text. |
-| `session.tool.input.delta` | Partial tool-call input. |
-| `session.tool.progress` | Incremental tool output and metadata reported during execution. |
+| Event                      | Meaning                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `session.text.delta`       | Partial assistant text.                                         |
+| `session.reasoning.delta`  | Partial reasoning text.                                         |
+| `session.tool.input.delta` | Partial tool-call input.                                        |
+| `session.tool.progress`    | Incremental tool output and metadata reported during execution. |
 
 Live provider events include correlation identifiers for the later durable
 boundary event. Text, reasoning, and tool-input deltas include `run_id`,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { Badge } from "@wingman/core/components/core/badge";
@@ -82,7 +82,7 @@ function AgentDetailPage() {
     onSubmit: async ({ value }) => {
       setSaving(true);
       try {
-        const updated = await client.agents.update(agentId, buildAgentPayload(value)) as Agent;
+        const updated = (await client.agents.update(agentId, buildAgentPayload(value))) as Agent;
         setAgent(updated);
         form.reset(formFromAgent(updated));
       } catch (err) {
@@ -93,7 +93,7 @@ function AgentDetailPage() {
     },
   });
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const [agentData, providerData, toolData] = await Promise.all([
         client.agents.get(agentId) as Promise<Agent>,
@@ -107,8 +107,14 @@ function AgentDetailPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = await client.providers.models.list(provider.id) as Record<string, ProviderModel>;
-            return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
+            const data = (await client.providers.models.list(provider.id)) as Record<
+              string,
+              ProviderModel
+            >;
+            return [
+              provider.id,
+              Object.values(data).sort((a, b) => a.id.localeCompare(b.id)),
+            ] as const;
           } catch {
             return [provider.id, []] as const;
           }
@@ -116,18 +122,19 @@ function AgentDetailPage() {
       );
       const modelMap: Record<string, ProviderModel[]> = Object.fromEntries(modelEntries);
       const values = formFromAgent(agentData);
-      const variants = modelMap[values.provider]?.find((model) => model.id === values.model)?.variants ?? [];
+      const variants =
+        modelMap[values.provider]?.find((model) => model.id === values.model)?.variants ?? [];
       if (values.variant && !variants.includes(values.variant)) values.variant = "";
       form.reset(values);
       setModels(modelMap);
     } finally {
       setLoading(false);
     }
-  }
+  }, [agentId, form]);
 
   useEffect(() => {
     load().catch((err) => showErrorToast(err));
-  }, [agentId]);
+  }, [load]);
 
   async function remove() {
     if (!agent) return;
@@ -151,7 +158,9 @@ function AgentDetailPage() {
         <PageBreadcrumb items={[{ label: "Agents", to: "/agents" }, { label: crumbLabel }]} />
         {agent && (
           <AlertDialog>
-            <AlertDialogTrigger render={<Button size="sm" variant="destructive" disabled={deleting} />}>
+            <AlertDialogTrigger
+              render={<Button size="sm" variant="destructive" disabled={deleting} />}
+            >
               {deleting ? "Deleting..." : "Delete"}
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -192,8 +201,14 @@ function AgentDetailPage() {
           <form.Field
             name="name"
             children={(field) => (
-              <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                <FieldLabel className="text-xs">Name <span aria-hidden="true">*</span><span className="sr-only"> required</span></FieldLabel>
+              <Field
+                className="gap-1"
+                data-invalid={field.state.meta.errors.length > 0 || undefined}
+              >
+                <FieldLabel className="text-xs">
+                  Name <span aria-hidden="true">*</span>
+                  <span className="sr-only"> required</span>
+                </FieldLabel>
                 <Input
                   name={field.name}
                   value={field.state.value}
@@ -208,7 +223,10 @@ function AgentDetailPage() {
           <form.Field
             name="instructions"
             children={(field) => (
-              <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+              <Field
+                className="gap-1"
+                data-invalid={field.state.meta.errors.length > 0 || undefined}
+              >
                 <FieldLabel className="text-xs">Instructions</FieldLabel>
                 <Textarea
                   className="min-h-40"
@@ -225,13 +243,17 @@ function AgentDetailPage() {
             selector={(state) => [state.values.provider, state.values.model] as const}
             children={([provider, selectedModel]) => {
               const providerModels = models[provider] ?? [];
-              const variants = providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
+              const variants =
+                providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
               return (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <form.Field
                     name="provider"
                     children={(field) => (
-                      <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                      <Field
+                        className="gap-1"
+                        data-invalid={field.state.meta.errors.length > 0 || undefined}
+                      >
                         <FieldLabel className="text-xs">Provider</FieldLabel>
                         <Select
                           value={field.state.value}
@@ -252,14 +274,19 @@ function AgentDetailPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                        <FieldError
+                          errors={field.state.meta.errors as Array<{ message?: string }>}
+                        />
                       </Field>
                     )}
                   />
                   <form.Field
                     name="model"
                     children={(field) => (
-                      <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                      <Field
+                        className="gap-1"
+                        data-invalid={field.state.meta.errors.length > 0 || undefined}
+                      >
                         <FieldLabel className="text-xs">Model</FieldLabel>
                         <Select
                           value={field.state.value}
@@ -270,7 +297,9 @@ function AgentDetailPage() {
                           disabled={!provider || providerModels.length === 0}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder={provider ? "Select model" : "Select provider first"} />
+                            <SelectValue
+                              placeholder={provider ? "Select model" : "Select provider first"}
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {providerModels.map((model) => (
@@ -280,7 +309,9 @@ function AgentDetailPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                        <FieldError
+                          errors={field.state.meta.errors as Array<{ message?: string }>}
+                        />
                       </Field>
                     )}
                   />
@@ -288,14 +319,19 @@ function AgentDetailPage() {
                     <form.Field
                       name="variant"
                       children={(field) => (
-                        <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                        <Field
+                          className="gap-1"
+                          data-invalid={field.state.meta.errors.length > 0 || undefined}
+                        >
                           <FieldLabel className="text-xs">Variant</FieldLabel>
                           <Select
                             value={field.state.value || null}
                             onValueChange={(value) => field.handleChange(value ?? "")}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select variant">{(value) => value ?? "Provider default"}</SelectValue>
+                              <SelectValue placeholder="Select variant">
+                                {(value) => value ?? "Provider default"}
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem>Provider default</SelectItem>
@@ -306,7 +342,9 @@ function AgentDetailPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                          <FieldError
+                            errors={field.state.meta.errors as Array<{ message?: string }>}
+                          />
                         </Field>
                       )}
                     />
@@ -322,10 +360,20 @@ function AgentDetailPage() {
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs font-medium">Tools</label>
                   <div className="flex gap-1">
-                    <Button type="button" variant="ghost" size="xs" onClick={() => field.handleChange(availableTools)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => field.handleChange(availableTools)}
+                    >
                       All on
                     </Button>
-                    <Button type="button" variant="ghost" size="xs" onClick={() => field.handleChange([])}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => field.handleChange([])}
+                    >
                       All off
                     </Button>
                   </div>
@@ -346,7 +394,11 @@ function AgentDetailPage() {
                       className="h-auto rounded-md p-0"
                       title={`${tool.source}${tool.server ? `: ${tool.server}` : ""}`}
                     >
-                      <Badge variant={field.state.value.includes(tool.name) ? "default" : "outline"}>{tool.name}</Badge>
+                      <Badge
+                        variant={field.state.value.includes(tool.name) ? "default" : "outline"}
+                      >
+                        {tool.name}
+                      </Badge>
                     </Button>
                   ))}
                 </div>
@@ -356,7 +408,10 @@ function AgentDetailPage() {
           <form.Field
             name="outputSchema"
             children={(field) => (
-              <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+              <Field
+                className="gap-1"
+                data-invalid={field.state.meta.errors.length > 0 || undefined}
+              >
                 <FieldLabel className="text-xs">Output schema JSON</FieldLabel>
                 <Textarea
                   className="min-h-32 font-mono text-xs"
@@ -371,7 +426,9 @@ function AgentDetailPage() {
             )}
           />
           <div className="flex justify-end">
-            <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save changes"}
+            </Button>
           </div>
         </form>
       )}

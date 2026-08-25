@@ -1,6 +1,6 @@
-import { Progress as ProgressPrimitive } from "@base-ui/react/progress"
+import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
 function Progress({ className, ...props }: ProgressPrimitive.Root.Props) {
   return (
@@ -9,7 +9,7 @@ function Progress({ className, ...props }: ProgressPrimitive.Root.Props) {
       className={cn("flex w-full flex-col gap-1", className)}
       {...props}
     />
-  )
+  );
 }
 
 function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
@@ -19,7 +19,7 @@ function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
       className={cn("text-sm font-medium", className)}
       {...props}
     />
-  )
+  );
 }
 
 function ProgressValue({ className, ...props }: ProgressPrimitive.Value.Props) {
@@ -29,42 +29,27 @@ function ProgressValue({ className, ...props }: ProgressPrimitive.Value.Props) {
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
   return (
     <ProgressPrimitive.Track
       data-slot="progress-track"
-      className={cn(
-        "relative h-1.5 w-full overflow-hidden rounded-sm bg-secondary",
-        className
-      )}
+      className={cn("relative h-1.5 w-full overflow-hidden rounded-sm bg-secondary", className)}
       {...props}
     />
-  )
+  );
 }
 
-function ProgressIndicator({
-  className,
-  ...props
-}: ProgressPrimitive.Indicator.Props) {
+function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.Props) {
   return (
     <ProgressPrimitive.Indicator
       data-slot="progress-indicator"
-      className={cn(
-        "h-full bg-primary",
-        className
-      )}
+      className={cn("h-full bg-primary", className)}
       {...props}
     />
-  )
+  );
 }
 
-export {
-  Progress,
-  ProgressLabel,
-  ProgressValue,
-  ProgressTrack,
-  ProgressIndicator,
-}
+export { Progress, ProgressLabel, ProgressValue, ProgressTrack, ProgressIndicator };

@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { client, daemonConnectionFailureEvent } from "@/lib/client";
 import {
@@ -13,27 +6,14 @@ import {
   daemonConnectionMessage,
   daemonFailurePhase,
   daemonRetryDelay,
-  type DaemonConnectionPhase,
 } from "@/lib/connection";
+import {
+  DaemonConnectionContext,
+  useDaemonConnection,
+  type DaemonConnection,
+} from "@/components/daemon-connection-context";
 
-type DaemonConnection = {
-  phase: DaemonConnectionPhase;
-  revision: number;
-  hasConnected: boolean;
-  failure?: string;
-};
-
-const DaemonConnectionContext = createContext<DaemonConnection>({
-  phase: "connecting",
-  revision: 0,
-  hasConnected: false,
-});
-
-export function DaemonConnectionProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function DaemonConnectionProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<DaemonConnection>({
     phase: "connecting",
     revision: 0,
@@ -76,17 +56,13 @@ export function DaemonConnectionProvider({
       if (!hasBeenLive.current || attempt > 0 || disconnected.current) {
         setConnection((current) => ({
           ...current,
-          phase:
-            attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying",
+          phase: attempt === 0 && !hasBeenLive.current ? "connecting" : "retrying",
         }));
       }
       const controller = new AbortController();
       request = controller;
       try {
-        const signal = AbortSignal.any([
-          controller.signal,
-          AbortSignal.timeout(3_000),
-        ]);
+        const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(3_000)]);
         const ready = await client.health.ready({ signal });
         if (signal.aborted) return;
         if (!ready.ready) throw new Error("Wingman is not ready");
@@ -146,23 +122,12 @@ export function DaemonConnectionProvider({
       clearPending();
       window.removeEventListener("online", resume);
       window.removeEventListener("offline", resume);
-      window.removeEventListener(
-        daemonConnectionFailureEvent,
-        connectionFailed,
-      );
+      window.removeEventListener(daemonConnectionFailureEvent, connectionFailed);
       document.removeEventListener("visibilitychange", resume);
     };
   }, []);
 
-  return (
-    <DaemonConnectionContext value={connection}>
-      {children}
-    </DaemonConnectionContext>
-  );
-}
-
-export function useDaemonConnection(): DaemonConnection {
-  return useContext(DaemonConnectionContext);
+  return <DaemonConnectionContext value={connection}>{children}</DaemonConnectionContext>;
 }
 
 export function DaemonConnectionBanner() {

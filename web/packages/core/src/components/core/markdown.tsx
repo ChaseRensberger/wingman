@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import type { HighlighterCore } from "shiki/core"
-import { useTheme } from "#components/theme-provider"
-import { cn } from "#lib/utils"
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { HighlighterCore } from "shiki/core";
+import { useTheme } from "#components/theme-context";
+import { cn } from "#lib/utils";
 
 const supportedLanguages = new Set([
   "bash",
@@ -21,7 +21,7 @@ const supportedLanguages = new Set([
   "tsx",
   "typescript",
   "yaml",
-])
+]);
 
 const languageAliases: Record<string, string> = {
   js: "javascript",
@@ -32,9 +32,9 @@ const languageAliases: Record<string, string> = {
   sh: "bash",
   ts: "typescript",
   yml: "yaml",
-}
+};
 
-let highlighterPromise: Promise<HighlighterCore> | null = null
+let highlighterPromise: Promise<HighlighterCore> | null = null;
 
 async function createMarkdownHighlighter() {
   const [
@@ -42,9 +42,9 @@ async function createMarkdownHighlighter() {
     { createJavaScriptRegexEngine },
     githubDark,
     githubLight,
-		gruvboxDark,
-		gruvboxLight,
-		dracula,
+    gruvboxDark,
+    gruvboxLight,
+    dracula,
     bash,
     css,
     go,
@@ -64,9 +64,9 @@ async function createMarkdownHighlighter() {
     import("shiki/engine/javascript"),
     import("shiki/themes/github-dark.mjs"),
     import("shiki/themes/github-light.mjs"),
-		import("shiki/themes/gruvbox-dark-medium.mjs"),
-		import("shiki/themes/gruvbox-light-medium.mjs"),
-		import("shiki/themes/dracula.mjs"),
+    import("shiki/themes/gruvbox-dark-medium.mjs"),
+    import("shiki/themes/gruvbox-light-medium.mjs"),
+    import("shiki/themes/dracula.mjs"),
     import("shiki/langs/bash.mjs"),
     import("shiki/langs/css.mjs"),
     import("shiki/langs/go.mjs"),
@@ -81,11 +81,17 @@ async function createMarkdownHighlighter() {
     import("shiki/langs/tsx.mjs"),
     import("shiki/langs/typescript.mjs"),
     import("shiki/langs/yaml.mjs"),
-  ])
+  ]);
 
   return createHighlighterCore({
     engine: createJavaScriptRegexEngine(),
-    themes: [githubDark.default, githubLight.default, gruvboxDark.default, gruvboxLight.default, dracula.default],
+    themes: [
+      githubDark.default,
+      githubLight.default,
+      gruvboxDark.default,
+      gruvboxLight.default,
+      dracula.default,
+    ],
     langs: [
       bash.default,
       css.default,
@@ -103,24 +109,24 @@ async function createMarkdownHighlighter() {
       yaml.default,
     ],
     langAlias: languageAliases,
-  })
+  });
 }
 
 function getMarkdownHighlighter() {
-  highlighterPromise ??= createMarkdownHighlighter()
-  return highlighterPromise
+  highlighterPromise ??= createMarkdownHighlighter();
+  return highlighterPromise;
 }
 
 function normalizeLanguage(lang?: string) {
-  if (!lang) return "text"
+  if (!lang) return "text";
 
-  const normalized = languageAliases[lang] ?? lang
-  return supportedLanguages.has(normalized) ? normalized : "text"
+  const normalized = languageAliases[lang] ?? lang;
+  return supportedLanguages.has(normalized) ? normalized : "text";
 }
 
 function useCodeTheme() {
-  const { theme, resolvedColorMode } = useTheme()
-  return theme.shiki[resolvedColorMode] ?? theme.shiki.dark ?? "github-dark"
+  const { theme, resolvedColorMode } = useTheme();
+  return theme.shiki[resolvedColorMode] ?? theme.shiki.dark ?? "github-dark";
 }
 
 function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
@@ -135,42 +141,42 @@ function PlainCodeBlock({ code, lang }: { code: string; lang?: string }) {
         <code>{code}</code>
       </pre>
     </div>
-  )
+  );
 }
 
 type HighlightedCode = {
-  key: string
-  html: string
-}
+  key: string;
+  html: string;
+};
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const theme = useCodeTheme()
-  const highlightKey = `${code}\u0000${lang}\u0000${theme}`
-  const [highlightedCode, setHighlightedCode] = useState<HighlightedCode | null>(null)
+  const theme = useCodeTheme();
+  const highlightKey = `${code}\u0000${lang}\u0000${theme}`;
+  const [highlightedCode, setHighlightedCode] = useState<HighlightedCode | null>(null);
 
   useEffect(() => {
-    let mounted = true
-    const shikiLang = normalizeLanguage(lang)
+    let mounted = true;
+    const shikiLang = normalizeLanguage(lang);
 
     async function highlight() {
-      const highlighter = await getMarkdownHighlighter()
+      const highlighter = await getMarkdownHighlighter();
 
       const highlighted = highlighter.codeToHtml(code, {
         lang: shikiLang,
         theme,
-      })
+      });
 
-      if (mounted) setHighlightedCode({ key: highlightKey, html: highlighted })
+      if (mounted) setHighlightedCode({ key: highlightKey, html: highlighted });
     }
 
-    highlight()
+    highlight();
 
     return () => {
-      mounted = false
-    }
-  }, [code, lang, theme, highlightKey])
+      mounted = false;
+    };
+  }, [code, lang, theme, highlightKey]);
 
-  if (highlightedCode?.key !== highlightKey) return <PlainCodeBlock code={code} lang={lang} />
+  if (highlightedCode?.key !== highlightKey) return <PlainCodeBlock code={code} lang={lang} />;
 
   return (
     <div className="my-4 overflow-hidden rounded-md border bg-card shadow-sm">
@@ -184,12 +190,12 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
         dangerouslySetInnerHTML={{ __html: highlightedCode.html }}
       />
     </div>
-  )
+  );
 }
 
 type MarkdownProps = Omit<React.ComponentProps<"div">, "children"> & {
-  children: string
-}
+  children: string;
+};
 
 function Markdown({ children, className, ...props }: MarkdownProps) {
   return (
@@ -197,7 +203,7 @@ function Markdown({ children, className, ...props }: MarkdownProps) {
       data-slot="markdown"
       className={cn(
         "space-y-3 text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted [&_blockquote]:pl-3 [&_blockquote]:italic [&_h1]:scroll-m-20 [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h2]:scroll-m-20 [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:tracking-tight [&_h3]:scroll-m-20 [&_h3]:text-xl [&_h3]:font-semibold [&_h4]:scroll-m-20 [&_h4]:text-lg [&_h4]:font-semibold [&_hr]:my-4 [&_hr]:border-border [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:leading-7 [&_table]:w-full [&_table]:text-left [&_tbody_tr]:border-b [&_td]:py-2 [&_td]:pr-4 [&_th]:border-b [&_th]:py-2 [&_th]:pr-4 [&_th]:font-semibold [&_ul]:list-disc [&_ul]:pl-6",
-        className
+        className,
       )}
       {...props}
     >
@@ -205,28 +211,28 @@ function Markdown({ children, className, ...props }: MarkdownProps) {
         remarkPlugins={[remarkGfm]}
         components={{
           pre({ children }) {
-            return <>{children}</>
+            return <>{children}</>;
           },
           code({ className, children }) {
-            const match = /language-([\w-]+)/.exec(className || "")
-            const code = String(children).replace(/\n$/, "")
+            const match = /language-([\w-]+)/.exec(className || "");
+            const code = String(children).replace(/\n$/, "");
 
             if (!match) {
               return (
                 <code className="rounded-sm border bg-muted px-1.5 py-0.5 text-[0.82em] font-medium text-foreground">
                   {children}
                 </code>
-              )
+              );
             }
 
-            return <CodeBlock code={code} lang={match[1]} />
+            return <CodeBlock code={code} lang={match[1]} />;
           },
         }}
       >
         {children}
       </ReactMarkdown>
     </div>
-  )
+  );
 }
 
-export { Markdown }
+export { Markdown };

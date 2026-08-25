@@ -14,7 +14,14 @@
     "build:client": "bun run --filter @wingman-actor/client build",
     "build:desktop": "bun run build:console && bun run --filter @wingman/desktop build",
     "build:core": "bun run --filter @wingman/core build",
-    "lint": "bun run --sequential --workspaces --if-present lint",
+    "lint": "oxlint . --deny-warnings",
+    "format": "oxfmt .",
+    "format:check": "oxfmt . --check",
+    "test": "bun run --filter @wingman-actor/client test && bun run --filter @wingman/console test && bun run --filter @wingman/desktop test",
     "generate:client": "bun run --filter @wingman-actor/client generate"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0"
   }
 }

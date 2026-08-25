@@ -16,19 +16,19 @@ wingman <command> [flags]
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `api` | Make an authenticated request to the managed daemon. |
-| `serve` | Start the HTTP server in the foreground. |
-| `service start` | Install, enable, and start Wingman as a background service. |
-| `service stop` | Stop and remove the Wingman background service. |
-| `service restart` | Restart the Wingman background service. |
-| `service status` | Show the Wingman background service status. |
-| `pair` | Show the managed server URL and credentials with a QR code. |
-| `console` | Open the managed daemon Console. |
-| `clients create` | Register an API client identity. |
-| `update` | Check for or install a verified release update. |
-| `version` | Print version information. |
+| Command           | Description                                                 |
+| ----------------- | ----------------------------------------------------------- |
+| `api`             | Make an authenticated request to the managed daemon.        |
+| `serve`           | Start the HTTP server in the foreground.                    |
+| `service start`   | Install, enable, and start Wingman as a background service. |
+| `service stop`    | Stop and remove the Wingman background service.             |
+| `service restart` | Restart the Wingman background service.                     |
+| `service status`  | Show the Wingman background service status.                 |
+| `pair`            | Show the managed server URL and credentials with a QR code. |
+| `console`         | Open the managed daemon Console.                            |
+| `clients create`  | Register an API client identity.                            |
+| `update`          | Check for or install a verified release update.             |
+| `version`         | Print version information.                                  |
 
 ## Server Commands
 
@@ -67,16 +67,16 @@ its non-loopback interface addresses.
 
 ## Runtime Flags
 
-| Flag | Default | Description |
-|---|---|---|
-| `--host` | `127.0.0.1` | Host to bind to. |
-| `--port` | `2323` | Port to listen on. |
-| `--db` | `~/.local/share/wingman/wingman.db` | SQLite database path. |
-| `--ephemeral` | `false` | Run without persistence. |
-| `--log-format` | `json` | Log format: `json` or `text`. |
-| `--log-level` | `info` | Log level: `debug`, `info`, `warn`, or `error`. |
-| `--plugin-dir` | none | Additional global plugin directory. Can be repeated. |
-| `--no-plugins` | `false` | Disable out-of-process plugin loading. |
+| Flag           | Default                             | Description                                          |
+| -------------- | ----------------------------------- | ---------------------------------------------------- |
+| `--host`       | `127.0.0.1`                         | Host to bind to.                                     |
+| `--port`       | `2323`                              | Port to listen on.                                   |
+| `--db`         | `~/.local/share/wingman/wingman.db` | SQLite database path.                                |
+| `--ephemeral`  | `false`                             | Run without persistence.                             |
+| `--log-format` | `json`                              | Log format: `json` or `text`.                        |
+| `--log-level`  | `info`                              | Log level: `debug`, `info`, `warn`, or `error`.      |
+| `--plugin-dir` | none                                | Additional global plugin directory. Can be repeated. |
+| `--no-plugins` | `false`                             | Disable out-of-process plugin loading.               |
 
 Examples:
 

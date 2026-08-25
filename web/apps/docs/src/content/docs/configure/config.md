@@ -25,11 +25,11 @@ To use a different configuration root, set `XDG_CONFIG_HOME`. For example,
 
 Wingman has three main configuration locations:
 
-| Concern | Where it lives |
-|---|---|
-| Server bind address, database path, logs, plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags |
-| Provider API keys | SQLite auth store through `PUT /provider/auth` |
-| External plugin manifests | `~/.config/wingman/plugins/` plus extra plugin directories |
+| Concern                                                                                                            | Where it lives                                             |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Server bind address, database path, logs, plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags             |
+| Provider API keys                                                                                                  | SQLite auth store through `PUT /provider/auth`             |
+| External plugin manifests                                                                                          | `~/.config/wingman/plugins/` plus extra plugin directories |
 
 The HTTP API stores agents. Agents are not in `wingman.json`.
 
@@ -90,17 +90,17 @@ For exact fields, see [Config Schema](/reference/config-schema).
 
 ## Common Tasks
 
-| Task | Go to |
-|---|---|
-| Start the local server or managed service | [Run the Server](/use-wingman/run-server) |
-| Store API keys | [Providers](/configure/providers#store-provider-auth) |
-| Route a cataloged provider through a gateway | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
-| Add a reusable custom provider/model | [Providers](/configure/providers#add-a-custom-provider) |
-| Choose between `model_ref` and `model_route` | [Models](/configure/models) |
-| Add global or project `AGENTS.md` instructions | [Project Instructions](/configure/project-instructions) |
-| Load external plugins | [Plugins](/concepts/plugins#external-plugins) |
-| Connect MCP servers and tools | [MCP Servers](/configure/mcp) |
-| View all supported configuration fields | [Config Schema](/reference/config-schema) |
+| Task                                           | Go to                                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------- |
+| Start the local server or managed service      | [Run the Server](/use-wingman/run-server)                            |
+| Store API keys                                 | [Providers](/configure/providers#store-provider-auth)                |
+| Route a cataloged provider through a gateway   | [Providers](/configure/providers#route-a-provider-through-a-gateway) |
+| Add a reusable custom provider/model           | [Providers](/configure/providers#add-a-custom-provider)              |
+| Choose between `model_ref` and `model_route`   | [Models](/configure/models)                                          |
+| Add global or project `AGENTS.md` instructions | [Project Instructions](/configure/project-instructions)              |
+| Load external plugins                          | [Plugins](/concepts/plugins#external-plugins)                        |
+| Connect MCP servers and tools                  | [MCP Servers](/configure/mcp)                                        |
+| View all supported configuration fields        | [Config Schema](/reference/config-schema)                            |
 
 ## Defaults
 

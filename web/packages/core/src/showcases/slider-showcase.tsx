@@ -6,7 +6,7 @@ import {
   SliderThumb,
   SliderTrack,
   SliderValue,
-} from '#components/core/slider'
+} from "#components/core/slider";
 
 export function SliderShowcase() {
   return (
@@ -52,5 +52,5 @@ export function SliderShowcase() {
         </Slider>
       </div>
     </section>
-  )
+  );
 }

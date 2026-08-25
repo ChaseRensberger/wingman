@@ -1,4 +1,4 @@
-import { Textarea } from "#components/core/textarea"
+import { Textarea } from "#components/core/textarea";
 
 export function TextareaShowcase() {
   return (
@@ -10,5 +10,5 @@ export function TextareaShowcase() {
         <Textarea placeholder="Invalid textarea" aria-invalid />
       </div>
     </section>
-  )
+  );
 }

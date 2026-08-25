@@ -10,11 +10,11 @@ OpenAI, and OpenCode Zen.
 
 Provider configuration has three parts:
 
-| Concern | Where it lives | What it controls |
-|---|---|---|
-| Provider metadata | WingModels catalog and `~/.config/wingman/wingman.json` | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
-| Provider credentials | SQLite authentication store through `/provider/auth` | API keys that the Wingman server uses. |
-| Provider route and model configuration | `~/.config/wingman/wingman.json` | Runtime route changes and custom provider or model definitions. |
+| Concern                                | Where it lives                                          | What it controls                                                                                          |
+| -------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Provider metadata                      | WingModels catalog and `~/.config/wingman/wingman.json` | Provider IDs, default base URLs, environment variable names, model capabilities, and supported protocols. |
+| Provider credentials                   | SQLite authentication store through `/provider/auth`    | API keys that the Wingman server uses.                                                                    |
+| Provider route and model configuration | `~/.config/wingman/wingman.json`                        | Runtime route changes and custom provider or model definitions.                                           |
 
 Agents store `model_ref` values such as `openai/gpt-5.6-terra`. A provider route
 overlay changes the destination without changing the agent.
@@ -181,11 +181,11 @@ exe-openai/gpt-5.6-terra
 
 `auth` controls whether Wingman sends credentials on a provider route.
 
-| Config | Behavior |
-|---|---|
+| Config  | Behavior                                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------------------------- |
 | omitted | Use normal authentication resolution: stored `/provider/auth` credentials first, then catalog environment variables. |
-| `true` | Same as omitted. |
-| `false` | Send no stored or environment credential for this provider route. |
+| `true`  | Same as omitted.                                                                                                     |
+| `false` | Send no stored or environment credential for this provider route.                                                    |
 
 Use `auth: false` only for unauthenticated gateways or local endpoints. Wingman must not send a provider credential to these endpoints.
 

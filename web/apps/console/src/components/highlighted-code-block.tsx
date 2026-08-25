@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { HighlighterCore } from "shiki/core";
-import { useTheme } from "@wingman/core/components/theme-provider";
+import { useTheme } from "@wingman/core/components/theme-context";
 
 const supportedLanguages = new Set([
   "bash",

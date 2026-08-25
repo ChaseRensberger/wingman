@@ -1,7 +1,7 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
 const cardVariants = cva(
   "bg-card text-card-foreground flex flex-col gap-(--card-spacing) rounded-[var(--radius)] border py-(--card-spacing) shadow-sm",
@@ -15,21 +15,15 @@ const cardVariants = cva(
     defaultVariants: {
       size: "default",
     },
-  }
-)
+  },
+);
 
 function Card({
   className,
   size,
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
-  return (
-    <div
-      data-slot="card"
-      className={cn(cardVariants({ size }), className)}
-      {...props}
-    />
-  )
+  return <div data-slot="card" className={cn(cardVariants({ size }), className)} {...props} />;
 }
 
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
@@ -38,11 +32,11 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="card-header"
       className={cn(
         "grid grid-cols-[1fr_auto] items-start gap-1.5 px-(--card-spacing) has-[data-slot=card-action]:grid-cols-[1fr_auto]",
-        className
+        className,
       )}
       {...props}
     />
-  )
+  );
 }
 
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
@@ -52,7 +46,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("text-base font-semibold leading-none", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
@@ -62,7 +56,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardAction({ className, ...props }: React.ComponentProps<"div">) {
@@ -72,17 +66,13 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("col-start-2 row-span-2 row-start-1 self-start", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      data-slot="card-content"
-      className={cn("px-(--card-spacing)", className)}
-      {...props}
-    />
-  )
+    <div data-slot="card-content" className={cn("px-(--card-spacing)", className)} {...props} />
+  );
 }
 
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
@@ -92,15 +82,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("flex items-center px-(--card-spacing)", className)}
       {...props}
     />
-  )
+  );
 }
 
-export {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardAction,
-  CardContent,
-  CardFooter,
-}
+export { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter };

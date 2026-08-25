@@ -36,22 +36,22 @@ Use ephemeral mode for one-shot or embedded scenarios without durable agents and
 
 The SQLite schema stores:
 
-| Table | Purpose |
-|---|---|
-| `agents` | Agent definitions: instructions, tool names, model ref, options, output schema. |
-| `clients` | API consumer identities, including the built-in `Wingman` default client. |
-| `workspaces` | Client-owned saved contexts used to group sessions and optionally seed working directories. |
-| `sessions` | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps. |
-| `session_runs` | Durably admitted session work, request identity, immutable execution snapshot, and status. |
-| `session_events` | Public session event history used for SSE replay. |
-| `messages` | Ordered message rows for each session. |
-| `model_calls` | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness. |
-| `tool_uses` | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, model-facing text, structured content, client metadata, error, and timing. |
-| `permission_requests` | Pending and terminal interactive decisions linked to session runs and tool uses. |
-| `permission_grants` | Exact action/resource approvals remembered for one session. |
-| `parts` | Ordered typed content parts for each message. |
-| `auth` | Local provider credentials, stored as JSON. |
-| `schema_migrations` | Applied migration versions, names, and SQL checksums. |
+| Table                 | Purpose                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents`              | Agent definitions: instructions, tool names, model ref, options, output schema.                                                                                                       |
+| `clients`             | API consumer identities, including the built-in `Wingman` default client.                                                                                                             |
+| `workspaces`          | Client-owned saved contexts used to group sessions and optionally seed working directories.                                                                                           |
+| `sessions`            | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps.                                                                                         |
+| `session_runs`        | Durably admitted session work, request identity, immutable execution snapshot, and status.                                                                                            |
+| `session_events`      | Public session event history used for SSE replay.                                                                                                                                     |
+| `messages`            | Ordered message rows for each session.                                                                                                                                                |
+| `model_calls`         | One row per physical upstream model attempt, including run identity, provider/model provenance, lifecycle state, usage, and context-window fullness.                                  |
+| `tool_uses`           | One row per model-proposed tool invocation, including durable identity, ownership, lifecycle state, input, model-facing text, structured content, client metadata, error, and timing. |
+| `permission_requests` | Pending and terminal interactive decisions linked to session runs and tool uses.                                                                                                      |
+| `permission_grants`   | Exact action/resource approvals remembered for one session.                                                                                                                           |
+| `parts`               | Ordered typed content parts for each message.                                                                                                                                         |
+| `auth`                | Local provider credentials, stored as JSON.                                                                                                                                           |
+| `schema_migrations`   | Applied migration versions, names, and SQL checksums.                                                                                                                                 |
 
 Sessions do not store `agent_id` or `model_ref`. Wingman selects agents and models for each message. Assistant messages link to `model_calls`. These rows are the durable record for provider/model routes and usage.
 

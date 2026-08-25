@@ -1,34 +1,33 @@
 {
   "compilerOptions": {
-	"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-	"target": "es2023",
-	"lib": ["ES2023", "DOM"],
-	"module": "esnext",
-	"types": ["vite/client"],
-	"skipLibCheck": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
 
-	/* Bundler mode */
-	"moduleResolution": "bundler",
-	"allowImportingTsExtensions": true,
-	"verbatimModuleSyntax": true,
-	"moduleDetection": "force",
-	"noEmit": true,
-	"jsx": "react-jsx",
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
 
-	/* Linting */
-	"noUnusedLocals": true,
-	"noUnusedParameters": true,
-	"erasableSyntaxOnly": true,
-	"noFallthroughCasesInSwitch": true,
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
 
-	/* Paths */
-	"baseUrl": ".",
-	"ignoreDeprecations": "6.0",
-	"paths": {
-	  "@/*": [
-		"./src/*"
-	  ]
-	}
+    /* Paths */
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

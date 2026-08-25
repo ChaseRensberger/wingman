@@ -1,7 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { Warning } from "@phosphor-icons/react";
 import { Button } from "@wingman/core/components/core/button";
-import { Empty, EmptyActions, EmptyDescription, EmptyIcon, EmptyTitle } from "@wingman/core/components/core/empty";
+import {
+  Empty,
+  EmptyActions,
+  EmptyDescription,
+  EmptyIcon,
+  EmptyTitle,
+} from "@wingman/core/components/core/empty";
 
 export default function NotFoundPage() {
   return (
@@ -15,7 +21,9 @@ export default function NotFoundPage() {
           The page you are looking for does not exist or has been moved.
         </EmptyDescription>
         <EmptyActions>
-          <Button render={<Link to="/" />} nativeButton={false}>Go home</Button>
+          <Button render={<Link to="/" />} nativeButton={false}>
+            Go home
+          </Button>
         </EmptyActions>
       </Empty>
     </div>

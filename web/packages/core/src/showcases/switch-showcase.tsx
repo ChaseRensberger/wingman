@@ -1,11 +1,11 @@
-import { Switch } from "#components/core/switch"
+import { Switch } from "#components/core/switch";
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from "#components/core/field"
+} from "#components/core/field";
 
 export function SwitchShowcase() {
   return (
@@ -31,5 +31,5 @@ export function SwitchShowcase() {
         </Field>
       </FieldGroup>
     </section>
-  )
+  );
 }

@@ -12,12 +12,12 @@ script, or internal service.
 
 Use the client that matches where and how you connect:
 
-| Need | Use |
-|---|---|
-| Send interactive requests to the local managed daemon | [`wingman api`](/reference/cli#api-command) |
-| Build a local Go application for the managed daemon | [Go SDK](/build-clients/go-sdk) with `NewLocal` |
-| Build a Go or TypeScript application for a known URL | [Go SDK](/build-clients/go-sdk) or [TypeScript SDK](/build-clients/typescript-sdk) |
-| Call the API from a script or another language | Direct HTTP requests in this guide |
+| Need                                                  | Use                                                                                |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Send interactive requests to the local managed daemon | [`wingman api`](/reference/cli#api-command)                                        |
+| Build a local Go application for the managed daemon   | [Go SDK](/build-clients/go-sdk) with `NewLocal`                                    |
+| Build a Go or TypeScript application for a known URL  | [Go SDK](/build-clients/go-sdk) or [TypeScript SDK](/build-clients/typescript-sdk) |
+| Call the API from a script or another language        | Direct HTTP requests in this guide                                                 |
 
 `wingman api` does not connect to foreground or remote servers. Use direct HTTP
 or an SDK when you have an explicit server URL.

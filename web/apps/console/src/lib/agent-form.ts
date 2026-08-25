@@ -40,7 +40,7 @@ export const agentFormSchema = z.object({
         return false;
       }
     },
-    { message: "Must be empty or a valid JSON object" }
+    { message: "Must be empty or a valid JSON object" },
   ),
 });
 

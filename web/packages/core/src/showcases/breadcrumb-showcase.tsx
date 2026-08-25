@@ -5,7 +5,7 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "#components/core/breadcrumb"
+} from "#components/core/breadcrumb";
 
 export function BreadcrumbShowcase() {
   return (
@@ -27,5 +27,5 @@ export function BreadcrumbShowcase() {
         </BreadcrumbList>
       </Breadcrumb>
     </section>
-  )
+  );
 }

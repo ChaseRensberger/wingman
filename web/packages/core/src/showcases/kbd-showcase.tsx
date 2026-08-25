@@ -1,4 +1,4 @@
-import { Kbd } from "#components/core/kbd"
+import { Kbd } from "#components/core/kbd";
 
 export function KbdShowcase() {
   return (
@@ -20,5 +20,5 @@ export function KbdShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

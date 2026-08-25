@@ -1,12 +1,12 @@
-import { DataTable, type ColumnDef } from "#components/core/data-table"
-import { Badge } from "#components/core/badge"
+import { DataTable, type ColumnDef } from "#components/core/data-table";
+import { Badge } from "#components/core/badge";
 
 type Payment = {
-  id: string
-  amount: number
-  status: "pending" | "processing" | "success" | "failed"
-  email: string
-}
+  id: string;
+  amount: number;
+  status: "pending" | "processing" | "success" | "failed";
+  email: string;
+};
 
 const data: Payment[] = [
   { id: "m5gr84i9", amount: 316, status: "success", email: "ken@example.com" },
@@ -14,7 +14,7 @@ const data: Payment[] = [
   { id: "derv1ws0", amount: 837, status: "processing", email: "monserrat@example.com" },
   { id: "5kma53ae", amount: 874, status: "success", email: "silas@example.com" },
   { id: "bhqecj4p", amount: 721, status: "failed", email: "carmela@example.com" },
-]
+];
 
 const columns: ColumnDef<Payment>[] = [
   { key: "id", header: "ID", cell: (v) => <span className="font-mono text-xs">{String(v)}</span> },
@@ -36,7 +36,7 @@ const columns: ColumnDef<Payment>[] = [
     className: "text-right",
     cell: (v) => <span className="font-medium">${Number(v).toFixed(2)}</span>,
   },
-]
+];
 
 export function DataTableShowcase() {
   return (
@@ -44,5 +44,5 @@ export function DataTableShowcase() {
       <h2 className="text-2xl font-semibold">Data Table</h2>
       <DataTable columns={columns} data={data} />
     </section>
-  )
+  );
 }

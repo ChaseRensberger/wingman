@@ -29,10 +29,10 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 
 ## Health
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Health check |
-| `GET` | `/ready` | Authenticated readiness, instance ID, and version |
+| Method | Path      | Description                                       |
+| ------ | --------- | ------------------------------------------------- |
+| `GET`  | `/health` | Health check                                      |
+| `GET`  | `/ready`  | Authenticated readiness, instance ID, and version |
 
 ```json
 { "status": "ok" }
@@ -53,18 +53,18 @@ subsystem and gives a recovery action. Before you restart the daemon, inspect `/
 
 ## Provider endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/provider` | List registered providers |
-| `GET` | `/provider/{name}` | Get provider metadata |
-| `GET` | `/provider/{name}/models` | List models for a provider |
-| `GET` | `/provider/{name}/models/{model}` | Get model metadata |
-| `GET` | `/provider/auth` | Get configured credential status |
-| `PUT` | `/provider/auth` | Set credentials for one or more providers |
-| `DELETE` | `/provider/auth/{provider}` | Remove credentials for a provider |
-| `POST` | `/provider/{name}/oauth/authorize` | Begin browser or device OAuth authorization |
-| `GET` | `/provider/{name}/oauth/{attempt}` | Read OAuth authorization status |
-| `DELETE` | `/provider/{name}/oauth/{attempt}` | Cancel OAuth authorization |
+| Method   | Path                               | Description                                 |
+| -------- | ---------------------------------- | ------------------------------------------- |
+| `GET`    | `/provider`                        | List registered providers                   |
+| `GET`    | `/provider/{name}`                 | Get provider metadata                       |
+| `GET`    | `/provider/{name}/models`          | List models for a provider                  |
+| `GET`    | `/provider/{name}/models/{model}`  | Get model metadata                          |
+| `GET`    | `/provider/auth`                   | Get configured credential status            |
+| `PUT`    | `/provider/auth`                   | Set credentials for one or more providers   |
+| `DELETE` | `/provider/auth/{provider}`        | Remove credentials for a provider           |
+| `POST`   | `/provider/{name}/oauth/authorize` | Begin browser or device OAuth authorization |
+| `GET`    | `/provider/{name}/oauth/{attempt}` | Read OAuth authorization status             |
+| `DELETE` | `/provider/{name}/oauth/{attempt}` | Cancel OAuth authorization                  |
 
 ### Set auth
 
@@ -111,13 +111,13 @@ OAuth tokens.
 
 ## Agent endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/agents` | Create agent |
-| `GET` | `/agents` | List agents |
-| `GET` | `/agents/{id}` | Get agent |
-| `PUT` | `/agents/{id}` | Update agent (omitted fields unchanged) |
-| `DELETE` | `/agents/{id}` | Delete agent |
+| Method   | Path           | Description                             |
+| -------- | -------------- | --------------------------------------- |
+| `POST`   | `/agents`      | Create agent                            |
+| `GET`    | `/agents`      | List agents                             |
+| `GET`    | `/agents/{id}` | Get agent                               |
+| `PUT`    | `/agents/{id}` | Update agent (omitted fields unchanged) |
+| `DELETE` | `/agents/{id}` | Delete agent                            |
 
 `tools` must contain unique names from the current `GET /tools` catalog. Create
 and update requests return `400 Bad Request` for unknown or duplicate names.
@@ -140,21 +140,21 @@ and update requests return `400 Bad Request` for unknown or duplicate names.
 
 ## Operational endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/tools` | List the unique effective native, plugin, and connected MCP catalog with input/output schemas, execution traits, source, and availability. Returns an error if sources collide. |
-| `GET` | `/plugins` | List loaded external plugins and non-fatal load errors. |
-| `POST` | `/plugins/reload` | Reload configured external plugins, then return plugin status. |
-| `GET` | `/mcp` | List configured MCP servers and their status. |
-| `POST` | `/mcp/{name}/connect` | Connect a configured MCP server. |
-| `POST` | `/mcp/{name}/disconnect` | Disconnect a configured MCP server. |
-| `GET` | `/client` | Get the client for the current request. |
-| `GET` | `/clients` | List registered clients. |
-| `POST` | `/clients` | Register a client by name. |
-| `GET` | `/clients/{id}` | Get a registered client. |
-| `GET` | `/logs` | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart. |
-| `GET` | `/diagnostics` | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health. |
-| `GET` | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory. |
+| Method | Path                                  | Description                                                                                                                                                                     |
+| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/tools`                              | List the unique effective native, plugin, and connected MCP catalog with input/output schemas, execution traits, source, and availability. Returns an error if sources collide. |
+| `GET`  | `/plugins`                            | List loaded external plugins and non-fatal load errors.                                                                                                                         |
+| `POST` | `/plugins/reload`                     | Reload configured external plugins, then return plugin status.                                                                                                                  |
+| `GET`  | `/mcp`                                | List configured MCP servers and their status.                                                                                                                                   |
+| `POST` | `/mcp/{name}/connect`                 | Connect a configured MCP server.                                                                                                                                                |
+| `POST` | `/mcp/{name}/disconnect`              | Disconnect a configured MCP server.                                                                                                                                             |
+| `GET`  | `/client`                             | Get the client for the current request.                                                                                                                                         |
+| `GET`  | `/clients`                            | List registered clients.                                                                                                                                                        |
+| `POST` | `/clients`                            | Register a client by name.                                                                                                                                                      |
+| `GET`  | `/clients/{id}`                       | Get a registered client.                                                                                                                                                        |
+| `GET`  | `/logs`                               | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart.                                                                             |
+| `GET`  | `/diagnostics`                        | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health.                                       |
+| `GET`  | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                                                                            |
 
 Plugin directories and MCP server definitions use server-wide configuration. See
 [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins),
@@ -173,27 +173,27 @@ authoritative state for each run, use the session and run APIs.
 
 ## Session endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/sessions` | Create session |
-| `GET` | `/sessions` | List sessions |
-| `GET` | `/sessions/{id}` | Get session including history |
-| `GET` | `/sessions/{id}/model-calls` | List physical upstream model attempts in start-time order |
-| `GET` | `/sessions/{id}/tool-uses` | List durable tool invocations in proposal/source order |
-| `GET` | `/sessions/{id}/permission-requests` | List durable permission requests in creation order |
-| `GET` | `/sessions/{id}/permission-grants` | List exact remembered grants for the session |
-| `POST` | `/sessions/{id}/permission-requests/{requestID}/reply` | Reply `once`, `always`, or `reject` to a pending request |
-| `GET` | `/sessions/{id}/runs` | List authoritative runs in admission order |
-| `GET` | `/sessions/{id}/runs/{runID}` | Get one authoritative run |
-| `POST` | `/sessions/{id}/runs/{runID}/abort` | Abort one queued or locally running run |
-| `POST` | `/sessions/{id}/rename` | Rename a session at an expected aggregate version |
-| `POST` | `/sessions/{id}/move` | Move a session to a working directory or Workspace at an expected aggregate version |
-| `DELETE` | `/sessions/{id}?expected_version={version}` | Permanently purge a session and all associated data |
-| `POST` | `/sessions/{id}/message` | Durably queue a message and return its run ID (`202 Accepted`) |
-| `GET` | `/sessions/{id}/events` | Replay durable events after a cursor, synchronize, then stream new events |
-| `GET` | `/sessions/{id}/events/history` | Read one finite page of durable session events |
-| `POST` | `/sessions/{id}/abort` | Cancel the active run. Queued messages remain scheduled. |
-| `POST` | `/run` | Run one ephemeral session without persisting it |
+| Method   | Path                                                   | Description                                                                         |
+| -------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `POST`   | `/sessions`                                            | Create session                                                                      |
+| `GET`    | `/sessions`                                            | List sessions                                                                       |
+| `GET`    | `/sessions/{id}`                                       | Get session including history                                                       |
+| `GET`    | `/sessions/{id}/model-calls`                           | List physical upstream model attempts in start-time order                           |
+| `GET`    | `/sessions/{id}/tool-uses`                             | List durable tool invocations in proposal/source order                              |
+| `GET`    | `/sessions/{id}/permission-requests`                   | List durable permission requests in creation order                                  |
+| `GET`    | `/sessions/{id}/permission-grants`                     | List exact remembered grants for the session                                        |
+| `POST`   | `/sessions/{id}/permission-requests/{requestID}/reply` | Reply `once`, `always`, or `reject` to a pending request                            |
+| `GET`    | `/sessions/{id}/runs`                                  | List authoritative runs in admission order                                          |
+| `GET`    | `/sessions/{id}/runs/{runID}`                          | Get one authoritative run                                                           |
+| `POST`   | `/sessions/{id}/runs/{runID}/abort`                    | Abort one queued or locally running run                                             |
+| `POST`   | `/sessions/{id}/rename`                                | Rename a session at an expected aggregate version                                   |
+| `POST`   | `/sessions/{id}/move`                                  | Move a session to a working directory or Workspace at an expected aggregate version |
+| `DELETE` | `/sessions/{id}?expected_version={version}`            | Permanently purge a session and all associated data                                 |
+| `POST`   | `/sessions/{id}/message`                               | Durably queue a message and return its run ID (`202 Accepted`)                      |
+| `GET`    | `/sessions/{id}/events`                                | Replay durable events after a cursor, synchronize, then stream new events           |
+| `GET`    | `/sessions/{id}/events/history`                        | Read one finite page of durable session events                                      |
+| `POST`   | `/sessions/{id}/abort`                                 | Cancel the active run. Queued messages remain scheduled.                            |
+| `POST`   | `/run`                                                 | Run one ephemeral session without persisting it                                     |
 
 Session responses include `version`, starting at `1`. Rename and move commands
 require that value as `expected_version`. A stale command returns `409 Conflict`.
@@ -494,14 +494,14 @@ also returns `409`.
 
 ## Workspace endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/workspaces` | Create Workspace |
-| `GET` | `/workspaces` | List Workspaces for the active client |
-| `GET` | `/workspaces/{id}` | Get Workspace |
-| `PUT` | `/workspaces/{id}` | Update Workspace metadata (name, optional path) |
-| `DELETE` | `/workspaces/{id}` | Delete Workspace |
-| `GET` | `/workspaces/{id}/sessions` | List sessions in a Workspace |
+| Method   | Path                        | Description                                     |
+| -------- | --------------------------- | ----------------------------------------------- |
+| `POST`   | `/workspaces`               | Create Workspace                                |
+| `GET`    | `/workspaces`               | List Workspaces for the active client           |
+| `GET`    | `/workspaces/{id}`          | Get Workspace                                   |
+| `PUT`    | `/workspaces/{id}`          | Update Workspace metadata (name, optional path) |
+| `DELETE` | `/workspaces/{id}`          | Delete Workspace                                |
+| `GET`    | `/workspaces/{id}/sessions` | List sessions in a Workspace                    |
 
 ### Create Workspace request
 

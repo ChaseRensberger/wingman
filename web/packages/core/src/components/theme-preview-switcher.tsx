@@ -1,19 +1,20 @@
-import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react"
+import { DesktopIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "#components/core/card"
-import { RadioGroup, RadioGroupItem } from "#components/core/radio-group"
-import { type ColorMode, useTheme } from "#components/theme-provider"
-import { supportsColorMode, themes } from "#themes/registry"
-import { cn } from "#lib/utils"
+import { Card, CardContent, CardHeader, CardTitle } from "#components/core/card";
+import { RadioGroup, RadioGroupItem } from "#components/core/radio-group";
+import { useTheme } from "#components/theme-context";
+import { type ColorMode } from "#components/theme-provider";
+import { supportsColorMode, themes } from "#themes/registry";
+import { cn } from "#lib/utils";
 
 const colorModeOptions = [
   { value: "light", label: "Light", icon: SunIcon },
   { value: "dark", label: "Dark", icon: MoonIcon },
   { value: "system", label: "System", icon: DesktopIcon },
-] as const
+] as const;
 
 export function ThemePreviewSwitcher() {
-  const { theme, colorMode, resolvedColorMode, setColorMode, setTheme } = useTheme()
+  const { theme, colorMode, resolvedColorMode, setColorMode, setTheme } = useTheme();
 
   return (
     <div className="space-y-4">
@@ -28,9 +29,9 @@ export function ThemePreviewSwitcher() {
             className="inline-grid w-full max-w-md grid-cols-3 rounded-[var(--radius)] border bg-muted p-1"
           >
             {colorModeOptions.map((option) => {
-              const Icon = option.icon
-              const active = colorMode === option.value
-              const available = supportsColorMode(theme, option.value)
+              const Icon = option.icon;
+              const active = colorMode === option.value;
+              const available = supportsColorMode(theme, option.value);
 
               return (
                 <label
@@ -40,14 +41,14 @@ export function ThemePreviewSwitcher() {
                     available ? "cursor-pointer" : "cursor-not-allowed opacity-45",
                     active
                       ? "bg-background text-foreground shadow-sm ring-1 ring-border/80"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <RadioGroupItem value={option.value} disabled={!available} className="sr-only" />
                   <Icon className="size-4" />
                   <span>{option.label}</span>
                 </label>
-              )
+              );
             })}
           </RadioGroup>
         </CardContent>
@@ -57,21 +58,33 @@ export function ThemePreviewSwitcher() {
           <CardTitle>Theme</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <RadioGroup value={theme.id} onValueChange={(value) => setTheme(value)} className="grid max-w-2xl gap-2 sm:grid-cols-3">
+          <RadioGroup
+            value={theme.id}
+            onValueChange={(value) => setTheme(value)}
+            className="grid max-w-2xl gap-2 sm:grid-cols-3"
+          >
             {themes.map((option) => {
-              const active = theme.id === option.id
-              const previewMode = option.modes.includes(resolvedColorMode) ? resolvedColorMode : option.modes[0]
+              const active = theme.id === option.id;
+              const previewMode = option.modes.includes(resolvedColorMode)
+                ? resolvedColorMode
+                : option.modes[0];
 
               return (
                 <label
                   key={option.id}
                   className={cn(
                     "cursor-pointer rounded-[var(--radius)] border p-3 transition-[color,background-color,box-shadow] duration-150",
-                    active ? "border-primary bg-primary/15 ring-1 ring-primary/30" : "hover:bg-muted"
+                    active
+                      ? "border-primary bg-primary/15 ring-1 ring-primary/30"
+                      : "hover:bg-muted",
                   )}
                 >
                   <RadioGroupItem value={option.id} className="sr-only" />
-                  <span data-theme={option.id} data-mode={previewMode} className="mb-3 flex overflow-hidden rounded border">
+                  <span
+                    data-theme={option.id}
+                    data-mode={previewMode}
+                    className="mb-3 flex overflow-hidden rounded border"
+                  >
                     <span className="h-7 flex-1 bg-background" />
                     <span className="h-7 flex-1 bg-card" />
                     <span className="h-7 flex-1 bg-primary" />
@@ -79,14 +92,16 @@ export function ThemePreviewSwitcher() {
                   </span>
                   <span className="flex items-center justify-between gap-2 text-sm font-medium">
                     {option.label}
-                    {option.modes.length === 1 && <span className="text-xs font-normal text-muted-foreground">Dark</span>}
+                    {option.modes.length === 1 && (
+                      <span className="text-xs font-normal text-muted-foreground">Dark</span>
+                    )}
                   </span>
                 </label>
-              )
+              );
             })}
           </RadioGroup>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

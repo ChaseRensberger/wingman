@@ -6,8 +6,8 @@ import {
   SheetTitle,
   SheetDescription,
   SheetFooter,
-} from "#components/core/sheet"
-import { Button } from "#components/core/button"
+} from "#components/core/sheet";
+import { Button } from "#components/core/button";
 
 export function SheetShowcase() {
   return (
@@ -16,13 +16,15 @@ export function SheetShowcase() {
       <div className="flex flex-wrap gap-3">
         {(["left", "right", "top", "bottom"] as const).map((side) => (
           <Sheet key={side}>
-            <SheetTrigger render={<Button variant="outline">{side.charAt(0).toUpperCase() + side.slice(1)}</Button>} />
+            <SheetTrigger
+              render={
+                <Button variant="outline">{side.charAt(0).toUpperCase() + side.slice(1)}</Button>
+              }
+            />
             <SheetContent side={side}>
               <SheetHeader>
                 <SheetTitle>Sheet ({side})</SheetTitle>
-                <SheetDescription>
-                  A panel that slides in from the {side}.
-                </SheetDescription>
+                <SheetDescription>A panel that slides in from the {side}.</SheetDescription>
               </SheetHeader>
               <p className="text-sm text-muted-foreground">
                 Add your content here. Forms, navigation, or any other content.
@@ -36,5 +38,5 @@ export function SheetShowcase() {
         ))}
       </div>
     </section>
-  )
+  );
 }

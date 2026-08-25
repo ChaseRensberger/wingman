@@ -1,4 +1,4 @@
-import { NativeSelect } from "#components/core/native-select"
+import { NativeSelect } from "#components/core/native-select";
 
 export function NativeSelectShowcase() {
   return (
@@ -17,5 +17,5 @@ export function NativeSelectShowcase() {
         </NativeSelect>
       </div>
     </section>
-  )
+  );
 }

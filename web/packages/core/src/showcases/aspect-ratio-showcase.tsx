@@ -1,4 +1,4 @@
-import { AspectRatio } from "#components/core/aspect-ratio"
+import { AspectRatio } from "#components/core/aspect-ratio";
 
 export function AspectRatioShowcase() {
   return (
@@ -23,5 +23,5 @@ export function AspectRatioShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

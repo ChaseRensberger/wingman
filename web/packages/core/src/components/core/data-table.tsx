@@ -1,5 +1,5 @@
-import * as React from "react"
-import { ArrowUp, ArrowDown, ArrowsDownUp } from "@phosphor-icons/react"
+import * as React from "react";
+import { ArrowUp, ArrowDown, ArrowsDownUp } from "@phosphor-icons/react";
 import {
   Table,
   TableHeader,
@@ -7,22 +7,22 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from "#components/core/table"
+} from "#components/core/table";
 
-export type SortDirection = "asc" | "desc" | null
+export type SortDirection = "asc" | "desc" | null;
 
 export interface ColumnDef<T> {
-  key: keyof T
-  header: string
-  sortable?: boolean
-  cell?: (value: T[keyof T], row: T) => React.ReactNode
-  className?: string
+  key: keyof T;
+  header: string;
+  sortable?: boolean;
+  cell?: (value: T[keyof T], row: T) => React.ReactNode;
+  className?: string;
 }
 
 interface DataTableProps<T> {
-  columns: ColumnDef<T>[]
-  data: T[]
-  className?: string
+  columns: ColumnDef<T>[];
+  data: T[];
+  className?: string;
 }
 
 function DataTable<T extends Record<string, unknown>>({
@@ -30,29 +30,31 @@ function DataTable<T extends Record<string, unknown>>({
   data,
   className,
 }: DataTableProps<T>) {
-  const [sortKey, setSortKey] = React.useState<keyof T | null>(null)
-  const [sortDir, setSortDir] = React.useState<SortDirection>(null)
+  const [sortKey, setSortKey] = React.useState<keyof T | null>(null);
+  const [sortDir, setSortDir] = React.useState<SortDirection>(null);
 
   function handleSort(key: keyof T) {
     if (sortKey === key) {
-      if (sortDir === "asc") setSortDir("desc")
-      else if (sortDir === "desc") { setSortKey(null); setSortDir(null) }
-      else setSortDir("asc")
+      if (sortDir === "asc") setSortDir("desc");
+      else if (sortDir === "desc") {
+        setSortKey(null);
+        setSortDir(null);
+      } else setSortDir("asc");
     } else {
-      setSortKey(key)
-      setSortDir("asc")
+      setSortKey(key);
+      setSortDir("asc");
     }
   }
 
   const sorted = React.useMemo(() => {
-    if (!sortKey || !sortDir) return data
+    if (!sortKey || !sortDir) return data;
     return [...data].sort((a, b) => {
-      const av = a[sortKey]
-      const bv = b[sortKey]
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0
-      return sortDir === "asc" ? cmp : -cmp
-    })
-  }, [data, sortKey, sortDir])
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [data, sortKey, sortDir]);
 
   return (
     <Table className={className}>
@@ -61,7 +63,9 @@ function DataTable<T extends Record<string, unknown>>({
           {columns.map((col) => (
             <TableHead
               key={String(col.key)}
-              aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+              aria-sort={
+                sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"
+              }
               className={col.className}
             >
               {col.sortable ? (
@@ -72,15 +76,17 @@ function DataTable<T extends Record<string, unknown>>({
                 >
                   {col.header}
                   {sortKey === col.key ? (
-                    sortDir === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
+                    sortDir === "asc" ? (
+                      <ArrowUp className="size-3" />
+                    ) : (
+                      <ArrowDown className="size-3" />
+                    )
                   ) : (
                     <ArrowsDownUp className="size-3 text-muted-foreground/50" />
                   )}
                 </button>
               ) : (
-                <span className="flex items-center gap-1">
-                {col.header}
-                </span>
+                <span className="flex items-center gap-1">{col.header}</span>
               )}
             </TableHead>
           ))}
@@ -98,8 +104,8 @@ function DataTable<T extends Record<string, unknown>>({
         ))}
       </TableBody>
     </Table>
-  )
+  );
 }
 
-export { DataTable }
-export type { DataTableProps }
+export { DataTable };
+export type { DataTableProps };

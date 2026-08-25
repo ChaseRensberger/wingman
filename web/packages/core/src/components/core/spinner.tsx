@@ -1,6 +1,6 @@
-import * as React from "react"
-import { cn } from "#lib/utils"
-import { cva, type VariantProps } from "class-variance-authority"
+import * as React from "react";
+import { cn } from "#lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
 
 const spinnerVariants = cva(
   "inline-block animate-spin rounded-full border-2 border-current border-t-transparent",
@@ -16,8 +16,8 @@ const spinnerVariants = cva(
     defaultVariants: {
       size: "default",
     },
-  }
-)
+  },
+);
 
 function Spinner({
   className,
@@ -32,7 +32,7 @@ function Spinner({
       className={cn(spinnerVariants({ size }), className)}
       {...props}
     />
-  )
+  );
 }
 
-export { Spinner, spinnerVariants }
+export { Spinner };

@@ -1,8 +1,8 @@
-import * as React from "react"
-import { cn } from "#lib/utils"
+import * as React from "react";
+import { cn } from "#lib/utils";
 
 interface AspectRatioProps extends React.ComponentProps<"div"> {
-  ratio?: number
+  ratio?: number;
 }
 
 function AspectRatio({ ratio = 16 / 9, className, style, ...props }: AspectRatioProps) {
@@ -14,7 +14,7 @@ function AspectRatio({ ratio = 16 / 9, className, style, ...props }: AspectRatio
     >
       <div className="absolute inset-0" {...props} />
     </div>
-  )
+  );
 }
 
-export { AspectRatio }
+export { AspectRatio };

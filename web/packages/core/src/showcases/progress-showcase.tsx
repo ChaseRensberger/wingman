@@ -4,7 +4,7 @@ import {
   ProgressLabel,
   ProgressTrack,
   ProgressValue,
-} from "#components/core/progress"
+} from "#components/core/progress";
 
 export function ProgressShowcase() {
   return (
@@ -34,5 +34,5 @@ export function ProgressShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

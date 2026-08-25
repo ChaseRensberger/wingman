@@ -6,7 +6,7 @@ import {
   FieldLabel,
   FieldSet,
   FieldLegend,
-} from "#components/core/field"
+} from "#components/core/field";
 
 export function FieldShowcase() {
   return (
@@ -39,5 +39,5 @@ export function FieldShowcase() {
         </FieldGroup>
       </FieldSet>
     </section>
-  )
+  );
 }

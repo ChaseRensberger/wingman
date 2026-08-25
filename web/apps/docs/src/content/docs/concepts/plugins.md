@@ -14,10 +14,10 @@ Plugins are session-scoped. They cannot create sessions, list other sessions, or
 
 Wingman uses one plugin model with two loading paths:
 
-| Form | Use it when |
-|---|---|
-| Go plugin | Use this form when you embed Wingman or ship a custom binary that needs typed in-process hooks. |
-| External RPC plugin | Use this form when the stock `wingman serve` binary loads a subprocess from disk. |
+| Form                | Use it when                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| Go plugin           | Use this form when you embed Wingman or ship a custom binary that needs typed in-process hooks. |
+| External RPC plugin | Use this form when the stock `wingman serve` binary loads a subprocess from disk.               |
 
 Go plugins provide lifecycle hooks. RPC plugins provide tool execution in the stock server.
 

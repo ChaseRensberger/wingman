@@ -1,4 +1,4 @@
-import { Skeleton } from "#components/core/skeleton"
+import { Skeleton } from "#components/core/skeleton";
 
 export function SkeletonShowcase() {
   return (
@@ -19,5 +19,5 @@ export function SkeletonShowcase() {
         </div>
       </div>
     </section>
-  )
+  );
 }

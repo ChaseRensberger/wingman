@@ -84,8 +84,14 @@ function AgentsPage() {
       const modelEntries = await Promise.all(
         selectableProviders.map(async (provider) => {
           try {
-            const data = await client.providers.models.list(provider.id) as Record<string, ProviderModel>;
-            return [provider.id, Object.values(data).sort((a, b) => a.id.localeCompare(b.id))] as const;
+            const data = (await client.providers.models.list(provider.id)) as Record<
+              string,
+              ProviderModel
+            >;
+            return [
+              provider.id,
+              Object.values(data).sort((a, b) => a.id.localeCompare(b.id)),
+            ] as const;
           } catch {
             return [provider.id, []] as const;
           }
@@ -107,14 +113,18 @@ function AgentsPage() {
 
   function openNew() {
     form.reset();
-    form.setFieldValue("tools", toolCatalog.map((tool) => tool.name));
+    form.setFieldValue(
+      "tools",
+      toolCatalog.map((tool) => tool.name),
+    );
     setCreateOpen((open) => !open);
   }
 
   const availableTools = toolCatalog.map((tool) => tool.name);
   const selectableProviders = providers.filter(isProviderSelectable);
   const filteredAgents = agents.filter((agent) => {
-    const haystack = `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
+    const haystack =
+      `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
     return haystack.includes(filter.toLowerCase());
   });
 
@@ -186,8 +196,14 @@ function AgentsPage() {
             <form.Field
               name="name"
               children={(field) => (
-                <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                  <FieldLabel className="text-xs">Name <span aria-hidden="true">*</span><span className="sr-only"> required</span></FieldLabel>
+                <Field
+                  className="gap-1"
+                  data-invalid={field.state.meta.errors.length > 0 || undefined}
+                >
+                  <FieldLabel className="text-xs">
+                    Name <span aria-hidden="true">*</span>
+                    <span className="sr-only"> required</span>
+                  </FieldLabel>
                   <Input
                     name={field.name}
                     value={field.state.value}
@@ -202,7 +218,10 @@ function AgentsPage() {
             <form.Field
               name="instructions"
               children={(field) => (
-                <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                <Field
+                  className="gap-1"
+                  data-invalid={field.state.meta.errors.length > 0 || undefined}
+                >
                   <FieldLabel className="text-xs">Instructions</FieldLabel>
                   <Textarea
                     className="min-h-28"
@@ -219,13 +238,17 @@ function AgentsPage() {
               selector={(state) => [state.values.provider, state.values.model] as const}
               children={([provider, selectedModel]) => {
                 const providerModels = models[provider] ?? [];
-                const variants = providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
+                const variants =
+                  providerModels.find((model) => model.id === selectedModel)?.variants ?? [];
                 return (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <form.Field
                       name="provider"
                       children={(field) => (
-                        <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                        <Field
+                          className="gap-1"
+                          data-invalid={field.state.meta.errors.length > 0 || undefined}
+                        >
                           <FieldLabel className="text-xs">Provider</FieldLabel>
                           <Select
                             value={field.state.value}
@@ -246,14 +269,19 @@ function AgentsPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                          <FieldError
+                            errors={field.state.meta.errors as Array<{ message?: string }>}
+                          />
                         </Field>
                       )}
                     />
                     <form.Field
                       name="model"
                       children={(field) => (
-                        <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                        <Field
+                          className="gap-1"
+                          data-invalid={field.state.meta.errors.length > 0 || undefined}
+                        >
                           <FieldLabel className="text-xs">Model</FieldLabel>
                           <Select
                             value={field.state.value}
@@ -264,7 +292,9 @@ function AgentsPage() {
                             disabled={!provider || providerModels.length === 0}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder={provider ? "Select model" : "Select provider first"} />
+                              <SelectValue
+                                placeholder={provider ? "Select model" : "Select provider first"}
+                              />
                             </SelectTrigger>
                             <SelectContent>
                               {providerModels.map((model) => (
@@ -274,7 +304,9 @@ function AgentsPage() {
                               ))}
                             </SelectContent>
                           </Select>
-                          <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                          <FieldError
+                            errors={field.state.meta.errors as Array<{ message?: string }>}
+                          />
                         </Field>
                       )}
                     />
@@ -282,14 +314,19 @@ function AgentsPage() {
                       <form.Field
                         name="variant"
                         children={(field) => (
-                          <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                          <Field
+                            className="gap-1"
+                            data-invalid={field.state.meta.errors.length > 0 || undefined}
+                          >
                             <FieldLabel className="text-xs">Variant</FieldLabel>
                             <Select
                               value={field.state.value || null}
                               onValueChange={(value) => field.handleChange(value ?? "")}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Select variant">{(value) => value ?? "Provider default"}</SelectValue>
+                                <SelectValue placeholder="Select variant">
+                                  {(value) => value ?? "Provider default"}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem>Provider default</SelectItem>
@@ -300,7 +337,9 @@ function AgentsPage() {
                                 ))}
                               </SelectContent>
                             </Select>
-                            <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
+                            <FieldError
+                              errors={field.state.meta.errors as Array<{ message?: string }>}
+                            />
                           </Field>
                         )}
                       />
@@ -316,10 +355,20 @@ function AgentsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <label className="text-xs font-medium">Tools</label>
                     <div className="flex gap-1">
-                      <Button type="button" variant="ghost" size="xs" onClick={() => field.handleChange(availableTools)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => field.handleChange(availableTools)}
+                      >
                         All on
                       </Button>
-                      <Button type="button" variant="ghost" size="xs" onClick={() => field.handleChange([])}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => field.handleChange([])}
+                      >
                         All off
                       </Button>
                     </div>
@@ -340,7 +389,11 @@ function AgentsPage() {
                         className="h-auto rounded-md p-0"
                         title={`${tool.source}${tool.server ? `: ${tool.server}` : ""}`}
                       >
-                        <Badge variant={field.state.value.includes(tool.name) ? "default" : "outline"}>{tool.name}</Badge>
+                        <Badge
+                          variant={field.state.value.includes(tool.name) ? "default" : "outline"}
+                        >
+                          {tool.name}
+                        </Badge>
                       </Button>
                     ))}
                   </div>
@@ -350,7 +403,10 @@ function AgentsPage() {
             <form.Field
               name="outputSchema"
               children={(field) => (
-                <Field className="gap-1" data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                <Field
+                  className="gap-1"
+                  data-invalid={field.state.meta.errors.length > 0 || undefined}
+                >
                   <FieldLabel className="text-xs">Output schema JSON</FieldLabel>
                   <Textarea
                     className="min-h-24"
@@ -365,7 +421,9 @@ function AgentsPage() {
               )}
             />
             <div className="flex justify-end">
-              <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Create"}</Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving..." : "Create"}
+              </Button>
             </div>
           </div>
         </form>
@@ -384,7 +442,9 @@ function AgentsPage() {
       ) : filteredAgents.length === 0 ? (
         <Empty>
           <EmptyTitle>No agents yet</EmptyTitle>
-          <EmptyDescription>Create an agent to define reusable model instructions and tools.</EmptyDescription>
+          <EmptyDescription>
+            Create an agent to define reusable model instructions and tools.
+          </EmptyDescription>
         </Empty>
       ) : (
         <Table>

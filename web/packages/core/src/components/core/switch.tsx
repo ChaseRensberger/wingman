@@ -1,6 +1,6 @@
-import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
+import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
 function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
   return (
@@ -12,7 +12,7 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
         "focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
         "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
         "aria-invalid:border-destructive aria-invalid:ring-destructive/20",
-        className
+        className,
       )}
       {...props}
     >
@@ -20,11 +20,11 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
         data-slot="switch-thumb"
         className={cn(
           "pointer-events-none block size-4 rounded-full bg-background shadow-sm ring-0 transition-transform duration-150",
-          "data-[checked]:translate-x-4 data-[unchecked]:translate-x-0"
+          "data-[checked]:translate-x-4 data-[unchecked]:translate-x-0",
         )}
       />
     </SwitchPrimitive.Root>
-  )
+  );
 }
 
-export { Switch }
+export { Switch };

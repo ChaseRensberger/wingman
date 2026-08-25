@@ -41,10 +41,7 @@ export function buildModelRef(provider: string, model: string, variant?: string 
 export function latestAssistantUsage(history: Message[]): Usage | undefined {
   return [...history]
     .reverse()
-    .find(
-      (message) =>
-        message.role === "assistant" && contextTokenCount(message.usage) > 0,
-    )?.usage;
+    .find((message) => message.role === "assistant" && contextTokenCount(message.usage) > 0)?.usage;
 }
 
 export function formatTokenCount(tokens: number): string {
@@ -53,10 +50,7 @@ export function formatTokenCount(tokens: number): string {
   return String(tokens);
 }
 
-export function formatContextPercent(
-  tokens: number,
-  contextWindow?: number,
-): string | null {
+export function formatContextPercent(tokens: number, contextWindow?: number): string | null {
   if (!contextWindow || contextWindow <= 0) return null;
   const percent = (tokens / contextWindow) * 100;
   if (percent > 0 && percent < 1) return "<1%";
@@ -71,17 +65,13 @@ export function contextTokenCount(usage?: Usage): number {
     (usage.reasoning_tokens ?? 0) +
     (usage.cached_input_tokens ?? 0) +
     (usage.cache_write_tokens ?? 0);
-  return computed === 0 && usage.total_tokens > 0
-    ? usage.total_tokens
-    : computed;
+  return computed === 0 && usage.total_tokens > 0 ? usage.total_tokens : computed;
 }
 
 function billableInputTokens(usage: Usage): number {
   return Math.max(
     0,
-    usage.input_tokens -
-      (usage.cached_input_tokens ?? 0) -
-      (usage.cache_write_tokens ?? 0),
+    usage.input_tokens - (usage.cached_input_tokens ?? 0) - (usage.cache_write_tokens ?? 0),
   );
 }
 

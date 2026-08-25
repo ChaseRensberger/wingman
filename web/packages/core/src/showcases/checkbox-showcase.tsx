@@ -1,11 +1,11 @@
-import { Checkbox } from "#components/core/checkbox"
+import { Checkbox } from "#components/core/checkbox";
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from "#components/core/field"
+} from "#components/core/field";
 
 export function CheckboxShowcase() {
   return (
@@ -31,5 +31,5 @@ export function CheckboxShowcase() {
         </Field>
       </FieldGroup>
     </section>
-  )
+  );
 }

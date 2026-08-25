@@ -1,19 +1,17 @@
-import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
-import { cn } from "#lib/utils"
+import { cn } from "#lib/utils";
 
-function TooltipProvider({
-  ...props
-}: TooltipPrimitive.Provider.Props) {
-  return <TooltipPrimitive.Provider {...props} />
+function TooltipProvider({ ...props }: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider {...props} />;
 }
 
 function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
 function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
 function TooltipContent({
@@ -21,8 +19,7 @@ function TooltipContent({
   side = "top",
   sideOffset = 4,
   ...props
-}: TooltipPrimitive.Popup.Props &
-  Pick<TooltipPrimitive.Positioner.Props, "side" | "sideOffset">) {
+}: TooltipPrimitive.Popup.Props & Pick<TooltipPrimitive.Positioner.Props, "side" | "sideOffset">) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner side={side} sideOffset={sideOffset}>
@@ -30,13 +27,13 @@ function TooltipContent({
           data-slot="tooltip-content"
           className={cn(
             "rounded-sm border bg-primary px-2 py-1 text-xs text-primary-foreground shadow-sm",
-            className
+            className,
           )}
           {...props}
         />
       </TooltipPrimitive.Positioner>
     </TooltipPrimitive.Portal>
-  )
+  );
 }
 
-export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent }
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent };

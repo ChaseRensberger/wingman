@@ -58,12 +58,12 @@ Name a manifest `wingman-plugin.json` or use the suffix `.plugin.json`.
 }
 ```
 
-| Field | Type | Required | Description |
-|---|---:|---:|---|
-| `id` | string | yes | Stable plugin identifier. The initialized process must return this exact ID. |
-| `name` | string | no | Bootstrap display name. Initialized process metadata is authoritative. |
-| `command` | string array | yes | Executable and arguments. Wingman does not use shell expansion. |
-| `config` | object | no | Plugin-specific configuration sent during initialization. |
+| Field     |         Type | Required | Description                                                                  |
+| --------- | -----------: | -------: | ---------------------------------------------------------------------------- |
+| `id`      |       string |      yes | Stable plugin identifier. The initialized process must return this exact ID. |
+| `name`    |       string |       no | Bootstrap display name. Initialized process metadata is authoritative.       |
+| `command` | string array |      yes | Executable and arguments. Wingman does not use shell expansion.              |
+| `config`  |       object |       no | Plugin-specific configuration sent during initialization.                    |
 
 The manifest starts only the process. The initialization result provides tools and capabilities.
 
@@ -132,11 +132,11 @@ It rejects unsupported capabilities, invalid schemas, and duplicate contribution
 
 ## Capabilities
 
-| Capability | Plugin behavior |
-|---|---|
-| `cancellation` | Handle `$/cancelRequest` notifications. |
-| `progress` | Send `tool.progress` notifications for active tool requests. |
-| `health` | Implement `plugin.health`. Initialization includes a required health check. |
+| Capability     | Plugin behavior                                                             |
+| -------------- | --------------------------------------------------------------------------- |
+| `cancellation` | Handle `$/cancelRequest` notifications.                                     |
+| `progress`     | Send `tool.progress` notifications for active tool requests.                |
+| `health`       | Implement `plugin.health`. Initialization includes a required health check. |
 
 Do not return capabilities that the plugin does not implement. Protocol version 1 rejects unknown capabilities.
 
@@ -145,12 +145,12 @@ Do not return capabilities that the plugin does not implement. Protocol version 
 Every tool requires `name`, `description`, and an object-shaped `input_schema`.
 Input and output values use JSON Schema. Wingman compiles both schemas before it publishes the generation.
 
-| Field | Type | Description |
-|---|---:|---|
-| `output_schema` | JSON Schema object | Required shape of a successful result's `structured` value. |
-| `sequential` | boolean | Run a model-request batch sequentially when it contains this tool. |
-| `directory_scoped` | boolean | Require the session to have a working directory. |
-| `permission` | object | Permission `action` and optional input `resource_fields`. |
+| Field              |               Type | Description                                                        |
+| ------------------ | -----------------: | ------------------------------------------------------------------ |
+| `output_schema`    | JSON Schema object | Required shape of a successful result's `structured` value.        |
+| `sequential`       |            boolean | Run a model-request batch sequentially when it contains this tool. |
+| `directory_scoped` |            boolean | Require the session to have a working directory.                   |
+| `permission`       |             object | Permission `action` and optional input `resource_fields`.          |
 
 ## Tool Execution
 
@@ -193,11 +193,11 @@ Return model-facing text separately from structured content and client metadata:
 }
 ```
 
-| Result field | Type | Required | Description |
-|---|---:|---:|---|
-| `text` | string | no | Model-facing tool output. |
-| `structured` | any JSON value | when `output_schema` is declared | Structured result validated by Wingman. |
-| `metadata` | object | no | Client-facing data persisted with the result. |
+| Result field |           Type |                         Required | Description                                   |
+| ------------ | -------------: | -------------------------------: | --------------------------------------------- |
+| `text`       |         string |                               no | Model-facing tool output.                     |
+| `structured` | any JSON value | when `output_schema` is declared | Structured result validated by Wingman.       |
+| `metadata`   |         object |                               no | Client-facing data persisted with the result. |
 
 Do not put model instructions in `metadata`. Providers do not receive metadata as tool output.
 
