@@ -14,7 +14,7 @@ import {
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import type { Provider, ProviderModel } from "@/lib/types";
-import { HexWaveSpinner } from "@/components/hex-wave-spinner";
+import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 
 function formatAuthType(authType: Provider["auth_types"][number]) {
@@ -110,7 +110,7 @@ function ProvidersPage() {
 
       {loading ? (
         <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-          <HexWaveSpinner size={24} />
+          <Spinner size={24} />
           <span>Loading...</span>
         </div>
       ) : (

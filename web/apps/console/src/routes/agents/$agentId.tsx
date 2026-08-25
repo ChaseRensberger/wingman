@@ -24,7 +24,7 @@ import {
 import { Input } from "@wingman/core/components/core/input";
 import { Textarea } from "@wingman/core/components/core/textarea";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
-import { HexWaveSpinner } from "@/components/hex-wave-spinner";
+import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
@@ -183,7 +183,7 @@ function AgentDetailPage() {
 
       {loading ? (
         <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-          <HexWaveSpinner size={24} />
+          <Spinner size={24} />
           <span>Loading...</span>
         </div>
       ) : !agent ? (

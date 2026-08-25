@@ -6,6 +6,47 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@utility sticky-header-glass {
+  background-color: color-mix(in srgb, var(--background) 80%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+/* HexWaveSpinner sweep rotates left, top, right, then bottom. */
+@keyframes hexwave-0 {
+  0%, 8%, 16%, 33%, 41%, 58%, 66%, 83%, 91%, 100% { opacity: var(--off); }
+  11%, 36%, 61%, 86% { opacity: 1; }
+}
+
+@keyframes hexwave-1 {
+  0%, 4%, 12%, 25%, 33%, 62%, 70%, 91%, 99%, 100% { opacity: var(--off); }
+  7%, 28%, 65%, 94% { opacity: 1; }
+}
+
+@keyframes hexwave-2 {
+  0%, 12%, 20%, 25%, 33%, 54%, 62%, 91%, 99%, 100% { opacity: var(--off); }
+  15%, 28%, 57%, 94% { opacity: 1; }
+}
+
+@keyframes hexwave-3 {
+  0%, 16%, 24%, 33%, 41%, 50%, 58%, 83%, 91%, 100% { opacity: var(--off); }
+  19%, 36%, 53%, 86% { opacity: 1; }
+}
+
+@keyframes hexwave-4 {
+  0%, 12%, 20%, 41%, 49%, 54%, 62%, 75%, 83%, 100% { opacity: var(--off); }
+  15%, 44%, 57%, 78% { opacity: 1; }
+}
+
+@keyframes hexwave-5 {
+  0%, 4%, 12%, 41%, 49%, 62%, 70%, 75%, 83%, 100% { opacity: var(--off); }
+  7%, 44%, 65%, 78% { opacity: 1; }
+}
+
+@keyframes hexwave-6 {
+  0%, 8%, 33%, 41%, 66%, 74%, 83%, 91%, 100% { opacity: var(--off); }
+  3%, 36%, 69%, 86% { opacity: 1; }
+}
+
 @theme inline {
   --font-mono: "Fira Code Variable", ui-monospace, monospace;
 
@@ -64,5 +105,9 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+  [data-hexwave] polygon {
+    animation: none !important;
+    opacity: 0.5 !important;
   }
 }

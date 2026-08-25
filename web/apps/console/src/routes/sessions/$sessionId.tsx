@@ -38,7 +38,7 @@ import {
   latestAssistantUsage,
   splitModelRef,
 } from "@/lib/utils";
-import { HexWaveSpinner } from "@/components/hex-wave-spinner";
+import { Spinner } from "@wingman/core/components/core/spinner";
 import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
@@ -533,7 +533,7 @@ function SessionDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center gap-3 px-4 py-6 text-sm text-muted-foreground">
-        <HexWaveSpinner size={24} />
+        <Spinner size={24} />
         <span>Loading...</span>
       </div>
     );

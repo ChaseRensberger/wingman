@@ -1,5 +1,4 @@
 :root,
-[data-theme="default"][data-mode="light"],
 :root.dark,
 [data-theme="default"][data-mode="dark"] {
   --radius: 0.2rem;
@@ -35,6 +34,41 @@
   --code-foreground: #f5f7fa;
   --code-muted: #a4adb9;
   --code-border: rgb(255 255 255 / 10%);
+}
+
+[data-theme="default"][data-mode="light"] {
+  --background: #f7f9fc;
+  --foreground: #101820;
+  --card: #fff;
+  --card-foreground: #101820;
+  --popover: #fff;
+  --popover-foreground: #101820;
+  --primary: #1769aa;
+  --primary-foreground: #fff;
+  --secondary: #e9eff6;
+  --secondary-foreground: #101820;
+  --muted: #eef2f6;
+  --muted-foreground: #52606d;
+  --accent: #dcebf8;
+  --accent-foreground: #101820;
+  --destructive: #c73b3b;
+  --success: #237b52;
+  --warning: #a85f00;
+  --border: #c7d0db;
+  --input: #b6c2d0;
+  --ring: #1769aa;
+  --overlay: rgb(16 24 32 / 0.12);
+  --subtle-foreground: rgb(82 96 109 / 0.55);
+  --markdown-list-marker: #1769aa;
+  --markdown-heading: #1769aa;
+  --markdown-strong: #101820;
+  --markdown-emph: #7b3f86;
+  --markdown-quote: #52606d;
+  --markdown-code: #0d5e95;
+  --code-background: #edf2f7;
+  --code-foreground: #101820;
+  --code-muted: #52606d;
+  --code-border: #c7d0db;
 }
 
 [data-theme="gruvbox"][data-mode="light"] {

@@ -2,7 +2,6 @@ import { ArrowClockwiseIcon, CheckIcon, CopyIcon, WarningCircleIcon } from "@pho
 
 import WingmanIcon from "@/assets/icon-128.png";
 import { ChatMessage } from "@/components/chat-message";
-import { HexWaveSpinner } from "@/components/hex-wave-spinner";
 import { RawMessages } from "@/components/raw-messages";
 import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
@@ -18,6 +17,7 @@ import type {
   ToolResultPart,
 } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
+import { Spinner } from "@wingman/core/components/core/spinner";
 
 type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
 
@@ -47,7 +47,7 @@ type Props = {
 function ThinkingIndicator() {
   return (
     <div className="flex justify-center px-4 py-5">
-      <HexWaveSpinner size={28} className="size-7" label="Responding" />
+      <Spinner size={28} className="size-7" label="Responding" />
     </div>
   );
 }

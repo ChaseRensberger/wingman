@@ -59,7 +59,7 @@ import { GithubLogoIcon } from "@phosphor-icons/react";
 export default function App() {
   return (
     <main className="min-h-screen bg-background text-foreground font-mono">
-      <nav className="flex items-center justify-between border-b p-4 sticky top-0 bg-background/80 backdrop-blur-sm z-50">
+      <nav className="sticky-header-glass sticky top-0 z-50 flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">
           <img src={WingmanLogo} className="h-8 w-8" />
           <span className="font-medium"> WingUI</span>

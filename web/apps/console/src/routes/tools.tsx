@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@wingman/core/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
-import { HexWaveSpinner } from "@/components/hex-wave-spinner";
+import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
@@ -238,7 +238,7 @@ function ToolsPage() {
 
       {loading ? (
         <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
-          <HexWaveSpinner size={24} />
+          <Spinner size={24} />
           <span>Loading...</span>
         </div>
       ) : tools.length === 0 ? (
