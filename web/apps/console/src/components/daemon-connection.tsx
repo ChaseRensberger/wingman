@@ -12,6 +12,7 @@ import {
   useDaemonConnection,
   type DaemonConnection,
 } from "@/components/daemon-connection-context";
+import { queryClient } from "@/lib/query-client";
 
 export function DaemonConnectionProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<DaemonConnection>({
@@ -75,6 +76,7 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
           revision: current.revision + (recovered ? 1 : 0),
           hasConnected: true,
         }));
+        if (recovered) void queryClient.invalidateQueries();
         schedule(5_000);
       } catch (error) {
         if (stopped || (error as Error).name === "AbortError") return;

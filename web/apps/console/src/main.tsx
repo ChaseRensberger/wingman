@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import "./globals.css";
 import { router } from "./router";
@@ -8,15 +9,18 @@ import { ToastProvider } from "@wingman/core/components/core/toast";
 import { AppToaster } from "./components/app-toaster";
 import { DaemonConnectionProvider } from "./components/daemon-connection";
 import { toastManager } from "./lib/toast";
+import { queryClient } from "./lib/query-client";
 
 async function main() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ThemeProvider>
         <ToastProvider toastManager={toastManager}>
-          <DaemonConnectionProvider>
-            <RouterProvider router={router} />
-          </DaemonConnectionProvider>
+          <QueryClientProvider client={queryClient}>
+            <DaemonConnectionProvider>
+              <RouterProvider router={router} />
+            </DaemonConnectionProvider>
+          </QueryClientProvider>
           <AppToaster />
         </ToastProvider>
       </ThemeProvider>

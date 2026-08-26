@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
 import {
@@ -29,9 +30,16 @@ import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
 import { showErrorToast } from "@/lib/toast";
-import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
+import type { Agent } from "@/lib/types";
 import { splitModelRef } from "@/lib/utils";
 import { agentFormSchema, buildAgentPayload } from "@/lib/agent-form";
+import {
+  agentQuery,
+  providerModelsQuery,
+  providersQuery,
+  queryKeys,
+  toolsQuery,
+} from "@/lib/queries";
 
 function formFromAgent(agent: Agent) {
   const modelRef = splitModelRef(agent.model_ref);
@@ -56,13 +64,35 @@ export const Route = createFileRoute("/agents/$agentId")({
 function AgentDetailPage() {
   const { agentId } = Route.useParams();
   const navigate = useNavigate();
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
-  const [toolCatalog, setToolCatalog] = useState<ToolCatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const loadedAgentID = useRef("");
+  const queryClient = useQueryClient();
+  const agentResult = useQuery(agentQuery(agentId));
+  const providersResult = useQuery(providersQuery);
+  const toolsResult = useQuery(toolsQuery);
+  const agent = agentResult.data ?? null;
+  const providers = providersResult.data ?? [];
+  const toolCatalog = toolsResult.data?.tools.tools ?? [];
+  const selectableProviders = providers.filter(isProviderSelectable);
+  const modelResults = useQueries({
+    queries: selectableProviders.map((provider) => providerModelsQuery(provider.id)),
+  });
+  const models = Object.fromEntries(
+    selectableProviders.map((provider, index) => [provider.id, modelResults[index].data ?? []]),
+  );
+  const initializing = loadedAgentID.current !== agentId;
+  const loading =
+    agentResult.isPending ||
+    providersResult.isPending ||
+    toolsResult.isPending ||
+    modelResults.some((result) => result.isPending) ||
+    (initializing && (agentResult.isFetching || modelResults.some((result) => result.isFetching)));
+
+  useEffect(() => {
+    const error = agentResult.error ?? providersResult.error ?? toolsResult.error;
+    if (error) showErrorToast(error);
+  }, [agentResult.error, providersResult.error, toolsResult.error]);
 
   const form = useForm({
     defaultValues: formFromAgent({
@@ -83,7 +113,8 @@ function AgentDetailPage() {
       setSaving(true);
       try {
         const updated = (await client.agents.update(agentId, buildAgentPayload(value))) as Agent;
-        setAgent(updated);
+        queryClient.setQueryData(queryKeys.agent(agentId), updated);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.agents });
         form.reset(formFromAgent(updated));
       } catch (err) {
         showErrorToast(err);
@@ -93,54 +124,24 @@ function AgentDetailPage() {
     },
   });
 
-  const load = useCallback(async () => {
-    try {
-      const [agentData, providerData, toolData] = await Promise.all([
-        client.agents.get(agentId) as Promise<Agent>,
-        client.providers.list() as Promise<Provider[]>,
-        client.tools.list() as Promise<ToolsResponse>,
-      ]);
-      setAgent(agentData);
-      setProviders(providerData);
-      setToolCatalog(toolData.tools ?? []);
-      const selectableProviders = providerData.filter(isProviderSelectable);
-      const modelEntries = await Promise.all(
-        selectableProviders.map(async (provider) => {
-          try {
-            const data = (await client.providers.models.list(provider.id)) as Record<
-              string,
-              ProviderModel
-            >;
-            return [
-              provider.id,
-              Object.values(data).sort((a, b) => a.id.localeCompare(b.id)),
-            ] as const;
-          } catch {
-            return [provider.id, []] as const;
-          }
-        }),
-      );
-      const modelMap: Record<string, ProviderModel[]> = Object.fromEntries(modelEntries);
-      const values = formFromAgent(agentData);
-      const variants =
-        modelMap[values.provider]?.find((model) => model.id === values.model)?.variants ?? [];
-      if (values.variant && !variants.includes(values.variant)) values.variant = "";
-      form.reset(values);
-      setModels(modelMap);
-    } finally {
-      setLoading(false);
-    }
-  }, [agentId, form]);
-
   useEffect(() => {
-    load().catch((err) => showErrorToast(err));
-  }, [load]);
+    if (!agent || loading || loadedAgentID.current === agent.id) return;
+    const values = formFromAgent(agent);
+    const variants =
+      models[values.provider]?.find((model) => model.id === values.model)?.variants ?? [];
+    if (values.variant && !variants.includes(values.variant)) values.variant = "";
+    form.reset(values);
+    loadedAgentID.current = agent.id;
+  }, [agent, form, loading, models]);
 
   async function remove() {
     if (!agent) return;
     setDeleting(true);
     try {
       await client.agents.delete(agent.id);
+      queryClient.setQueryData<Agent[]>(queryKeys.agents, (previous) =>
+        previous?.filter((item) => item.id !== agent.id),
+      );
       navigate({ to: "/agents" });
     } catch (err) {
       showErrorToast(err);
@@ -149,7 +150,6 @@ function AgentDetailPage() {
   }
 
   const availableTools = toolCatalog.map((tool) => tool.name);
-  const selectableProviders = providers.filter(isProviderSelectable);
   const crumbLabel = agent?.name || agentId;
 
   return (

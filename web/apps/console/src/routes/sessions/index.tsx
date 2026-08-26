@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   CheckIcon,
@@ -64,6 +65,7 @@ import { showErrorToast } from "@/lib/toast";
 import type { SessionSummary, Workspace } from "@/lib/types";
 import type { DirectoryListing } from "@/lib/types";
 import { cn, timeAgo, workspaceColor } from "@/lib/utils";
+import { queryKeys, sessionsQuery, workspacesQuery } from "@/lib/queries";
 
 type SessionsSearch = {
   workspace?: string;
@@ -78,6 +80,9 @@ const sessionFormSchema = z.object({
   title: z.string(),
   workDir: z.string(),
 });
+
+const emptySessions: SessionSummary[] = [];
+const emptyWorkspaces: Workspace[] = [];
 
 export const Route = createFileRoute("/sessions/")({
   validateSearch: (search: Record<string, unknown>): SessionsSearch => ({
@@ -95,9 +100,12 @@ function displayPath(path: string) {
 function SessionsPage() {
   const navigate = useNavigate();
   const { workspace: workspaceFilter } = Route.useSearch();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const workspacesResult = useQuery(workspacesQuery);
+  const sessionsResult = useQuery(sessionsQuery);
+  const workspaces = workspacesResult.data ?? emptyWorkspaces;
+  const sessions = sessionsResult.data ?? emptySessions;
+  const loading = workspacesResult.isPending || sessionsResult.isPending;
   const [search, setSearch] = useState("");
 
   const [workspaceMenuFilter, setWorkspaceMenuFilter] = useState("");
@@ -118,6 +126,11 @@ function SessionsPage() {
   const [deleteSession, setDeleteSession] = useState<SessionSummary | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState("");
 
+  useEffect(() => {
+    const error = workspacesResult.error ?? sessionsResult.error;
+    if (error) showErrorToast(error);
+  }, [sessionsResult.error, workspacesResult.error]);
+
   const workspaceForm = useForm({
     defaultValues: { name: "", path: "" },
     validators: {
@@ -135,7 +148,7 @@ function SessionsPage() {
           saved = (await client.workspaces.create(payload)) as Workspace;
           setWorkspaceFilter(saved.id);
         }
-        await loadData();
+        await refreshData();
         setWorkspaceDialogOpen(false);
       } catch (err) {
         showErrorToast(err);
@@ -160,8 +173,8 @@ function SessionsPage() {
         const workDir = value.workDir.trim();
         if (title !== (updated.title ?? "")) updated = await renameSession(updated, title);
         if (workDir !== (updated.work_dir ?? "")) updated = await moveSession(updated, workDir);
-        setSessions((prev) =>
-          prev.map((session) => (session.id === updated.id ? updated : session)),
+        queryClient.setQueryData<SessionSummary[]>(queryKeys.sessions, (previous = []) =>
+          previous.map((session) => (session.id === updated.id ? updated : session)),
         );
         setEditingSession(null);
       } catch (err) {
@@ -208,32 +221,12 @@ function SessionsPage() {
     })
     .sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
 
-  async function loadData() {
-    const [workspaceData, sessionData] = await Promise.all([
-      client.workspaces.list() as Promise<Workspace[]>,
-      client.sessions.list() as Promise<SessionSummary[]>,
+  async function refreshData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
     ]);
-    setWorkspaces(workspaceData);
-    setSessions(sessionData);
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        await loadData();
-      } catch (err) {
-        console.error("Failed to load sessions", err);
-        showErrorToast(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function setWorkspaceFilter(workspace?: string) {
     navigate({ to: "/sessions", search: workspace ? { workspace } : {} });
@@ -292,7 +285,7 @@ function SessionsPage() {
     try {
       await client.workspaces.delete(deleteWorkspace.id);
       if (workspaceFilter === deleteWorkspace.id) setWorkspaceFilter();
-      await loadData();
+      await refreshData();
       setDeleteWorkspace(null);
       setWorkspaceDialogOpen(false);
     } catch (err) {
@@ -307,7 +300,9 @@ function SessionsPage() {
     setDeletingSessionId(deleteSession.id);
     try {
       await purgeSession(deleteSession);
-      setSessions((prev) => prev.filter((session) => session.id !== deleteSession.id));
+      queryClient.setQueryData<SessionSummary[]>(queryKeys.sessions, (previous = []) =>
+        previous.filter((session) => session.id !== deleteSession.id),
+      );
       setDeleteSession(null);
     } catch (err) {
       showErrorToast(err);

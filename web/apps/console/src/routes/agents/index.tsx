@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "@tanstack/react-form";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@wingman/core/components/core/button";
 import { Input } from "@wingman/core/components/core/input";
 import {
@@ -22,15 +23,21 @@ import {
 } from "@wingman/core/components/core/table";
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { Field, FieldLabel, FieldError } from "@wingman/core/components/core/field";
-import { client } from "@/lib/client";
 import { isProviderSelectable } from "@/lib/providers";
+import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
 import { emptyForm, agentFormSchema, buildAgentPayload } from "@/lib/agent-form";
-import type { Agent, Provider, ProviderModel, ToolCatalogItem, ToolsResponse } from "@/lib/types";
 import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import {
+  agentsQuery,
+  providerModelsQuery,
+  providersQuery,
+  queryKeys,
+  toolsQuery,
+} from "@/lib/queries";
 
 export const Route = createFileRoute("/agents/")({
   component: AgentsPage,
@@ -38,16 +45,34 @@ export const Route = createFileRoute("/agents/")({
 
 function AgentsPage() {
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
-  const [toolCatalog, setToolCatalog] = useState<ToolCatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const agentsResult = useQuery(agentsQuery);
+  const providersResult = useQuery(providersQuery);
+  const toolsResult = useQuery(toolsQuery);
+  const agents = agentsResult.data ?? [];
+  const providers = providersResult.data ?? [];
+  const toolCatalog = toolsResult.data?.tools.tools ?? [];
+  const selectableProviders = providers.filter(isProviderSelectable);
+  const modelResults = useQueries({
+    queries: selectableProviders.map((provider) => providerModelsQuery(provider.id)),
+  });
+  const models = Object.fromEntries(
+    selectableProviders.map((provider, index) => [provider.id, modelResults[index].data ?? []]),
+  );
+  const loading =
+    agentsResult.isPending ||
+    providersResult.isPending ||
+    toolsResult.isPending ||
+    modelResults.some((result) => result.isPending);
+
+  useEffect(() => {
+    const error = agentsResult.error ?? providersResult.error ?? toolsResult.error;
+    if (error) showErrorToast(error);
+  }, [agentsResult.error, providersResult.error, toolsResult.error]);
 
   const form = useForm({
     defaultValues: emptyForm,
@@ -56,56 +81,18 @@ function AgentsPage() {
       onSubmit: agentFormSchema,
     },
     onSubmit: async ({ value }) => {
-      setSaving(true);
       try {
-        await client.agents.create(buildAgentPayload(value));
+        await createAgent.mutateAsync(value);
         form.reset();
         setCreateOpen(false);
-        await load();
-      } catch (err) {
-        showErrorToast(err);
-      } finally {
-        setSaving(false);
-      }
+      } catch {}
     },
   });
-
-  async function load() {
-    try {
-      const [agentData, providerData, toolData] = await Promise.all([
-        client.agents.list() as Promise<Agent[]>,
-        client.providers.list() as Promise<Provider[]>,
-        client.tools.list() as Promise<ToolsResponse>,
-      ]);
-      setAgents(agentData);
-      setProviders(providerData);
-      setToolCatalog(toolData.tools ?? []);
-      const selectableProviders = providerData.filter(isProviderSelectable);
-      const modelEntries = await Promise.all(
-        selectableProviders.map(async (provider) => {
-          try {
-            const data = (await client.providers.models.list(provider.id)) as Record<
-              string,
-              ProviderModel
-            >;
-            return [
-              provider.id,
-              Object.values(data).sort((a, b) => a.id.localeCompare(b.id)),
-            ] as const;
-          } catch {
-            return [provider.id, []] as const;
-          }
-        }),
-      );
-      setModels(Object.fromEntries(modelEntries));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load().catch((err) => showErrorToast(err));
-  }, []);
+  const createAgent = useMutation({
+    mutationFn: (value: typeof emptyForm) => client.agents.create(buildAgentPayload(value)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents }),
+    onError: (error) => showErrorToast(error),
+  });
 
   useEffect(() => {
     if (filterOpen) filterInputRef.current?.focus();
@@ -121,7 +108,6 @@ function AgentsPage() {
   }
 
   const availableTools = toolCatalog.map((tool) => tool.name);
-  const selectableProviders = providers.filter(isProviderSelectable);
   const filteredAgents = agents.filter((agent) => {
     const haystack =
       `${agent.name} ${agent.model_ref || ""} ${(agent.tools ?? []).join(" ")}`.toLowerCase();
@@ -421,8 +407,8 @@ function AgentsPage() {
               )}
             />
             <div className="flex justify-end">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Create"}
+              <Button type="submit" disabled={createAgent.isPending}>
+                {createAgent.isPending ? "Saving..." : "Create"}
               </Button>
             </div>
           </div>

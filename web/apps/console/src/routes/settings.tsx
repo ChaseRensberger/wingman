@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@wingman/core/components/core/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@wingman/core/components/core/card";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
@@ -8,6 +9,7 @@ import { Input } from "@wingman/core/components/core/input";
 import { ThemePreviewSwitcher } from "@wingman/core/components/theme-preview-switcher";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
+import { clientsQuery, queryKeys } from "@/lib/queries";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -47,36 +49,27 @@ function SettingsPage() {
 
 type Client = { id: string; name: string };
 function ClientManagement() {
-  const [clients, setClients] = useState<Client[]>([]);
   const [clientName, setClientName] = useState("");
   const [clientID, setClientID] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function load() {
-    try {
-      setClients((await client.clients.list()) as Client[]);
-    } catch {}
-  }
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function createClient() {
-    if (!clientID.trim() || !clientName.trim()) return;
-    setBusy(true);
-    try {
-      const created = (await client.clients.create({
+  const queryClient = useQueryClient();
+  const clientsResult = useQuery(clientsQuery);
+  const createClient = useMutation({
+    mutationFn: () =>
+      client.clients.create({
         id: clientID.trim(),
         name: clientName.trim(),
-      })) as { client: Client };
-      setClients((current) => [created.client, ...current]);
+      }) as Promise<{ client: Client }>,
+    onSuccess: () => {
       setClientID("");
       setClientName("");
-    } catch (err) {
-      showErrorToast(err);
-    } finally {
-      setBusy(false);
-    }
+      return queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    },
+    onError: showErrorToast,
+  });
+  const clients = clientsResult.data ?? [];
+
+  function submitClient() {
+    if (clientID.trim() && clientName.trim()) createClient.mutate();
   }
 
   return (
@@ -102,8 +95,8 @@ function ClientManagement() {
             />
             <Button
               size="sm"
-              disabled={busy || !clientID.trim() || !clientName.trim()}
-              onClick={createClient}
+              disabled={createClient.isPending || !clientID.trim() || !clientName.trim()}
+              onClick={submitClient}
             >
               Create client
             </Button>

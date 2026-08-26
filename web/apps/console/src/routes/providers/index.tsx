@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Input } from "@wingman/core/components/core/input";
 import { Badge } from "@wingman/core/components/core/badge";
@@ -11,11 +12,11 @@ import {
   TableHeader,
   TableRow,
 } from "@wingman/core/components/core/table";
-import { client } from "@/lib/client";
-import { showErrorToast } from "@/lib/toast";
-import type { Provider, ProviderModel } from "@/lib/types";
 import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { providerModelsQuery, providersQuery } from "@/lib/queries";
+import { showErrorToast } from "@/lib/toast";
+import type { Provider } from "@/lib/types";
 
 function formatAuthType(authType: Provider["auth_types"][number]) {
   return authType.name || authType.type.replaceAll("_", " ");
@@ -33,41 +34,20 @@ export const Route = createFileRoute("/providers/")({
 
 function ProvidersPage() {
   const navigate = useNavigate();
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [filter, setFilter] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    try {
-      const providerData = (await client.providers.list()) as Provider[];
-      setProviders(providerData);
-
-      const modelEntries = await Promise.all(
-        providerData.map(async (provider) => {
-          try {
-            const data = (await client.providers.models.list(provider.id)) as Record<
-              string,
-              ProviderModel
-            >;
-            return [
-              provider.id,
-              Object.values(data).sort((a, b) => a.id.localeCompare(b.id)),
-            ] as const;
-          } catch {
-            return [provider.id, []] as const;
-          }
-        }),
-      );
-      setModels(Object.fromEntries(modelEntries));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const providersResult = useQuery(providersQuery);
+  const providers = providersResult.data ?? [];
+  const modelResults = useQueries({
+    queries: providers.map((provider) => providerModelsQuery(provider.id)),
+  });
+  const models = Object.fromEntries(
+    providers.map((provider, index) => [provider.id, modelResults[index].data ?? []]),
+  );
+  const loading = providersResult.isPending || modelResults.some((result) => result.isPending);
 
   useEffect(() => {
-    load().catch((err) => showErrorToast(err));
-  }, []);
+    if (providersResult.error) showErrorToast(providersResult.error);
+  }, [providersResult.error]);
 
   const configuredCount = providers.filter((provider) => provider.auth.configured).length;
   const modelCount = Object.values(models).reduce(

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@wingman/core/components/core/badge";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
@@ -16,75 +17,42 @@ import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type {
-  MCPResponse,
-  MCPServer,
-  PluginsResponse,
-  PluginStatus,
-  ToolCatalogItem,
-  ToolsResponse,
-} from "@/lib/types";
+import { queryKeys, toolsQuery } from "@/lib/queries";
+import type { MCPServer, PluginStatus, ToolCatalogItem } from "@/lib/types";
 
 export const Route = createFileRoute("/tools")({
   component: ToolsPage,
 });
 
-function ToolsPage() {
-  const [tools, setTools] = useState<ToolCatalogItem[]>([]);
-  const [servers, setServers] = useState<MCPServer[]>([]);
-  const [plugins, setPlugins] = useState<PluginStatus[]>([]);
-  const [pluginErrors, setPluginErrors] = useState<PluginsResponse["errors"]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [reloadingPlugins, setReloadingPlugins] = useState(false);
+const emptyTools: ToolCatalogItem[] = [];
 
-  async function load() {
-    try {
-      const [toolData, mcpData, pluginData] = await Promise.all([
-        client.tools.list() as Promise<ToolsResponse>,
-        client.mcp.list() as Promise<MCPResponse>,
-        client.plugins.list() as Promise<PluginsResponse>,
-      ]);
-      setTools(toolData.tools ?? []);
-      setServers(mcpData.servers ?? []);
-      setPlugins(pluginData.plugins ?? []);
-      setPluginErrors(pluginData.errors ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }
+function ToolsPage() {
+  const queryClient = useQueryClient();
+  const toolsResult = useQuery(toolsQuery);
+  const mcpAction = useMutation({
+    mutationFn: ({ server, action }: { server: MCPServer; action: "connect" | "disconnect" }) =>
+      action === "connect" ? client.mcp.connect(server.name) : client.mcp.disconnect(server.name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tools }),
+    onError: (error) => showErrorToast(error),
+  });
+  const reloadPlugins = useMutation({
+    mutationFn: () => client.plugins.reload(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tools }),
+    onError: (error) => showErrorToast(error),
+  });
 
   useEffect(() => {
-    load().catch((err) => showErrorToast(err));
-  }, []);
+    if (toolsResult.error) showErrorToast(toolsResult.error);
+  }, [toolsResult.error]);
 
-  async function mcpAction(server: MCPServer, action: "connect" | "disconnect") {
-    setBusy(`${server.name}:${action}`);
-    try {
-      await (action === "connect"
-        ? client.mcp.connect(server.name)
-        : client.mcp.disconnect(server.name));
-      await load();
-    } catch (err) {
-      showErrorToast(err);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function reloadPlugins() {
-    setReloadingPlugins(true);
-    try {
-      const data = (await client.plugins.reload()) as PluginsResponse;
-      setPlugins(data.plugins ?? []);
-      setPluginErrors(data.errors ?? []);
-      await load();
-    } catch (err) {
-      showErrorToast(err);
-    } finally {
-      setReloadingPlugins(false);
-    }
-  }
+  const tools = toolsResult.data?.tools.tools ?? emptyTools;
+  const servers = toolsResult.data?.mcp.servers ?? [];
+  const plugins = toolsResult.data?.plugins.plugins ?? [];
+  const pluginErrors = toolsResult.data?.plugins.errors ?? [];
+  const busy =
+    mcpAction.isPending && mcpAction.variables
+      ? `${mcpAction.variables.server.name}:${mcpAction.variables.action}`
+      : null;
 
   const grouped = useMemo(() => {
     const groups = new Map<string, ToolCatalogItem[]>();
@@ -109,8 +77,13 @@ function ToolsPage() {
               Supervised external plugin processes and negotiated capabilities.
             </p>
           </div>
-          <Button size="sm" variant="outline" disabled={reloadingPlugins} onClick={reloadPlugins}>
-            {reloadingPlugins ? "Reloading..." : "Reload"}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reloadPlugins.isPending}
+            onClick={() => reloadPlugins.mutate()}
+          >
+            {reloadPlugins.isPending ? "Reloading..." : "Reload"}
           </Button>
         </div>
         {pluginErrors?.map((item) => (
@@ -175,11 +148,7 @@ function ToolsPage() {
               <h2 className="text-sm font-semibold">MCP servers</h2>
               <p className="text-xs text-muted-foreground">Configured in wingman.json.</p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => load().catch((err) => showErrorToast(err))}
-            >
+            <Button size="sm" variant="outline" onClick={() => toolsResult.refetch()}>
               Refresh
             </Button>
           </div>
@@ -214,7 +183,7 @@ function ToolsPage() {
                         size="xs"
                         variant="outline"
                         disabled={busy !== null}
-                        onClick={() => mcpAction(server, "disconnect")}
+                        onClick={() => mcpAction.mutate({ server, action: "disconnect" })}
                       >
                         {busy === `${server.name}:disconnect` ? "Disconnecting..." : "Disconnect"}
                       </Button>
@@ -223,7 +192,7 @@ function ToolsPage() {
                         size="xs"
                         variant="outline"
                         disabled={busy !== null}
-                        onClick={() => mcpAction(server, "connect")}
+                        onClick={() => mcpAction.mutate({ server, action: "connect" })}
                       >
                         {busy === `${server.name}:connect` ? "Connecting..." : "Connect"}
                       </Button>
@@ -236,7 +205,7 @@ function ToolsPage() {
         </Card>
       )}
 
-      {loading ? (
+      {toolsResult.isPending ? (
         <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
           <Spinner size={24} />
           <span>Loading...</span>

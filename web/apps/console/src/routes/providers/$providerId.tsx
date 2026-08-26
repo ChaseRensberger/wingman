@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +28,8 @@ import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
-import type { Provider, ProviderModel, ProviderOAuthAttempt } from "@/lib/types";
+import type { ProviderModel, ProviderOAuthAttempt } from "@/lib/types";
+import { providerModelsQuery, providersQuery, queryKeys } from "@/lib/queries";
 
 export const Route = createFileRoute("/providers/$providerId")({
   component: ProviderDetailPage,
@@ -35,35 +37,20 @@ export const Route = createFileRoute("/providers/$providerId")({
 
 function ProviderDetailPage() {
   const { providerId } = Route.useParams();
-  const [provider, setProvider] = useState<Provider | null>(null);
-  const [models, setModels] = useState<ProviderModel[]>([]);
   const [key, setKey] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [oauthAttempt, setOAuthAttempt] = useState<ProviderOAuthAttempt | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const providerData = (await client.providers.list()) as Provider[];
-      setProvider(providerData.find((item) => item.id === providerId) ?? null);
-      try {
-        const modelData = (await client.providers.models.list(providerId)) as Record<
-          string,
-          ProviderModel
-        >;
-        setModels(Object.values(modelData).sort((a, b) => a.id.localeCompare(b.id)));
-      } catch {
-        setModels([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [providerId]);
+  const queryClient = useQueryClient();
+  const providersResult = useQuery(providersQuery);
+  const modelsResult = useQuery(providerModelsQuery(providerId));
+  const provider = providersResult.data?.find((item) => item.id === providerId) ?? null;
+  const models = modelsResult.data ?? [];
+  const loading = providersResult.isPending || modelsResult.isPending;
 
   useEffect(() => {
-    load().catch((err) => showErrorToast(err));
-  }, [load]);
+    if (providersResult.error) showErrorToast(providersResult.error);
+  }, [providersResult.error]);
 
   useEffect(() => {
     if (!oauthAttempt || oauthAttempt.status !== "pending" || !provider) return;
@@ -73,12 +60,15 @@ function ProviderDetailPage() {
         .then((attempt) => {
           const next = attempt as ProviderOAuthAttempt;
           setOAuthAttempt(next);
-          if (next.status === "completed") void load();
+          if (next.status === "completed") {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.providerModels(provider.id) });
+          }
         })
         .catch((err) => showErrorToast(err));
     }, 1500);
     return () => window.clearInterval(interval);
-  }, [load, oauthAttempt, provider]);
+  }, [oauthAttempt, provider, queryClient]);
 
   async function saveKey() {
     if (!provider || !key.trim()) return;
@@ -88,7 +78,7 @@ function ProviderDetailPage() {
         providers: { [provider.id]: { type: "api_key", key: key.trim() } },
       });
       setKey("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.providers });
     } catch (err) {
       showErrorToast(err);
     } finally {
@@ -101,7 +91,7 @@ function ProviderDetailPage() {
     setDeleting(true);
     try {
       await client.providers.auth.delete(provider.id);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.providers });
     } catch (err) {
       showErrorToast(err);
     } finally {
