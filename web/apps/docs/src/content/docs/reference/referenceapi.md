@@ -6,7 +6,7 @@ order: 1000
 
 # API
 
-Workspace URL: `http://localhost:2323` (set with `--host` and `--port`).
+Workspace URL: `http://localhost:2424` (set with `--host` and `--port`).
 
 All endpoints accept and return JSON unless noted. Non-success JSON responses
 contain `error.code`, `error.message`, and `error.request_id`. The

@@ -18,7 +18,7 @@ Create the listener before the application. Then a bind failure occurs before Wi
 ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 defer stop()
 
-listener, err := net.Listen("tcp", "127.0.0.1:2323")
+listener, err := net.Listen("tcp", "127.0.0.1:2424")
 if err != nil {
 	log.Fatal(err)
 }

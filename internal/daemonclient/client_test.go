@@ -60,8 +60,8 @@ func TestInspect(t *testing.T) {
 }
 
 func TestClientURLsUsesAdvertisedURLs(t *testing.T) {
-	client := &Client{urls: []string{"http://192.0.2.1:2323"}}
-	if got, want := client.URLs(), []string{"http://192.0.2.1:2323"}; !slices.Equal(got, want) {
+	client := &Client{urls: []string{"http://192.0.2.1:2424"}}
+	if got, want := client.URLs(), []string{"http://192.0.2.1:2424"}; !slices.Equal(got, want) {
 		t.Fatalf("URLs() = %q, want %q", got, want)
 	}
 	got := client.URLs()

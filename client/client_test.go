@@ -267,7 +267,7 @@ func TestListSessionEvents(t *testing.T) {
 }
 
 func TestNewRejectsInvalidBaseURL(t *testing.T) {
-	for _, baseURL := range []string{"", "localhost:2323", "ftp://example.com", "https://example.com/path"} {
+	for _, baseURL := range []string{"", "localhost:2424", "ftp://example.com", "https://example.com/path"} {
 		t.Run(baseURL, func(t *testing.T) {
 			if _, err := New(baseURL); err == nil {
 				t.Fatal("New() error = nil")

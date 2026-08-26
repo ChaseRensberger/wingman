@@ -15,7 +15,7 @@ typed fields for each success status. They return `*APIError` for non-success re
 
 ```go
 wingman, err := client.New(
-	"http://localhost:2323",
+	"http://localhost:2424",
 	client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
 	client.WithClientID("cli_example"),
 )

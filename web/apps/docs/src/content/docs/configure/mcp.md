@@ -85,7 +85,7 @@ Add that name to an agent `tools` allow-list:
 }
 ```
 
-Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2323/console/tools` to view the directoryless scope.
+Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2424/console/tools` to view the directoryless scope.
 
 Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP tool names collide, tool catalog creation fails.
 

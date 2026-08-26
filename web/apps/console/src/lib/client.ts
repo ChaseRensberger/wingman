@@ -25,7 +25,7 @@ async function daemonFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 
 export const client = createWingmanClient({
-  baseUrl: globalThis.location?.origin ?? "http://localhost:2323",
+  baseUrl: globalThis.location?.origin ?? "http://localhost:2424",
   fetch: daemonFetch,
 });
 

@@ -1,6 +1,6 @@
 import { DaemonDiscovery, proxyDaemonRequest } from "./daemon.ts";
 
-function registration(instance = "ins_one", version = "1.0.0", url = "http://127.0.0.1:2323") {
+function registration(instance = "ins_one", version = "1.0.0", url = "http://127.0.0.1:2424") {
   return JSON.stringify({
     instance_id: instance,
     version,
@@ -41,7 +41,7 @@ Deno.test("Desktop discovery retries a daemon that becomes ready", async () => {
   );
   const transport = await discovery.transport();
   if (
-    transport.origin !== "http://127.0.0.1:2323" ||
+    transport.origin !== "http://127.0.0.1:2424" ||
     transport.username !== "wingman" ||
     transport.password !== "password"
   ) {

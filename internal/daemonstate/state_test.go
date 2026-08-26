@@ -12,7 +12,7 @@ import (
 )
 
 func testRegistration() Registration {
-	return Registration{InstanceID: "instance", Version: "1.0.0", URL: "https://127.0.0.1:2323", PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	return Registration{InstanceID: "instance", Version: "1.0.0", URL: "https://127.0.0.1:2424", PID: 1, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 }
 
 func TestRegistrationValidation(t *testing.T) {
@@ -41,7 +41,7 @@ func TestRegistrationValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	valid.URLs = []string{"http://192.0.2.1:2323"}
+	valid.URLs = []string{"http://192.0.2.1:2424"}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestRegistrationReadRejectsMalformedJSON(t *testing.T) {
 func TestRegistrationPersistsAdvertisedURLs(t *testing.T) {
 	state := New(t.TempDir())
 	registration := testRegistration()
-	registration.URLs = []string{"http://192.0.2.1:2323", "http://198.51.100.1:2323"}
+	registration.URLs = []string{"http://192.0.2.1:2424", "http://198.51.100.1:2424"}
 	if err := state.WriteRegistration(registration); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestRegistrationOwnershipCleanup(t *testing.T) {
 	state := New(t.TempDir())
 	registration := testRegistration()
 	registration.InstanceID = "one"
-	registration.URL = "http://localhost:2323"
+	registration.URL = "http://localhost:2424"
 	registration.PID = 100
 	if err := state.WriteRegistration(registration); err != nil {
 		t.Fatal(err)

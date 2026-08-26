@@ -17,7 +17,7 @@ fields. The [OpenAPI document](/reference/referenceapi/#api) defines the complet
 import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
-  baseUrl: "http://localhost:2323",
+  baseUrl: "http://localhost:2424",
   username: process.env.WINGMAN_USERNAME,
   password: process.env.WINGMAN_PASSWORD,
   clientName: "cli_example",

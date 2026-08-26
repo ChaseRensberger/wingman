@@ -43,7 +43,7 @@ The file is parsed as strict JSON:
 {
   "server": {
     "host": "127.0.0.1",
-    "port": 2323,
+    "port": 2424,
     "db": "~/.local/share/wingman/wingman.db",
     "log_level": "info",
     "log_format": "json"
@@ -94,7 +94,7 @@ Only the documented fields are supported.
 | Field        |   Type | Default                             | CLI override   | Description                                         |
 | ------------ | -----: | ----------------------------------- | -------------- | --------------------------------------------------- |
 | `host`       | string | `127.0.0.1`                         | `--host`       | Address the HTTP server binds to.                   |
-| `port`       | number | `2323`                              | `--port`       | Port the HTTP server listens on.                    |
+| `port`       | number | `2424`                              | `--port`       | Port the HTTP server listens on.                    |
 | `db`         | string | `~/.local/share/wingman/wingman.db` | `--db`         | SQLite database path. `~` and `~/...` are expanded. |
 | `log_level`  | string | `info`                              | `--log-level`  | Log level: `debug`, `info`, `warn`, or `error`.     |
 | `log_format` | string | `json`                              | `--log-format` | Log format: `json` or `text`.                       |

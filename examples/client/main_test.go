@@ -74,7 +74,7 @@ func TestServerURLRejectsInsecureRemoteOrigin(t *testing.T) {
 	if _, err := serverURL("http://wingman.example"); err == nil {
 		t.Fatal("insecure remote origin was accepted")
 	}
-	if _, err := serverURL("http://localhost:2323"); err != nil {
+	if _, err := serverURL("http://localhost:2424"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-const defaultDaemonTarget = "http://127.0.0.1:2323";
+const defaultDaemonTarget = "http://127.0.0.1:2424";
 
 export type DaemonProxy = {
   target: string;

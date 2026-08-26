@@ -5,7 +5,7 @@ description: "Start Wingman as a foreground process or per-user managed service.
 
 # Run the Server
 
-Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2323`.
+Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2424`.
 It stores persistent data in `~/.local/share/wingman/wingman.db`.
 
 ## Foreground Server
@@ -19,7 +19,7 @@ wingman serve
 To view the server status, run this command:
 
 ```bash
-curl -sS http://localhost:2323/health
+curl -sS http://localhost:2424/health
 ```
 
 Expected response:

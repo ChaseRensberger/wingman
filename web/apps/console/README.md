@@ -17,7 +17,7 @@ bun --filter @wingman/console dev
 wingman serve --console-dev-url http://127.0.0.1:5173
 ```
 
-Open the proxied app at `http://127.0.0.1:2323/console/`, or the Vite app directly at `http://127.0.0.1:5173/console/`.
+Open the proxied app at `http://127.0.0.1:2424/console/`, or the Vite app directly at `http://127.0.0.1:5173/console/`.
 
 The Vite proxy reads `registration.json` from the Wingman state directory and
 `service.env` from the Wingman configuration directory when it starts. Restart

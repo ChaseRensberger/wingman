@@ -70,7 +70,7 @@ its non-loopback interface addresses.
 | Flag           | Default                             | Description                                          |
 | -------------- | ----------------------------------- | ---------------------------------------------------- |
 | `--host`       | `127.0.0.1`                         | Host to bind to.                                     |
-| `--port`       | `2323`                              | Port to listen on.                                   |
+| `--port`       | `2424`                              | Port to listen on.                                   |
 | `--db`         | `~/.local/share/wingman/wingman.db` | SQLite database path.                                |
 | `--ephemeral`  | `false`                             | Run without persistence.                             |
 | `--log-format` | `json`                              | Log format: `json` or `text`.                        |

@@ -13,7 +13,7 @@ Basic Auth.
 After you start Wingman, open this URL:
 
 ```text
-http://localhost:2323/console
+http://localhost:2424/console
 ```
 
 Enter the credentials from `~/.config/wingman/service.env` in the browser

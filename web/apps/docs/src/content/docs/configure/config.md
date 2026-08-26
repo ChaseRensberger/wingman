@@ -51,7 +51,7 @@ Example:
 {
   "server": {
     "host": "127.0.0.1",
-    "port": 2323,
+    "port": 2424,
     "db": "~/.local/share/wingman/wingman.db",
     "log_level": "info",
     "log_format": "json"
@@ -104,7 +104,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 
 ## Defaults
 
-Wingman listens on `127.0.0.1:2323`. It stores persistent data in SQLite at:
+Wingman listens on `127.0.0.1:2424`. It stores persistent data in SQLite at:
 
 ```text
 ~/.local/share/wingman/wingman.db

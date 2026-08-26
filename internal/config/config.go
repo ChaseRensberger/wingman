@@ -46,7 +46,7 @@ func Default() Config {
 	return Config{
 		Server: ServerConfig{
 			Host:      "127.0.0.1",
-			Port:      2323,
+			Port:      2424,
 			LogLevel:  "info",
 			LogFormat: "json",
 		},

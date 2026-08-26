@@ -23,7 +23,7 @@ test("uses the foreground daemon default while loading service credentials", () 
   writeFileSync(config, "WINGMAN_USERNAME='chase'\nWINGMAN_PASSWORD='foreground-password'\n");
 
   expect(readDaemonProxy(dir, config)).toEqual({
-    target: "http://127.0.0.1:2323",
+    target: "http://127.0.0.1:2424",
     username: "chase",
     password: "foreground-password",
   });
