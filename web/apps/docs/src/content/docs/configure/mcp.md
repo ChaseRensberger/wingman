@@ -9,7 +9,6 @@ Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json`.
 Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
 Wingman supports local stdio servers and remote HTTP servers. Wingman validates MCP configuration at startup.
-Enabled servers connect when Wingman creates an execution scope.
 
 ## Add A Local Server
 
@@ -49,7 +48,6 @@ Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths
 ## Add A Remote Server
 
 Use `type: "remote"` for a remote MCP endpoint. Put required credentials in `headers`.
-Wingman does not provide an MCP OAuth login command.
 
 ```json
 {
@@ -85,7 +83,7 @@ Add that name to an agent `tools` allow-list:
 }
 ```
 
-Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2424/console/tools` to view the directoryless scope.
+Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2424/console/tools` to view them.
 
 Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP tool names collide, tool catalog creation fails.
 
@@ -120,9 +118,3 @@ MCP servers are enabled by default. To keep a server configured without connecti
 ```
 
 Use the Console to connect or disconnect enabled configured servers without changing the file.
-
-## Current Limits
-
-- MCP OAuth login is not available. Supply required credentials through configured request headers or a local server environment.
-- MCP servers run with the same permissions as the Wingman process. Configure only servers that you trust.
-- MCP configuration is daemon-wide. Each execution scope owns its runtime connections.
