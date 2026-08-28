@@ -147,10 +147,8 @@ These commands find and authenticate with the managed daemon.
 wingman api listPlugins
 ```
 
-Use this command to reload plugins in the directoryless scope:
+Use this command to reload plugins:
 
 ```bash
 wingman api reloadPlugins
 ```
-
-External plugins run with the permissions of the Wingman process that starts them. Install plugins only from trusted sources.

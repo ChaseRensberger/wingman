@@ -92,7 +92,6 @@ export default defineConfig({
             { label: "WingModels", slug: "concepts/wingmodels" },
             { label: "Authentication", slug: "concepts/authentication" },
             { label: "Storage", slug: "concepts/storage" },
-            { label: "Execution Scopes", slug: "concepts/execution-scopes" },
             { label: "Durable Events", slug: "concepts/durable-events" },
           ],
         },

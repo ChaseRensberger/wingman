@@ -55,7 +55,9 @@ wingman api createAgent -d '{
       }'
 ```
 
-Agent creation and tool-list updates reject unknown and duplicate names. The server checks names against its directoryless tool catalog. If an allowed tool is unavailable in its execution scope, the session fails to start. Wingman never silently removes a tool.
+Agent creation and tool-list updates reject unknown and duplicate names. If an
+allowed tool is unavailable when a session starts, the session fails to start.
+Wingman never silently removes a tool.
 
 ## Web Search Configuration
 

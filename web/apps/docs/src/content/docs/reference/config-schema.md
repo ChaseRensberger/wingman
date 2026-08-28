@@ -13,7 +13,7 @@ Wingman reads global configuration from:
 ~/.config/wingman/wingman.json
 ```
 
-This file defines daemon-wide configuration for all clients.
+This configuration applies to all daemon clients.
 
 Set `XDG_CONFIG_HOME` to change the configuration root. For example, if it is
 `~/settings`, Wingman reads `~/settings/wingman/wingman.json`. The default path
@@ -147,8 +147,7 @@ There is no configuration-file equivalent for `--no-plugins`.
 
 ## `mcp`
 
-`mcp` maps Model Context Protocol server names to server definitions. Enabled
-servers connect when Wingman starts.
+`mcp` maps Model Context Protocol server names to server definitions.
 
 | Field               |         Type | Required | Description                                                                 |
 | ------------------- | -----------: | -------: | --------------------------------------------------------------------------- |
@@ -162,10 +161,11 @@ servers connect when Wingman starts.
 | `discovery_timeout` |       number |       no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
 | `execution_timeout` |       number |       no | Per-tool-call timeout in milliseconds. Defaults to `30000`.                 |
 
-Wingman validates MCP definitions before it creates daemon resources. The
-`cwd` field supports `~` and `~/...` expansion for the effective user.
+Wingman validates MCP definitions at startup. The `cwd` field supports `~` and
+`~/...` expansion for the effective user.
 
-See [MCP Servers](/configure/mcp) for local and remote examples, status checks, and current limits.
+See [MCP Servers](/configure/mcp) for local and remote examples and status
+checks.
 
 ## `permissions`
 
@@ -192,7 +192,8 @@ Example:
 }
 ```
 
-See [Permissions](/configure/permissions) for actions, resources, precedence, and current limits.
+See [Permissions](/configure/permissions) for actions, resources, and
+precedence.
 
 Permission failures include structured tool-result metadata. Clients can render
 policy failures without parsing text output.
