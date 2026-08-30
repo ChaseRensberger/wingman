@@ -360,6 +360,8 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/sessions/{id}/runs", "listSessionRuns", "List session runs", nil, http.StatusOK, []api.SessionRun{}, s.handleListSessionRuns)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/runs/{runID}", "getSessionRun", "Get a session run", nil, http.StatusOK, api.SessionRun{}, s.handleGetSessionRun)
 	s.registerJSONStatuses(http.MethodPost, "/sessions/{id}/runs/{runID}/abort", "abortSessionRun", "Abort a session run", nil, map[int]any{http.StatusOK: api.SessionRun{}, http.StatusAccepted: api.SessionRun{}}, s.handleAbortSessionRun)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/macros", "listSessionMacros", "List project macros", nil, http.StatusOK, []api.Macro{}, s.handleListSessionMacros)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/macros", "runSessionMacro", "Run a project macro", api.MacroSessionRequest{}, http.StatusAccepted, api.MessageSessionResponse{}, s.handleRunSessionMacro)
 
 	s.registerRunStream()
 	s.router.NotFound(func(w http.ResponseWriter, _ *http.Request) {

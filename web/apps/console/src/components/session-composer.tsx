@@ -1,7 +1,7 @@
 import { ArrowDownIcon, PaperPlaneIcon, StopIcon } from "@phosphor-icons/react";
-import { type RefObject } from "react";
+import { type RefObject, useState } from "react";
 
-import type { Agent, Provider, ProviderModel } from "@/lib/types";
+import type { Agent, Macro, Provider, ProviderModel } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import {
@@ -36,6 +36,7 @@ type Props = {
   agents: Agent[];
   providers: Provider[];
   models: Record<string, ProviderModel[]>;
+  macros: Macro[];
   hasModels: boolean;
   isStreaming: boolean;
   isNearTranscriptBottom: boolean;
@@ -52,6 +53,17 @@ export function SessionComposer(props: Props) {
     props.selectedProviderName && props.selectedModel
       ? `${props.selectedProviderName} / ${props.selectedModel}${props.selectedVariant ? ` · ${props.selectedVariant}` : ""}`
       : "Select model";
+  const macroMatch = props.messageText.match(/^\/(\S*)$/);
+  const macroSuggestions = macroMatch
+    ? props.macros
+        .filter((macro) => macro.id.includes(macroMatch[1] ?? ""))
+        .slice(0, 6)
+    : [];
+  const [activeMacro, setActiveMacro] = useState(0);
+  const selectMacro = (macro: Macro) => {
+    props.onMessageChange(`/${macro.id} `);
+    requestAnimationFrame(() => props.composerRef.current?.focus());
+  };
   return (
     <form
       onSubmit={(event) => {
@@ -78,6 +90,25 @@ export function SessionComposer(props: Props) {
           value={props.messageText}
           onChange={(event) => props.onMessageChange(event.target.value)}
           onKeyDown={(event) => {
+            if (macroSuggestions.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveMacro((index) => (index + 1) % macroSuggestions.length);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveMacro(
+                  (index) => (index - 1 + macroSuggestions.length) % macroSuggestions.length,
+                );
+                return;
+              }
+              if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+                event.preventDefault();
+                selectMacro(macroSuggestions[activeMacro % macroSuggestions.length]!);
+                return;
+              }
+            }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               props.onSubmit();
@@ -87,6 +118,34 @@ export function SessionComposer(props: Props) {
           className="min-h-20 max-h-60 resize-none overflow-y-auto border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
           disabled={props.isStreaming}
         />
+        {macroSuggestions.length > 0 && (
+          <div
+            role="listbox"
+            aria-label="Project macros"
+            className="mb-2 overflow-hidden rounded-[var(--radius)] border bg-popover"
+          >
+            {macroSuggestions.map((macro, index) => (
+              <button
+                key={macro.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeMacro % macroSuggestions.length}
+                className={`flex w-full items-baseline gap-2 px-2.5 py-2 text-left text-sm outline-none transition-colors duration-100 hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground ${
+                  index === activeMacro % macroSuggestions.length
+                    ? "bg-accent text-accent-foreground"
+                    : ""
+                }`}
+                onMouseEnter={() => setActiveMacro(index)}
+                onClick={() => selectMacro(macro)}
+              >
+                <span className="font-medium">/{macro.id}</span>
+                {macro.description && (
+                  <span className="truncate text-xs text-muted-foreground">{macro.description}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Select

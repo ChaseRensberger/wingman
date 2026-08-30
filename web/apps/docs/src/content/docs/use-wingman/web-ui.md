@@ -29,5 +29,11 @@ wingman console
 If the connection drops, the Console repeats its readiness check.
 When the daemon returns, the Console reloads the active API page.
 
+## Macros
+
+Type `/` in a Session composer to show project macros. Type an argument after
+the macro ID, then send the message. See [Macros](/configure/macros) to create
+project macros.
+
 The Console has no password form, session cookie, or `/auth/login` endpoint.
 Read [Authentication](/concepts/authentication) for the authentication model.

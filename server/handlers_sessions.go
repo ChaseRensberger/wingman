@@ -354,7 +354,11 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	s.admitSessionMessage(w, r, sess, req)
+}
 
+func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, sess *store.Session, req api.MessageSessionRequest) {
+	id := sess.ID
 	if req.Message == "" {
 		s.writeError(w, http.StatusBadRequest, "message is required")
 		return

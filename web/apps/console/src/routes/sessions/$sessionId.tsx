@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { selectGreeting } from "@/lib/greeting";
+import { macroInvocation } from "@/lib/macro";
 import { isProviderSelectable } from "@/lib/providers";
 import {
   agentExists,
@@ -28,6 +29,7 @@ import type {
   ProviderModel,
   ToolCallPart,
   ToolResultPart,
+  Macro,
 } from "@/lib/types";
 import { toolActivityKey } from "@/lib/tool-activity-state";
 import {
@@ -70,6 +72,7 @@ function SessionDetailPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
+  const [macros, setMacros] = useState<Macro[]>([]);
   const [modelCalls, setModelCalls] = useState<ModelCall[]>([]);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -130,16 +133,19 @@ function SessionDetailPage() {
         }
         setLoading(false);
         setModelCalls([]);
+        setMacros([]);
         return;
       }
 
       try {
-        const [data, calls] = await Promise.all([
+        const [data, calls, macroData] = await Promise.all([
           client.sessions.get(id) as Promise<Session>,
           client.sessions.modelCalls.list(id) as Promise<ModelCall[]>,
+          client.sessions.macros.list(id) as Promise<Macro[]>,
         ]);
         setSession(data);
         setModelCalls(calls);
+        setMacros(macroData);
         if (data.workspace_id) {
           setWorkspace((await client.workspaces.get(data.workspace_id)) as Workspace);
         } else {
@@ -177,13 +183,16 @@ function SessionDetailPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [sessData, agentsData, providerData, callsData] = await Promise.all([
+        const [sessData, agentsData, providerData, callsData, macrosData] = await Promise.all([
           isDraft ? Promise.resolve(null) : (client.sessions.get(sessionId) as Promise<Session>),
           client.agents.list() as Promise<Agent[]>,
           client.providers.list() as Promise<Provider[]>,
           isDraft
             ? Promise.resolve([] as ModelCall[])
             : (client.sessions.modelCalls.list(sessionId) as Promise<ModelCall[]>),
+          isDraft
+            ? Promise.resolve([] as Macro[])
+            : (client.sessions.macros.list(sessionId) as Promise<Macro[]>),
         ]);
         const selectableProviders = providerData.filter(isProviderSelectable);
         const modelEntries = await Promise.all(
@@ -231,6 +240,7 @@ function SessionDetailPage() {
           setAgents(agentsData);
           setProviders(providerData);
           setModels(modelMap);
+          setMacros(macrosData);
           setModelCalls(callsData);
           if (agentsData.length > 0) {
             const storedAgentId = localStorage.getItem(LAST_AGENT_ID_KEY) ?? "";
@@ -304,6 +314,8 @@ function SessionDetailPage() {
     const outboundModelRef =
       retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
     if (!outboundText || !outboundAgentId) return;
+
+    let invocation = macroInvocation(outboundText, macros);
 
     const shouldGenerateTitle = shouldAutoGenerateTitle(session);
     persistLastAgentId(outboundAgentId);
@@ -381,6 +393,9 @@ function SessionDetailPage() {
         skipNextSessionLoadRef.current = true;
         setSession({ ...created, history: [buildUserMessage(outboundText)] });
         navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
+        const createdMacros = (await client.sessions.macros.list(created.id)) as Macro[];
+        setMacros(createdMacros);
+        invocation = macroInvocation(outboundText, createdMacros);
       }
       await run.captureCursor(activeSessionId);
       const pending = pendingSubmissionRef.current;
@@ -400,12 +415,20 @@ function SessionDetailPage() {
         message: outboundText,
       };
 
-      const admitted = await client.sessions.admit(activeSessionId, {
-        request_id: requestId,
-        agent_id: outboundAgentId,
-        model_ref: outboundModelRef,
-        message: outboundText,
-      });
+      const admitted = invocation
+        ? await client.sessions.macros.admit(activeSessionId, {
+            request_id: requestId,
+            macro_id: invocation.macroID,
+            arguments: invocation.arguments,
+            agent_id: outboundAgentId,
+            model_ref: outboundModelRef,
+          })
+        : await client.sessions.admit(activeSessionId, {
+            request_id: requestId,
+            agent_id: outboundAgentId,
+            model_ref: outboundModelRef,
+            message: outboundText,
+          });
       if (!admitted.run_id || !admitted.status || !admitted.session_version) {
         throw new Error("Message was not accepted for execution");
       }
@@ -593,6 +616,7 @@ function SessionDetailPage() {
         agents={agents}
         providers={selectableProviders}
         models={models}
+        macros={macros}
         hasModels={hasModels}
         isStreaming={run.isStreaming}
         isNearTranscriptBottom={transcriptScroll.isNearBottom}

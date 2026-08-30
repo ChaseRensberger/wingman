@@ -460,6 +460,73 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 	}
 }
 
+func TestSessionMacrosListAndAdmitExpandedMessage(t *testing.T) {
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workDir := t.TempDir()
+	macroPath := filepath.Join(workDir, ".wingman", "macros", "review.md")
+	if err := os.MkdirAll(filepath.Dir(macroPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(macroPath, []byte("---\ndescription: Review a change\nagent: agt_macro\n---\nReview $ARGUMENTS. Focus on missing tests."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_macro", ClientID: client.ID, WorkDir: workDir}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"agt_fallback", "agt_macro"} {
+		if err := data.CreateAgent(&store.Agent{ID: id, Name: id, ModelRef: "test/model", Options: map[string]any{agentOptionModelRoute: models.ModelInfo{
+			Provider: "test", ID: "model", API: models.APIOpenAICompatible, BaseURL: "http://127.0.0.1:1",
+		}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := New(Config{Store: &admissionTestStore{Store: data}})
+
+	listResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/sessions/ses_macro/macros", nil))
+	var macros []api.Macro
+	if err := json.NewDecoder(listResponse.Body).Decode(&macros); err != nil {
+		t.Fatal(err)
+	}
+	if listResponse.Code != http.StatusOK || len(macros) != 1 || macros[0].ID != "review" || macros[0].AgentID != "agt_macro" || macros[0].Description != "Review a change" {
+		t.Fatalf("status = %d, macros = %#v", listResponse.Code, macros)
+	}
+
+	body := `{"request_id":"macro-request","macro_id":"review","arguments":"the auth middleware","agent_id":"agt_fallback","model_ref":"test/model"}`
+	request := httptest.NewRequest(http.MethodPost, "/sessions/ses_macro/macros", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.router.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var admitted api.MessageSessionResponse
+	if err := json.NewDecoder(response.Body).Decode(&admitted); err != nil {
+		t.Fatal(err)
+	}
+	run, err := data.GetSessionRun(context.Background(), "ses_macro", admitted.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Message != "Review the auth middleware. Focus on missing tests." || run.Agent.ID != "agt_macro" {
+		t.Fatalf("run = %#v", run)
+	}
+
+	retry := httptest.NewRecorder()
+	server.router.ServeHTTP(retry, httptest.NewRequest(http.MethodPost, "/sessions/ses_macro/macros", strings.NewReader(body)))
+	var repeated api.MessageSessionResponse
+	if err := json.NewDecoder(retry.Body).Decode(&repeated); err != nil {
+		t.Fatal(err)
+	}
+	if retry.Code != http.StatusAccepted || repeated.RunID != admitted.RunID {
+		t.Fatalf("status = %d, response = %#v", retry.Code, repeated)
+	}
+}
+
 func TestMessageSessionRejectsDirectoryScopedAgentWithoutWorkingDirectory(t *testing.T) {
 	t.Parallel()
 

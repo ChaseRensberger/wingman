@@ -11,6 +11,8 @@ export type CreateClientRequest = components["schemas"]["CreateClientRequest"];
 export type CreateSessionRequest = components["schemas"]["CreateSessionRequest"];
 export type ErrorResponse = components["schemas"]["ErrorResponse"];
 export type MessageSessionRequest = components["schemas"]["MessageSessionRequest"];
+export type Macro = components["schemas"]["Macro"];
+export type MacroSessionRequest = components["schemas"]["MacroSessionRequest"];
 export type PermissionReplyRequest = components["schemas"]["PermissionReplyRequest"];
 export type MessageSessionResponse = components["schemas"]["MessageSessionResponse"];
 export type RunRequest = components["schemas"]["RunRequest"];
@@ -390,6 +392,23 @@ export function createWingmanClient(options: WingmanClientOptions) {
           }),
         );
       },
+      macros: {
+        list: (id: string) =>
+          requestData(api.GET("/sessions/{id}/macros", { params: { path: { id } } })),
+        admit: (id: string, request: MacroSessionRequest) => {
+          if (!request.request_id) {
+            throw new TypeError(
+              "macro admission requires a request_id; call newMacroAdmission and persist its result before retrying",
+            );
+          }
+          return requestData(
+            api.POST("/sessions/{id}/macros", {
+              params: { path: { id } },
+              body: request,
+            }),
+          );
+        },
+      },
       modelCalls: {
         list: (id: string) =>
           requestData(api.GET("/sessions/{id}/model-calls", { params: { path: { id } } })),
@@ -642,6 +661,11 @@ async function streamFetch(
 }
 
 export function newMessageAdmission(request: MessageSessionRequest): MessageSessionRequest {
+  if (request.request_id) return request;
+  return { ...request, request_id: crypto.randomUUID() };
+}
+
+export function newMacroAdmission(request: MacroSessionRequest): MacroSessionRequest {
   if (request.request_id) return request;
   return { ...request, request_id: crypto.randomUUID() };
 }

@@ -27,7 +27,7 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/run"} {
+	for _, path := range []string{"/health", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/sessions/{id}/macros", "/run"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}

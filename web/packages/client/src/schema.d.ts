@@ -574,6 +574,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/macros": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List project macros */
+        get: operations["listSessionMacros"];
+        put?: never;
+        /** Run a project macro */
+        post: operations["runSessionMacro"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/message": {
         parameters: {
             query?: never;
@@ -1067,6 +1085,21 @@ export interface components {
         };
         LoweredOptions: {
             reasoning_summary_auto?: boolean;
+        };
+        Macro: {
+            agent_id?: string;
+            description?: string;
+            id: string;
+            model_ref?: string;
+        };
+        MacroSessionRequest: {
+            agent_id: string;
+            arguments?: string;
+            macro_id: string;
+            model_ref?: string;
+            model_route?: components["schemas"]["ModelInfo"];
+            output_schema?: components["schemas"]["OutputSchema"];
+            request_id?: string;
         };
         McpResponse: {
             servers: unknown;
@@ -3426,6 +3459,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionEventPage"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSessionMacros: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Macro"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    runSessionMacro: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MacroSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSessionResponse"];
                 };
             };
             /** @description Request failed */

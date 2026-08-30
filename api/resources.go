@@ -105,6 +105,14 @@ type SessionDetail struct {
 	LatestModelCall *ModelCall       `json:"latest_model_call,omitempty"`
 }
 
+// Macro identifies one project macro available to a Session.
+type Macro struct {
+	ID          string `json:"id"`
+	Description string `json:"description,omitempty"`
+	AgentID     string `json:"agent_id,omitempty"`
+	ModelRef    string `json:"model_ref,omitempty"`
+}
+
 // CreateSessionRequest creates a persistent session.
 type CreateSessionRequest struct {
 	Title            string `json:"title,omitempty"`

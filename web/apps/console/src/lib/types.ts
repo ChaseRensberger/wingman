@@ -86,6 +86,13 @@ export interface ProviderOAuthAttempt {
   error?: string;
 }
 
+export interface Macro {
+  id: string;
+  description?: string;
+  agent_id?: string;
+  model_ref?: string;
+}
+
 export interface PluginDiagnostic {
   source: string;
   level?: string;

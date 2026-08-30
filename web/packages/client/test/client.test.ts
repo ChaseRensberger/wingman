@@ -4,6 +4,7 @@ import {
   APIError,
   StreamError,
   createWingmanClient,
+  newMacroAdmission,
   newMessageAdmission,
   parseRunStreamEvent,
   parseSessionEvent,
@@ -283,6 +284,44 @@ test("newMessageAdmission creates and preserves request IDs", () => {
   expect(newMessageAdmission({ ...request, request_id: "req_1" })).toEqual({
     ...request,
     request_id: "req_1",
+  });
+});
+
+test("newMacroAdmission creates and preserves request IDs", () => {
+  const request = { agent_id: "agt_1", macro_id: "review" };
+  const admitted = newMacroAdmission(request);
+  expect(admitted.request_id).toBeString();
+  expect(newMacroAdmission({ ...request, request_id: "req_1" })).toEqual({
+    ...request,
+    request_id: "req_1",
+  });
+});
+
+test("macro admission posts the macro ID and arguments", async () => {
+  let request: Request | undefined;
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json({ run_id: "run_1", status: "queued", session_version: 2 });
+    },
+  });
+
+  await expect(
+    client.sessions.macros.admit("ses_1", {
+      request_id: "req_1",
+      macro_id: "review/security",
+      arguments: "auth middleware",
+      agent_id: "agt_1",
+    }),
+  ).resolves.toMatchObject({ run_id: "run_1" });
+  expect(request?.url).toBe("https://wingman.test/sessions/ses_1/macros");
+  expect(request?.method).toBe("POST");
+  expect(await request?.json()).toEqual({
+    request_id: "req_1",
+    macro_id: "review/security",
+    arguments: "auth middleware",
+    agent_id: "agt_1",
   });
 });
 

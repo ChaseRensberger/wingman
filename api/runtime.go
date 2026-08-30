@@ -31,6 +31,17 @@ type MessageSessionResponse struct {
 	SessionVersion int64  `json:"session_version"`
 }
 
+// MacroSessionRequest admits one expanded project macro to a persistent session.
+type MacroSessionRequest struct {
+	RequestID    string            `json:"request_id,omitempty"`
+	MacroID      string            `json:"macro_id"`
+	Arguments    string            `json:"arguments,omitempty"`
+	AgentID      string            `json:"agent_id"`
+	ModelRef     string            `json:"model_ref,omitempty"`
+	ModelRoute   *models.ModelInfo `json:"model_route,omitempty"`
+	OutputSchema *OutputSchema     `json:"output_schema,omitempty"`
+}
+
 // RunRequest executes one ephemeral turn. Agent is required in ephemeral
 // mode; normal mode also accepts AgentID.
 type RunRequest struct {

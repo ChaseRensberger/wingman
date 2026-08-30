@@ -325,6 +325,25 @@ type LoweredOptions struct {
 	ReasoningSummaryAuto *bool `json:"reasoning_summary_auto,omitempty"`
 }
 
+// Macro defines model for Macro.
+type Macro struct {
+	AgentId     *string `json:"agent_id,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Id          string  `json:"id"`
+	ModelRef    *string `json:"model_ref,omitempty"`
+}
+
+// MacroSessionRequest defines model for MacroSessionRequest.
+type MacroSessionRequest struct {
+	AgentId      string        `json:"agent_id"`
+	Arguments    *string       `json:"arguments,omitempty"`
+	MacroId      string        `json:"macro_id"`
+	ModelRef     *string       `json:"model_ref,omitempty"`
+	ModelRoute   *ModelInfo    `json:"model_route,omitempty"`
+	OutputSchema *OutputSchema `json:"output_schema,omitempty"`
+	RequestId    *string       `json:"request_id,omitempty"`
+}
+
 // McpResponse defines model for McpResponse.
 type McpResponse struct {
 	Servers interface{} `json:"servers"`
@@ -1280,6 +1299,18 @@ type AbortSessionParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// ListSessionMacrosParams defines parameters for ListSessionMacros.
+type ListSessionMacrosParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// RunSessionMacroParams defines parameters for RunSessionMacro.
+type RunSessionMacroParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // MessageSessionParams defines parameters for MessageSession.
 type MessageSessionParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1408,6 +1439,9 @@ type RunAgentJSONRequestBody = RunRequest
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
+
+// RunSessionMacroJSONRequestBody defines body for RunSessionMacro for application/json ContentType.
+type RunSessionMacroJSONRequestBody = MacroSessionRequest
 
 // MessageSessionJSONRequestBody defines body for MessageSession for application/json ContentType.
 type MessageSessionJSONRequestBody = MessageSessionRequest
@@ -2021,6 +2055,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/abort (the `AbortSession` operationId).
 	AbortSession(ctx context.Context, id string, params *AbortSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSessionMacros List project macros
+	//
+	// Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
+	ListSessionMacros(ctx context.Context, id string, params *ListSessionMacrosParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunSessionMacroWithBody Run a project macro
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+	RunSessionMacroWithBody(ctx context.Context, id string, params *RunSessionMacroParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunSessionMacro Run a project macro
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+	RunSessionMacro(ctx context.Context, id string, params *RunSessionMacroParams, body RunSessionMacroJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// MessageSessionWithBody Admit a session message
 	//
@@ -2890,6 +2943,55 @@ func (c *GeneratedClient) GetSession(ctx context.Context, id string, params *Get
 // Corresponds with POST /sessions/{id}/abort (the `AbortSession` operationId).
 func (c *GeneratedClient) AbortSession(ctx context.Context, id string, params *AbortSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAbortSessionRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSessionMacros List project macros
+//
+// Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
+func (c *GeneratedClient) ListSessionMacros(ctx context.Context, id string, params *ListSessionMacrosParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionMacrosRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunSessionMacroWithBody Run a project macro
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+func (c *GeneratedClient) RunSessionMacroWithBody(ctx context.Context, id string, params *RunSessionMacroParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunSessionMacroRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunSessionMacro Run a project macro
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+func (c *GeneratedClient) RunSessionMacro(ctx context.Context, id string, params *RunSessionMacroParams, body RunSessionMacroJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunSessionMacroRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5244,6 +5346,117 @@ func NewAbortSessionRequest(server string, id string, params *AbortSessionParams
 	return req, nil
 }
 
+// NewListSessionMacrosRequest constructs an http.Request for the ListSessionMacros method
+func NewListSessionMacrosRequest(server string, id string, params *ListSessionMacrosParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/macros", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewRunSessionMacroRequest calls the generic RunSessionMacro builder with application/json body
+func NewRunSessionMacroRequest(server string, id string, params *RunSessionMacroParams, body RunSessionMacroJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRunSessionMacroRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewRunSessionMacroRequestWithBody constructs an http.Request for the RunSessionMacro method, with any body, and a specified content type
+func NewRunSessionMacroRequestWithBody(server string, id string, params *RunSessionMacroParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/macros", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewMessageSessionRequest calls the generic MessageSession builder with application/json body
 func NewMessageSessionRequest(server string, id string, params *MessageSessionParams, body MessageSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -6576,6 +6789,27 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/abort (the `AbortSession` operationId).
 	AbortSessionWithResponse(ctx context.Context, id string, params *AbortSessionParams, reqEditors ...RequestEditorFn) (*AbortSessionHTTPResponse, error)
+
+	// ListSessionMacrosWithResponse List project macros
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
+	ListSessionMacrosWithResponse(ctx context.Context, id string, params *ListSessionMacrosParams, reqEditors ...RequestEditorFn) (*ListSessionMacrosHTTPResponse, error)
+
+	// RunSessionMacroWithBodyWithResponse Run a project macro
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+	RunSessionMacroWithBodyWithResponse(ctx context.Context, id string, params *RunSessionMacroParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunSessionMacroHTTPResponse, error)
+
+	// RunSessionMacroWithResponse Run a project macro
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+	RunSessionMacroWithResponse(ctx context.Context, id string, params *RunSessionMacroParams, body RunSessionMacroJSONRequestBody, reqEditors ...RequestEditorFn) (*RunSessionMacroHTTPResponse, error)
 
 	// MessageSessionWithBodyWithResponse Admit a session message
 	//
@@ -8645,6 +8879,102 @@ func (r AbortSessionHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListSessionMacrosHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Macro
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSessionMacrosHTTPResponse) GetJSON200() *[]Macro {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListSessionMacrosHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSessionMacrosHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionMacrosHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionMacrosHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionMacrosHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RunSessionMacroHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *MessageSessionResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RunSessionMacroHTTPResponse) GetJSON202() *MessageSessionResponse {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RunSessionMacroHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RunSessionMacroHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunSessionMacroHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunSessionMacroHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunSessionMacroHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type MessageSessionHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10125,6 +10455,45 @@ func (c *ClientWithResponses) AbortSessionWithResponse(ctx context.Context, id s
 		return nil, err
 	}
 	return ParseAbortSessionHTTPResponse(rsp)
+}
+
+// ListSessionMacrosWithResponse List project macros
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
+func (c *ClientWithResponses) ListSessionMacrosWithResponse(ctx context.Context, id string, params *ListSessionMacrosParams, reqEditors ...RequestEditorFn) (*ListSessionMacrosHTTPResponse, error) {
+	rsp, err := c.ListSessionMacros(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionMacrosHTTPResponse(rsp)
+}
+
+// RunSessionMacroWithBodyWithResponse Run a project macro
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+func (c *ClientWithResponses) RunSessionMacroWithBodyWithResponse(ctx context.Context, id string, params *RunSessionMacroParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunSessionMacroHTTPResponse, error) {
+	rsp, err := c.RunSessionMacroWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunSessionMacroHTTPResponse(rsp)
+}
+
+// RunSessionMacroWithResponse Run a project macro
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/macros (the `RunSessionMacro` operationId).
+func (c *ClientWithResponses) RunSessionMacroWithResponse(ctx context.Context, id string, params *RunSessionMacroParams, body RunSessionMacroJSONRequestBody, reqEditors ...RequestEditorFn) (*RunSessionMacroHTTPResponse, error) {
+	rsp, err := c.RunSessionMacro(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunSessionMacroHTTPResponse(rsp)
 }
 
 // MessageSessionWithBodyWithResponse Admit a session message
@@ -11725,6 +12094,72 @@ func ParseAbortSessionHTTPResponse(rsp *http.Response) (*AbortSessionHTTPRespons
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSessionMacrosHTTPResponse parses an HTTP response from a ListSessionMacrosWithResponse call
+func ParseListSessionMacrosHTTPResponse(rsp *http.Response) (*ListSessionMacrosHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionMacrosHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Macro
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunSessionMacroHTTPResponse parses an HTTP response from a RunSessionMacroWithResponse call
+func ParseRunSessionMacroHTTPResponse(rsp *http.Response) (*RunSessionMacroHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunSessionMacroHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest MessageSessionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse
