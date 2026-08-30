@@ -45,6 +45,7 @@ type Config struct {
 	Logger            *slog.Logger
 	PluginDirs        []string
 	DefaultPluginDir  string
+	GlobalSkillDirs   []string
 	DisablePlugins    bool
 	MCP               map[string]wingmcp.ServerConfig
 	Providers         map[string]provider.ProviderConfig
@@ -185,12 +186,18 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		}
 		globalInstructionsPath = filepath.Join(configDir, "AGENTS.md")
 	}
+	configDir, pathErr := daemonstate.DefaultConfigDir()
+	if pathErr != nil {
+		return fail(fmt.Errorf("resolve global skills directory: %w", pathErr))
+	}
+	skillDirs := append([]string{filepath.Join(configDir, "skills")}, cfg.GlobalSkillDirs...)
 	a.server = f.newServer(server.Config{
 		RootContext: root, Store: a.store.store, ConsoleDevURL: cfg.ConsoleDevURL,
 		Logger: a.logger, Logs: a.logs, Scopes: a.scopes.manager, Permissions: cfg.Permissions,
 		AgentPermissions: cfg.AgentPermissions, PermissionTimeout: cfg.PermissionTimeout,
 		Password: cfg.Password, Username: cfg.Username, InstanceID: cfg.InstanceID, Version: cfg.Version,
 		GlobalInstructionsPath: globalInstructionsPath,
+		GlobalSkillDirs:        skillDirs,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

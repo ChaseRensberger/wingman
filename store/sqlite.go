@@ -305,7 +305,11 @@ func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projec
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, effective_instructions, instruction_sources_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agent), run.EffectiveInstructions, string(sources), nullableBytes(run.OutputSchemaJSON), run.ErrorType, run.ErrorMessage, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.CompletedAt), formatTime(run.UpdatedAt)); err != nil {
+		skills, err := json.Marshal(run.Skills)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agent), run.EffectiveInstructions, string(sources), string(skills), nullableBytes(run.OutputSchemaJSON), run.ErrorType, run.ErrorMessage, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.CompletedAt), formatTime(run.UpdatedAt)); err != nil {
 			return fmt.Errorf("insert session run: %w", err)
 		}
 	}
@@ -2263,6 +2267,10 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	if err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("marshal run instruction sources: %w", err)
 	}
+	skillsJSON, err := json.Marshal(run.Skills)
+	if err != nil {
+		return SessionRunAdmission{}, fmt.Errorf("marshal run skills: %w", err)
+	}
 	var next int
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_runs WHERE session_id = ?`, run.SessionID).Scan(&next); err != nil {
 		return SessionRunAdmission{}, err
@@ -2279,9 +2287,9 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 		return SessionRunAdmission{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, effective_instructions, instruction_sources_json, output_schema_json, error_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-	`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agentJSON), run.EffectiveInstructions, string(instructionSourcesJSON), nullableJSON(run.OutputSchemaJSON), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, message, agent_json, effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+	`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, run.Message, string(agentJSON), run.EffectiveInstructions, string(instructionSourcesJSON), string(skillsJSON), nullableJSON(run.OutputSchemaJSON), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("insert session run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, run.AdmittedVersion, run.SessionID); err != nil {
@@ -2565,10 +2573,15 @@ func nullableJSON(v []byte) any {
 func scanSessionRun(row rowScanner) (SessionRun, error) {
 	var run SessionRun
 	var agentJSON, effectiveInstructions string
-	var workDir, workspaceID, clientID, instructionSourcesJSON, schema, errorType, errorMessage, started, completed sql.NullString
+	var workDir, workspaceID, clientID, instructionSourcesJSON, skillsJSON, schema, errorType, errorMessage, started, completed sql.NullString
 	var created, updated string
-	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Message, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated); err != nil {
+	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Message, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &skillsJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated); err != nil {
 		return SessionRun{}, err
+	}
+	if skillsJSON.Valid {
+		if err := json.Unmarshal([]byte(skillsJSON.String), &run.Skills); err != nil {
+			return SessionRun{}, fmt.Errorf("unmarshal run skills: %w", err)
+		}
 	}
 	if err := json.Unmarshal([]byte(agentJSON), &run.Agent); err != nil {
 		return SessionRun{}, fmt.Errorf("unmarshal run agent: %w", err)
@@ -2846,7 +2859,7 @@ const toolUseColumns = `
 const sessionRunColumns = `
 	id, session_id, request_id, request_hash, admitted_version,
 	work_dir, workspace_id, client_id, sequence, status, message, agent_json,
-	effective_instructions, instruction_sources_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at`
+	effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at`
 
 // SessionRunRequestHash returns the canonical hash for an admission request.
 func SessionRunRequestHash(run SessionRun) (string, error) {

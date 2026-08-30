@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -56,6 +58,28 @@ func (s *Server) resolveInstructions(agent *store.Agent, workDir string) (string
 	parts = append(parts, "Current date: "+time.Now().Format(time.DateOnly)+".")
 	parts = append(parts, sections...)
 	return strings.Join(parts, "\n\n"), sources, nil
+}
+
+func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skill, string, error) {
+	dirs := append([]string(nil), s.globalSkillDirs...)
+	if workDir != "" {
+		dirs = append(dirs, filepath.Join(workDir, ".wingman", "skills"))
+	}
+	skills, err := skill.Discover(dirs...)
+	if err != nil {
+		return nil, "", fmt.Errorf("discover skills: %w", err)
+	}
+	var lines []string
+	for _, entry := range skills {
+		if entry.Description == "" || permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect == permission.EffectDeny {
+			continue
+		}
+		lines = append(lines, "- "+entry.ID+": "+entry.Description)
+	}
+	if len(lines) == 0 {
+		return skills, "", nil
+	}
+	return skills, "## Available skills\nUse the skill tool with an ID to load its instructions.\n" + strings.Join(lines, "\n"), nil
 }
 
 func readInstructionFile(path string) ([]byte, string, bool, error) {

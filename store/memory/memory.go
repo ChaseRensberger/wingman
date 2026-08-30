@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -388,6 +389,10 @@ func copySessionRun(run *store.SessionRun) store.SessionRun {
 	cp := *run
 	cp.Agent = *copyAgent(&run.Agent)
 	cp.InstructionSources = append([]store.InstructionSource(nil), run.InstructionSources...)
+	cp.Skills = append([]skill.Skill(nil), run.Skills...)
+	for i := range cp.Skills {
+		cp.Skills[i].SupportingFiles = append([]skill.SupportingFile(nil), run.Skills[i].SupportingFiles...)
+	}
 	cp.OutputSchemaJSON = append([]byte(nil), run.OutputSchemaJSON...)
 	return cp
 }

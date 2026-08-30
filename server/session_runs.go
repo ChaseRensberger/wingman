@@ -194,7 +194,7 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 		var runSession *session.Session
 		runtimeAgent := queued.Agent
 		runtimeAgent.Instructions = queued.EffectiveInstructions
-		runSession, err = m.server.buildSessionForRun(runCtx, &runtimeAgent, sess, queued.ID)
+		runSession, err = m.server.buildSessionForRunWithSkills(runCtx, &runtimeAgent, sess, queued.ID, queued.Skills)
 		if runSession != nil {
 			defer func() {
 				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)

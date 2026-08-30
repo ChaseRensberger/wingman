@@ -137,6 +137,9 @@ Plugin tools are selected like built-in tools. Include the tool name in an agent
 
 Plugin tool names must not collide with built-in, MCP, or other plugin tools. Wingman rejects duplicate names rather than choosing an implicit winner.
 
+`skill` is reserved for Wingman's native Agent Skill loader. Plugins cannot use
+this name.
+
 ## Inspect Plugins
 
 Use this command to list loaded plugins and non-fatal load errors:

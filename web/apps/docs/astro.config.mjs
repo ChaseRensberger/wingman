@@ -59,6 +59,7 @@ export default defineConfig({
           items: [
             { label: "Global Config", slug: "configure/config" },
             { label: "Project Instructions", slug: "configure/project-instructions" },
+			{ label: "Skills", slug: "configure/skills" },
             { label: "Providers", slug: "configure/providers" },
             { label: "Models", slug: "configure/models" },
             { label: "MCP Servers", slug: "configure/mcp" },

@@ -72,6 +72,9 @@ The file is parsed as strict JSON:
   },
   "plugins": {
     "dirs": ["~/.config/wingman/plugins"]
+  },
+  "skills": {
+    "dirs": ["~/shared-wingman-skills"]
   }
 }
 ```
@@ -84,6 +87,7 @@ The file is parsed as strict JSON:
 | `provider`          |                        object |       no | Provider route overlays and configuration-defined provider/model metadata. |
 | `mcp`               |                        object |       no | Configured Model Context Protocol servers.                                 |
 | `plugins`           |                        object |       no | External plugin discovery defaults.                                        |
+| `skills`            |                        object |       no | Additional global Agent Skill directories.                                 |
 | `permissions`       | string, object, or rule array |       no | Daemon-wide tool permission rules.                                         |
 | `agent_permissions` |                        object |       no | Daemon-local permission overlays keyed by agent ID or name.                |
 
@@ -144,6 +148,21 @@ wingman serve --no-plugins
 ```
 
 There is no configuration-file equivalent for `--no-plugins`.
+
+## `skills`
+
+| Field  |         Type | Default | Description                                                                  |
+| ------ | -----------: | ------- | ---------------------------------------------------------------------------- |
+| `dirs` | string array | `[]`    | Extra global skill directories. Each path supports `~` and `~/...` expansion. |
+
+Wingman includes the default global skill directory:
+
+```text
+~/.config/wingman/skills/
+```
+
+`skills.dirs` adds directories. It does not replace the default directory. See
+[Skills](/configure/skills) for skill files, project sources, and precedence.
 
 ## `mcp`
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/skill"
 )
 
 type Agent struct {
@@ -178,6 +179,7 @@ type SessionRun struct {
 	Agent                 Agent               `json:"agent"`
 	EffectiveInstructions string              `json:"effective_instructions"`
 	InstructionSources    []InstructionSource `json:"instruction_sources,omitempty"`
+	Skills                []skill.Skill       `json:"skills,omitempty"`
 	OutputSchemaJSON      []byte              `json:"-"`
 	ErrorType             string              `json:"error_type,omitempty"`
 	ErrorMessage          string              `json:"error_message,omitempty"`

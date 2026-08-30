@@ -20,6 +20,7 @@ import (
 	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 )
@@ -427,9 +428,17 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	skills, skillCatalog, err := s.resolveSkills(effectiveAgent, sess.WorkDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if skillCatalog != "" {
+		effectiveInstructions += "\n\n" + skillCatalog
+	}
 	runtimeAgent := *effectiveAgent
 	runtimeAgent.Instructions = effectiveInstructions
-	validationSession, err := s.buildSession(r.Context(), &runtimeAgent, sess)
+	validationSession, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -443,6 +452,7 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	}
 	candidate.EffectiveInstructions = effectiveInstructions
 	candidate.InstructionSources = instructionSources
+	candidate.Skills = skills
 	admission, err := s.store.AdmitSessionRun(r.Context(), candidate)
 	if err != nil {
 		if errors.Is(err, store.ErrSessionRunAdmissionConflict) {
@@ -639,9 +649,17 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	skills, skillCatalog, err := s.resolveSkills(storedAgent, workDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if skillCatalog != "" {
+		effectiveInstructions += "\n\n" + skillCatalog
+	}
 	storedAgent.Instructions = effectiveInstructions
 
-	runSession, err := s.buildEphemeralSession(r.Context(), storedAgent, sess)
+	runSession, err := s.buildEphemeralSessionWithSkills(r.Context(), storedAgent, sess, skills)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -834,18 +852,30 @@ func writeRunStreamError(w http.ResponseWriter, flusher http.Flusher, err error)
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
 func (s *Server) buildSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""))
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), nil)
+}
+
+func (s *Server) buildSessionWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, skills []skill.Skill) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), skills)
 }
 
 func (s *Server) buildSessionForRun(ctx context.Context, stored *store.Agent, sess *store.Session, runID string) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID))
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), nil)
+}
+
+func (s *Server) buildSessionForRunWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, runID string, skills []skill.Skill) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), skills)
 }
 
 func (s *Server) buildEphemeralSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil)
+	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil, nil)
 }
 
-func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter) (*session.Session, error) {
+func (s *Server) buildEphemeralSessionWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, skills []skill.Skill) (*session.Session, error) {
+	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil, skills)
+}
+
+func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter, skills []skill.Skill) (*session.Session, error) {
 	if stored.ModelRef == "" {
 		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
 	}
@@ -899,6 +929,9 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	tools, err := s.resolveTools(executionScope, stored.Tools)
 	if err != nil {
 		return nil, err
+	}
+	if len(skills) > 0 {
+		tools = append(tools, skill.Tool(skills))
 	}
 	for _, t := range tools {
 		if tool.IsDirectoryScoped(t) && workDir == "" {

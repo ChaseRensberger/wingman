@@ -95,6 +95,7 @@ CREATE TABLE session_runs (
     agent_json          TEXT NOT NULL,
     effective_instructions TEXT NOT NULL DEFAULT '',
     instruction_sources_json TEXT NOT NULL DEFAULT '[]',
+    skills_json         TEXT NOT NULL DEFAULT '[]',
     output_schema_json  TEXT,
     error_message       TEXT,
 	    error_type          TEXT,

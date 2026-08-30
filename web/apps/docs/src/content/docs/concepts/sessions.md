@@ -97,6 +97,10 @@ The endpoint returns `202 Accepted` when it durably queues the message. The resp
 
 Admission stores the authored Agent snapshot separately from the resolved [`AGENTS.md` instructions](/configure/project-instructions). It also stores the output schema, working directory, Workspace, and client. Moving the session or editing the Agent or instruction files later affects future admissions only. Queued work runs from its snapshot.
 
+When [Skills](/configure/skills) are available, admission also stores their
+instructions and supporting-file contents. Later skill edits affect future runs
+only.
+
 ## Per-Message Agent and Model
 
 Each message selects its agent and model:

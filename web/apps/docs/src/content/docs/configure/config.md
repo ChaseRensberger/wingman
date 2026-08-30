@@ -27,9 +27,10 @@ Wingman has three main configuration locations:
 
 | Concern                                                                                                            | Where it lives                                             |
 | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Server bind address, database path, logs, plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags             |
+| Server bind address, database path, logs, skill and plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags             |
 | Provider API keys                                                                                                  | SQLite auth store through `PUT /provider/auth`             |
 | External plugin manifests                                                                                          | `~/.config/wingman/plugins/` plus extra plugin directories |
+| Local Agent Skills                                                                                                 | `~/.config/wingman/skills/` plus project and extra skill directories |
 
 The HTTP API stores agents. Agents are not in `wingman.json`.
 
@@ -80,6 +81,9 @@ Example:
   },
   "plugins": {
     "dirs": ["~/.config/wingman/plugins"]
+  },
+  "skills": {
+    "dirs": ["~/shared-wingman-skills"]
   }
 }
 ```
@@ -98,6 +102,7 @@ For exact fields, see [Config Schema](/reference/config-schema).
 | Add a reusable custom provider/model           | [Providers](/configure/providers#add-a-custom-provider)              |
 | Choose between `model_ref` and `model_route`   | [Models](/configure/models)                                          |
 | Add global or project `AGENTS.md` instructions | [Project Instructions](/configure/project-instructions)              |
+| Add local Agent Skills                        | [Skills](/configure/skills)                                          |
 | Load external plugins                          | [Plugins](/concepts/plugins#external-plugins)                        |
 | Connect MCP servers and tools                  | [MCP Servers](/configure/mcp)                                        |
 | View all supported configuration fields        | [Config Schema](/reference/config-schema)                            |

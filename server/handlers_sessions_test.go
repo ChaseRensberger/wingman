@@ -372,6 +372,13 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 	if err := os.WriteFile(projectPath, []byte("Initial project rules."), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	skillPath := filepath.Join(workDir, ".wingman", "skills", "review", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("---\ndescription: Review code.\n---\nInitial skill instructions."), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := data.CreateSession(&store.Session{ID: "ses_instruction_snapshot", ClientID: client.ID, WorkDir: workDir}); err != nil {
 		t.Fatal(err)
 	}
@@ -397,6 +404,9 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(projectPath, []byte("Changed project rules."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("---\ndescription: Review code.\n---\nChanged skill instructions."), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	retryResponse := httptest.NewRecorder()
@@ -428,6 +438,9 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 	}
 	if !strings.Contains(run.EffectiveInstructions, "Initial project rules.") || strings.Contains(run.EffectiveInstructions, "Changed project rules.") {
 		t.Fatalf("effective instructions = %q", run.EffectiveInstructions)
+	}
+	if len(run.Skills) != 1 || run.Skills[0].ID != "review" || run.Skills[0].Content != "Initial skill instructions." {
+		t.Fatalf("skills = %#v", run.Skills)
 	}
 	canonicalProjectPath, err := filepath.EvalSymlinks(projectPath)
 	if err != nil {

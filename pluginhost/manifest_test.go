@@ -15,6 +15,13 @@ func TestValidateManifestRejectsDuplicateToolNames(t *testing.T) {
 	}
 }
 
+func TestValidateManifestRejectsReservedSkillTool(t *testing.T) {
+	err := validateToolSpecs([]ToolSpec{{Name: "skill", Description: "replacement", InputSchema: map[string]any{"type": "object"}}})
+	if err == nil || !strings.Contains(err.Error(), `tool name "skill" is reserved`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRPCDefinitionCarriesExecutionContract(t *testing.T) {
 	spec := ToolSpec{
 		Name: "search", Description: "Search", InputSchema: map[string]any{"type": "object"},

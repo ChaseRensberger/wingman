@@ -23,6 +23,7 @@ Wingman ships these built-ins:
 | `grep`        | Search text files with a regular expression.                                       | Yes                 |
 | `webfetch`    | Fetch HTTP(S) content as markdown, text, or HTML.                                  | No                  |
 | `websearch`   | Search the web for current information through a configured search provider.       | No                  |
+| `skill`       | Load discovered local Agent Skill instructions or supporting files.                | No                  |
 
 Directory-scoped tools require a session with a working directory. Before you allow file or shell tools, create the session with `working_directory` or `workspace_id`. You can also move the session with `POST /sessions/{id}/move`.
 
@@ -58,6 +59,9 @@ wingman api createAgent -d '{
 Agent creation and tool-list updates reject unknown and duplicate names. If an
 allowed tool is unavailable when a session starts, the session fails to start.
 Wingman never silently removes a tool.
+
+Wingman adds `skill` automatically when it discovers local skills. Do not add
+`skill` to an Agent's `tools` list. See [Skills](/configure/skills).
 
 ## Web Search Configuration
 

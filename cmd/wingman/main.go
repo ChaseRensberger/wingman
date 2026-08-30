@@ -63,6 +63,7 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 		Usage: "The open-source client-agnostic agent harness",
 		Commands: []*cli.Command{
 			apiCommand(),
+			skillsCommand(),
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
@@ -236,7 +237,8 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
 			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
-			MCP: effective.MCP, Providers: effective.Provider,
+			GlobalSkillDirs: effective.Skills.Dirs,
+			MCP:             effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
 			Password: password, Username: username, InstanceID: instanceID, Version: version,
 		})

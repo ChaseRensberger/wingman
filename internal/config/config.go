@@ -20,6 +20,7 @@ import (
 type Config struct {
 	Server           ServerConfig                       `json:"server"`
 	Plugins          PluginConfig                       `json:"plugins"`
+	Skills           SkillConfig                        `json:"skills"`
 	Permissions      permission.Ruleset                 `json:"permissions"`
 	AgentPermissions map[string]permission.Ruleset      `json:"agent_permissions"`
 	Provider         map[string]provider.ProviderConfig `json:"provider"`
@@ -39,6 +40,11 @@ type ServerConfig struct {
 type PluginConfig struct {
 	Dirs       []string `json:"dirs"`
 	DefaultDir string   `json:"-"`
+}
+
+// SkillConfig contains additional global skill directories.
+type SkillConfig struct {
+	Dirs []string `json:"dirs"`
 }
 
 // Default returns the default daemon configuration.
@@ -99,6 +105,11 @@ func (c Config) Validate() error {
 			return fmt.Errorf("plugins.dirs[%d] must not be empty", i)
 		}
 	}
+	for i, dir := range c.Skills.Dirs {
+		if strings.TrimSpace(dir) == "" {
+			return fmt.Errorf("skills.dirs[%d] must not be empty", i)
+		}
+	}
 	if err := validateMapKeys("agent_permissions", c.AgentPermissions); err != nil {
 		return err
 	}
@@ -111,7 +122,7 @@ func (c Config) Validate() error {
 	return (wingmcp.Config{Servers: c.MCP}).Validate()
 }
 
-// Normalize returns a copy of c with DB and plugin paths expanded relative to home.
+// Normalize returns a copy of c with DB, plugin, and skill paths expanded relative to home.
 func (c Config) Normalize(home string) (Config, error) {
 	out := c
 	var err error
@@ -123,10 +134,16 @@ func (c Config) Normalize(home string) (Config, error) {
 		return Config{}, fmt.Errorf("normalize server.db: %w", err)
 	}
 	out.Plugins.Dirs = make([]string, len(c.Plugins.Dirs))
+	out.Skills.Dirs = make([]string, len(c.Skills.Dirs))
 	out.Plugins.DefaultDir = DefaultPluginDir(home)
 	for i, dir := range c.Plugins.Dirs {
 		if out.Plugins.Dirs[i], err = expandHome(dir, home); err != nil {
 			return Config{}, fmt.Errorf("normalize plugins.dirs[%d]: %w", i, err)
+		}
+	}
+	for i, dir := range c.Skills.Dirs {
+		if out.Skills.Dirs[i], err = expandHome(dir, home); err != nil {
+			return Config{}, fmt.Errorf("normalize skills.dirs[%d]: %w", i, err)
 		}
 	}
 	out.Permissions = append(permission.Ruleset(nil), c.Permissions...)

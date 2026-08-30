@@ -60,6 +60,7 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/tool"
 )
 
@@ -251,6 +252,9 @@ func (r *Registry) RegisterTool(t tool.Tool) error {
 		return err
 	}
 	if t != nil {
+		if t.Name() == skill.ToolName {
+			return fmt.Errorf("plugin: tool name %q is reserved", skill.ToolName)
+		}
 		r.tools = append(r.tools, t)
 	}
 	return nil

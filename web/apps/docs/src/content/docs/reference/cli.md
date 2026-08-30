@@ -27,6 +27,7 @@ wingman <command> [flags]
 | `pair`            | Show the managed server URL and credentials with a QR code. |
 | `console`         | Open the managed daemon Console.                            |
 | `clients create`  | Register an API client identity.                            |
+| `skills add`      | Install a skill from an HTTPS Git repository.                |
 | `update`          | Check for or install a verified release update.             |
 | `version`         | Print version information.                                  |
 
@@ -120,6 +121,18 @@ standard output. An HTTP error writes the response body and exits with an error.
 
 The command supports the managed local daemon only. Use an HTTP client or a
 Wingman SDK to connect to an explicit remote server.
+
+## Skills Command
+
+Install one skill for the current project:
+
+```bash
+wingman skills add https://github.com/aminblg/simpleenglish
+```
+
+Use `--global` to install below `~/.config/wingman/skills`. The command accepts
+HTTPS Git repository URLs and requires Git. See [Skills](/configure/skills) for
+skill files and configuration.
 
 ## Console Command
 

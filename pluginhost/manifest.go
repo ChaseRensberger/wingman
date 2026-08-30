@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/tool"
 )
 
@@ -127,6 +128,9 @@ func validateToolSpecs(specs []ToolSpec) error {
 	for _, spec := range specs {
 		if spec.Name == "" {
 			return fmt.Errorf("tool name is required")
+		}
+		if spec.Name == skill.ToolName {
+			return fmt.Errorf("tool name %q is reserved", skill.ToolName)
 		}
 		if spec.Description == "" {
 			return fmt.Errorf("tool %q description is required", spec.Name)

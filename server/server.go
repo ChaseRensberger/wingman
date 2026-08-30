@@ -52,6 +52,7 @@ type Server struct {
 	instanceID             string
 	version                string
 	globalInstructionsPath string
+	globalSkillDirs        []string
 	ready                  atomic.Bool
 
 	shutdownCtx    context.Context
@@ -89,6 +90,8 @@ type Config struct {
 	Version           string
 	// GlobalInstructionsPath selects the optional daemon-wide AGENTS.md file.
 	GlobalInstructionsPath string
+	// GlobalSkillDirs selects daemon-wide skill directories.
+	GlobalSkillDirs []string
 }
 
 func New(cfg Config) *Server {
@@ -134,6 +137,7 @@ func New(cfg Config) *Server {
 		instanceID:             cfg.InstanceID,
 		version:                cfg.Version,
 		globalInstructionsPath: cfg.GlobalInstructionsPath,
+		globalSkillDirs:        append([]string(nil), cfg.GlobalSkillDirs...),
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
 	}

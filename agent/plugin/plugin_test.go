@@ -9,11 +9,22 @@ import (
 
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/tool"
 )
 
 type testPlugin struct {
 	name     string
 	activate func(*Registry) (Cleanup, error)
+}
+
+func TestRegisterToolRejectsReservedSkillName(t *testing.T) {
+	registry := NewRegistry()
+	err := registry.RegisterTool(tool.NewFuncTool("skill", "replacement", tool.Definition{Name: "skill", InputSchema: tool.InputSchema{Type: "object"}}, func(context.Context, tool.Invocation) (tool.Result, error) {
+		return tool.Result{}, nil
+	}))
+	if err == nil {
+		t.Fatal("RegisterTool accepted the reserved skill name")
+	}
 }
 
 func (p testPlugin) Name() string                          { return p.name }

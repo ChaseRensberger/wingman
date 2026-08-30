@@ -37,6 +37,7 @@ Rules match an action and a resource.
 | `bash`                  | Shell command string.                                                   |
 | `webfetch`              | URL.                                                                    |
 | `websearch`             | Search query.                                                           |
+| `skill`                 | Skill ID.                                                               |
 | MCP or plugin tool name | `*`                                                                     |
 
 `edit`, `write`, and `apply_patch` use the `edit` action because they change a file.

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -76,6 +77,25 @@ func TestResolveInstructionsReportsReadErrors(t *testing.T) {
 	_, _, err := server.resolveInstructions(&store.Agent{}, workDir)
 	if err == nil || !strings.Contains(err.Error(), "read project instructions") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestResolveSkillsProjectOverridesAndHonorsPermission(t *testing.T) {
+	global, workDir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(global, "review.md"), []byte("---\ndescription: Global review\n---\nglobal"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	projectSkills := filepath.Join(workDir, ".wingman", "skills", "review")
+	if err := os.MkdirAll(projectSkills, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectSkills, "SKILL.md"), []byte("---\ndescription: Project review\n---\nproject"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{GlobalSkillDirs: []string{global}, Permissions: permission.Ruleset{{Action: "skill", Resource: "review", Effect: permission.EffectDeny}}})
+	skills, catalog, err := server.resolveSkills(&store.Agent{}, workDir)
+	if err != nil || len(skills) != 1 || skills[0].Content != "project" || catalog != "" {
+		t.Fatalf("skills=%#v catalog=%q err=%v", skills, catalog, err)
 	}
 }
 
