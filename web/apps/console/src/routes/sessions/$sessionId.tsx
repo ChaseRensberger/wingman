@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
+import { actionInvocation } from "@/lib/action";
 import { selectGreeting } from "@/lib/greeting";
 import { macroInvocation } from "@/lib/macro";
 import { isProviderSelectable } from "@/lib/providers";
@@ -30,6 +31,7 @@ import type {
   ToolCallPart,
   ToolResultPart,
   Macro,
+  PluginAction,
 } from "@/lib/types";
 import { toolActivityKey } from "@/lib/tool-activity-state";
 import {
@@ -73,6 +75,7 @@ function SessionDetailPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [macros, setMacros] = useState<Macro[]>([]);
+  const [actions, setActions] = useState<PluginAction[]>([]);
   const [modelCalls, setModelCalls] = useState<ModelCall[]>([]);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -183,17 +186,21 @@ function SessionDetailPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [sessData, agentsData, providerData, callsData, macrosData] = await Promise.all([
-          isDraft ? Promise.resolve(null) : (client.sessions.get(sessionId) as Promise<Session>),
-          client.agents.list() as Promise<Agent[]>,
-          client.providers.list() as Promise<Provider[]>,
-          isDraft
-            ? Promise.resolve([] as ModelCall[])
-            : (client.sessions.modelCalls.list(sessionId) as Promise<ModelCall[]>),
-          isDraft
-            ? Promise.resolve([] as Macro[])
-            : (client.sessions.macros.list(sessionId) as Promise<Macro[]>),
-        ]);
+        const [sessData, agentsData, providerData, callsData, macrosData, actionsData] =
+          await Promise.all([
+            isDraft
+              ? Promise.resolve(null)
+              : (client.sessions.get(sessionId) as Promise<Session>),
+            client.agents.list() as Promise<Agent[]>,
+            client.providers.list() as Promise<Provider[]>,
+            isDraft
+              ? Promise.resolve([] as ModelCall[])
+              : (client.sessions.modelCalls.list(sessionId) as Promise<ModelCall[]>),
+            isDraft
+              ? Promise.resolve([] as Macro[])
+              : (client.sessions.macros.list(sessionId) as Promise<Macro[]>),
+            client.actions.list() as Promise<PluginAction[]>,
+          ]);
         const selectableProviders = providerData.filter(isProviderSelectable);
         const modelEntries = await Promise.all(
           selectableProviders.map(async (provider) => {
@@ -241,6 +248,7 @@ function SessionDetailPage() {
           setProviders(providerData);
           setModels(modelMap);
           setMacros(macrosData);
+          setActions(actionsData);
           setModelCalls(callsData);
           if (agentsData.length > 0) {
             const storedAgentId = localStorage.getItem(LAST_AGENT_ID_KEY) ?? "";
@@ -315,22 +323,26 @@ function SessionDetailPage() {
       retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
     if (!outboundText || !outboundAgentId) return;
 
-    let invocation = macroInvocation(outboundText, macros);
+    const action = actionInvocation(outboundText, actions);
+    let invocation = action ? undefined : macroInvocation(outboundText, macros);
 
-    const shouldGenerateTitle = shouldAutoGenerateTitle(session);
+    const shouldGenerateTitle = !action && shouldAutoGenerateTitle(session);
     persistLastAgentId(outboundAgentId);
     persistLastModelRef(outboundModelRef);
     setMessageText("");
     transcriptScroll.reset();
-    setSession((prev) => {
-      if (!prev) return prev;
-      return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
-    });
+    if (!action) {
+      setSession((prev) => {
+        if (!prev) return prev;
+        return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
+      });
+    }
 
     const controller = run.begin({
       message: outboundText,
       agentId: outboundAgentId,
       modelRef: outboundModelRef,
+      kind: action ? "action" : "message",
     });
     let accepted = false;
     let activeSessionId = sessionId;
@@ -391,7 +403,10 @@ function SessionDetailPage() {
         activeSessionIdRef.current = created.id;
         if (titlePromise) titleSessionIdRef.current = created.id;
         skipNextSessionLoadRef.current = true;
-        setSession({ ...created, history: [buildUserMessage(outboundText)] });
+        setSession({
+          ...created,
+          history: action ? [] : [buildUserMessage(outboundText)],
+        });
         navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
         const createdMacros = (await client.sessions.macros.list(created.id)) as Macro[];
         setMacros(createdMacros);
@@ -415,7 +430,14 @@ function SessionDetailPage() {
         message: outboundText,
       };
 
-      const admitted = invocation
+      const admitted = action
+        ? await client.sessions.actions.admit(activeSessionId, action.action, {
+            request_id: requestId,
+            agent_id: outboundAgentId,
+            model_ref: outboundModelRef,
+            input: action.arguments ? { arguments: action.arguments } : {},
+          })
+        : invocation
         ? await client.sessions.macros.admit(activeSessionId, {
             request_id: requestId,
             macro_id: invocation.macroID,
@@ -550,7 +572,7 @@ function SessionDetailPage() {
   }
   const transcriptHistory = withFailedUserMessage(
     (session?.history ?? []).filter((message) => message.role !== "tool"),
-    run.failedRun?.message,
+    run.failedRun?.kind === "action" ? undefined : run.failedRun?.message,
   );
 
   if (loading) {
@@ -617,6 +639,7 @@ function SessionDetailPage() {
         providers={selectableProviders}
         models={models}
         macros={macros}
+        actions={actions}
         hasModels={hasModels}
         isStreaming={run.isStreaming}
         isNearTranscriptBottom={transcriptScroll.isNearBottom}

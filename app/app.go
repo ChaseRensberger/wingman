@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/execution"
 	"github.com/chaserensberger/wingman/internal/daemonstate"
 	"github.com/chaserensberger/wingman/internal/observability"
@@ -28,6 +29,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
+	"github.com/chaserensberger/wingman/plugins/compaction"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -198,6 +200,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		Password: cfg.Password, Username: cfg.Username, InstanceID: cfg.InstanceID, Version: cfg.Version,
 		GlobalInstructionsPath: globalInstructionsPath,
 		GlobalSkillDirs:        skillDirs,
+		PluginFactories:        []func() plugin.Plugin{func() plugin.Plugin { return compaction.New() }},
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

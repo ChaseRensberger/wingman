@@ -42,6 +42,8 @@ type InstructionSource struct {
 }
 
 const (
+	SessionRunKindMessage     = "message"
+	SessionRunKindAction      = "action"
 	SessionRunStatusQueued    = "queued"
 	SessionRunStatusRunning   = "running"
 	SessionRunStatusCompleted = "completed"
@@ -175,7 +177,10 @@ type SessionRun struct {
 	ClientID              string              `json:"client_id,omitempty"`
 	Sequence              int                 `json:"sequence"`
 	Status                string              `json:"status"`
+	Kind                  string              `json:"kind"`
 	Message               string              `json:"message"`
+	Action                string              `json:"action,omitempty"`
+	InputJSON             []byte              `json:"-"`
 	Agent                 Agent               `json:"agent"`
 	EffectiveInstructions string              `json:"effective_instructions"`
 	InstructionSources    []InstructionSource `json:"instruction_sources,omitempty"`

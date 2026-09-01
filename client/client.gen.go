@@ -113,6 +113,28 @@ type AbortSessionResponse struct {
 	SessionId string `json:"session_id"`
 }
 
+// Action defines model for Action.
+type Action struct {
+	Command     string      `json:"command"`
+	Description *string     `json:"description,omitempty"`
+	Id          string      `json:"id"`
+	InputSchema interface{} `json:"input_schema,omitempty"`
+}
+
+// ActionSessionRequest defines model for ActionSessionRequest.
+type ActionSessionRequest struct {
+	AgentId    string      `json:"agent_id"`
+	Input      interface{} `json:"input,omitempty"`
+	ModelRef   *string     `json:"model_ref,omitempty"`
+	ModelRoute *ModelInfo  `json:"model_route,omitempty"`
+	RequestId  *string     `json:"request_id,omitempty"`
+}
+
+// ActionsResponse defines model for ActionsResponse.
+type ActionsResponse struct {
+	Actions *[]Action `json:"actions"`
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	CreatedAt    string                  `json:"created_at"`
@@ -862,6 +884,7 @@ type SessionDetail struct {
 
 // SessionRun defines model for SessionRun.
 type SessionRun struct {
+	Action                *string              `json:"action,omitempty"`
 	AdmittedVersion       int64                `json:"admitted_version"`
 	Agent                 Agent                `json:"agent"`
 	ClientId              *string              `json:"client_id,omitempty"`
@@ -871,7 +894,9 @@ type SessionRun struct {
 	ErrorMessage          *string              `json:"error_message,omitempty"`
 	ErrorType             *string              `json:"error_type,omitempty"`
 	Id                    string               `json:"id"`
+	Input                 interface{}          `json:"input,omitempty"`
 	InstructionSources    *[]InstructionSource `json:"instruction_sources,omitempty"`
+	Kind                  string               `json:"kind"`
 	Message               string               `json:"message"`
 	RequestId             *string              `json:"request_id,omitempty"`
 	Sequence              int64                `json:"sequence"`
@@ -1062,6 +1087,12 @@ type Workspace struct {
 
 // GetServiceParams defines parameters for GetService.
 type GetServiceParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ListActionsParams defines parameters for ListActions.
+type ListActionsParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1299,6 +1330,12 @@ type AbortSessionParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// RunSessionActionParams defines parameters for RunSessionAction.
+type RunSessionActionParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // ListSessionMacrosParams defines parameters for ListSessionMacros.
 type ListSessionMacrosParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1439,6 +1476,9 @@ type RunAgentJSONRequestBody = RunRequest
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
+
+// RunSessionActionJSONRequestBody defines body for RunSessionAction for application/json ContentType.
+type RunSessionActionJSONRequestBody = ActionSessionRequest
 
 // RunSessionMacroJSONRequestBody defines body for RunSessionMacro for application/json ContentType.
 type RunSessionMacroJSONRequestBody = MacroSessionRequest
@@ -1798,6 +1838,11 @@ type ClientInterface interface {
 	// Corresponds with GET / (the `GetService` operationId).
 	GetService(ctx context.Context, params *GetServiceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListActions List available actions
+	//
+	// Corresponds with GET /actions (the `ListActions` operationId).
+	ListActions(ctx context.Context, params *ListActionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgents List agents
 	//
 	// Corresponds with GET /agents (the `ListAgents` operationId).
@@ -2056,6 +2101,20 @@ type ClientInterface interface {
 	// Corresponds with POST /sessions/{id}/abort (the `AbortSession` operationId).
 	AbortSession(ctx context.Context, id string, params *AbortSessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RunSessionActionWithBody Admit a session action
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+	RunSessionActionWithBody(ctx context.Context, id string, action string, params *RunSessionActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunSessionAction Admit a session action
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+	RunSessionAction(ctx context.Context, id string, action string, params *RunSessionActionParams, body RunSessionActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSessionMacros List project macros
 	//
 	// Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
@@ -2225,6 +2284,21 @@ type ClientInterface interface {
 // Corresponds with GET / (the `GetService` operationId).
 func (c *GeneratedClient) GetService(ctx context.Context, params *GetServiceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetServiceRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListActions List available actions
+//
+// Corresponds with GET /actions (the `ListActions` operationId).
+func (c *GeneratedClient) ListActions(ctx context.Context, params *ListActionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListActionsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2953,6 +3027,40 @@ func (c *GeneratedClient) AbortSession(ctx context.Context, id string, params *A
 	return c.Client.Do(req)
 }
 
+// RunSessionActionWithBody Admit a session action
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+func (c *GeneratedClient) RunSessionActionWithBody(ctx context.Context, id string, action string, params *RunSessionActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunSessionActionRequestWithBody(c.Server, id, action, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunSessionAction Admit a session action
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+func (c *GeneratedClient) RunSessionAction(ctx context.Context, id string, action string, params *RunSessionActionParams, body RunSessionActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunSessionActionRequest(c.Server, id, action, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSessionMacros List project macros
 //
 // Corresponds with GET /sessions/{id}/macros (the `ListSessionMacros` operationId).
@@ -3396,6 +3504,48 @@ func NewGetServiceRequest(server string, params *GetServiceParams) (*http.Reques
 	}
 
 	operationPath := fmt.Sprintf("/")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListActionsRequest constructs an http.Request for the ListActions method
+func NewListActionsRequest(server string, params *ListActionsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/actions")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -5346,6 +5496,75 @@ func NewAbortSessionRequest(server string, id string, params *AbortSessionParams
 	return req, nil
 }
 
+// NewRunSessionActionRequest calls the generic RunSessionAction builder with application/json body
+func NewRunSessionActionRequest(server string, id string, action string, params *RunSessionActionParams, body RunSessionActionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRunSessionActionRequestWithBody(server, id, action, params, "application/json", bodyReader)
+}
+
+// NewRunSessionActionRequestWithBody constructs an http.Request for the RunSessionAction method, with any body, and a specified content type
+func NewRunSessionActionRequestWithBody(server string, id string, action string, params *RunSessionActionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "action", action, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/actions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListSessionMacrosRequest constructs an http.Request for the ListSessionMacros method
 func NewListSessionMacrosRequest(server string, id string, params *ListSessionMacrosParams) (*http.Request, error) {
 	var err error
@@ -6468,6 +6687,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET / (the `GetService` operationId).
 	GetServiceWithResponse(ctx context.Context, params *GetServiceParams, reqEditors ...RequestEditorFn) (*GetServiceHTTPResponse, error)
 
+	// ListActionsWithResponse List available actions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /actions (the `ListActions` operationId).
+	ListActionsWithResponse(ctx context.Context, params *ListActionsParams, reqEditors ...RequestEditorFn) (*ListActionsHTTPResponse, error)
+
 	// ListAgentsWithResponse List agents
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -6790,6 +7016,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /sessions/{id}/abort (the `AbortSession` operationId).
 	AbortSessionWithResponse(ctx context.Context, id string, params *AbortSessionParams, reqEditors ...RequestEditorFn) (*AbortSessionHTTPResponse, error)
 
+	// RunSessionActionWithBodyWithResponse Admit a session action
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+	RunSessionActionWithBodyWithResponse(ctx context.Context, id string, action string, params *RunSessionActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunSessionActionHTTPResponse, error)
+
+	// RunSessionActionWithResponse Admit a session action
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+	RunSessionActionWithResponse(ctx context.Context, id string, action string, params *RunSessionActionParams, body RunSessionActionJSONRequestBody, reqEditors ...RequestEditorFn) (*RunSessionActionHTTPResponse, error)
+
 	// ListSessionMacrosWithResponse List project macros
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -7022,6 +7262,54 @@ func (r GetServiceHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetServiceHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListActionsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ActionsResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListActionsHTTPResponse) GetJSON200() *ActionsResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListActionsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListActionsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListActionsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListActionsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListActionsHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8879,6 +9167,54 @@ func (r AbortSessionHTTPResponse) ContentType() string {
 	return ""
 }
 
+type RunSessionActionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *MessageSessionResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RunSessionActionHTTPResponse) GetJSON202() *MessageSessionResponse {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RunSessionActionHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RunSessionActionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunSessionActionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunSessionActionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunSessionActionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSessionMacrosHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9859,6 +10195,19 @@ func (c *ClientWithResponses) GetServiceWithResponse(ctx context.Context, params
 	return ParseGetServiceHTTPResponse(rsp)
 }
 
+// ListActionsWithResponse List available actions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /actions (the `ListActions` operationId).
+func (c *ClientWithResponses) ListActionsWithResponse(ctx context.Context, params *ListActionsParams, reqEditors ...RequestEditorFn) (*ListActionsHTTPResponse, error) {
+	rsp, err := c.ListActions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListActionsHTTPResponse(rsp)
+}
+
 // ListAgentsWithResponse List agents
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10457,6 +10806,32 @@ func (c *ClientWithResponses) AbortSessionWithResponse(ctx context.Context, id s
 	return ParseAbortSessionHTTPResponse(rsp)
 }
 
+// RunSessionActionWithBodyWithResponse Admit a session action
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+func (c *ClientWithResponses) RunSessionActionWithBodyWithResponse(ctx context.Context, id string, action string, params *RunSessionActionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunSessionActionHTTPResponse, error) {
+	rsp, err := c.RunSessionActionWithBody(ctx, id, action, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunSessionActionHTTPResponse(rsp)
+}
+
+// RunSessionActionWithResponse Admit a session action
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/actions/{action} (the `RunSessionAction` operationId).
+func (c *ClientWithResponses) RunSessionActionWithResponse(ctx context.Context, id string, action string, params *RunSessionActionParams, body RunSessionActionJSONRequestBody, reqEditors ...RequestEditorFn) (*RunSessionActionHTTPResponse, error) {
+	rsp, err := c.RunSessionAction(ctx, id, action, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunSessionActionHTTPResponse(rsp)
+}
+
 // ListSessionMacrosWithResponse List project macros
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10824,6 +11199,39 @@ func ParseGetServiceHTTPResponse(rsp *http.Response) (*GetServiceHTTPResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest RootResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListActionsHTTPResponse parses an HTTP response from a ListActionsWithResponse call
+func ParseListActionsHTTPResponse(rsp *http.Response) (*ListActionsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListActionsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionsResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -12094,6 +12502,39 @@ func ParseAbortSessionHTTPResponse(rsp *http.Response) (*AbortSessionHTTPRespons
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunSessionActionHTTPResponse parses an HTTP response from a RunSessionActionWithResponse call
+func ParseRunSessionActionHTTPResponse(rsp *http.Response) (*RunSessionActionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunSessionActionHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest MessageSessionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse

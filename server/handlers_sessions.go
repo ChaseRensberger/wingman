@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
@@ -357,6 +358,154 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 	s.admitSessionMessage(w, r, sess, req)
 }
 
+func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
+	built, err := s.pluginActions()
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	actions := make([]api.Action, len(built))
+	for i, action := range built {
+		actions[i] = api.Action{ID: action.ID, Command: action.Command, Description: action.Description, InputSchema: action.InputSchema}
+	}
+	writeJSON(w, http.StatusOK, api.ActionsResponse{Actions: actions})
+}
+
+func (s *Server) pluginActions() ([]plugin.Action, error) {
+	plugins := make([]plugin.Plugin, 0, len(s.pluginFactories))
+	for _, factory := range s.pluginFactories {
+		if factory != nil {
+			plugins = append(plugins, factory())
+		}
+	}
+	if len(plugins) == 0 {
+		return []plugin.Action{}, nil
+	}
+	generation, err := plugin.ActivateAll(plugins...)
+	if err != nil {
+		return nil, err
+	}
+	defer generation.Close(context.Background())
+	return generation.Runtime().Actions, nil
+}
+
+func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id, action := chi.URLParam(r, "id"), chi.URLParam(r, "action")
+	sess, ok := s.authorizeSessionForRequest(w, r, id)
+	if !ok {
+		return
+	}
+	var req api.ActionSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.AgentID == "" {
+		s.writeError(w, http.StatusBadRequest, "agent_id is required")
+		return
+	}
+	if req.RequestID != "" && (strings.TrimSpace(req.RequestID) == "" || len(req.RequestID) > 200) {
+		s.writeError(w, http.StatusBadRequest, "invalid request_id")
+		return
+	}
+	if len(req.Input) > 0 && !json.Valid(req.Input) {
+		s.writeError(w, http.StatusBadRequest, "input must be JSON")
+		return
+	}
+	stored, err := s.store.GetAgent(req.AgentID)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
+		return
+	}
+	effective := s.agentWithRequestModel(stored, req.ModelRef, req.ModelRoute)
+	availableActions, err := s.pluginActions()
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	canonicalAction := ""
+	for _, available := range availableActions {
+		if available.ID == action || available.Command == action {
+			canonicalAction = available.ID
+			break
+		}
+	}
+	if canonicalAction == "" {
+		s.writeError(w, http.StatusNotFound, "action not found: "+action)
+		return
+	}
+	candidate := store.SessionRun{SessionID: id, RequestID: req.RequestID, Kind: store.SessionRunKindAction, Action: canonicalAction, InputJSON: req.Input, Agent: *effective}
+	if existing, err := s.findAdmissionRetry(r.Context(), sess, candidate); err != nil {
+		s.writeError(w, http.StatusConflict, err.Error())
+		return
+	} else if existing != nil {
+		if existing.Status == store.SessionRunStatusQueued {
+			s.runs.wake(id)
+		}
+		writeJSON(w, http.StatusAccepted, api.ActionSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
+		return
+	}
+	instructions, sources, err := s.resolveInstructions(effective, sess.WorkDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	skills, catalog, err := s.resolveSkills(effective, sess.WorkDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if catalog != "" {
+		instructions += "\n\n" + catalog
+	}
+	runtimeAgent := *effective
+	runtimeAgent.Instructions = instructions
+	validation, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	actions, err := validation.Actions(r.Context())
+	if err != nil {
+		_ = validation.Close(context.Background())
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	known := false
+	for _, available := range actions {
+		if available.ID == canonicalAction {
+			known = true
+			break
+		}
+	}
+	if !known {
+		_ = validation.Close(context.Background())
+		s.writeError(w, http.StatusNotFound, "action not found: "+action)
+		return
+	}
+	if err := validation.Close(context.Background()); err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	candidate.EffectiveInstructions, candidate.InstructionSources, candidate.Skills = instructions, sources, skills
+	admission, err := s.store.AdmitSessionRun(r.Context(), candidate)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if admission.Created {
+		s.events.publish(admission.QueuedEvent)
+	}
+	if admission.Run.Status == store.SessionRunStatusQueued {
+		s.runs.wake(id)
+	}
+	writeJSON(w, http.StatusAccepted, api.ActionSessionResponse{RunID: admission.Run.ID, Status: admission.Run.Status, SessionVersion: admission.SessionVersion})
+}
+
 func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, sess *store.Session, req api.MessageSessionRequest) {
 	id := sess.ID
 	if req.Message == "" {
@@ -491,6 +640,9 @@ func (s *Server) findAdmissionRetry(ctx context.Context, sess *store.Session, ca
 		return nil, err
 	}
 	candidate.WorkDir, candidate.WorkspaceID, candidate.ClientID = sess.WorkDir, sess.WorkspaceID, sess.ClientID
+	if candidate.Kind == "" {
+		candidate.Kind = store.SessionRunKindMessage
+	}
 	hash, err := store.SessionRunRequestHash(candidate)
 	if err != nil {
 		return nil, err
@@ -923,6 +1075,15 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		session.WithPermissionPrompter(prompter),
 		session.WithLogger(logger),
 		session.WithAgentID(stored.ID),
+	}
+	plugins := make([]plugin.Plugin, 0, len(s.pluginFactories))
+	for _, factory := range s.pluginFactories {
+		if factory != nil {
+			plugins = append(plugins, factory())
+		}
+	}
+	if len(plugins) > 0 {
+		opts = append(opts, session.WithPlugin(plugins...))
 	}
 	if st != nil {
 		opts = append(opts, session.WithStore(st))

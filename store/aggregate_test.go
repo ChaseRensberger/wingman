@@ -279,6 +279,13 @@ func TestSQLiteRebuildSessionProjectionsRestoresDerivedRows(t *testing.T) {
 	if err := data.CreateSession(session); err != nil {
 		t.Fatal(err)
 	}
+	action, err := data.AdmitSessionRun(ctx, SessionRun{
+		ID: "run_rebuild_action", SessionID: session.ID, Kind: SessionRunKindAction,
+		Action: "example.run", InputJSON: []byte(`{"value":1}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	message := StoredMessage{ID: "msg_rebuild_rows", SessionID: session.ID, Idx: 1, Role: "assistant", Revision: 1, State: "completed", Parts: []StoredPart{{ID: "prt_rebuild_rows", MessageID: "msg_rebuild_rows", Sequence: 0, Kind: "text", PayloadJSON: []byte(`{"text":"original"}`)}}}
 	if err := data.SaveMessage(ctx, message); err != nil {
 		t.Fatal(err)
@@ -304,6 +311,13 @@ func TestSQLiteRebuildSessionProjectionsRestoresDerivedRows(t *testing.T) {
 	gotMessages, err := data.ListMessages(ctx, session.ID)
 	if err != nil || !reflect.DeepEqual(gotMessages, want.Messages) {
 		t.Fatalf("messages = %#v, %v; want %#v", gotMessages, err, want.Messages)
+	}
+	gotRun, err := data.GetSessionRun(ctx, session.ID, action.Run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRun.Kind != SessionRunKindAction || gotRun.Action != "example.run" || string(gotRun.InputJSON) != `{"value":1}` {
+		t.Fatalf("rebuilt action run = %#v", gotRun)
 	}
 }
 
@@ -737,6 +751,25 @@ func TestProjectSessionAdmissionOnlyAdvancesVersion(t *testing.T) {
 	}
 	if projected.AggregateVersion != 2 || projected.UpdatedAt != session.UpdatedAt || projected.Title != session.Title {
 		t.Fatalf("projected = %#v", projected)
+	}
+}
+
+func TestSessionRunAggregateRoundTripPreservesActionInput(t *testing.T) {
+	run := SessionRun{
+		ID: "run_action_projection", SessionID: "ses_action_projection", Kind: SessionRunKindAction,
+		Action: "example.run", InputJSON: []byte(`{"value":1}`), RequestHash: "hash",
+		AdmittedVersion: 1, Status: SessionRunStatusQueued, CreatedAt: time.Now().UTC(),
+	}
+	data, err := marshalSessionRun(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := unmarshalSessionRun(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(projected.InputJSON, run.InputJSON) || projected.RequestHash != run.RequestHash {
+		t.Fatalf("projected = %#v, want input %s and request hash %q", projected, run.InputJSON, run.RequestHash)
 	}
 }
 

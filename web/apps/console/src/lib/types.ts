@@ -93,6 +93,13 @@ export interface Macro {
   model_ref?: string;
 }
 
+export interface PluginAction {
+  id: string;
+  command: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+}
+
 export interface PluginDiagnostic {
   source: string;
   level?: string;
@@ -150,7 +157,10 @@ export interface SessionRun {
   client_id?: string;
   sequence: number;
   status: "queued" | "running" | "completed" | "failed" | "aborted";
+  kind?: "message" | "action";
   message: string;
+  action?: string;
+  input?: unknown;
   agent: Agent;
   error_type?: string;
   error_message?: string;

@@ -4,6 +4,7 @@ import {
   APIError,
   StreamError,
   createWingmanClient,
+  newActionAdmission,
   newMacroAdmission,
   newMessageAdmission,
   parseRunStreamEvent,
@@ -325,11 +326,56 @@ test("macro admission posts the macro ID and arguments", async () => {
   });
 });
 
+test("action discovery and admission use the generic action contract", async () => {
+  const requests: Request[] = [];
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (request.method === "GET") {
+        return Response.json({
+          actions: [{ id: "compaction.compact", command: "compact" }],
+        });
+      }
+      return Response.json({ run_id: "run_1", status: "queued", session_version: 2 });
+    },
+  });
+
+  await expect(client.actions.list()).resolves.toEqual([
+    { id: "compaction.compact", command: "compact" },
+  ]);
+  await expect(
+    client.sessions.actions.admit("ses_1", "compaction.compact", {
+      request_id: "req_1",
+      agent_id: "agt_1",
+      input: { reason: "manual" },
+    }),
+  ).resolves.toMatchObject({ run_id: "run_1" });
+  expect(requests[1]?.url).toBe(
+    "https://wingman.test/sessions/ses_1/actions/compaction.compact",
+  );
+  expect(await requests[1]?.json()).toEqual({
+    request_id: "req_1",
+    agent_id: "agt_1",
+    input: { reason: "manual" },
+  });
+});
+
+test("newActionAdmission creates and preserves request IDs", () => {
+  const generated = newActionAdmission({ agent_id: "agt_1" });
+  expect(generated.request_id).toBeTruthy();
+  expect(newActionAdmission(generated)).toBe(generated);
+});
+
 test("admit requires a request ID", () => {
   const client = createWingmanClient({ baseUrl: "https://wingman.test" });
   expect(() => client.sessions.admit("ses_1", { agent_id: "agt_1", message: "hello" })).toThrow(
     "message admission requires a request_id",
   );
+  expect(() =>
+    client.sessions.actions.admit("ses_1", "compaction.compact", { agent_id: "agt_1" }),
+  ).toThrow("action admission requires a request_id");
 });
 
 test("clients reject non-origin URLs", () => {

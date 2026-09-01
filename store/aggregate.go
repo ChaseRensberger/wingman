@@ -528,6 +528,11 @@ func marshalSessionRun(run SessionRun) (json.RawMessage, error) {
 		return nil, fmt.Errorf("marshal run request hash: %w", err)
 	}
 	projection["request_hash"] = requestHash
+	inputJSON, err := json.Marshal(string(run.InputJSON))
+	if err != nil {
+		return nil, fmt.Errorf("marshal run input: %w", err)
+	}
+	projection["input_json"] = inputJSON
 	runData, err = json.Marshal(projection)
 	if err != nil {
 		return nil, fmt.Errorf("marshal run projection: %w", err)
@@ -543,6 +548,7 @@ func unmarshalSessionRun(data json.RawMessage) (SessionRun, error) {
 	var encoded struct {
 		OutputSchemaJSON string `json:"output_schema_json"`
 		RequestHash      string `json:"request_hash"`
+		InputJSON        string `json:"input_json"`
 	}
 	if err := json.Unmarshal(data, &encoded); err != nil {
 		return SessionRun{}, fmt.Errorf("project session run: decode output schema: %w", err)
@@ -551,6 +557,9 @@ func unmarshalSessionRun(data json.RawMessage) (SessionRun, error) {
 		run.OutputSchemaJSON = []byte(encoded.OutputSchemaJSON)
 	}
 	run.RequestHash = encoded.RequestHash
+	if encoded.InputJSON != "" {
+		run.InputJSON = []byte(encoded.InputJSON)
+	}
 	return run, nil
 }
 

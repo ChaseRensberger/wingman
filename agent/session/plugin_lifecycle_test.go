@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/store/memory"
@@ -202,5 +203,70 @@ func TestPluginPartDecodersAreActiveBeforeHydration(t *testing.T) {
 	part := sess.History()[0].Content[0].(models.OpaquePart)
 	if string(part.Raw) != `{"type":"custom","value":"decoded"}` {
 		t.Fatalf("hydrated part = %s", part.Raw)
+	}
+}
+
+func TestRunActionPersistsEmittedMessagesInOrder(t *testing.T) {
+	data := memory.NewStore()
+	storedSession := &store.Session{ID: "ses_plugin_action"}
+	if err := data.CreateSession(storedSession); err != nil {
+		t.Fatal(err)
+	}
+	p := lifecyclePlugin{name: "action-test", activate: func(registry *plugin.Registry) (plugin.Cleanup, error) {
+		return nil, registry.RegisterAction(plugin.Action{
+			ID: "action-test.append", Command: "append", Handler: func(_ context.Context, info plugin.ActionInfo) error {
+				for _, text := range []string{"first", "second"} {
+					message := models.Message{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: text}}}
+					info.Sink.OnEvent(run.MessageEvent{Message: message})
+				}
+				return nil
+			},
+		})
+	}}
+	sess := New(WithID(storedSession.ID), WithStore(data), WithPlugin(p))
+	if err := sess.RunAction(context.Background(), "action-test.append", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	history := sess.History()
+	stored, err := data.ListMessages(context.Background(), storedSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || len(stored) != 2 {
+		t.Fatalf("history = %d, stored = %d; want 2", len(history), len(stored))
+	}
+	for i := range history {
+		if history[i].ID == "" || history[i].ID != stored[i].ID || stored[i].Idx != i {
+			t.Fatalf("message[%d] history = %#v, stored = %#v", i, history[i], stored[i])
+		}
+	}
+}
+
+func TestRunActionKeepsPersistedMessagesWhenHandlerFails(t *testing.T) {
+	data := memory.NewStore()
+	storedSession := &store.Session{ID: "ses_plugin_action_failure"}
+	if err := data.CreateSession(storedSession); err != nil {
+		t.Fatal(err)
+	}
+	handlerErr := errors.New("action failed")
+	p := lifecyclePlugin{name: "action-test", activate: func(registry *plugin.Registry) (plugin.Cleanup, error) {
+		return nil, registry.RegisterAction(plugin.Action{
+			ID: "action-test.fail", Command: "fail", Handler: func(_ context.Context, info plugin.ActionInfo) error {
+				info.Sink.OnEvent(run.MessageEvent{Message: models.Message{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "kept"}}}})
+				return handlerErr
+			},
+		})
+	}}
+	sess := New(WithID(storedSession.ID), WithStore(data), WithPlugin(p))
+	if err := sess.RunAction(context.Background(), "action-test.fail", nil, nil); !errors.Is(err, handlerErr) {
+		t.Fatalf("RunAction error = %v", err)
+	}
+	history := sess.History()
+	stored, err := data.ListMessages(context.Background(), storedSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || len(stored) != 1 || history[0].ID == "" || history[0].ID != stored[0].ID {
+		t.Fatalf("history = %#v, stored = %#v", history, stored)
 	}
 }

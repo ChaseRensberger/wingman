@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
 
 import type {
   Message,
@@ -95,6 +95,47 @@ export function ChatMessage({
 }) {
   if (message.role === "tool") return null;
   if (message.content.length === 0) return null;
+
+  const compaction = message.content.find((part) => part.type === "compaction_marker") as
+    | {
+        summary?: string;
+        reason?: "auto" | "manual";
+        original_count?: number;
+        tokens_before?: number;
+      }
+    | undefined;
+  if (compaction) {
+    return (
+      <div className="px-4 py-5" data-component="session-compaction-message">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="h-px flex-1 bg-border" />
+          <span>Session compacted</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        {compaction.summary && (
+          <details className="group/compaction mx-auto mt-2 max-w-3xl text-muted-foreground">
+            <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
+              <CaretRightIcon className="size-3 transition-transform duration-150 motion-reduce:transition-none group-open/compaction:rotate-90" />
+              <span>
+                {compaction.reason === "auto" ? "Automatic" : "Manual"} checkpoint
+                {compaction.original_count
+                  ? ` · ${compaction.original_count.toLocaleString()} messages`
+                  : ""}
+                {compaction.tokens_before
+                  ? ` · ${compaction.tokens_before.toLocaleString()} tokens`
+                  : ""}
+              </span>
+            </summary>
+            <div className="mt-3 border-l border-border pl-3">
+              <Suspense fallback={<div className="whitespace-pre-wrap text-sm">{compaction.summary}</div>}>
+                <Markdown text={compaction.summary} />
+              </Suspense>
+            </div>
+          </details>
+        )}
+      </div>
+    );
+  }
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";

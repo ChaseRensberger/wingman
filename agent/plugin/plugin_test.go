@@ -30,6 +30,26 @@ func TestRegisterToolRejectsReservedSkillName(t *testing.T) {
 func (p testPlugin) Name() string                          { return p.name }
 func (p testPlugin) Activate(r *Registry) (Cleanup, error) { return p.activate(r) }
 
+func TestActionsRequireOwnedIDsAndUniqueCommands(t *testing.T) {
+	bad := testPlugin{name: "alpha", activate: func(r *Registry) (Cleanup, error) {
+		return nil, r.RegisterAction(Action{ID: "beta.run", Command: "run", Handler: func(context.Context, ActionInfo) error { return nil }})
+	}}
+	if _, err := ActivateAll(bad); err == nil {
+		t.Fatal("ActivateAll accepted an action owned by another plugin")
+	}
+
+	handler := func(context.Context, ActionInfo) error { return nil }
+	first := testPlugin{name: "alpha", activate: func(r *Registry) (Cleanup, error) {
+		return nil, r.RegisterAction(Action{ID: "alpha.run", Command: "run", Handler: handler})
+	}}
+	second := testPlugin{name: "beta", activate: func(r *Registry) (Cleanup, error) {
+		return nil, r.RegisterAction(Action{ID: "beta.run", Command: "run", Handler: handler})
+	}}
+	if _, err := ActivateAll(first, second); err == nil {
+		t.Fatal("ActivateAll accepted duplicate action commands")
+	}
+}
+
 func TestActivateAllOrdersHooksAndClosesInReverseOnce(t *testing.T) {
 	var order []string
 	var mu sync.Mutex

@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List available actions */
+        get: operations["listActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -540,6 +557,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/actions/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admit a session action */
+        post: operations["runSessionAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/events": {
         parameters: {
             query?: never;
@@ -858,6 +892,22 @@ export interface components {
             /** Format: int64 */
             aborted: number;
             session_id: string;
+        };
+        Action: {
+            command: string;
+            description?: string;
+            id: string;
+            input_schema?: unknown;
+        };
+        ActionSessionRequest: {
+            agent_id: string;
+            input?: unknown;
+            model_ref?: string;
+            model_route?: components["schemas"]["ModelInfo"];
+            request_id?: string;
+        };
+        ActionsResponse: {
+            actions: components["schemas"]["Action"][] | null;
         };
         Agent: {
             created_at: string;
@@ -1784,6 +1834,7 @@ export interface components {
             has_more: boolean;
         };
         SessionRun: {
+            action?: string;
             /** Format: int64 */
             admitted_version: number;
             agent: components["schemas"]["Agent"];
@@ -1796,7 +1847,9 @@ export interface components {
             error_message?: string;
             error_type?: string;
             id: string;
+            input?: unknown;
             instruction_sources?: components["schemas"]["InstructionSource"][] | null;
+            kind: string;
             message: string;
             request_id?: string;
             /** Format: int64 */
@@ -2067,6 +2120,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RootResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listActions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionsResponse"];
                 };
             };
             /** @description Request failed */
@@ -3379,6 +3464,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AbortSessionResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    runSessionAction: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+                action: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSessionResponse"];
                 };
             };
             /** @description Request failed */

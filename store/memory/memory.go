@@ -62,6 +62,9 @@ func NewStore() *Store {
 func (s *Store) Close() error { return nil }
 
 func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRunAdmission, error) {
+	if run.Kind == "" {
+		run.Kind = store.SessionRunKindMessage
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.sessions[run.SessionID]
@@ -394,6 +397,7 @@ func copySessionRun(run *store.SessionRun) store.SessionRun {
 		cp.Skills[i].SupportingFiles = append([]skill.SupportingFile(nil), run.Skills[i].SupportingFiles...)
 	}
 	cp.OutputSchemaJSON = append([]byte(nil), run.OutputSchemaJSON...)
+	cp.InputJSON = append([]byte(nil), run.InputJSON...)
 	return cp
 }
 

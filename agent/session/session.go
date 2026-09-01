@@ -29,6 +29,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -538,6 +539,14 @@ type Result struct {
 	StructuredOutput map[string]any
 }
 
+// Action describes a plugin-contributed operation available to this session.
+type Action struct {
+	ID          string
+	Command     string
+	Description string
+	InputSchema json.RawMessage
+}
+
 // ToolCallResult is a serialization-friendly view of one tool call.
 // Wire format: handlers JSON-encode this into HTTP responses, so the
 // field names matter.
@@ -566,6 +575,136 @@ var (
 // persist partial state.
 func (s *Session) Run(ctx context.Context, message string) (*Result, error) {
 	return s.runWith(ctx, message, nil)
+}
+
+// Actions returns the actions contributed by activated plugins.
+func (s *Session) Actions(ctx context.Context) ([]Action, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if err := s.activatePlugins(ctx); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.generation == nil {
+		return []Action{}, nil
+	}
+	built := s.generation.Runtime()
+	out := make([]Action, len(built.Actions))
+	for i, a := range built.Actions {
+		out[i] = Action{ID: a.ID, Command: a.Command, Description: a.Description, InputSchema: append(json.RawMessage(nil), a.InputSchema...)}
+	}
+	return out, nil
+}
+
+// RunAction executes one plugin action under the same serialization as a model run.
+func (s *Session) RunAction(ctx context.Context, id string, input json.RawMessage, extraSink run.Sink) error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if err := s.activatePlugins(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return ErrClosed
+	}
+	if err := s.hydrate(ctx); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	built := plugin.Built{}
+	if s.generation != nil {
+		built = s.generation.Runtime()
+	}
+	var action plugin.Action
+	found := false
+	for _, candidate := range built.Actions {
+		if candidate.ID == id || candidate.Command == id {
+			action, found = candidate, true
+			break
+		}
+	}
+	if !found {
+		s.mu.Unlock()
+		return fmt.Errorf("session: action %q not found", id)
+	}
+	history := append([]models.Message(nil), s.history...)
+	info := plugin.ActionInfo{SessionID: s.id, RunID: s.runID, Input: append(json.RawMessage(nil), input...), History: history, Client: s.client, Model: s.model, ModelInfo: s.modelInfo}
+	messageSink, st := s.messageSink, s.store
+	s.mu.Unlock()
+	var persistErr error
+	emittedMessages := []models.Message{}
+	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(history)}
+	info.Sink = run.SinkFunc(func(event run.Event) {
+		if message, ok := event.(run.MessageEvent); ok {
+			persistedOK := st == nil
+			if st != nil {
+				idx := messagePersistence.indexForEvent(message)
+				persisted, err := s.persistMessage(ctx, message.Message, idx)
+				if err != nil && persistErr == nil {
+					persistErr = err
+				}
+				if err == nil {
+					message.Message = persisted
+					event = message
+					persistedOK = true
+				}
+			}
+			if persistedOK {
+				emittedMessages = append(emittedMessages, message.Message)
+			}
+			if !persistedOK {
+				return
+			}
+			if messageSink != nil {
+				messageSink(message.Message)
+			}
+		}
+		if built.Sink != nil {
+			built.Sink.OnEvent(event)
+		}
+		if extraSink != nil {
+			extraSink.OnEvent(event)
+		}
+	})
+	actionErr := action.Handler(ctx, info)
+	s.mu.Lock()
+	s.history = append(s.history, emittedMessages...)
+	s.mu.Unlock()
+	if persistErr != nil {
+		return errors.Join(actionErr, fmt.Errorf("persist: %w", persistErr))
+	}
+	return actionErr
+}
+
+func (s *Session) activatePlugins(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosed
+	}
+	if s.generation != nil || len(s.plugins) == 0 {
+		return nil
+	}
+	if s.replacingPlugins {
+		return ErrPluginReplacementInProgress
+	}
+	s.replacingPlugins = true
+	plugins := append([]plugin.Plugin(nil), s.plugins...)
+	s.mu.Unlock()
+	generation, err := plugin.ActivateAll(plugins...)
+	s.mu.Lock()
+	s.replacingPlugins = false
+	if err != nil {
+		return err
+	}
+	if s.closed {
+		_ = generation.Close(ctx)
+		return ErrClosed
+	}
+	s.generation, s.partDecoders = generation, generation.Parts()
+	return nil
 }
 
 // runWith is the shared core for Run and RunStream. extraSink, if

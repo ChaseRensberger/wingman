@@ -1,7 +1,8 @@
 import { ArrowDownIcon, PaperPlaneIcon, StopIcon } from "@phosphor-icons/react";
 import { type RefObject, useState } from "react";
 
-import type { Agent, Macro, Provider, ProviderModel } from "@/lib/types";
+import type { Agent, Macro, PluginAction, Provider, ProviderModel } from "@/lib/types";
+import { slashCommandQuery } from "@/lib/slash-command";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import {
@@ -37,6 +38,7 @@ type Props = {
   providers: Provider[];
   models: Record<string, ProviderModel[]>;
   macros: Macro[];
+  actions: PluginAction[];
   hasModels: boolean;
   isStreaming: boolean;
   isNearTranscriptBottom: boolean;
@@ -53,15 +55,25 @@ export function SessionComposer(props: Props) {
     props.selectedProviderName && props.selectedModel
       ? `${props.selectedProviderName} / ${props.selectedModel}${props.selectedVariant ? ` · ${props.selectedVariant}` : ""}`
       : "Select model";
-  const macroMatch = props.messageText.match(/^\/(\S*)$/);
-  const macroSuggestions = macroMatch
-    ? props.macros
-        .filter((macro) => macro.id.includes(macroMatch[1] ?? ""))
+  const commandQuery = slashCommandQuery(props.messageText);
+  const actionCommands = new Set(props.actions.map((action) => action.command));
+  const commandSuggestions = commandQuery !== undefined
+    ? [
+        ...props.actions.map((action) => ({
+          id: action.id,
+          command: action.command,
+          description: action.description,
+        })),
+        ...props.macros
+          .filter((macro) => !actionCommands.has(macro.id))
+          .map((macro) => ({ id: macro.id, command: macro.id, description: macro.description })),
+      ]
+        .filter((command) => command.command.includes(commandQuery))
         .slice(0, 6)
     : [];
-  const [activeMacro, setActiveMacro] = useState(0);
-  const selectMacro = (macro: Macro) => {
-    props.onMessageChange(`/${macro.id} `);
+  const [activeCommand, setActiveCommand] = useState(0);
+  const selectCommand = (command: string) => {
+    props.onMessageChange(`/${command} `);
     requestAnimationFrame(() => props.composerRef.current?.focus());
   };
   return (
@@ -90,22 +102,24 @@ export function SessionComposer(props: Props) {
           value={props.messageText}
           onChange={(event) => props.onMessageChange(event.target.value)}
           onKeyDown={(event) => {
-            if (macroSuggestions.length > 0) {
+            if (commandSuggestions.length > 0) {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                setActiveMacro((index) => (index + 1) % macroSuggestions.length);
+                setActiveCommand((index) => (index + 1) % commandSuggestions.length);
                 return;
               }
               if (event.key === "ArrowUp") {
                 event.preventDefault();
-                setActiveMacro(
-                  (index) => (index - 1 + macroSuggestions.length) % macroSuggestions.length,
+                setActiveCommand(
+                  (index) => (index - 1 + commandSuggestions.length) % commandSuggestions.length,
                 );
                 return;
               }
               if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
                 event.preventDefault();
-                selectMacro(macroSuggestions[activeMacro % macroSuggestions.length]!);
+                selectCommand(
+                  commandSuggestions[activeCommand % commandSuggestions.length]!.command,
+                );
                 return;
               }
             }
@@ -118,32 +132,38 @@ export function SessionComposer(props: Props) {
           className="min-h-20 max-h-60 resize-none overflow-y-auto border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
           disabled={props.isStreaming}
         />
-        {macroSuggestions.length > 0 && (
+        {commandQuery !== undefined && (
           <div
             role="listbox"
-            aria-label="Project macros"
+            aria-label="Session commands"
             className="mb-2 overflow-hidden rounded-[var(--radius)] border bg-popover"
           >
-            {macroSuggestions.map((macro, index) => (
-              <button
-                key={macro.id}
-                type="button"
-                role="option"
-                aria-selected={index === activeMacro % macroSuggestions.length}
-                className={`flex w-full items-baseline gap-2 px-2.5 py-2 text-left text-sm outline-none transition-colors duration-100 hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground ${
-                  index === activeMacro % macroSuggestions.length
-                    ? "bg-accent text-accent-foreground"
-                    : ""
-                }`}
-                onMouseEnter={() => setActiveMacro(index)}
-                onClick={() => selectMacro(macro)}
-              >
-                <span className="font-medium">/{macro.id}</span>
-                {macro.description && (
-                  <span className="truncate text-xs text-muted-foreground">{macro.description}</span>
-                )}
-              </button>
-            ))}
+            {commandSuggestions.length === 0 ? (
+              <div className="px-2.5 py-2 text-sm text-muted-foreground">No matching commands.</div>
+            ) : (
+              commandSuggestions.map((command, index) => (
+                <button
+                  key={command.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeCommand % commandSuggestions.length}
+                  className={`flex w-full items-baseline gap-2 px-2.5 py-2 text-left text-sm outline-none transition-colors duration-100 hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground ${
+                    index === activeCommand % commandSuggestions.length
+                      ? "bg-accent text-accent-foreground"
+                      : ""
+                  }`}
+                  onMouseEnter={() => setActiveCommand(index)}
+                  onClick={() => selectCommand(command.command)}
+                >
+                  <span className="font-medium">/{command.command}</span>
+                  {command.description && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {command.description}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
           </div>
         )}
         <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">

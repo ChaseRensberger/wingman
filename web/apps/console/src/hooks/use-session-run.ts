@@ -20,7 +20,13 @@ import type {
   Usage,
 } from "@/lib/types";
 
-export type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
+export type FailedRun = {
+  message: string;
+  agentId: string;
+  modelRef: string;
+  kind?: "message" | "action";
+  error: string;
+};
 export type SessionRunRequest = Omit<FailedRun, "error">;
 
 const terminalRunEvents = new Set([

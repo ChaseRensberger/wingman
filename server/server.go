@@ -22,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/execution"
@@ -53,6 +54,7 @@ type Server struct {
 	version                string
 	globalInstructionsPath string
 	globalSkillDirs        []string
+	pluginFactories        []func() plugin.Plugin
 	ready                  atomic.Bool
 
 	shutdownCtx    context.Context
@@ -92,6 +94,7 @@ type Config struct {
 	GlobalInstructionsPath string
 	// GlobalSkillDirs selects daemon-wide skill directories.
 	GlobalSkillDirs []string
+	PluginFactories []func() plugin.Plugin
 }
 
 func New(cfg Config) *Server {
@@ -138,6 +141,7 @@ func New(cfg Config) *Server {
 		version:                cfg.Version,
 		globalInstructionsPath: cfg.GlobalInstructionsPath,
 		globalSkillDirs:        append([]string(nil), cfg.GlobalSkillDirs...),
+		pluginFactories:        append([]func() plugin.Plugin(nil), cfg.PluginFactories...),
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
 	}
@@ -309,6 +313,7 @@ func (s *Server) setupRoutes() {
 	s.registerErrorOnly(http.MethodPost, "/mcp/{name}/auth", "authorizeMCPServer", "Authorize an MCP server", s.handleAuthMCP)
 	s.registerErrorOnly(http.MethodDelete, "/mcp/{name}/auth", "logoutMCPServer", "Remove MCP authorization", s.handleLogoutMCP)
 	s.registerJSON(http.MethodGet, "/tools", "listTools", "List available tools", nil, http.StatusOK, toolCatalogResponse{}, s.handleListTools)
+	s.registerJSON(http.MethodGet, "/actions", "listActions", "List available actions", nil, http.StatusOK, api.ActionsResponse{}, s.handleListActions)
 	s.registerJSON(http.MethodGet, "/catalog", "getModelCatalog", "Get the model catalog", nil, http.StatusOK, CatalogDTO{}, s.handleCatalog)
 	s.registerBinary(http.MethodGet, "/catalog/labs/{id}/logo", "getCatalogLabLogo", "Get a catalog lab logo", "image/svg+xml", s.handleCatalogLabLogo)
 
@@ -356,6 +361,7 @@ func (s *Server) setupRoutes() {
 	s.registerSessionEvents()
 	s.registerJSONWithParameters(http.MethodGet, "/sessions/{id}/events/history", "listSessionEvents", "List durable session events", nil, http.StatusOK, api.SessionEventPage{}, []*huma.Param{queryParameter("after", huma.TypeInteger, "Exclusive durable event cursor"), queryParameter("limit", huma.TypeInteger, "Maximum page size")}, s.handleSessionEventsHistory)
 	s.registerJSON(http.MethodPost, "/sessions/{id}/message", "messageSession", "Admit a session message", api.MessageSessionRequest{}, http.StatusAccepted, api.MessageSessionResponse{}, s.handleMessageSession)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/actions/{action}", "runSessionAction", "Admit a session action", api.ActionSessionRequest{}, http.StatusAccepted, api.ActionSessionResponse{}, s.handleActionSession)
 	s.registerJSON(http.MethodPost, "/sessions/{id}/abort", "abortSession", "Abort active session runs", nil, http.StatusOK, api.AbortSessionResponse{}, s.handleAbortSession)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/runs", "listSessionRuns", "List session runs", nil, http.StatusOK, []api.SessionRun{}, s.handleListSessionRuns)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/runs/{runID}", "getSessionRun", "Get a session run", nil, http.StatusOK, api.SessionRun{}, s.handleGetSessionRun)

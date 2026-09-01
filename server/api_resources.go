@@ -129,7 +129,7 @@ func apiSessionRun(value store.SessionRun) api.SessionRun {
 	return api.SessionRun{
 		ID: value.ID, SessionID: value.SessionID, RequestID: value.RequestID,
 		AdmittedVersion: value.AdmittedVersion, WorkDir: value.WorkDir, WorkspaceID: value.WorkspaceID,
-		ClientID: value.ClientID, Sequence: value.Sequence, Status: value.Status, Message: value.Message,
+		ClientID: value.ClientID, Sequence: value.Sequence, Status: value.Status, Kind: value.Kind, Message: value.Message, Action: value.Action, Input: value.InputJSON,
 		Agent: apiAgent(&value.Agent), ErrorType: value.ErrorType, ErrorMessage: value.ErrorMessage,
 		EffectiveInstructions: value.EffectiveInstructions, InstructionSources: sources,
 		CreatedAt: value.CreatedAt, StartedAt: value.StartedAt, CompletedAt: value.CompletedAt, UpdatedAt: value.UpdatedAt,

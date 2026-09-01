@@ -18,6 +18,66 @@
         ],
         "type": "object"
       },
+      "Action": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "input_schema": {}
+        },
+        "required": [
+          "id",
+          "command"
+        ],
+        "type": "object"
+      },
+      "ActionSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "input": {},
+          "model_ref": {
+            "type": "string"
+          },
+          "model_route": {
+            "$ref": "#/components/schemas/ModelInfo"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "type": "object"
+      },
+      "ActionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "actions"
+        ],
+        "type": "object"
+      },
       "Agent": {
         "additionalProperties": false,
         "properties": {
@@ -3269,6 +3329,9 @@
       "SessionRun": {
         "additionalProperties": false,
         "properties": {
+          "action": {
+            "type": "string"
+          },
           "admitted_version": {
             "format": "int64",
             "type": "integer"
@@ -3299,6 +3362,7 @@
           "id": {
             "type": "string"
           },
+          "input": {},
           "instruction_sources": {
             "items": {
               "$ref": "#/components/schemas/InstructionSource"
@@ -3307,6 +3371,9 @@
               "array",
               "null"
             ]
+          },
+          "kind": {
+            "type": "string"
           },
           "message": {
             "type": "string"
@@ -3345,6 +3412,7 @@
           "admitted_version",
           "sequence",
           "status",
+          "kind",
           "message",
           "agent",
           "effective_instructions",
@@ -4054,6 +4122,49 @@
           }
         ],
         "summary": "Describe the Wingman service"
+      }
+    },
+    "/actions": {
+      "get": {
+        "operationId": "listActions",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "List available actions"
       }
     },
     "/agents": {
@@ -5990,6 +6101,75 @@
           }
         ],
         "summary": "Abort active session runs"
+      }
+    },
+    "/sessions/{id}/actions/{action}": {
+      "post": {
+        "operationId": "runSessionAction",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSessionResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Admit a session action"
       }
     },
     "/sessions/{id}/events": {

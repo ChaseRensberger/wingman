@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
@@ -208,23 +209,35 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 			runSession.SetOutputSchema(&models.OutputSchema{Name: schema.Name, Schema: schema.Schema})
 		}
 		if err == nil {
-			stream, streamErr := runSession.RunStream(runCtx, queued.Message)
-			if streamErr != nil {
-				err = streamErr
-			} else {
-				for stream.Next() {
-					m.server.forwardRunEvent(persistCtx, queued.SessionID, queued.ID, stream.Event())
-				}
-				err = stream.Err()
+			if queued.Kind == store.SessionRunKindAction {
+				err = runSession.RunAction(runCtx, queued.Action, queued.InputJSON, run.SinkFunc(func(event run.Event) {
+					m.server.forwardRunEvent(persistCtx, queued.SessionID, queued.ID, session.StreamEvent{Data: event})
+				}))
 				if err == nil {
-					if runCtx.Err() != nil {
-						err = runCtx.Err()
-					} else {
-						result := stream.Result()
-						if m.settle(workerCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{"usage": result.Usage, "steps": result.Steps}}) {
-							m.server.logger.Info("session run completed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "steps", result.Steps)
+					if m.settle(workerCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{}}) {
+						m.server.logger.Info("session action completed", "session_id", queued.SessionID, "run_id", queued.ID, "action", queued.Action)
+					}
+					return
+				}
+			} else {
+				stream, streamErr := runSession.RunStream(runCtx, queued.Message)
+				if streamErr != nil {
+					err = streamErr
+				} else {
+					for stream.Next() {
+						m.server.forwardRunEvent(persistCtx, queued.SessionID, queued.ID, stream.Event())
+					}
+					err = stream.Err()
+					if err == nil {
+						if runCtx.Err() != nil {
+							err = runCtx.Err()
+						} else {
+							result := stream.Result()
+							if m.settle(workerCtx, store.SessionRunSettlement{ID: queued.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted, EventData: map[string]any{"usage": result.Usage, "steps": result.Steps}}) {
+								m.server.logger.Info("session run completed", "session_id", queued.SessionID, "run_id", queued.ID, "agent_id", queued.Agent.ID, "steps", result.Steps)
+							}
+							return
 						}
-						return
 					}
 				}
 			}

@@ -83,7 +83,10 @@ type SessionRun struct {
 	ClientID              string              `json:"client_id,omitempty"`
 	Sequence              int                 `json:"sequence"`
 	Status                string              `json:"status"`
+	Kind                  string              `json:"kind"`
 	Message               string              `json:"message"`
+	Action                string              `json:"action,omitempty"`
+	Input                 json.RawMessage     `json:"input,omitempty"`
 	Agent                 Agent               `json:"agent"`
 	EffectiveInstructions string              `json:"effective_instructions"`
 	InstructionSources    []InstructionSource `json:"instruction_sources,omitempty"`
@@ -94,6 +97,25 @@ type SessionRun struct {
 	CompletedAt           time.Time           `json:"completed_at,omitempty"`
 	UpdatedAt             time.Time           `json:"updated_at"`
 }
+
+// Action describes a discoverable plugin action.
+type Action struct {
+	ID          string          `json:"id"`
+	Command     string          `json:"command"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+}
+type ActionsResponse struct {
+	Actions []Action `json:"actions"`
+}
+type ActionSessionRequest struct {
+	RequestID  string            `json:"request_id,omitempty"`
+	AgentID    string            `json:"agent_id"`
+	ModelRef   string            `json:"model_ref,omitempty"`
+	ModelRoute *models.ModelInfo `json:"model_route,omitempty"`
+	Input      json.RawMessage   `json:"input,omitempty"`
+}
+type ActionSessionResponse = MessageSessionResponse
 
 // InstructionSource identifies one file included in effective run instructions.
 type InstructionSource struct {

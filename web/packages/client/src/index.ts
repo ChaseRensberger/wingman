@@ -5,6 +5,8 @@ import type { components, paths } from "./schema";
 export type { components, operations, paths } from "./schema";
 
 export type Agent = components["schemas"]["Agent"];
+export type Action = components["schemas"]["Action"];
+export type ActionSessionRequest = components["schemas"]["ActionSessionRequest"];
 export type Client = components["schemas"]["Client"];
 export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type CreateClientRequest = components["schemas"]["CreateClientRequest"];
@@ -313,6 +315,9 @@ export function createWingmanClient(options: WingmanClientOptions) {
   };
 
   return {
+    actions: {
+      list: async () => (await requestData(api.GET("/actions"))).actions ?? [],
+    },
     agents: {
       list: () => requestData(api.GET("/agents")),
       create: (request: CreateAgentRequest) => requestData(api.POST("/agents", { body: request })),
@@ -404,6 +409,21 @@ export function createWingmanClient(options: WingmanClientOptions) {
           return requestData(
             api.POST("/sessions/{id}/macros", {
               params: { path: { id } },
+              body: request,
+            }),
+          );
+        },
+      },
+      actions: {
+        admit: (id: string, action: string, request: ActionSessionRequest) => {
+          if (!request.request_id) {
+            throw new TypeError(
+              "action admission requires a request_id; call newActionAdmission and persist its result before retrying",
+            );
+          }
+          return requestData(
+            api.POST("/sessions/{id}/actions/{action}", {
+              params: { path: { id, action } },
               body: request,
             }),
           );
@@ -661,6 +681,11 @@ async function streamFetch(
 }
 
 export function newMessageAdmission(request: MessageSessionRequest): MessageSessionRequest {
+  if (request.request_id) return request;
+  return { ...request, request_id: crypto.randomUUID() };
+}
+
+export function newActionAdmission(request: ActionSessionRequest): ActionSessionRequest {
   if (request.request_id) return request;
   return { ...request, request_id: crypto.randomUUID() };
 }

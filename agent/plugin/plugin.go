@@ -50,6 +50,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -97,8 +98,39 @@ type Registry struct {
 	sinks             []sinkRegistration
 	tools             []tool.Tool
 	parts             []partRegistration
+	actions           []actionRegistration
 	built             bool
 	owner             string
+}
+
+// Action is a synchronous, plugin-owned session operation.
+type Action struct {
+	ID          string
+	Command     string
+	Description string
+	InputSchema json.RawMessage
+	Handler     ActionHandler
+}
+
+// ActionInfo contains the session state supplied to an action handler.
+type ActionInfo struct {
+	SessionID string
+	RunID     string
+	Input     json.RawMessage
+	History   []models.Message
+	Client    models.Client
+	Model     models.ModelRef
+	ModelInfo models.ModelInfo
+	Sink      run.Sink
+}
+
+// ActionHandler performs an action. Action-created messages must be emitted
+// through ActionInfo.Sink so they use the normal persistence and event path.
+type ActionHandler func(context.Context, ActionInfo) error
+
+type actionRegistration struct {
+	owner  string
+	action Action
 }
 
 type partRegistration struct {
@@ -277,6 +309,28 @@ func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) erro
 	return nil
 }
 
+// RegisterAction adds a plugin-owned session action. Action IDs must be namespaced
+// by the activating plugin name and command aliases are unique per generation.
+func (r *Registry) RegisterAction(action Action) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(action.ID) == "" || !strings.HasPrefix(action.ID, r.owner+".") {
+		return fmt.Errorf("plugin: action id %q must be namespaced by %q", action.ID, r.owner)
+	}
+	if action.Handler == nil {
+		return fmt.Errorf("plugin: action %q handler is nil", action.ID)
+	}
+	if strings.TrimSpace(action.Command) == "" {
+		return fmt.Errorf("plugin: action %q command is empty", action.ID)
+	}
+	if len(action.InputSchema) > 0 && !json.Valid(action.InputSchema) {
+		return fmt.Errorf("plugin: action %q input schema is invalid JSON", action.ID)
+	}
+	r.actions = append(r.actions, actionRegistration{owner: r.owner, action: action})
+	return nil
+}
+
 // Built bundles the composed hooks, merged tool slice, and aggregated
 // sink that a session feeds to run.Run. Construct via Registry.Build.
 type Built struct {
@@ -284,7 +338,8 @@ type Built struct {
 	Tools []tool.Tool
 	// Sink is non-nil when at least one plugin registered a sink. The
 	// session combines this with its own internal sink.
-	Sink run.Sink
+	Sink    run.Sink
+	Actions []Action
 }
 
 // Generation is one immutable plugin activation. Its runtime contributions
@@ -304,6 +359,7 @@ func (g *Generation) Runtime() Built {
 	}
 	built := g.built
 	built.Tools = append([]tool.Tool(nil), built.Tools...)
+	built.Actions = append([]Action(nil), built.Actions...)
 	return built
 }
 
@@ -487,8 +543,22 @@ func (r *Registry) build() (Built, models.PartDecoders, error) {
 	}
 
 	tools := append([]tool.Tool(nil), r.tools...)
+	actions := make([]Action, 0, len(r.actions))
+	ids, commands := map[string]struct{}{}, map[string]struct{}{}
+	for _, registration := range r.actions {
+		a := registration.action
+		if _, exists := ids[a.ID]; exists {
+			return Built{}, models.PartDecoders{}, fmt.Errorf("plugin: duplicate action id %q", a.ID)
+		}
+		if _, exists := commands[a.Command]; exists {
+			return Built{}, models.PartDecoders{}, fmt.Errorf("plugin: duplicate action command %q", a.Command)
+		}
+		ids[a.ID], commands[a.Command] = struct{}{}, struct{}{}
+		a.InputSchema = append(json.RawMessage(nil), a.InputSchema...)
+		actions = append(actions, a)
+	}
 
-	return Built{Hooks: hooks, Tools: tools, Sink: sink}, decoders, nil
+	return Built{Hooks: hooks, Tools: tools, Sink: sink, Actions: actions}, decoders, nil
 }
 
 // composeBeforeRun chains BeforeRun hooks. Each receives the

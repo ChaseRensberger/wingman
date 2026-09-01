@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
@@ -21,6 +22,17 @@ import (
 	"github.com/chaserensberger/wingman/store/memory"
 	"github.com/chaserensberger/wingman/tool"
 )
+
+type sessionActionTestPlugin struct{}
+
+func (sessionActionTestPlugin) Name() string { return "test" }
+
+func (sessionActionTestPlugin) Activate(registry *plugin.Registry) (plugin.Cleanup, error) {
+	return nil, registry.RegisterAction(plugin.Action{
+		ID: "test.run", Command: "run", Description: "Run a test action",
+		Handler: func(context.Context, plugin.ActionInfo) error { return nil },
+	})
+}
 
 func TestSessionSummaryAndDetailUsePublicDTOs(t *testing.T) {
 	t.Parallel()
@@ -358,6 +370,90 @@ func TestMessageSessionAdmissionIsIdempotentAfterRequestCancellation(t *testing.
 	server.router.ServeHTTP(conflictResponse, conflict)
 	if conflictResponse.Code != http.StatusConflict {
 		t.Fatalf("conflict status = %d, want %d: %s", conflictResponse.Code, http.StatusConflict, conflictResponse.Body.String())
+	}
+}
+
+func TestSessionActionCatalogAndAdmissionAreGenericAndIdempotent(t *testing.T) {
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_action_http", ClientID: client.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := data.CreateAgent(&store.Agent{
+		ID: "agt_action_http", Name: "Action", ModelRef: "test/model",
+		Options: map[string]any{agentOptionModelRoute: models.ModelInfo{
+			Provider: "test", ID: "model", API: models.APIOpenAICompatible, BaseURL: "http://127.0.0.1:1",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := New(Config{
+		Store: &admissionTestStore{Store: data},
+		PluginFactories: []func() plugin.Plugin{
+			func() plugin.Plugin { return sessionActionTestPlugin{} },
+		},
+	})
+
+	catalogResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(catalogResponse, httptest.NewRequest(http.MethodGet, "/actions", nil))
+	var catalog api.ActionsResponse
+	if err := json.NewDecoder(catalogResponse.Body).Decode(&catalog); err != nil {
+		t.Fatal(err)
+	}
+	if catalogResponse.Code != http.StatusOK || len(catalog.Actions) != 1 || catalog.Actions[0].ID != "test.run" || catalog.Actions[0].Command != "run" {
+		t.Fatalf("status = %d, catalog = %#v", catalogResponse.Code, catalog)
+	}
+
+	admit := func(body string) (int, api.ActionSessionResponse) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, "/sessions/ses_action_http/actions/test.run", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		server.router.ServeHTTP(response, request)
+		var result api.ActionSessionResponse
+		if response.Code == http.StatusAccepted {
+			if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return response.Code, result
+	}
+	status, first := admit(`{"request_id":"action-request","agent_id":"agt_action_http","input":{"value":1}}`)
+	if status != http.StatusAccepted || first.RunID == "" {
+		t.Fatalf("status = %d, admission = %#v", status, first)
+	}
+	status, retry := admit(`{"request_id":"action-request","agent_id":"agt_action_http","input": { "value": 1 }}`)
+	if status != http.StatusAccepted || retry.RunID != first.RunID {
+		t.Fatalf("retry status = %d, retry = %#v, first = %#v", status, retry, first)
+	}
+	status, _ = admit(`{"request_id":"action-request","agent_id":"agt_action_http","input":{"value":2}}`)
+	if status != http.StatusConflict {
+		t.Fatalf("conflict status = %d, want %d", status, http.StatusConflict)
+	}
+	stored, err := data.GetSessionRun(context.Background(), "ses_action_http", first.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Kind != store.SessionRunKindAction || stored.Action != "test.run" || string(stored.InputJSON) != `{"value":1}` {
+		t.Fatalf("stored run = %#v", stored)
+	}
+	aliasRequest := httptest.NewRequest(http.MethodPost, "/sessions/ses_action_http/actions/run", strings.NewReader(`{"request_id":"action-alias","agent_id":"agt_action_http"}`))
+	aliasRequest.Header.Set("Content-Type", "application/json")
+	aliasResponse := httptest.NewRecorder()
+	server.router.ServeHTTP(aliasResponse, aliasRequest)
+	var aliasAdmission api.ActionSessionResponse
+	if err := json.NewDecoder(aliasResponse.Body).Decode(&aliasAdmission); err != nil {
+		t.Fatal(err)
+	}
+	aliasRun, err := data.GetSessionRun(context.Background(), "ses_action_http", aliasAdmission.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliasResponse.Code != http.StatusAccepted || aliasRun.Action != "test.run" {
+		t.Fatalf("alias status = %d, run = %#v", aliasResponse.Code, aliasRun)
 	}
 }
 

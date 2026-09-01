@@ -19,7 +19,13 @@ import type {
 import { Button } from "@wingman/core/components/core/button";
 import { Spinner } from "@wingman/core/components/core/spinner";
 
-type FailedRun = { message: string; agentId: string; modelRef: string; error: string };
+type FailedRun = {
+  message: string;
+  agentId: string;
+  modelRef: string;
+  kind?: "message" | "action";
+  error: string;
+};
 
 type Props = {
   messages: Message[];
@@ -185,7 +191,7 @@ export function SessionTranscript({
                 />
               ))}
             </div>
-          ) : messages.length === 0 && !isStreaming ? (
+          ) : messages.length === 0 && !isStreaming && !failedRun ? (
             <div className="flex flex-1 items-start justify-center pt-[20dvh] pb-12 text-center">
               <div className="flex flex-col items-center gap-4">
                 <img src={WingmanIcon} className="size-16" alt="Wingman logo" />
@@ -271,7 +277,9 @@ export function SessionTranscript({
                       weight="fill"
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-destructive">Message failed</div>
+                      <div className="font-medium text-destructive">
+                        {failedRun.kind === "action" ? "Action failed" : "Message failed"}
+                      </div>
                       <pre
                         data-scrollable
                         tabIndex={0}
