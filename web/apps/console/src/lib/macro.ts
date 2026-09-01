@@ -2,7 +2,10 @@ import type { Macro } from "./types";
 
 export type MacroInvocation = { macroID: string; arguments: string };
 
-export function macroInvocation(text: string, macros: readonly Macro[]): MacroInvocation | undefined {
+export function macroInvocation(
+  text: string,
+  macros: readonly Macro[],
+): MacroInvocation | undefined {
   const match = text.trim().match(/^\/(\S+)(?:\s+([\s\S]*))?$/);
   if (!match) return;
   const macroID = match[1] ?? "";

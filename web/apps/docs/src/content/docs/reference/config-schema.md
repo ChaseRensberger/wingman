@@ -151,8 +151,8 @@ There is no configuration-file equivalent for `--no-plugins`.
 
 ## `skills`
 
-| Field  |         Type | Default | Description                                                                  |
-| ------ | -----------: | ------- | ---------------------------------------------------------------------------- |
+| Field  |         Type | Default | Description                                                                   |
+| ------ | -----------: | ------- | ----------------------------------------------------------------------------- |
 | `dirs` | string array | `[]`    | Extra global skill directories. Each path supports `~` and `~/...` expansion. |
 
 Wingman includes the default global skill directory:

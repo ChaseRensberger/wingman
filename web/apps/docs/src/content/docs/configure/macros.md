@@ -35,9 +35,9 @@ fields are optional.
 
 The relative file path without `.md` is the macro ID.
 
-| File | Macro ID |
-| --- | --- |
-| `.wingman/macros/review.md` | `review` |
+| File                                 | Macro ID          |
+| ------------------------------------ | ----------------- |
+| `.wingman/macros/review.md`          | `review`          |
 | `.wingman/macros/review/security.md` | `review/security` |
 
 Wingman reads only `.wingman/macros` below the Session working directory. It

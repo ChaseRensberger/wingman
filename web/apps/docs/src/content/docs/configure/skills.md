@@ -77,11 +77,11 @@ A flat skill cannot have supporting files.
 
 The skill ID comes from the file path. It does not come from `name`.
 
-| File | Skill ID |
-| --- | --- |
-| `skills/review.md` | `review` |
+| File                            | Skill ID        |
+| ------------------------------- | --------------- |
+| `skills/review.md`              | `review`        |
 | `skills/release-notes/SKILL.md` | `release-notes` |
-| `skills/team/release/SKILL.md` | `release` |
+| `skills/team/release/SKILL.md`  | `release`       |
 
 Use a unique lowercase kebab-case directory or file name. The `name` field is a
 display name. The `description` tells the model when to load the skill.
@@ -93,11 +93,11 @@ request that skill by its ID.
 
 Wingman reads these sources in order:
 
-| Scope | Directory |
-| --- | --- |
-| Global | `~/.config/wingman/skills` |
-| Extra global | Each directory in `skills.dirs` |
-| Project | `<working-directory>/.wingman/skills` |
+| Scope        | Directory                             |
+| ------------ | ------------------------------------- |
+| Global       | `~/.config/wingman/skills`            |
+| Extra global | Each directory in `skills.dirs`       |
+| Project      | `<working-directory>/.wingman/skills` |
 
 A later source with the same ID replaces an earlier source. A session without a
 working directory uses global sources only. Wingman does not search parent or

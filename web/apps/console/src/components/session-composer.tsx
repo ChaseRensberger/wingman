@@ -57,20 +57,21 @@ export function SessionComposer(props: Props) {
       : "Select model";
   const commandQuery = slashCommandQuery(props.messageText);
   const actionCommands = new Set(props.actions.map((action) => action.command));
-  const commandSuggestions = commandQuery !== undefined
-    ? [
-        ...props.actions.map((action) => ({
-          id: action.id,
-          command: action.command,
-          description: action.description,
-        })),
-        ...props.macros
-          .filter((macro) => !actionCommands.has(macro.id))
-          .map((macro) => ({ id: macro.id, command: macro.id, description: macro.description })),
-      ]
-        .filter((command) => command.command.includes(commandQuery))
-        .slice(0, 6)
-    : [];
+  const commandSuggestions =
+    commandQuery !== undefined
+      ? [
+          ...props.actions.map((action) => ({
+            id: action.id,
+            command: action.command,
+            description: action.description,
+          })),
+          ...props.macros
+            .filter((macro) => !actionCommands.has(macro.id))
+            .map((macro) => ({ id: macro.id, command: macro.id, description: macro.description })),
+        ]
+          .filter((command) => command.command.includes(commandQuery))
+          .slice(0, 6)
+      : [];
   const [activeCommand, setActiveCommand] = useState(0);
   const selectCommand = (command: string) => {
     props.onMessageChange(`/${command} `);

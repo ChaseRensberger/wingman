@@ -27,7 +27,7 @@ wingman <command> [flags]
 | `pair`            | Show the managed server URL and credentials with a QR code. |
 | `console`         | Open the managed daemon Console.                            |
 | `clients create`  | Register an API client identity.                            |
-| `skills add`      | Install a skill from an HTTPS Git repository.                |
+| `skills add`      | Install a skill from an HTTPS Git repository.               |
 | `update`          | Check for or install a verified release update.             |
 | `version`         | Print version information.                                  |
 

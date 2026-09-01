@@ -352,9 +352,7 @@ test("action discovery and admission use the generic action contract", async () 
       input: { reason: "manual" },
     }),
   ).resolves.toMatchObject({ run_id: "run_1" });
-  expect(requests[1]?.url).toBe(
-    "https://wingman.test/sessions/ses_1/actions/compaction.compact",
-  );
+  expect(requests[1]?.url).toBe("https://wingman.test/sessions/ses_1/actions/compaction.compact");
   expect(await requests[1]?.json()).toEqual({
     request_id: "req_1",
     agent_id: "agt_1",

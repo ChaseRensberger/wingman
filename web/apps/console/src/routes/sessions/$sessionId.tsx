@@ -188,9 +188,7 @@ function SessionDetailPage() {
       try {
         const [sessData, agentsData, providerData, callsData, macrosData, actionsData] =
           await Promise.all([
-            isDraft
-              ? Promise.resolve(null)
-              : (client.sessions.get(sessionId) as Promise<Session>),
+            isDraft ? Promise.resolve(null) : (client.sessions.get(sessionId) as Promise<Session>),
             client.agents.list() as Promise<Agent[]>,
             client.providers.list() as Promise<Provider[]>,
             isDraft
@@ -438,19 +436,19 @@ function SessionDetailPage() {
             input: action.arguments ? { arguments: action.arguments } : {},
           })
         : invocation
-        ? await client.sessions.macros.admit(activeSessionId, {
-            request_id: requestId,
-            macro_id: invocation.macroID,
-            arguments: invocation.arguments,
-            agent_id: outboundAgentId,
-            model_ref: outboundModelRef,
-          })
-        : await client.sessions.admit(activeSessionId, {
-            request_id: requestId,
-            agent_id: outboundAgentId,
-            model_ref: outboundModelRef,
-            message: outboundText,
-          });
+          ? await client.sessions.macros.admit(activeSessionId, {
+              request_id: requestId,
+              macro_id: invocation.macroID,
+              arguments: invocation.arguments,
+              agent_id: outboundAgentId,
+              model_ref: outboundModelRef,
+            })
+          : await client.sessions.admit(activeSessionId, {
+              request_id: requestId,
+              agent_id: outboundAgentId,
+              model_ref: outboundModelRef,
+              message: outboundText,
+            });
       if (!admitted.run_id || !admitted.status || !admitted.session_version) {
         throw new Error("Message was not accepted for execution");
       }

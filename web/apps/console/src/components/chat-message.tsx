@@ -127,7 +127,9 @@ export function ChatMessage({
               </span>
             </summary>
             <div className="mt-3 border-l border-border pl-3">
-              <Suspense fallback={<div className="whitespace-pre-wrap text-sm">{compaction.summary}</div>}>
+              <Suspense
+                fallback={<div className="whitespace-pre-wrap text-sm">{compaction.summary}</div>}
+              >
                 <Markdown text={compaction.summary} />
               </Suspense>
             </div>
