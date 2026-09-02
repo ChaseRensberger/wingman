@@ -93,8 +93,9 @@ request that skill by its ID.
 
 Wingman reads these sources in order:
 
-| Scope        | Directory                             |
+| Scope        | Directory or skill                    |
 | ------------ | ------------------------------------- |
+| Built-in     | `wingskill`                           |
 | Global       | `~/.config/wingman/skills`            |
 | Extra global | Each directory in `skills.dirs`       |
 | Project      | `<working-directory>/.wingman/skills` |
@@ -102,6 +103,10 @@ Wingman reads these sources in order:
 A later source with the same ID replaces an earlier source. A session without a
 working directory uses global sources only. Wingman does not search parent or
 nested project directories.
+
+The built-in `wingskill` skill loads bundled official documentation about the
+Wingman runtime and how to use it. Create a global or project skill with the
+same ID to replace it.
 
 ## Configure Sources
 
@@ -159,7 +164,9 @@ An `ask` rule creates an approval request.
 ## Run Snapshots
 
 Persistent runs store the skill body and supporting-file contents at admission.
-Later skill edits affect later runs only. A retry with the same `request_id`
-returns the saved run. Wingman does not resolve skills again.
+The built-in `wingskill` stores only bundled documentation paths and hashes; it
+loads page content from the running Wingman binary. Later skill edits affect
+later runs only. A retry with the same `request_id` returns the saved run.
+Wingman does not resolve skills again.
 
 Ephemeral runs resolve skills before execution. They do not store a snapshot.

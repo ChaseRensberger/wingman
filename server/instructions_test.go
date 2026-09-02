@@ -94,7 +94,22 @@ func TestResolveSkillsProjectOverridesAndHonorsPermission(t *testing.T) {
 	}
 	server := New(Config{GlobalSkillDirs: []string{global}, Permissions: permission.Ruleset{{Action: "skill", Resource: "review", Effect: permission.EffectDeny}}})
 	skills, catalog, err := server.resolveSkills(&store.Agent{}, workDir)
-	if err != nil || len(skills) != 1 || skills[0].Content != "project" || catalog != "" {
+	if err != nil || len(skills) != 2 || skills[0].Content != "project" || !strings.Contains(catalog, "- wingskill:") || strings.Contains(catalog, "- review:") {
+		t.Fatalf("skills=%#v catalog=%q err=%v", skills, catalog, err)
+	}
+}
+
+func TestResolveSkillsProjectOverridesBuiltIn(t *testing.T) {
+	workDir := t.TempDir()
+	path := filepath.Join(workDir, ".wingman", "skills", "wingskill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\ndescription: Project WingSkill instructions\n---\nproject"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skills, catalog, err := New(Config{}).resolveSkills(&store.Agent{}, workDir)
+	if err != nil || len(skills) != 1 || skills[0].ID != "wingskill" || skills[0].Content != "project" || !strings.Contains(catalog, "Project WingSkill instructions") {
 		t.Fatalf("skills=%#v catalog=%q err=%v", skills, catalog, err)
 	}
 }

@@ -6,7 +6,7 @@
 
 The open-source client-agnostic agent harness
 
-> Wingman is not production ready. Expect frequent API and data model changes for the time being.
+> Wingman is not production ready. Expect frequent changes to APIs and data models for the time being.
 
 ## What is Wingman?
 

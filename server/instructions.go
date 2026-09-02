@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,14 +62,30 @@ func (s *Server) resolveInstructions(agent *store.Agent, workDir string) (string
 }
 
 func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skill, string, error) {
+	builtins, err := skill.Builtins()
+	if err != nil {
+		return nil, "", fmt.Errorf("load built-in skills: %w", err)
+	}
 	dirs := append([]string(nil), s.globalSkillDirs...)
 	if workDir != "" {
 		dirs = append(dirs, filepath.Join(workDir, ".wingman", "skills"))
 	}
-	skills, err := skill.Discover(dirs...)
+	discovered, err := skill.Discover(dirs...)
 	if err != nil {
 		return nil, "", fmt.Errorf("discover skills: %w", err)
 	}
+	byID := make(map[string]skill.Skill, len(builtins)+len(discovered))
+	for _, entry := range builtins {
+		byID[entry.ID] = entry
+	}
+	for _, entry := range discovered {
+		byID[entry.ID] = entry
+	}
+	skills := make([]skill.Skill, 0, len(byID))
+	for _, entry := range byID {
+		skills = append(skills, entry)
+	}
+	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
 	var lines []string
 	for _, entry := range skills {
 		if entry.Description == "" || permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect == permission.EffectDeny {

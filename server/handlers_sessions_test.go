@@ -535,7 +535,7 @@ func TestMessageSessionSnapshotsProjectInstructions(t *testing.T) {
 	if !strings.Contains(run.EffectiveInstructions, "Initial project rules.") || strings.Contains(run.EffectiveInstructions, "Changed project rules.") {
 		t.Fatalf("effective instructions = %q", run.EffectiveInstructions)
 	}
-	if len(run.Skills) != 1 || run.Skills[0].ID != "review" || run.Skills[0].Content != "Initial skill instructions." {
+	if len(run.Skills) != 2 || run.Skills[0].ID != "review" || run.Skills[0].Content != "Initial skill instructions." || run.Skills[1].ID != "wingskill" || len(run.Skills[1].EmbeddedResources) == 0 {
 		t.Fatalf("skills = %#v", run.Skills)
 	}
 	canonicalProjectPath, err := filepath.EvalSymlinks(projectPath)

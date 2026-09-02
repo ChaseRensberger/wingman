@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,20 @@ func TestDiscoverParsesAndOverridesSkills(t *testing.T) {
 	}
 	if len(skills) != 1 || skills[0].ID != "review" || skills[0].Description != "Project review" || skills[0].Content != "Project" || len(skills[0].SupportingFiles) != 1 || skills[0].SupportingFiles[0].Path != "guide.txt" || skills[0].SupportingFiles[0].Content != "guide" {
 		t.Fatalf("skills = %#v", skills)
+	}
+}
+
+func TestBuiltinsIncludesWingman(t *testing.T) {
+	skills, err := Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) != 1 || skills[0].ID != "wingskill" || skills[0].Name != "WingSkill" || skills[0].Description == "" || !strings.Contains(skills[0].Content, "official Wingman documentation") || skills[0].SHA256 == "" || len(skills[0].EmbeddedResources) != 35 || len(skills[0].SupportingFiles) != 0 {
+		t.Fatalf("built-in skills = %#v", skills)
+	}
+	data, err := json.Marshal(skills[0])
+	if err != nil || strings.Contains(string(data), "# Quick Start") {
+		t.Fatalf("built-in skill snapshot = %s, err=%v", data, err)
 	}
 }
 
@@ -100,5 +115,24 @@ func TestToolReturnsSnapshot(t *testing.T) {
 	check, ok, err := toolpkg.PermissionFor(tool, toolpkg.Invocation{Input: map[string]any{"id": "review"}})
 	if err != nil || !ok || check.Action != "skill" || len(check.Resources) != 1 || check.Resources[0] != "review" {
 		t.Fatalf("check=%#v ok=%v err=%v", check, ok, err)
+	}
+}
+
+func TestToolReadsBundledDocumentation(t *testing.T) {
+	skills, err := Builtins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := Tool(skills)
+	result, err := tool.Execute(context.Background(), toolpkg.Invocation{Input: map[string]any{"id": "wingskill"}})
+	if err != nil || !strings.Contains(result.Text, "start-here/quickstart.md") {
+		t.Fatalf("skill result=%#v err=%v", result, err)
+	}
+	page, err := tool.Execute(context.Background(), toolpkg.Invocation{Input: map[string]any{"id": "wingskill", "file": "start-here/quickstart.md"}})
+	if err != nil || !strings.Contains(page.Text, "# Quick Start") {
+		t.Fatalf("documentation result=%#v err=%v", page, err)
+	}
+	if _, err := tool.Execute(context.Background(), toolpkg.Invocation{Input: map[string]any{"id": "wingskill", "file": "../go.mod"}}); err == nil {
+		t.Fatal("skill tool accepted an escaping documentation path")
 	}
 }

@@ -395,6 +395,7 @@ func copySessionRun(run *store.SessionRun) store.SessionRun {
 	cp.Skills = append([]skill.Skill(nil), run.Skills...)
 	for i := range cp.Skills {
 		cp.Skills[i].SupportingFiles = append([]skill.SupportingFile(nil), run.Skills[i].SupportingFiles...)
+		cp.Skills[i].EmbeddedResources = append([]skill.EmbeddedResource(nil), run.Skills[i].EmbeddedResources...)
 	}
 	cp.OutputSchemaJSON = append([]byte(nil), run.OutputSchemaJSON...)
 	cp.InputJSON = append([]byte(nil), run.InputJSON...)

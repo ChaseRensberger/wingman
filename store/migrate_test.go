@@ -17,8 +17,8 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 2 || migrations[0].version != 1 || migrations[0].name != "init" || migrations[1].version != 2 || migrations[1].name != "session_run_actions" {
-		t.Fatalf("migrations = %#v, want 0001_init and 0002_session_run_actions", migrations)
+	if len(migrations) != 1 || migrations[0].version != 1 || migrations[0].name != "init" {
+		t.Fatalf("migrations = %#v, want 0001_init", migrations)
 	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 1 AND name = 'init' AND checksum <> ''`).Scan(&count); err != nil {
@@ -149,7 +149,7 @@ func TestRunMigrationsRejectsUnknownHistory(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (3, 'removed', 'checksum', ?)`, Now()); err != nil {
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (4, 'removed', 'checksum', ?)`, Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := runMigrations(db); err == nil || !strings.Contains(err.Error(), "unknown version") {

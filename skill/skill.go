@@ -1,4 +1,4 @@
-// Package skill discovers and executes local Agent Skills.
+// Package skill discovers and executes Agent Skills.
 package skill
 
 import (
@@ -19,16 +19,18 @@ import (
 // ToolName is reserved for Wingman's native skill loader.
 const ToolName = "skill"
 
-// Skill is an immutable local skill snapshot.
+// Skill is an immutable Agent Skill snapshot.
 type Skill struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Description     string           `json:"description,omitempty"`
-	Content         string           `json:"content"`
-	Location        string           `json:"location"`
-	BaseDir         string           `json:"base_dir"`
-	SHA256          string           `json:"sha256"`
-	SupportingFiles []SupportingFile `json:"supporting_files,omitempty"`
+	ID                     string             `json:"id"`
+	Name                   string             `json:"name"`
+	Description            string             `json:"description,omitempty"`
+	Content                string             `json:"content"`
+	Location               string             `json:"location"`
+	BaseDir                string             `json:"base_dir"`
+	SHA256                 string             `json:"sha256"`
+	SupportingFiles        []SupportingFile   `json:"supporting_files,omitempty"`
+	EmbeddedResourceSource string             `json:"embedded_resource_source,omitempty"`
+	EmbeddedResources      []EmbeddedResource `json:"embedded_resources,omitempty"`
 }
 
 // SupportingFile is immutable supporting content captured with a skill.
@@ -36,6 +38,12 @@ type SupportingFile struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
 	SHA256  string `json:"sha256"`
+}
+
+// EmbeddedResource identifies bundled content that loads from the running binary.
+type EmbeddedResource struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // Discover loads root Markdown files and nested SKILL.md files. Later roots
@@ -240,12 +248,12 @@ func Tool(skills []Skill) tool.Tool {
 
 func (t *nativeTool) Name() string { return ToolName }
 func (t *nativeTool) Description() string {
-	return "Load a local Agent Skill by ID, or read one of its supporting files."
+	return "Load an Agent Skill by ID, or read one of its supporting or embedded files."
 }
 func (t *nativeTool) Definition() tool.Definition {
 	return tool.Definition{Name: t.Name(), Description: t.Description(), InputSchema: tool.InputSchema{Type: "object", Properties: map[string]tool.Property{
 		"id":   {Type: "string", Description: "Skill ID"},
-		"file": {Type: "string", Description: "Optional supporting file path relative to the skill's base directory"},
+		"file": {Type: "string", Description: "Optional supporting or embedded file path relative to the skill's base directory"},
 	}, Required: []string{"id"}}, Permission: &tool.PermissionTarget{Action: "skill", ResourceFields: []string{"id"}}}
 }
 func (t *nativeTool) Execute(_ context.Context, inv tool.Invocation) (tool.Result, error) {
@@ -265,6 +273,13 @@ func (t *nativeTool) Execute(_ context.Context, inv tool.Invocation) (tool.Resul
 		}
 		text += "Supporting files (load with the skill tool's file input):\n- " + strings.Join(paths, "\n- ") + "\n"
 	}
+	if len(s.EmbeddedResources) > 0 {
+		paths := make([]string, len(s.EmbeddedResources))
+		for i, file := range s.EmbeddedResources {
+			paths[i] = file.Path
+		}
+		text += "Embedded files (load with the skill tool's file input):\n- " + strings.Join(paths, "\n- ") + "\n"
+	}
 	text += "\n" + s.Content
 	return tool.Result{Text: text}, nil
 }
@@ -283,8 +298,13 @@ func readSupportingFile(s Skill, file string) (tool.Result, error) {
 			break
 		}
 	}
-	if found == nil {
-		return tool.Result{}, fmt.Errorf("supporting file %q not found for skill %q", file, s.ID)
+	if found != nil {
+		return tool.Result{Text: fmt.Sprintf("<skill_file skill=%q path=%q>\n%s\n</skill_file>", s.ID, wanted, found.Content)}, nil
 	}
-	return tool.Result{Text: fmt.Sprintf("<skill_file skill=%q path=%q>\n%s\n</skill_file>", s.ID, wanted, found.Content)}, nil
+	for _, candidate := range s.EmbeddedResources {
+		if candidate.Path == wanted {
+			return readEmbeddedResource(s, wanted)
+		}
+	}
+	return tool.Result{}, fmt.Errorf("supporting or embedded file %q not found for skill %q", file, s.ID)
 }

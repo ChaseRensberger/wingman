@@ -445,7 +445,7 @@ func TestSQLiteToolUsePersistsStructuredResultSeparately(t *testing.T) {
 	}
 }
 
-func TestSQLiteSeedsWingstonAgent(t *testing.T) {
+func TestSQLiteSeedsAssistAgent(t *testing.T) {
 	data, err := NewSQLiteStore(filepath.Join(t.TempDir(), "wingman.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -461,18 +461,18 @@ func TestSQLiteSeedsWingstonAgent(t *testing.T) {
 	}
 
 	for _, agent := range agents {
-		if agent.Name != "Wingston" {
+		if agent.Name != "Assist" {
 			continue
 		}
-		if agent.Instructions != wingstonAgentInstructions {
-			t.Fatal("Wingston instructions do not match the default")
+		if agent.Instructions != assistAgentInstructions {
+			t.Fatal("Assist instructions do not match the default")
 		}
 		if got, want := agent.Tools, []string{"webfetch", "websearch"}; !slices.Equal(got, want) {
-			t.Fatalf("Wingston tools = %v, want %v", got, want)
+			t.Fatalf("Assist tools = %v, want %v", got, want)
 		}
 		return
 	}
-	t.Fatal("Wingston agent was not seeded")
+	t.Fatal("Assist agent was not seeded")
 }
 
 func TestSQLiteSaveMessageRevisionedAndRollback(t *testing.T) {
