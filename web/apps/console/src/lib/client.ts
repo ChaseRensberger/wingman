@@ -3,6 +3,7 @@ import { APIError, createWingmanClient, type components } from "@wingman-actor/c
 import type { SessionSummary } from "./types";
 
 export const daemonConnectionFailureEvent = "wingman:connection-failed";
+export const daemonRestartRequestedEvent = "wingman:restart-requested";
 export { APIError };
 
 export function isDaemonConnectionFailure(status: number): boolean {
@@ -28,6 +29,12 @@ export const client = createWingmanClient({
   baseUrl: globalThis.location?.origin ?? "http://localhost:2424",
   fetch: daemonFetch,
 });
+
+export async function restartService() {
+  const response = await client.service.restart();
+  window.dispatchEvent(new Event(daemonRestartRequestedEvent));
+  return response;
+}
 
 async function tokenAPIError(response: Response): Promise<APIError> {
   const text = await response.text();

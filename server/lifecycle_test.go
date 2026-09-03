@@ -63,6 +63,49 @@ func TestReadinessIdentifiesFailedRecoverySubsystem(t *testing.T) {
 	}
 }
 
+func TestManagedServiceRestartRequest(t *testing.T) {
+	restarted := make(chan struct{}, 1)
+	server := New(Config{RequestRestart: func() { restarted <- struct{}{} }})
+
+	request := httptest.NewRequest(http.MethodPost, "/service/restart", nil)
+	request.Header.Set("X-Wingman-Console", "1")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || response.Body.String() != "{\"status\":\"restarting\"}\n" {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+	select {
+	case <-restarted:
+	case <-time.After(time.Second):
+		t.Fatal("restart callback was not called")
+	}
+}
+
+func TestServiceRestartRequiresManagedDaemonAndConsoleHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		server *Server
+		header string
+		status int
+	}{
+		{name: "foreground daemon", server: New(Config{}), header: "1", status: http.StatusConflict},
+		{name: "missing console header", server: New(Config{RequestRestart: func() {}}), status: http.StatusForbidden},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/service/restart", nil)
+			if test.header != "" {
+				request.Header.Set("X-Wingman-Console", test.header)
+			}
+			response := httptest.NewRecorder()
+			test.server.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestCloseIsConcurrentAndRetryable(t *testing.T) {
 	server := New(Config{})
 	done := server.trackInflight()

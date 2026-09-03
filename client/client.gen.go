@@ -679,10 +679,11 @@ type RenameSessionRequest struct {
 
 // RootResponse defines model for RootResponse.
 type RootResponse struct {
-	Console string `json:"console"`
-	Health  string `json:"health"`
-	Name    string `json:"name"`
-	Status  string `json:"status"`
+	Console          string `json:"console"`
+	Health           string `json:"health"`
+	Name             string `json:"name"`
+	RestartAvailable bool   `json:"restart_available"`
+	Status           string `json:"status"`
 }
 
 // RouteInfo defines model for RouteInfo.
@@ -1296,6 +1297,13 @@ type GetProviderOAuthAttemptParams struct {
 type GetReadinessParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// RestartServiceParams defines parameters for RestartService.
+type RestartServiceParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient  *string `json:"X-Wingman-Client,omitempty"`
+	XWingmanConsole string  `json:"X-Wingman-Console"`
 }
 
 // ListSessionsParams defines parameters for ListSessions.
@@ -2066,6 +2074,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /run (the `RunAgent` operationId).
 	RunAgent(ctx context.Context, body RunAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestartService Restart the managed daemon
+	//
+	// Corresponds with POST /service/restart (the `RestartService` operationId).
+	RestartService(ctx context.Context, params *RestartServiceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessions List sessions
 	//
@@ -2923,6 +2936,21 @@ func (c *GeneratedClient) RunAgentWithBody(ctx context.Context, contentType stri
 // Corresponds with POST /run (the `RunAgent` operationId).
 func (c *GeneratedClient) RunAgent(ctx context.Context, body RunAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRunAgentRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RestartService Restart the managed daemon
+//
+// Corresponds with POST /service/restart (the `RestartService` operationId).
+func (c *GeneratedClient) RestartService(ctx context.Context, params *RestartServiceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestartServiceRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5229,6 +5257,57 @@ func NewRunAgentRequestWithBody(server string, contentType string, body io.Reade
 	return req, nil
 }
 
+// NewRestartServiceRequest constructs an http.Request for the RestartService method
+func NewRestartServiceRequest(server string, params *RestartServiceParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/service/restart")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+		var headerParam1 string
+
+		headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Console", params.XWingmanConsole, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("X-Wingman-Console", headerParam1)
+
+	}
+
+	return req, nil
+}
+
 // NewListSessionsRequest constructs an http.Request for the ListSessions method
 func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Request, error) {
 	var err error
@@ -6973,6 +7052,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /run (the `RunAgent` operationId).
 	RunAgentWithResponse(ctx context.Context, body RunAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*RunAgentHTTPResponse, error)
+
+	// RestartServiceWithResponse Restart the managed daemon
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /service/restart (the `RestartService` operationId).
+	RestartServiceWithResponse(ctx context.Context, params *RestartServiceParams, reqEditors ...RequestEditorFn) (*RestartServiceHTTPResponse, error)
 
 	// ListSessionsWithResponse List sessions
 	//
@@ -8927,6 +9013,54 @@ func (r RunAgentHTTPResponse) ContentType() string {
 	return ""
 }
 
+type RestartServiceHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *StatusResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RestartServiceHTTPResponse) GetJSON202() *StatusResponse {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r RestartServiceHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RestartServiceHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RestartServiceHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestartServiceHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RestartServiceHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSessionsHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10728,6 +10862,19 @@ func (c *ClientWithResponses) RunAgentWithResponse(ctx context.Context, body Run
 	return ParseRunAgentHTTPResponse(rsp)
 }
 
+// RestartServiceWithResponse Restart the managed daemon
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /service/restart (the `RestartService` operationId).
+func (c *ClientWithResponses) RestartServiceWithResponse(ctx context.Context, params *RestartServiceParams, reqEditors ...RequestEditorFn) (*RestartServiceHTTPResponse, error) {
+	rsp, err := c.RestartService(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestartServiceHTTPResponse(rsp)
+}
+
 // ListSessionsWithResponse List sessions
 //
 // Returns a wrapper object for the known response body format(s).
@@ -12338,6 +12485,39 @@ func ParseRunAgentHTTPResponse(rsp *http.Response) (*RunAgentHTTPResponse, error
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestartServiceHTTPResponse parses an HTTP response from a RestartServiceWithResponse call
+func ParseRestartServiceHTTPResponse(rsp *http.Response) (*RestartServiceHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestartServiceHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest StatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

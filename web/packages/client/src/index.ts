@@ -523,6 +523,14 @@ export function createWingmanClient(options: WingmanClientOptions) {
       service: () => requestData(api.GET("/")),
       client: () => requestData(api.GET("/client")),
     },
+    service: {
+      restart: () =>
+        requestData(
+          api.POST("/service/restart", {
+            params: { header: { "X-Wingman-Console": "1" } },
+          }),
+        ),
+    },
     diagnostics: { get: () => requestData(api.GET("/diagnostics")) },
     filesystem: {
       directories: (path?: string) =>

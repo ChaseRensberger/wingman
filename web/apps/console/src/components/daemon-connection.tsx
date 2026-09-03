@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { client, daemonConnectionFailureEvent } from "@/lib/client";
+import { client, daemonConnectionFailureEvent, daemonRestartRequestedEvent } from "@/lib/client";
 import {
   daemonConnectionFailureMessage,
   daemonConnectionMessage,
   daemonFailurePhase,
   daemonRetryDelay,
+  isReplacementInstance,
 } from "@/lib/connection";
 import {
   DaemonConnectionContext,
@@ -13,6 +14,7 @@ import {
   type DaemonConnection,
 } from "@/components/daemon-connection-context";
 import { queryClient } from "@/lib/query-client";
+import { toastManager } from "@/lib/toast";
 
 export function DaemonConnectionProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<DaemonConnection>({
@@ -22,6 +24,8 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
   });
   const hasBeenLive = useRef(false);
   const disconnected = useRef(false);
+  const instanceID = useRef("");
+  const restartRequested = useRef(false);
   useEffect(() => {
     let stopped = false;
     let attempt = 0;
@@ -67,7 +71,16 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
         const ready = await client.health.ready({ signal });
         if (signal.aborted) return;
         if (!ready.ready) throw new Error("Wingman is not ready");
-        const recovered = hasBeenLive.current && disconnected.current;
+        if (restartRequested.current && ready.instance_id === instanceID.current) {
+          setConnection((current) => ({ ...current, phase: "restarting" }));
+          schedule(daemonRetryDelay(0));
+          return;
+        }
+        const restarted =
+          restartRequested.current && isReplacementInstance(instanceID.current, ready.instance_id);
+        const recovered = hasBeenLive.current && (disconnected.current || restarted);
+        instanceID.current = ready.instance_id;
+        restartRequested.current = false;
         hasBeenLive.current = true;
         disconnected.current = false;
         attempt = 0;
@@ -77,11 +90,22 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
           hasConnected: true,
         }));
         if (recovered) void queryClient.invalidateQueries();
+        if (restarted)
+          toastManager.add({
+            title: "Service restarted",
+            description: "Any active runs were aborted. Queued runs resumed.",
+            type: "success",
+          });
         schedule(5_000);
       } catch (error) {
         if (stopped || (error as Error).name === "AbortError") return;
         disconnected.current = hasBeenLive.current;
         attempt += 1;
+        if (restartRequested.current) {
+          setConnection((current) => ({ ...current, phase: "restarting" }));
+          schedule(daemonRetryDelay(attempt - 1));
+          return;
+        }
         const failure = daemonConnectionFailureMessage(error);
         setConnection((current) => ({
           ...current,
@@ -114,9 +138,19 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
       if (!request) schedule(0);
     }
 
+    function restartService() {
+      restartRequested.current = true;
+      disconnected.current = true;
+      attempt = 0;
+      setConnection((current) => ({ ...current, phase: "restarting" }));
+      clearPending();
+      schedule(0);
+    }
+
     window.addEventListener("online", resume);
     window.addEventListener("offline", resume);
     window.addEventListener(daemonConnectionFailureEvent, connectionFailed);
+    window.addEventListener(daemonRestartRequestedEvent, restartService);
     document.addEventListener("visibilitychange", resume);
     schedule(0);
     return () => {
@@ -125,6 +159,7 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
       window.removeEventListener("online", resume);
       window.removeEventListener("offline", resume);
       window.removeEventListener(daemonConnectionFailureEvent, connectionFailed);
+      window.removeEventListener(daemonRestartRequestedEvent, restartService);
       document.removeEventListener("visibilitychange", resume);
     };
   }, []);

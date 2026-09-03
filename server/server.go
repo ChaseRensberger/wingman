@@ -55,6 +55,7 @@ type Server struct {
 	globalInstructionsPath string
 	globalSkillDirs        []string
 	pluginFactories        []func() plugin.Plugin
+	requestRestart         func()
 	ready                  atomic.Bool
 
 	shutdownCtx    context.Context
@@ -66,6 +67,7 @@ type Server struct {
 	startErr       error
 	startSubsystem string
 	closeOnce      sync.Once
+	restartOnce    sync.Once
 
 	inflightMu     sync.Mutex
 	inflightClosed bool
@@ -95,6 +97,9 @@ type Config struct {
 	// GlobalSkillDirs selects daemon-wide skill directories.
 	GlobalSkillDirs []string
 	PluginFactories []func() plugin.Plugin
+	// RequestRestart asks the process owner to replace this daemon. A nil
+	// callback means that this is not a managed service.
+	RequestRestart func()
 }
 
 func New(cfg Config) *Server {
@@ -142,6 +147,7 @@ func New(cfg Config) *Server {
 		globalInstructionsPath: cfg.GlobalInstructionsPath,
 		globalSkillDirs:        append([]string(nil), cfg.GlobalSkillDirs...),
 		pluginFactories:        append([]func() plugin.Plugin(nil), cfg.PluginFactories...),
+		requestRestart:         cfg.RequestRestart,
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
 	}
@@ -305,6 +311,7 @@ func (s *Server) setupRoutes() {
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
 	s.registerJSON(http.MethodGet, "/diagnostics", "getDiagnostics", "Get bounded daemon operational diagnostics", nil, http.StatusOK, api.DiagnosticsResponse{}, s.handleDiagnostics)
+	s.registerJSONWithParameters(http.MethodPost, "/service/restart", "restartService", "Restart the managed daemon", nil, http.StatusAccepted, api.StatusResponse{}, []*huma.Param{{Name: "X-Wingman-Console", In: "header", Required: true, Schema: &huma.Schema{Type: huma.TypeString}}}, s.handleRestartService)
 	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List plugin status", nil, http.StatusOK, pluginsResponse{}, s.handleListPlugins)
 	s.registerJSON(http.MethodPost, "/plugins/reload", "reloadPlugins", "Reload plugins", nil, http.StatusOK, pluginsResponse{}, s.handleReloadPlugins)
 	s.registerJSON(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, s.handleListMCP)
@@ -690,6 +697,19 @@ func (s *Server) handleReadiness(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, status, response)
 }
 
+func (s *Server) handleRestartService(w http.ResponseWriter, r *http.Request) {
+	if s.requestRestart == nil {
+		s.writeError(w, http.StatusConflict, "service restart is available only for a managed daemon")
+		return
+	}
+	if r.Header.Get("X-Wingman-Console") != "1" {
+		s.writeError(w, http.StatusForbidden, "X-Wingman-Console header is required")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, api.StatusResponse{Status: "restarting"})
+	s.restartOnce.Do(func() { go s.requestRestart() })
+}
+
 func readinessSubsystem(err error) string {
 	message := err.Error()
 	switch {
@@ -746,15 +766,11 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, struct {
-		Name    string `json:"name"`
-		Status  string `json:"status"`
-		Health  string `json:"health"`
-		Console string `json:"console"`
-	}{
-		Name:    "wingman",
-		Status:  "ok",
-		Health:  "/health",
-		Console: "/console",
+	writeJSON(w, http.StatusOK, rootResponse{
+		Name:             "wingman",
+		Status:           "ok",
+		Health:           "/health",
+		Console:          "/console",
+		RestartAvailable: s.requestRestart != nil,
 	})
 }

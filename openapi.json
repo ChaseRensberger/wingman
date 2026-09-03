@@ -1979,6 +1979,9 @@
           "name": {
             "type": "string"
           },
+          "restart_available": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string"
           }
@@ -1987,7 +1990,8 @@
           "name",
           "status",
           "health",
-          "console"
+          "console",
+          "restart_available"
         ],
         "type": "object"
       },
@@ -5841,6 +5845,57 @@
           }
         ],
         "summary": "Run one ephemeral agent turn"
+      }
+    },
+    "/service/restart": {
+      "post": {
+        "operationId": "restartService",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Wingman-Console",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Restart the managed daemon"
       }
     },
     "/sessions": {

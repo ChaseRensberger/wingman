@@ -59,6 +59,7 @@ type Config struct {
 	Username          string
 	InstanceID        string
 	Version           string
+	RequestRestart    func()
 	// GlobalInstructionsPath selects the daemon-wide AGENTS.md file. An empty
 	// path uses the Wingman configuration directory.
 	GlobalInstructionsPath string
@@ -201,6 +202,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		GlobalInstructionsPath: globalInstructionsPath,
 		GlobalSkillDirs:        skillDirs,
 		PluginFactories:        []func() plugin.Plugin{func() plugin.Plugin { return compaction.New() }},
+		RequestRestart:         cfg.RequestRestart,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

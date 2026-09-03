@@ -5,6 +5,7 @@ import {
   daemonConnectionMessage,
   daemonFailurePhase,
   daemonRetryDelay,
+  isReplacementInstance,
 } from "./connection";
 
 describe("daemon connection recovery", () => {
@@ -20,9 +21,16 @@ describe("daemon connection recovery", () => {
     expect(daemonFailurePhase(5)).toBe("failed");
   });
 
+  test("identifies a replacement daemon by instance ID", () => {
+    expect(isReplacementInstance("ins_old", "ins_new")).toBe(true);
+    expect(isReplacementInstance("ins_old", "ins_old")).toBe(false);
+    expect(isReplacementInstance("", "ins_new")).toBe(false);
+  });
+
   test("describes every visible connection state", () => {
     expect(daemonConnectionMessage("connecting")).toContain("Connecting");
     expect(daemonConnectionMessage("retrying")).toContain("Reconnecting");
+    expect(daemonConnectionMessage("restarting")).toContain("Restarting Wingman");
     expect(daemonConnectionMessage("paused")).toContain("paused");
     expect(daemonConnectionMessage("failed")).toContain("unavailable");
     expect(daemonConnectionMessage("live")).toContain("Connected");

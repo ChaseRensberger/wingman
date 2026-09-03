@@ -1,4 +1,10 @@
-export type DaemonConnectionPhase = "connecting" | "live" | "retrying" | "paused" | "failed";
+export type DaemonConnectionPhase =
+  | "connecting"
+  | "live"
+  | "restarting"
+  | "retrying"
+  | "paused"
+  | "failed";
 
 const initialRetryDelayMs = 250;
 const maxRetryDelayMs = 5_000;
@@ -9,6 +15,10 @@ export function daemonRetryDelay(attempt: number): number {
 
 export function daemonFailurePhase(attempt: number): DaemonConnectionPhase {
   return attempt >= 5 ? "failed" : "retrying";
+}
+
+export function isReplacementInstance(previous: string, current: string): boolean {
+  return previous !== "" && current !== previous;
 }
 
 export function daemonConnectionFailureMessage(error: unknown): string | undefined {
@@ -28,6 +38,8 @@ export function daemonConnectionMessage(phase: DaemonConnectionPhase, failure?: 
       return "Connecting to Wingman";
     case "retrying":
       return "Connection lost. Reconnecting";
+    case "restarting":
+      return "Restarting Wingman. Reconnecting automatically";
     case "paused":
       return "Connection checks paused while offline";
     case "failed":

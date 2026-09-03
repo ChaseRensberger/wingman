@@ -90,6 +90,21 @@ test("configured clients send Basic authentication and client headers", async ()
   expect(request?.headers.get("X-Trace-ID")).toBe("trace-1");
 });
 
+test("service restart sends the browser safety header", async () => {
+  let request: Request | undefined;
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json({ status: "restarting" }, { status: 202 });
+    },
+  });
+
+  await expect(client.service.restart()).resolves.toEqual({ status: "restarting" });
+  expect(request?.method).toBe("POST");
+  expect(request?.headers.get("X-Wingman-Console")).toBe("1");
+});
+
 test("resource methods return data and throw APIError", async () => {
   const client = createWingmanClient({
     baseUrl: "https://wingman.test",

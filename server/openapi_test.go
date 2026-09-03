@@ -27,7 +27,7 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/sessions/{id}/macros", "/run"} {
+	for _, path := range []string{"/health", "/service/restart", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/sessions/{id}/macros", "/run"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}
@@ -61,7 +61,7 @@ func TestRootResponseMatchesContract(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&root); err != nil {
 		t.Fatal(err)
 	}
-	if root.Name != "wingman" || root.Status != "ok" || root.Health != "/health" || root.Console != "/console" {
+	if root.Name != "wingman" || root.Status != "ok" || root.Health != "/health" || root.Console != "/console" || root.RestartAvailable {
 		t.Fatalf("root response = %#v", root)
 	}
 }

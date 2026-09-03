@@ -17,10 +17,11 @@ import (
 const openAPIVersion = "0.0.0"
 
 type rootResponse struct {
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	Health  string `json:"health"`
-	Console string `json:"console"`
+	Name             string `json:"name"`
+	Status           string `json:"status"`
+	Health           string `json:"health"`
+	Console          string `json:"console"`
+	RestartAvailable bool   `json:"restart_available"`
 }
 
 type providerOAuthRequest struct {

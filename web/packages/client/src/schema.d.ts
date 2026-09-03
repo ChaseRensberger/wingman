@@ -504,6 +504,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart the managed daemon */
+        post: operations["restartService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions": {
         parameters: {
             query?: never;
@@ -1465,6 +1482,7 @@ export interface components {
             console: string;
             health: string;
             name: string;
+            restart_available: boolean;
             status: string;
         };
         RouteInfo: {
@@ -3292,6 +3310,39 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": components["schemas"]["RunStreamEvent"][];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restartService: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+                "X-Wingman-Console": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Request failed */

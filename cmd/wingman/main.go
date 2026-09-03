@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -21,9 +22,10 @@ import (
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	version                    = "dev"
+	commit                     = "none"
+	date                       = "unknown"
+	errServiceRestartRequested = errors.New("managed service restart requested")
 )
 
 func loadConfig() (daemonconfig.Config, error) {
@@ -52,6 +54,10 @@ func main() {
 	cmd := newCommand(cfg)
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		if errors.Is(err, errServiceRestartRequested) {
+			// EX_TEMPFAIL makes systemd's Restart=on-failure replace the daemon.
+			os.Exit(75)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -217,6 +223,19 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		instanceID := "ins_" + ksuid.New().String()
 		sigCtx, stopSig := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer stopSig()
+		serveCtx, stopServe := context.WithCancel(sigCtx)
+		defer stopServe()
+		restartRequested := make(chan struct{}, 1)
+		var requestRestart func()
+		if cmd.Bool("register") {
+			requestRestart = func() {
+				select {
+				case restartRequested <- struct{}{}:
+				default:
+				}
+				stopServe()
+			}
+		}
 		addr := fmt.Sprintf("%s:%d", effective.Server.Host, effective.Server.Port)
 		listener, err := net.Listen("tcp", addr)
 		if err != nil {
@@ -233,7 +252,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			}
 			defer func() { _, _ = state.RemoveRegistration(instanceID) }()
 		}
-		application, err := app.New(sigCtx, app.Config{
+		application, err := app.New(serveCtx, app.Config{
 			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
 			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
@@ -241,6 +260,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			MCP:             effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
 			Password: password, Username: username, InstanceID: instanceID, Version: version,
+			RequestRestart: requestRestart,
 		})
 		if err != nil {
 			_ = listener.Close()
@@ -254,10 +274,15 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			fmt.Printf("server username %s\n", username)
 			fmt.Printf("server password %s\n", password)
 		}
-		if err := application.Serve(sigCtx, listener); err != nil {
+		if err := application.Serve(serveCtx, listener); err != nil {
 			return fmt.Errorf("serve application: %w", err)
 		}
 		logger.Info("shutdown complete")
+		select {
+		case <-restartRequested:
+			return errServiceRestartRequested
+		default:
+		}
 		return nil
 	}
 }
