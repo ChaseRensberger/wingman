@@ -1,0 +1,5 @@
+lab = "openai"
+name = "GPT-6 Astra"
+description = "OpenAI's flagship model for complex end-to-end work."
+release_date = "2026-09"
+last_updated = "2026-09"

@@ -74,6 +74,41 @@ func TestOpenAIVariants(t *testing.T) {
 	}
 }
 
+func TestOpenAIGPT6Astra(t *testing.T) {
+	model, ok := Get("openai", "gpt-6-astra")
+	if !ok {
+		t.Fatal("GPT-6 Astra route not found")
+	}
+	if model.ContextWindow != 1_050_000 || model.MaxOutput != 128_000 {
+		t.Errorf("limits = %d context, %d output", model.ContextWindow, model.MaxOutput)
+	}
+	if model.InputCostPerMTok != 10 || model.OutputCostPerMTok != 50 {
+		t.Errorf("costs = $%g input, $%g output", model.InputCostPerMTok, model.OutputCostPerMTok)
+	}
+	if !model.Capabilities.Tools || !model.Capabilities.Images || !model.Capabilities.Reasoning || !model.Capabilities.StructuredOutput {
+		t.Errorf("Capabilities = %#v", model.Capabilities)
+	}
+	want := []string{"low", "medium", "high", "xhigh", "max"}
+	if len(model.Variants) != len(want) {
+		t.Fatalf("variants = %#v", model.Variants)
+	}
+	for i, id := range want {
+		if model.Variants[i].ID != id {
+			t.Errorf("variant %d = %q, want %q", i, model.Variants[i].ID, id)
+		}
+	}
+
+	for _, canonical := range ListCanonicalModels() {
+		if canonical.ID == "openai/gpt-6-astra" {
+			if canonical.Lab != "openai" || canonical.Name != "GPT-6 Astra" {
+				t.Errorf("canonical model = %#v", canonical)
+			}
+			return
+		}
+	}
+	t.Fatal("canonical GPT-6 Astra model not found")
+}
+
 func TestNewRejectsInvalidOverlayVariants(t *testing.T) {
 	for _, variants := range [][]models.ModelVariant{
 		{{ID: ""}},
