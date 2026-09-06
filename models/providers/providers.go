@@ -4,15 +4,13 @@ package provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/catalog"
-	"github.com/chaserensberger/wingman/models/providers/internal/httpmodel"
+	"github.com/chaserensberger/wingman/models/route"
 )
 
 // AuthType describes a supported authentication scheme.
@@ -31,21 +29,26 @@ type ProviderMeta struct {
 
 var (
 	registryMu        sync.RWMutex
-	registry          = make(map[string]ProviderMeta)
+	registry          = make(map[string]definition)
 	registryFrozen    bool
 	builtinOnce       sync.Once
 	builtinGeneration *Registry
 )
 
-// Register adds built-in provider metadata during package initialization. It
+type definition struct {
+	meta     ProviderMeta
+	newRoute func(RouteConfig) (route.Route, error)
+}
+
+// Register adds a provider facade during package initialization. It
 // panics after the first registry generation freezes the built-in snapshot.
-func Register(meta ProviderMeta) {
+func Register(meta ProviderMeta, newRoute func(RouteConfig) (route.Route, error)) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	if registryFrozen {
 		panic("provider: built-in registry is frozen")
 	}
-	registry[meta.ID] = meta
+	registry[meta.ID] = definition{meta: meta, newRoute: newRoute}
 }
 
 // List returns all registered built-in providers in deterministic ID order.
@@ -76,6 +79,7 @@ type Registry struct {
 	providers map[string]ProviderMeta
 	catalog   *catalog.Catalog
 	configs   map[string]ProviderConfig
+	routes    map[string]func(RouteConfig) (route.Route, error)
 }
 
 // Credential is one provider credential resolved by a caller-owned auth store.
@@ -110,8 +114,10 @@ func NewRegistry(configs map[string]ProviderConfig) (*Registry, error) {
 	registryMu.Lock()
 	registryFrozen = true
 	metas := make(map[string]ProviderMeta, len(registry))
-	for id, meta := range registry {
-		metas[id] = cloneMeta(meta)
+	routes := make(map[string]func(RouteConfig) (route.Route, error), len(registry))
+	for id, def := range registry {
+		metas[id] = cloneMeta(def.meta)
+		routes[id] = def.newRoute
 	}
 	registryMu.Unlock()
 
@@ -188,7 +194,7 @@ func NewRegistry(configs map[string]ProviderConfig) (*Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Registry{providers: metas, catalog: c, configs: snapshot}, nil
+	return &Registry{providers: metas, catalog: c, configs: snapshot, routes: routes}, nil
 }
 
 // Catalog returns this generation's immutable catalog snapshot.
@@ -283,7 +289,7 @@ func (c *Client) Generate(ctx context.Context, req models.Request) (*models.Mess
 	return models.Generate(ctx, c, req)
 }
 
-func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
+func (c *Client) model(ref models.ModelRef) (*route.Model, error) {
 	info, err := resolveModelInfo(c.registry.catalog, ref)
 	if err != nil {
 		return nil, err
@@ -299,10 +305,6 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 	var cfg ProviderConfig
 	if providerCfg, ok := c.registry.configs[info.Provider]; ok {
 		cfg = providerCfg
-	}
-	protocol, err := protocolFor(info.API)
-	if err != nil {
-		return nil, err
 	}
 	apiKey := ""
 	credential := c.Credentials[info.Provider]
@@ -325,91 +327,18 @@ func (c *Client) model(ref models.ModelRef) (*httpmodel.Model, error) {
 			}
 		}
 	}
-	if credential.Type == "oauth" && info.Provider == "openai" {
-		info.BaseURL = "https://chatgpt.com/backend-api/codex"
-	}
-	query := cfg.Options.Query
-	if protocol == httpmodel.GeminiGenerate {
-		query = map[string]string{"alt": "sse"}
-		for k, v := range cfg.Options.Query {
-			query[k] = v
+	factory := c.registry.routes[info.Provider]
+	if factory == nil {
+		if useAuth && credential.Type == "oauth" {
+			return nil, &models.ProviderError{Provider: info.Provider, Category: models.ErrorAuthentication, Message: "provider OAuth route is not registered"}
 		}
+		factory = DefaultRoute
 	}
-	return &httpmodel.Model{
-		Info_:           info,
-		Variant:         variant,
-		Protocol:        protocol,
-		BaseURL:         info.BaseURL,
-		APIKey:          apiKey,
-		ForceStoreFalse: credential.Type == "oauth" && info.Provider == "openai",
-		Route: &httpmodel.Route{
-			ID:       string(protocol),
-			Protocol: protocol,
-			Endpoint: httpmodel.Endpoint{BaseURL: info.BaseURL, Query: query, ModelID: info.ID},
-			Auth:     c.routeAuth(protocol, info.Provider, apiKey, credential, cfg.Options),
-			Headers:  routeHeaders(protocol, credential),
-		},
-	}, nil
-}
-
-func (c *Client) routeAuth(protocol httpmodel.Protocol, providerID, apiKey string, credential Credential, options ProviderOptions) httpmodel.Auth {
-	if options.Auth != nil && !*options.Auth {
-		return httpmodel.NoAuth
+	deployment, err := factory(RouteConfig{Info: info, APIKey: apiKey, Credential: credential, Options: cfg.Options, Refresh: c.Refresh})
+	if err != nil {
+		return nil, err
 	}
-	if credential.Type == "oauth" && providerID == "openai" {
-		return httpmodel.AuthFunc(func(req *http.Request) error {
-			current := credential
-			if current.Access == "" || current.ExpiresAt <= time.Now().Unix() {
-				if c.Refresh == nil {
-					return fmt.Errorf("openai OAuth token is expired; reconnect the provider")
-				}
-				var err error
-				current, err = c.Refresh(req.Context(), providerID, current)
-				if err != nil {
-					return err
-				}
-			}
-			if current.Access == "" {
-				return fmt.Errorf("openai OAuth access token is missing")
-			}
-			req.Header.Set("authorization", "Bearer "+current.Access)
-			if current.AccountID != "" {
-				req.Header.Set("ChatGPT-Account-Id", current.AccountID)
-			}
-			return nil
-		})
-	}
-	if apiKey == "" {
-		return httpmodel.NoAuth
-	}
-	header := options.AuthHeader
-	if header == "" && protocol == httpmodel.AnthropicMessages {
-		header = "x-api-key"
-	}
-	if header == "" && protocol == httpmodel.GeminiGenerate {
-		header = "x-goog-api-key"
-	}
-	if header != "" {
-		value := apiKey
-		if options.AuthScheme != "" {
-			value = options.AuthScheme + " " + apiKey
-		}
-		return httpmodel.HeaderAuth(header, value)
-	}
-	return httpmodel.BearerAuth(apiKey)
-}
-
-func routeHeaders(protocol httpmodel.Protocol, credential Credential) map[string]string {
-	if credential.Type == "oauth" {
-		return map[string]string{"originator": "codex_cli_rs"}
-	}
-	if protocol == httpmodel.AnthropicMessages {
-		return map[string]string{
-			"anthropic-version": "2023-06-01",
-			"anthropic-beta":    "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-		}
-	}
-	return nil
+	return &route.Model{Info_: info, Variant: variant, Route: deployment}, nil
 }
 
 func resolveModelInfo(c *catalog.Catalog, ref models.ModelRef) (models.ModelInfo, error) {
@@ -506,21 +435,4 @@ func cloneStrings(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
-}
-
-func protocolFor(api models.API) (httpmodel.Protocol, error) {
-	switch api {
-	case models.APIOpenAIResponses:
-		return httpmodel.OpenAIResponses, nil
-	case models.APIOpenAICompletions:
-		return httpmodel.OpenAIChat, nil
-	case models.APIOpenAICompatible:
-		return httpmodel.OpenAIChat, nil
-	case models.APIAnthropicMessages:
-		return httpmodel.AnthropicMessages, nil
-	case models.APIGeminiGenerate:
-		return httpmodel.GeminiGenerate, nil
-	default:
-		return "", fmt.Errorf("unsupported model API: %s", api)
-	}
 }

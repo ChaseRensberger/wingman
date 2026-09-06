@@ -1,3 +1,4 @@
+// Package openrouter registers OpenRouter model routes.
 package openrouter
 
 import (
@@ -18,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "OpenRouter",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }

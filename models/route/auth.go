@@ -1,4 +1,4 @@
-package httpmodel
+package route
 
 import (
 	"fmt"
@@ -13,8 +13,10 @@ type Auth interface {
 	Apply(*http.Request) error
 }
 
+// AuthFunc adapts a request function to Auth.
 type AuthFunc func(*http.Request) error
 
+// Apply invokes the authentication function.
 func (f AuthFunc) Apply(req *http.Request) error { return f(req) }
 
 // NoAuth leaves the request unchanged.
@@ -55,17 +57,4 @@ func ChainAuth(auths ...Auth) Auth {
 		}
 		return nil
 	})
-}
-
-func defaultAuth(protocol Protocol, apiKey string) Auth {
-	if apiKey == "" {
-		return NoAuth
-	}
-	if protocol == AnthropicMessages {
-		return HeaderAuth("x-api-key", apiKey)
-	}
-	if protocol == GeminiGenerate {
-		return HeaderAuth("x-goog-api-key", apiKey)
-	}
-	return BearerAuth(apiKey)
 }

@@ -54,6 +54,32 @@ opencode/claude-sonnet-5
 opencode-go/kimi-k3
 ```
 
+### Provider Imports In Go
+
+For embedded Go use, import the provider package for each provider-specific deployment you use. The import registers its authentication and routing behavior.
+
+For example, the OpenAI model helper registers the OpenAI deployment, including Codex OAuth:
+
+```go
+import (
+    "github.com/chaserensberger/wingman/models/providers"
+    "github.com/chaserensberger/wingman/models/providers/openai"
+)
+
+client := provider.NewClient(nil)
+model := openai.Model("gpt-5.6-luna")
+```
+
+If your application constructs model references from configuration, use a blank import instead:
+
+```go
+import _ "github.com/chaserensberger/wingman/models/providers/openai"
+```
+
+Catalog lookup does not register a provider deployment. Without its registered deployment, an OAuth request fails before dispatch instead of using an API-key endpoint. API-key routes can use the supported protocol defaults.
+
+The Wingman daemon already registers its built-in providers. HTTP clients do not need these Go imports.
+
 ## Provider-Neutral Messages
 
 WingModels stores conversation content as provider-neutral messages with typed parts:
@@ -69,21 +95,26 @@ Providers convert this common format to native wire formats at request time. Thi
 
 ## Streaming
 
-Every provider emits normalized `models.StreamPart` values. The current lifecycle is:
+Every provider emits normalized `models.StreamPart` values. After `Stream` returns a stream, its lifecycle is:
 
 ```text
 StreamStartPart
-(TextStartPart | TextDeltaPart | TextEndPart | ToolInputStartPart | ToolInputDeltaPart | ToolInputEndPart | ToolCallPart_ | ResponseMetadataPart | ErrorPart)*
-FinishPart
+  text, reasoning, tool, and response metadata parts (zero or more)
+  ├─ completion: FinishPart
+  └─ failure:    ErrorPart
 ```
 
-`FinishPart` carries usage, a finish reason, and the final assembled assistant message. Consumers can also call `EventStream.Final()` after they drain the stream.
+`FinishPart` carries usage, a finish reason, and the final assembled assistant message. A failed stream does not emit `FinishPart`.
+
+Drain the stream, then check the error from `EventStream.Final()` before you treat the response as complete. `Final()` returns the partial message and the error when a stream fails. Cancellation can prevent delivery of `ErrorPart`, so that event is not a substitute for the final error.
+
+A closed provider connection does not establish completion. WingModels requires completion evidence from the provider protocol. An interrupted stream fails even when it contains partial output. A completed response can contain no text. Token limits and content restrictions appear in the finish reason.
 
 Provider-backed streams bind their producer to the request context. If the consumer stops draining a full stream, cancellation unblocks the producer. Malformed tool arguments fail with a decoding error instead of becoming an empty object. Parallel OpenAI-compatible tool calls retain provider index order.
 
 ## Provider Errors And Retries
 
-WingModels returns `models.ProviderError` for provider and transport failures. The error preserves its underlying cause. It classifies the failure as one of:
+WingModels returns `models.ProviderError` for provider and transport failures. The error preserves its underlying cause for Go callers. It classifies the failure as one of:
 
 ```text
 authentication
@@ -100,13 +131,17 @@ cancellation
 
 It also carries safe status, provider request ID, retryability, and optional `Retry-After` data. Provider response bodies are not included in public error messages.
 
+HTTP 200 means that the provider accepted the streaming connection, not that generation succeeded. A provider can report a failure inside that stream. The daemon does not retain the native failure frame in model-call records or logs. A generic error and request ID alone cannot establish its cause.
+
 The agent loop retries retryable dispatch failures up to three physical attempts by default. It uses cancellation-aware exponential backoff. It honors `Retry-After`. Every attempt receives a separate durable model-call record. WingModels never retries failures after a stream is established.
 
 Embedded Go callers can configure this behavior with `session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
 
 ## Request Options
 
-`Request.ProviderOptions` supplies top-level provider-native body fields for the active provider ID. `Request.HTTP.Body` is the final override for advanced callers. Per-request HTTP query values override configured route query values without changing process configuration.
+`Request.ProviderOptions` supplies top-level provider-native body fields for the active provider ID. `Request.HTTP.Body` is the final caller override. Required deployment values still apply. For example, Codex OAuth always sends `store: false`.
+
+HTTP header names are case-insensitive. Request headers override variant headers, but required deployment headers take precedence. Per-request HTTP query values override configured route query values without changing process configuration.
 
 ## Provider Route Overlays
 

@@ -1,4 +1,4 @@
-package httpmodel
+package route
 
 import (
 	"context"
@@ -51,11 +51,6 @@ func transportError(provider string, err error) *models.ProviderError {
 
 func decodingError(provider, message string, cause error) *models.ProviderError {
 	return &models.ProviderError{Category: models.ErrorDecoding, Provider: provider, Message: message, Cause: cause}
-}
-
-func isTransportError(err error) bool {
-	var networkErr net.Error
-	return errors.As(err, &networkErr)
 }
 
 func retryAfter(headers http.Header) *time.Duration {

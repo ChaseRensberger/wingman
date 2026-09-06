@@ -1,3 +1,4 @@
+// Package openaicompat registers compatible model deployments.
 package openaicompat
 
 import provider "github.com/chaserensberger/wingman/models/providers"
@@ -15,6 +16,6 @@ func init() {
 	} {
 		meta := provider.ProviderMeta{ID: p.id, Name: p.name, BaseURL: p.baseURL}
 		meta.AuthTypes = []provider.AuthType{{Type: "api_key"}}
-		provider.Register(meta)
+		provider.Register(meta, provider.DefaultRoute)
 	}
 }

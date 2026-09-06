@@ -1,3 +1,4 @@
+// Package google registers Gemini model routes.
 package google
 
 import (
@@ -18,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "Gemini",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }

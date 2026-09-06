@@ -19,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "OpenCode Go",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }

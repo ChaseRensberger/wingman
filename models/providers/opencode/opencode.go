@@ -1,3 +1,4 @@
+// Package opencode registers OpenCode model routes.
 package opencode
 
 import (
@@ -18,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "OpenCode",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }

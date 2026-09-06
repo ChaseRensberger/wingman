@@ -1,3 +1,4 @@
+// Package deepseek registers DeepSeek model routes.
 package deepseek
 
 import (
@@ -18,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "DeepSeek",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }

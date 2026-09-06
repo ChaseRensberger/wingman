@@ -1,3 +1,4 @@
+// Package anthropic registers Anthropic model routes.
 package anthropic
 
 import (
@@ -18,5 +19,5 @@ func init() {
 		ID:        ID,
 		Name:      "Anthropic",
 		AuthTypes: []provider.AuthType{{Type: "api_key"}},
-	})
+	}, provider.DefaultRoute)
 }
