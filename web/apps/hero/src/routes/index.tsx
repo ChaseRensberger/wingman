@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@wingman/core/componen
 import { TypographyH2 } from "@wingman/core/components/core/typography";
 import WingmanIcon from "../assets/WingmanBlue.png";
 import { ASCIILOGO } from "../components/ascii-logo";
+import { LatestRelease } from "../components/latest-release";
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
@@ -161,7 +162,10 @@ function CopyCommand({ command, children }: { command: string; children: React.R
 function InstallSection() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground uppercase tracking-wider">INSTALL</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">INSTALL</p>
+        <LatestRelease />
+      </div>
       <CopyCommand command={SERVER_COMMAND}>{SERVER_COMMAND}</CopyCommand>
       <p className="text-xs text-muted-foreground font-mono">
         SUPPORTED: Linux (x86_64, ARM64) · macOS (Apple Silicon, Intel)
