@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	toolpkg "github.com/chaserensberger/wingman/tool"
+	wingmandocs "github.com/chaserensberger/wingman/web/apps/docs"
 )
 
 func TestDiscoverParsesAndOverridesSkills(t *testing.T) {
@@ -46,8 +47,21 @@ func TestBuiltinsIncludesWingman(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(skills) != 1 || skills[0].ID != "wingskill" || skills[0].Name != "WingSkill" || skills[0].Description == "" || !strings.Contains(skills[0].Content, "official Wingman documentation") || skills[0].SHA256 == "" || len(skills[0].EmbeddedResources) != 35 || len(skills[0].SupportingFiles) != 0 {
+	if len(skills) != 1 || skills[0].ID != "wingskill" || skills[0].Name != "WingSkill" || skills[0].Description == "" || !strings.Contains(skills[0].Content, "official Wingman documentation") || skills[0].SHA256 == "" || len(skills[0].SupportingFiles) != 0 {
 		t.Fatalf("built-in skills = %#v", skills)
+	}
+	docs, err := wingmandocs.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills[0].EmbeddedResources) != len(docs) {
+		t.Fatalf("embedded resources = %d, want %d", len(skills[0].EmbeddedResources), len(docs))
+	}
+	for i, file := range docs {
+		want := EmbeddedResource{Path: file.Path, SHA256: file.SHA256}
+		if got := skills[0].EmbeddedResources[i]; got != want {
+			t.Errorf("embedded resource %d = %#v, want %#v", i, got, want)
+		}
 	}
 	data, err := json.Marshal(skills[0])
 	if err != nil || strings.Contains(string(data), "# Quick Start") {
