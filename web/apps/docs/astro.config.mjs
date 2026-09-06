@@ -33,6 +33,7 @@ export default defineConfig({
           items: [
             { label: "Introduction", link: "/" },
             { label: "Quick Start", slug: "start-here/quickstart" },
+            { label: "Wingston", slug: "start-here/wingston" },
           ],
         },
         {
