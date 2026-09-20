@@ -62,6 +62,7 @@ export default defineConfig({
       "/filesystem": daemonProxy(),
       "/sessions": daemonProxy(),
       "/tools": daemonProxy(),
+      "/triggers": daemonProxy(),
       "/plugins": daemonProxy(),
       "/run": daemonProxy(),
     },

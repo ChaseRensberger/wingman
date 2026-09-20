@@ -3,6 +3,7 @@ import {
   LightningIcon,
   SolarRoofIcon,
   StackIcon,
+  TimerIcon,
   WrenchIcon,
 } from "@phosphor-icons/react";
 
@@ -11,5 +12,6 @@ export const navItems = [
   { to: "/agents", icon: LightningIcon, label: "Agents" },
   { to: "/tools", icon: WrenchIcon, label: "Tools" },
   { to: "/providers", icon: SolarRoofIcon, label: "Providers" },
+  { to: "/triggers", icon: TimerIcon, label: "Triggers" },
   { to: "/settings", icon: GearIcon, label: "Settings" },
 ] as const;

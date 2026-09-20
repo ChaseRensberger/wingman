@@ -38,6 +38,7 @@ type Server struct {
 	router                 *chi.Mux
 	protocol               huma.API
 	runs                   *sessionRunManager
+	triggers               *triggerManager
 	permissionRequests     *permissionRequestManager
 	events                 *sessionEventBroker
 	consoleDevURL          string
@@ -152,6 +153,7 @@ func New(cfg Config) *Server {
 		shutdownCancel:         cancel,
 	}
 	s.runs = newSessionRunManager(s)
+	s.triggers = newTriggerManager(s)
 	s.permissionRequests = newPermissionRequestManager(s, cfg.PermissionTimeout)
 
 	s.setupMiddleware()
@@ -306,6 +308,7 @@ func shouldBypassTimeout(r *http.Request) bool {
 }
 
 func (s *Server) setupRoutes() {
+	s.registerTriggerRoutes()
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
@@ -529,6 +532,9 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 		return fmt.Errorf("resume queued session runs: %w", err)
 	}
 	s.runs.startReconciler()
+	if s.triggers != nil {
+		s.triggers.start()
+	}
 	return nil
 }
 
@@ -538,6 +544,9 @@ func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		s.ready.Store(false)
 		s.shutdownCancel()
+		if s.triggers != nil {
+			s.triggers.stop()
+		}
 		if s.runs != nil {
 			s.runs.stop()
 		}
@@ -547,6 +556,9 @@ func (s *Server) Close(ctx context.Context) error {
 	})
 
 	var errs []error
+	if s.triggers != nil {
+		errs = append(errs, s.triggers.wait(ctx))
+	}
 	if s.runs != nil {
 		errs = append(errs, s.runs.wait(ctx))
 	}

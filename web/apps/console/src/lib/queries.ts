@@ -22,12 +22,28 @@ export const queryKeys = {
   sessions: ["sessions"] as const,
   tools: ["tools"] as const,
   workspaces: ["workspaces"] as const,
+  triggers: ["triggers"] as const,
+  triggerOccurrences: (id?: string) => ["trigger-occurrences", id ?? "all"] as const,
 };
 
 export const agentsQuery = queryOptions({
   queryKey: queryKeys.agents,
   queryFn: () => client.agents.list() as Promise<Agent[]>,
 });
+
+export const triggersQuery = queryOptions({
+  queryKey: queryKeys.triggers,
+  queryFn: () => client.triggers.list(),
+  refetchInterval: 5_000,
+});
+
+export function triggerOccurrencesQuery(id?: string) {
+  return queryOptions({
+    queryKey: queryKeys.triggerOccurrences(id),
+    queryFn: () => client.triggers.occurrences(id),
+    refetchInterval: 5_000,
+  });
+}
 
 export function agentQuery(id: string) {
   return queryOptions({

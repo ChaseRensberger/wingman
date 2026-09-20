@@ -17,8 +17,8 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 1 || migrations[0].version != 1 || migrations[0].name != "init" {
-		t.Fatalf("migrations = %#v, want 0001_init", migrations)
+	if len(migrations) != 2 || migrations[0].name != "init" || migrations[1].name != "triggers" {
+		t.Fatalf("expected initial schema and trigger migrations, got %d migrations", len(migrations))
 	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 1 AND name = 'init' AND checksum <> ''`).Scan(&count); err != nil {
@@ -38,6 +38,8 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"permission_grants":   {"session_id", "action", "resource"},
 		"session_events":      {"schema_version"},
 		"aggregate_events":    {"global_sequence", "schema_version", "causation_id", "correlation_id", "client_id", "run_id"},
+		"triggers":            {"client_id", "config_json", "version", "next_fire_at"},
+		"trigger_occurrences": {"trigger_id", "request_id", "session_id", "run_id"},
 	} {
 		for _, column := range columns {
 			if !schemaHasColumn(t, db, table, column) {

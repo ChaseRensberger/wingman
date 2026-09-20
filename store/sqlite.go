@@ -876,19 +876,25 @@ func (s *SQLiteStore) DeleteWorkspace(id string) error {
 // CreateSession appends session.created and updates the session projection in
 // one transaction.
 func (s *SQLiteStore) CreateSession(session *Session) error {
-	if session.ID == "" {
-		session.ID = NewID(PrefixSession)
-	}
-	now := Now()
-	session.CreatedAt = now
-	session.UpdatedAt = now
-
 	ctx := context.Background()
 	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := createSessionTx(ctx, tx, session); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func createSessionTx(ctx context.Context, tx *immediateTx, session *Session) error {
+	if session.ID == "" {
+		session.ID = NewID(PrefixSession)
+	}
+	now := Now()
+	session.CreatedAt = now
+	session.UpdatedAt = now
 
 	if session.ClientID != "" {
 		var exists int
@@ -940,9 +946,6 @@ func (s *SQLiteStore) CreateSession(session *Session) error {
 		return fmt.Errorf("insert session: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
 	*session = *projected
 	return nil
 }
@@ -2233,14 +2236,25 @@ func (s *SQLiteStore) InterruptActiveToolUses(ctx context.Context) error {
 }
 
 func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (SessionRunAdmission, error) {
-	if run.Kind == "" {
-		run.Kind = SessionRunKindMessage
-	}
 	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return SessionRunAdmission{}, err
 	}
 	defer tx.Rollback()
+	admission, err := admitSessionRunTx(ctx, tx, run)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SessionRunAdmission{}, err
+	}
+	return admission, nil
+}
+
+func admitSessionRunTx(ctx context.Context, tx *immediateTx, run SessionRun) (SessionRunAdmission, error) {
+	if run.Kind == "" {
+		run.Kind = SessionRunKindMessage
+	}
 
 	session, err := getSessionTx(ctx, tx, run.SessionID)
 	if err != nil {
@@ -2316,9 +2330,6 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	queued := SessionEvent{ID: NewID(PrefixEvent), SchemaVersion: 1, Type: "session.run.queued", Time: now, SessionID: run.SessionID, Seq: maxSeq.Int64 + 1, DataJSON: queuedData, Data: queuedData}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO session_events (id, session_id, seq, schema_version, type, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, queued.ID, queued.SessionID, queued.Seq, queued.SchemaVersion, queued.Type, string(queued.DataJSON), now.Format(time.RFC3339Nano)); err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("insert queued session event: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return SessionRunAdmission{}, err
 	}
 	return SessionRunAdmission{Run: run, SessionVersion: run.AdmittedVersion, Created: true, QueuedEvent: queued}, nil
 }

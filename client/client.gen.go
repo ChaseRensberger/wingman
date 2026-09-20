@@ -32,6 +32,24 @@ func (e ImagePartType) Valid() bool {
 	}
 }
 
+// Defines values for OccurrenceSource.
+const (
+	OccurrenceSourceCron   OccurrenceSource = "cron"
+	OccurrenceSourceManual OccurrenceSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the OccurrenceSource enum.
+func (e OccurrenceSource) Valid() bool {
+	switch e {
+	case OccurrenceSourceCron:
+		return true
+	case OccurrenceSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReasoningPartType.
 const (
 	Reasoning ReasoningPartType = "reasoning"
@@ -41,6 +59,21 @@ const (
 func (e ReasoningPartType) Valid() bool {
 	switch e {
 	case Reasoning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceType.
+const (
+	SourceTypeCron SourceType = "cron"
+)
+
+// Valid indicates whether the value is a known member of the SourceType enum.
+func (e SourceType) Valid() bool {
+	switch e {
+	case SourceTypeCron:
 		return true
 	default:
 		return false
@@ -211,6 +244,15 @@ type Client struct {
 	Name      string `json:"name"`
 }
 
+// Config defines model for Config.
+type Config struct {
+	Enabled bool   `json:"enabled"`
+	Name    string `json:"name"`
+	Prompt  string `json:"prompt"`
+	Source  Source `json:"source"`
+	Target  Target `json:"target"`
+}
+
 // CreateAgentRequest defines model for CreateAgentRequest.
 type CreateAgentRequest struct {
 	Instructions *string                 `json:"instructions,omitempty"`
@@ -293,6 +335,11 @@ type ErrorDetail struct {
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Error Error `json:"error"`
+}
+
+// FireTriggerRequest defines model for FireTriggerRequest.
+type FireTriggerRequest struct {
+	RequestId string `json:"request_id"`
 }
 
 // HTTPOptions defines model for HTTPOptions.
@@ -533,6 +580,26 @@ type OauthAttemptDTO struct {
 	Status       string  `json:"status"`
 	Url          *string `json:"url,omitempty"`
 }
+
+// Occurrence defines model for Occurrence.
+type Occurrence struct {
+	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	CreatedAt   time.Time        `json:"created_at"`
+	Id          string           `json:"id"`
+	Reason      *string          `json:"reason,omitempty"`
+	RequestId   string           `json:"request_id"`
+	RunId       *string          `json:"run_id,omitempty"`
+	ScheduledAt time.Time        `json:"scheduled_at"`
+	SessionId   *string          `json:"session_id,omitempty"`
+	Source      OccurrenceSource `json:"source"`
+	StartedAt   *time.Time       `json:"started_at,omitempty"`
+	Status      string           `json:"status"`
+	TriggerId   string           `json:"trigger_id"`
+	TriggerName string           `json:"trigger_name"`
+}
+
+// OccurrenceSource defines model for Occurrence.Source.
+type OccurrenceSource string
 
 // OutputSchema defines model for OutputSchema.
 type OutputSchema struct {
@@ -914,6 +981,16 @@ type SetProvidersAuthRequest struct {
 	Providers map[string]AuthCredential `json:"providers"`
 }
 
+// Source defines model for Source.
+type Source struct {
+	Expression string     `json:"expression"`
+	TimeZone   string     `json:"time_zone"`
+	Type       SourceType `json:"type"`
+}
+
+// SourceType defines model for Source.Type.
+type SourceType string
+
 // StatusResponse defines model for StatusResponse.
 type StatusResponse struct {
 	Status string `json:"status"`
@@ -923,6 +1000,14 @@ type StatusResponse struct {
 type SystemTrace struct {
 	Bytes  int64  `json:"bytes"`
 	Sha256 string `json:"sha256"`
+}
+
+// Target defines model for Target.
+type Target struct {
+	AgentId          string  `json:"agent_id"`
+	ModelRef         *string `json:"model_ref,omitempty"`
+	WorkingDirectory *string `json:"working_directory,omitempty"`
+	WorkspaceId      *string `json:"workspace_id,omitempty"`
 }
 
 // TextPart defines model for TextPart.
@@ -1048,6 +1133,34 @@ type ToolUse struct {
 	UpdatedAt          *time.Time  `json:"updated_at,omitempty"`
 }
 
+// Trigger defines model for Trigger.
+type Trigger struct {
+	ClientId       string      `json:"client_id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	Enabled        bool        `json:"enabled"`
+	Id             string      `json:"id"`
+	LastOccurrence *Occurrence `json:"last_occurrence,omitempty"`
+	Name           string      `json:"name"`
+	NextFireAt     *time.Time  `json:"next_fire_at,omitempty"`
+	Prompt         string      `json:"prompt"`
+	RunCount       int64       `json:"run_count"`
+	Source         Source      `json:"source"`
+	Target         Target      `json:"target"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	Version        int64       `json:"version"`
+}
+
+// TriggerPreview defines model for TriggerPreview.
+type TriggerPreview struct {
+	Times *[]time.Time `json:"times"`
+}
+
+// TriggerStateRequest defines model for TriggerStateRequest.
+type TriggerStateRequest struct {
+	Enabled         bool  `json:"enabled"`
+	ExpectedVersion int64 `json:"expected_version"`
+}
+
 // UpdateAgentRequest defines model for UpdateAgentRequest.
 type UpdateAgentRequest struct {
 	Instructions *string                 `json:"instructions,omitempty"`
@@ -1058,6 +1171,16 @@ type UpdateAgentRequest struct {
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
+}
+
+// UpdateTriggerRequest defines model for UpdateTriggerRequest.
+type UpdateTriggerRequest struct {
+	Enabled         bool   `json:"enabled"`
+	ExpectedVersion int64  `json:"expected_version"`
+	Name            string `json:"name"`
+	Prompt          string `json:"prompt"`
+	Source          Source `json:"source"`
+	Target          Target `json:"target"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -1428,6 +1551,68 @@ type ListToolsParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// ListTriggersParams defines parameters for ListTriggers.
+type ListTriggersParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// CreateTriggerParams defines parameters for CreateTrigger.
+type CreateTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ListTriggerOccurrencesParams defines parameters for ListTriggerOccurrences.
+type ListTriggerOccurrencesParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// PreviewTriggerParams defines parameters for PreviewTrigger.
+type PreviewTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// DeleteTriggerParams defines parameters for DeleteTrigger.
+type DeleteTriggerParams struct {
+	ExpectedVersion int64 `form:"expected_version" json:"expected_version"`
+
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// GetTriggerParams defines parameters for GetTrigger.
+type GetTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// UpdateTriggerParams defines parameters for UpdateTrigger.
+type UpdateTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// FireTriggerParams defines parameters for FireTrigger.
+type FireTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ListOccurrencesForTriggerParams defines parameters for ListOccurrencesForTrigger.
+type ListOccurrencesForTriggerParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// SetTriggerStateParams defines parameters for SetTriggerState.
+type SetTriggerStateParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // ListWorkspacesParams defines parameters for ListWorkspaces.
 type ListWorkspacesParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1502,6 +1687,21 @@ type ReplyPermissionRequestJSONRequestBody = PermissionReplyRequest
 
 // RenameSessionJSONRequestBody defines body for RenameSession for application/json ContentType.
 type RenameSessionJSONRequestBody = RenameSessionRequest
+
+// CreateTriggerJSONRequestBody defines body for CreateTrigger for application/json ContentType.
+type CreateTriggerJSONRequestBody = Config
+
+// PreviewTriggerJSONRequestBody defines body for PreviewTrigger for application/json ContentType.
+type PreviewTriggerJSONRequestBody = Source
+
+// UpdateTriggerJSONRequestBody defines body for UpdateTrigger for application/json ContentType.
+type UpdateTriggerJSONRequestBody = UpdateTriggerRequest
+
+// FireTriggerJSONRequestBody defines body for FireTrigger for application/json ContentType.
+type FireTriggerJSONRequestBody = FireTriggerRequest
+
+// SetTriggerStateJSONRequestBody defines body for SetTriggerState for application/json ContentType.
+type SetTriggerStateJSONRequestBody = TriggerStateRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
@@ -2242,6 +2442,101 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /tools (the `ListTools` operationId).
 	ListTools(ctx context.Context, params *ListToolsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTriggers List client triggers
+	//
+	// Corresponds with GET /triggers (the `ListTriggers` operationId).
+	ListTriggers(ctx context.Context, params *ListTriggersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTriggerWithBody Create a trigger
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+	CreateTriggerWithBody(ctx context.Context, params *CreateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateTrigger Create a trigger
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+	CreateTrigger(ctx context.Context, params *CreateTriggerParams, body CreateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTriggerOccurrences List the latest 50 client trigger occurrences
+	//
+	// Corresponds with GET /triggers/occurrences (the `ListTriggerOccurrences` operationId).
+	ListTriggerOccurrences(ctx context.Context, params *ListTriggerOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewTriggerWithBody Preview the next five scheduled times
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+	PreviewTriggerWithBody(ctx context.Context, params *PreviewTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewTrigger Preview the next five scheduled times
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+	PreviewTrigger(ctx context.Context, params *PreviewTriggerParams, body PreviewTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteTrigger Delete a trigger and its occurrence history; keep its Sessions
+	//
+	// Corresponds with DELETE /triggers/{id} (the `DeleteTrigger` operationId).
+	DeleteTrigger(ctx context.Context, id string, params *DeleteTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTrigger Get a trigger
+	//
+	// Corresponds with GET /triggers/{id} (the `GetTrigger` operationId).
+	GetTrigger(ctx context.Context, id string, params *GetTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateTriggerWithBody Replace a trigger definition
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+	UpdateTriggerWithBody(ctx context.Context, id string, params *UpdateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateTrigger Replace a trigger definition
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+	UpdateTrigger(ctx context.Context, id string, params *UpdateTriggerParams, body UpdateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FireTriggerWithBody Submit a trigger manually without changing its schedule
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+	FireTriggerWithBody(ctx context.Context, id string, params *FireTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FireTrigger Submit a trigger manually without changing its schedule
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+	FireTrigger(ctx context.Context, id string, params *FireTriggerParams, body FireTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOccurrencesForTrigger List the latest 50 occurrences for a trigger
+	//
+	// Corresponds with GET /triggers/{id}/occurrences (the `ListOccurrencesForTrigger` operationId).
+	ListOccurrencesForTrigger(ctx context.Context, id string, params *ListOccurrencesForTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetTriggerStateWithBody Pause or resume a trigger
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+	SetTriggerStateWithBody(ctx context.Context, id string, params *SetTriggerStateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetTriggerState Pause or resume a trigger
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+	SetTriggerState(ctx context.Context, id string, params *SetTriggerStateParams, body SetTriggerStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListWorkspaces List Workspaces
 	//
@@ -3384,6 +3679,251 @@ func (c *GeneratedClient) ListSessionToolUses(ctx context.Context, id string, pa
 // Corresponds with GET /tools (the `ListTools` operationId).
 func (c *GeneratedClient) ListTools(ctx context.Context, params *ListToolsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListToolsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTriggers List client triggers
+//
+// Corresponds with GET /triggers (the `ListTriggers` operationId).
+func (c *GeneratedClient) ListTriggers(ctx context.Context, params *ListTriggersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTriggersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTriggerWithBody Create a trigger
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+func (c *GeneratedClient) CreateTriggerWithBody(ctx context.Context, params *CreateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTriggerRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateTrigger Create a trigger
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+func (c *GeneratedClient) CreateTrigger(ctx context.Context, params *CreateTriggerParams, body CreateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateTriggerRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTriggerOccurrences List the latest 50 client trigger occurrences
+//
+// Corresponds with GET /triggers/occurrences (the `ListTriggerOccurrences` operationId).
+func (c *GeneratedClient) ListTriggerOccurrences(ctx context.Context, params *ListTriggerOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTriggerOccurrencesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewTriggerWithBody Preview the next five scheduled times
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+func (c *GeneratedClient) PreviewTriggerWithBody(ctx context.Context, params *PreviewTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewTriggerRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewTrigger Preview the next five scheduled times
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+func (c *GeneratedClient) PreviewTrigger(ctx context.Context, params *PreviewTriggerParams, body PreviewTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewTriggerRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteTrigger Delete a trigger and its occurrence history; keep its Sessions
+//
+// Corresponds with DELETE /triggers/{id} (the `DeleteTrigger` operationId).
+func (c *GeneratedClient) DeleteTrigger(ctx context.Context, id string, params *DeleteTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTriggerRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTrigger Get a trigger
+//
+// Corresponds with GET /triggers/{id} (the `GetTrigger` operationId).
+func (c *GeneratedClient) GetTrigger(ctx context.Context, id string, params *GetTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTriggerRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateTriggerWithBody Replace a trigger definition
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+func (c *GeneratedClient) UpdateTriggerWithBody(ctx context.Context, id string, params *UpdateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTriggerRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateTrigger Replace a trigger definition
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+func (c *GeneratedClient) UpdateTrigger(ctx context.Context, id string, params *UpdateTriggerParams, body UpdateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateTriggerRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// FireTriggerWithBody Submit a trigger manually without changing its schedule
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+func (c *GeneratedClient) FireTriggerWithBody(ctx context.Context, id string, params *FireTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFireTriggerRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// FireTrigger Submit a trigger manually without changing its schedule
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+func (c *GeneratedClient) FireTrigger(ctx context.Context, id string, params *FireTriggerParams, body FireTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFireTriggerRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListOccurrencesForTrigger List the latest 50 occurrences for a trigger
+//
+// Corresponds with GET /triggers/{id}/occurrences (the `ListOccurrencesForTrigger` operationId).
+func (c *GeneratedClient) ListOccurrencesForTrigger(ctx context.Context, id string, params *ListOccurrencesForTriggerParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOccurrencesForTriggerRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetTriggerStateWithBody Pause or resume a trigger
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+func (c *GeneratedClient) SetTriggerStateWithBody(ctx context.Context, id string, params *SetTriggerStateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetTriggerStateRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetTriggerState Pause or resume a trigger
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+func (c *GeneratedClient) SetTriggerState(ctx context.Context, id string, params *SetTriggerStateParams, body SetTriggerStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetTriggerStateRequest(c.Server, id, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6409,6 +6949,556 @@ func NewListToolsRequest(server string, params *ListToolsParams) (*http.Request,
 	return req, nil
 }
 
+// NewListTriggersRequest constructs an http.Request for the ListTriggers method
+func NewListTriggersRequest(server string, params *ListTriggersParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateTriggerRequest calls the generic CreateTrigger builder with application/json body
+func NewCreateTriggerRequest(server string, params *CreateTriggerParams, body CreateTriggerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateTriggerRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCreateTriggerRequestWithBody constructs an http.Request for the CreateTrigger method, with any body, and a specified content type
+func NewCreateTriggerRequestWithBody(server string, params *CreateTriggerParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListTriggerOccurrencesRequest constructs an http.Request for the ListTriggerOccurrences method
+func NewListTriggerOccurrencesRequest(server string, params *ListTriggerOccurrencesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/occurrences")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewPreviewTriggerRequest calls the generic PreviewTrigger builder with application/json body
+func NewPreviewTriggerRequest(server string, params *PreviewTriggerParams, body PreviewTriggerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewTriggerRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPreviewTriggerRequestWithBody constructs an http.Request for the PreviewTrigger method, with any body, and a specified content type
+func NewPreviewTriggerRequestWithBody(server string, params *PreviewTriggerParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteTriggerRequest constructs an http.Request for the DeleteTrigger method
+func NewDeleteTriggerRequest(server string, id string, params *DeleteTriggerParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "expected_version", params.ExpectedVersion, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetTriggerRequest constructs an http.Request for the GetTrigger method
+func NewGetTriggerRequest(server string, id string, params *GetTriggerParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewUpdateTriggerRequest calls the generic UpdateTrigger builder with application/json body
+func NewUpdateTriggerRequest(server string, id string, params *UpdateTriggerParams, body UpdateTriggerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateTriggerRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewUpdateTriggerRequestWithBody constructs an http.Request for the UpdateTrigger method, with any body, and a specified content type
+func NewUpdateTriggerRequestWithBody(server string, id string, params *UpdateTriggerParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewFireTriggerRequest calls the generic FireTrigger builder with application/json body
+func NewFireTriggerRequest(server string, id string, params *FireTriggerParams, body FireTriggerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewFireTriggerRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewFireTriggerRequestWithBody constructs an http.Request for the FireTrigger method, with any body, and a specified content type
+func NewFireTriggerRequestWithBody(server string, id string, params *FireTriggerParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s/fire", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListOccurrencesForTriggerRequest constructs an http.Request for the ListOccurrencesForTrigger method
+func NewListOccurrencesForTriggerRequest(server string, id string, params *ListOccurrencesForTriggerParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s/occurrences", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewSetTriggerStateRequest calls the generic SetTriggerState builder with application/json body
+func NewSetTriggerStateRequest(server string, id string, params *SetTriggerStateParams, body SetTriggerStateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetTriggerStateRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewSetTriggerStateRequestWithBody constructs an http.Request for the SetTriggerState method, with any body, and a specified content type
+func NewSetTriggerStateRequestWithBody(server string, id string, params *SetTriggerStateParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/triggers/%s/state", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListWorkspacesRequest constructs an http.Request for the ListWorkspaces method
 func NewListWorkspacesRequest(server string, params *ListWorkspacesParams) (*http.Request, error) {
 	var err error
@@ -7248,6 +8338,111 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /tools (the `ListTools` operationId).
 	ListToolsWithResponse(ctx context.Context, params *ListToolsParams, reqEditors ...RequestEditorFn) (*ListToolsHTTPResponse, error)
+
+	// ListTriggersWithResponse List client triggers
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triggers (the `ListTriggers` operationId).
+	ListTriggersWithResponse(ctx context.Context, params *ListTriggersParams, reqEditors ...RequestEditorFn) (*ListTriggersHTTPResponse, error)
+
+	// CreateTriggerWithBodyWithResponse Create a trigger
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+	CreateTriggerWithBodyWithResponse(ctx context.Context, params *CreateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTriggerHTTPResponse, error)
+
+	// CreateTriggerWithResponse Create a trigger
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+	CreateTriggerWithResponse(ctx context.Context, params *CreateTriggerParams, body CreateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTriggerHTTPResponse, error)
+
+	// ListTriggerOccurrencesWithResponse List the latest 50 client trigger occurrences
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triggers/occurrences (the `ListTriggerOccurrences` operationId).
+	ListTriggerOccurrencesWithResponse(ctx context.Context, params *ListTriggerOccurrencesParams, reqEditors ...RequestEditorFn) (*ListTriggerOccurrencesHTTPResponse, error)
+
+	// PreviewTriggerWithBodyWithResponse Preview the next five scheduled times
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+	PreviewTriggerWithBodyWithResponse(ctx context.Context, params *PreviewTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewTriggerHTTPResponse, error)
+
+	// PreviewTriggerWithResponse Preview the next five scheduled times
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+	PreviewTriggerWithResponse(ctx context.Context, params *PreviewTriggerParams, body PreviewTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewTriggerHTTPResponse, error)
+
+	// DeleteTriggerWithResponse Delete a trigger and its occurrence history; keep its Sessions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /triggers/{id} (the `DeleteTrigger` operationId).
+	DeleteTriggerWithResponse(ctx context.Context, id string, params *DeleteTriggerParams, reqEditors ...RequestEditorFn) (*DeleteTriggerHTTPResponse, error)
+
+	// GetTriggerWithResponse Get a trigger
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triggers/{id} (the `GetTrigger` operationId).
+	GetTriggerWithResponse(ctx context.Context, id string, params *GetTriggerParams, reqEditors ...RequestEditorFn) (*GetTriggerHTTPResponse, error)
+
+	// UpdateTriggerWithBodyWithResponse Replace a trigger definition
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+	UpdateTriggerWithBodyWithResponse(ctx context.Context, id string, params *UpdateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTriggerHTTPResponse, error)
+
+	// UpdateTriggerWithResponse Replace a trigger definition
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+	UpdateTriggerWithResponse(ctx context.Context, id string, params *UpdateTriggerParams, body UpdateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTriggerHTTPResponse, error)
+
+	// FireTriggerWithBodyWithResponse Submit a trigger manually without changing its schedule
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+	FireTriggerWithBodyWithResponse(ctx context.Context, id string, params *FireTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FireTriggerHTTPResponse, error)
+
+	// FireTriggerWithResponse Submit a trigger manually without changing its schedule
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+	FireTriggerWithResponse(ctx context.Context, id string, params *FireTriggerParams, body FireTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*FireTriggerHTTPResponse, error)
+
+	// ListOccurrencesForTriggerWithResponse List the latest 50 occurrences for a trigger
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /triggers/{id}/occurrences (the `ListOccurrencesForTrigger` operationId).
+	ListOccurrencesForTriggerWithResponse(ctx context.Context, id string, params *ListOccurrencesForTriggerParams, reqEditors ...RequestEditorFn) (*ListOccurrencesForTriggerHTTPResponse, error)
+
+	// SetTriggerStateWithBodyWithResponse Pause or resume a trigger
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+	SetTriggerStateWithBodyWithResponse(ctx context.Context, id string, params *SetTriggerStateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetTriggerStateHTTPResponse, error)
+
+	// SetTriggerStateWithResponse Pause or resume a trigger
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+	SetTriggerStateWithResponse(ctx context.Context, id string, params *SetTriggerStateParams, body SetTriggerStateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetTriggerStateHTTPResponse, error)
 
 	// ListWorkspacesWithResponse List Workspaces
 	//
@@ -10028,6 +11223,486 @@ func (r ListToolsHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListTriggersHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Trigger
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTriggersHTTPResponse) GetJSON200() *[]Trigger {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListTriggersHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTriggersHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTriggersHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTriggersHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTriggersHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Trigger
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateTriggerHTTPResponse) GetJSON201() *Trigger {
+	return r.JSON201
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListTriggerOccurrencesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Occurrence
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTriggerOccurrencesHTTPResponse) GetJSON200() *[]Occurrence {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListTriggerOccurrencesHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTriggerOccurrencesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTriggerOccurrencesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTriggerOccurrencesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTriggerOccurrencesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TriggerPreview
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewTriggerHTTPResponse) GetJSON200() *TriggerPreview {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r PreviewTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *StatusResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteTriggerHTTPResponse) GetJSON200() *StatusResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r DeleteTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Trigger
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTriggerHTTPResponse) GetJSON200() *Trigger {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Trigger
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateTriggerHTTPResponse) GetJSON200() *Trigger {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r UpdateTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type FireTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *Occurrence
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r FireTriggerHTTPResponse) GetJSON202() *Occurrence {
+	return r.JSON202
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r FireTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r FireTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r FireTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r FireTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r FireTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListOccurrencesForTriggerHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Occurrence
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListOccurrencesForTriggerHTTPResponse) GetJSON200() *[]Occurrence {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListOccurrencesForTriggerHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListOccurrencesForTriggerHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOccurrencesForTriggerHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOccurrencesForTriggerHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOccurrencesForTriggerHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetTriggerStateHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Trigger
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetTriggerStateHTTPResponse) GetJSON200() *Trigger {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetTriggerStateHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetTriggerStateHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetTriggerStateHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetTriggerStateHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetTriggerStateHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListWorkspacesHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11224,6 +12899,201 @@ func (c *ClientWithResponses) ListToolsWithResponse(ctx context.Context, params 
 		return nil, err
 	}
 	return ParseListToolsHTTPResponse(rsp)
+}
+
+// ListTriggersWithResponse List client triggers
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triggers (the `ListTriggers` operationId).
+func (c *ClientWithResponses) ListTriggersWithResponse(ctx context.Context, params *ListTriggersParams, reqEditors ...RequestEditorFn) (*ListTriggersHTTPResponse, error) {
+	rsp, err := c.ListTriggers(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTriggersHTTPResponse(rsp)
+}
+
+// CreateTriggerWithBodyWithResponse Create a trigger
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+func (c *ClientWithResponses) CreateTriggerWithBodyWithResponse(ctx context.Context, params *CreateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateTriggerHTTPResponse, error) {
+	rsp, err := c.CreateTriggerWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTriggerHTTPResponse(rsp)
+}
+
+// CreateTriggerWithResponse Create a trigger
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers (the `CreateTrigger` operationId).
+func (c *ClientWithResponses) CreateTriggerWithResponse(ctx context.Context, params *CreateTriggerParams, body CreateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTriggerHTTPResponse, error) {
+	rsp, err := c.CreateTrigger(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateTriggerHTTPResponse(rsp)
+}
+
+// ListTriggerOccurrencesWithResponse List the latest 50 client trigger occurrences
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triggers/occurrences (the `ListTriggerOccurrences` operationId).
+func (c *ClientWithResponses) ListTriggerOccurrencesWithResponse(ctx context.Context, params *ListTriggerOccurrencesParams, reqEditors ...RequestEditorFn) (*ListTriggerOccurrencesHTTPResponse, error) {
+	rsp, err := c.ListTriggerOccurrences(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTriggerOccurrencesHTTPResponse(rsp)
+}
+
+// PreviewTriggerWithBodyWithResponse Preview the next five scheduled times
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+func (c *ClientWithResponses) PreviewTriggerWithBodyWithResponse(ctx context.Context, params *PreviewTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewTriggerHTTPResponse, error) {
+	rsp, err := c.PreviewTriggerWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewTriggerHTTPResponse(rsp)
+}
+
+// PreviewTriggerWithResponse Preview the next five scheduled times
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers/preview (the `PreviewTrigger` operationId).
+func (c *ClientWithResponses) PreviewTriggerWithResponse(ctx context.Context, params *PreviewTriggerParams, body PreviewTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewTriggerHTTPResponse, error) {
+	rsp, err := c.PreviewTrigger(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewTriggerHTTPResponse(rsp)
+}
+
+// DeleteTriggerWithResponse Delete a trigger and its occurrence history; keep its Sessions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /triggers/{id} (the `DeleteTrigger` operationId).
+func (c *ClientWithResponses) DeleteTriggerWithResponse(ctx context.Context, id string, params *DeleteTriggerParams, reqEditors ...RequestEditorFn) (*DeleteTriggerHTTPResponse, error) {
+	rsp, err := c.DeleteTrigger(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTriggerHTTPResponse(rsp)
+}
+
+// GetTriggerWithResponse Get a trigger
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triggers/{id} (the `GetTrigger` operationId).
+func (c *ClientWithResponses) GetTriggerWithResponse(ctx context.Context, id string, params *GetTriggerParams, reqEditors ...RequestEditorFn) (*GetTriggerHTTPResponse, error) {
+	rsp, err := c.GetTrigger(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTriggerHTTPResponse(rsp)
+}
+
+// UpdateTriggerWithBodyWithResponse Replace a trigger definition
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+func (c *ClientWithResponses) UpdateTriggerWithBodyWithResponse(ctx context.Context, id string, params *UpdateTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateTriggerHTTPResponse, error) {
+	rsp, err := c.UpdateTriggerWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTriggerHTTPResponse(rsp)
+}
+
+// UpdateTriggerWithResponse Replace a trigger definition
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /triggers/{id} (the `UpdateTrigger` operationId).
+func (c *ClientWithResponses) UpdateTriggerWithResponse(ctx context.Context, id string, params *UpdateTriggerParams, body UpdateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateTriggerHTTPResponse, error) {
+	rsp, err := c.UpdateTrigger(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateTriggerHTTPResponse(rsp)
+}
+
+// FireTriggerWithBodyWithResponse Submit a trigger manually without changing its schedule
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+func (c *ClientWithResponses) FireTriggerWithBodyWithResponse(ctx context.Context, id string, params *FireTriggerParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FireTriggerHTTPResponse, error) {
+	rsp, err := c.FireTriggerWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFireTriggerHTTPResponse(rsp)
+}
+
+// FireTriggerWithResponse Submit a trigger manually without changing its schedule
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /triggers/{id}/fire (the `FireTrigger` operationId).
+func (c *ClientWithResponses) FireTriggerWithResponse(ctx context.Context, id string, params *FireTriggerParams, body FireTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*FireTriggerHTTPResponse, error) {
+	rsp, err := c.FireTrigger(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFireTriggerHTTPResponse(rsp)
+}
+
+// ListOccurrencesForTriggerWithResponse List the latest 50 occurrences for a trigger
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /triggers/{id}/occurrences (the `ListOccurrencesForTrigger` operationId).
+func (c *ClientWithResponses) ListOccurrencesForTriggerWithResponse(ctx context.Context, id string, params *ListOccurrencesForTriggerParams, reqEditors ...RequestEditorFn) (*ListOccurrencesForTriggerHTTPResponse, error) {
+	rsp, err := c.ListOccurrencesForTrigger(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOccurrencesForTriggerHTTPResponse(rsp)
+}
+
+// SetTriggerStateWithBodyWithResponse Pause or resume a trigger
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+func (c *ClientWithResponses) SetTriggerStateWithBodyWithResponse(ctx context.Context, id string, params *SetTriggerStateParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetTriggerStateHTTPResponse, error) {
+	rsp, err := c.SetTriggerStateWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetTriggerStateHTTPResponse(rsp)
+}
+
+// SetTriggerStateWithResponse Pause or resume a trigger
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /triggers/{id}/state (the `SetTriggerState` operationId).
+func (c *ClientWithResponses) SetTriggerStateWithResponse(ctx context.Context, id string, params *SetTriggerStateParams, body SetTriggerStateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetTriggerStateHTTPResponse, error) {
+	rsp, err := c.SetTriggerState(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetTriggerStateHTTPResponse(rsp)
 }
 
 // ListWorkspacesWithResponse List Workspaces
@@ -13180,6 +15050,336 @@ func ParseListToolsHTTPResponse(rsp *http.Response) (*ListToolsHTTPResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest ToolCatalogResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTriggersHTTPResponse parses an HTTP response from a ListTriggersWithResponse call
+func ParseListTriggersHTTPResponse(rsp *http.Response) (*ListTriggersHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTriggersHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Trigger
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateTriggerHTTPResponse parses an HTTP response from a CreateTriggerWithResponse call
+func ParseCreateTriggerHTTPResponse(rsp *http.Response) (*CreateTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Trigger
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTriggerOccurrencesHTTPResponse parses an HTTP response from a ListTriggerOccurrencesWithResponse call
+func ParseListTriggerOccurrencesHTTPResponse(rsp *http.Response) (*ListTriggerOccurrencesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTriggerOccurrencesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Occurrence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewTriggerHTTPResponse parses an HTTP response from a PreviewTriggerWithResponse call
+func ParsePreviewTriggerHTTPResponse(rsp *http.Response) (*PreviewTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TriggerPreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteTriggerHTTPResponse parses an HTTP response from a DeleteTriggerWithResponse call
+func ParseDeleteTriggerHTTPResponse(rsp *http.Response) (*DeleteTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTriggerHTTPResponse parses an HTTP response from a GetTriggerWithResponse call
+func ParseGetTriggerHTTPResponse(rsp *http.Response) (*GetTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Trigger
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateTriggerHTTPResponse parses an HTTP response from a UpdateTriggerWithResponse call
+func ParseUpdateTriggerHTTPResponse(rsp *http.Response) (*UpdateTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Trigger
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseFireTriggerHTTPResponse parses an HTTP response from a FireTriggerWithResponse call
+func ParseFireTriggerHTTPResponse(rsp *http.Response) (*FireTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &FireTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Occurrence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOccurrencesForTriggerHTTPResponse parses an HTTP response from a ListOccurrencesForTriggerWithResponse call
+func ParseListOccurrencesForTriggerHTTPResponse(rsp *http.Response) (*ListOccurrencesForTriggerHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOccurrencesForTriggerHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Occurrence
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetTriggerStateHTTPResponse parses an HTTP response from a SetTriggerStateWithResponse call
+func ParseSetTriggerStateHTTPResponse(rsp *http.Response) (*SetTriggerStateHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetTriggerStateHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Trigger
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -24,6 +24,10 @@ export type SessionDetail = components["schemas"]["SessionDetail"];
 export type SessionEvent = components["schemas"]["SessionEvent"];
 export type SessionRun = components["schemas"]["SessionRun"];
 export type ToolUse = components["schemas"]["ToolUse"];
+export type Trigger = components["schemas"]["Trigger"];
+export type TriggerConfig = components["schemas"]["Config"];
+export type TriggerSource = components["schemas"]["Source"];
+export type TriggerOccurrence = components["schemas"]["Occurrence"];
 export type Workspace = components["schemas"]["Workspace"];
 
 export class APIError extends Error {
@@ -315,6 +319,34 @@ export function createWingmanClient(options: WingmanClientOptions) {
   };
 
   return {
+    triggers: {
+      list: () => requestData(api.GET("/triggers")),
+      get: (id: string) => requestData(api.GET("/triggers/{id}", { params: { path: { id } } })),
+      create: (request: TriggerConfig) => requestData(api.POST("/triggers", { body: request })),
+      update: (id: string, request: components["schemas"]["UpdateTriggerRequest"]) =>
+        requestData(api.PUT("/triggers/{id}", { params: { path: { id } }, body: request })),
+      setState: (id: string, request: components["schemas"]["TriggerStateRequest"]) =>
+        requestData(api.PUT("/triggers/{id}/state", { params: { path: { id } }, body: request })),
+      delete: (id: string, expectedVersion: number) =>
+        requestData(
+          api.DELETE("/triggers/{id}", {
+            params: { path: { id }, query: { expected_version: expectedVersion } },
+          }),
+        ),
+      fire: (id: string, requestId: string) =>
+        requestData(
+          api.POST("/triggers/{id}/fire", {
+            params: { path: { id } },
+            body: { request_id: requestId },
+          }),
+        ),
+      preview: (source: TriggerSource) =>
+        requestData(api.POST("/triggers/preview", { body: source })),
+      occurrences: (id?: string) =>
+        id
+          ? requestData(api.GET("/triggers/{id}/occurrences", { params: { path: { id } } }))
+          : requestData(api.GET("/triggers/occurrences")),
+    },
     actions: {
       list: async () => (await requestData(api.GET("/actions"))).actions ?? [],
     },
