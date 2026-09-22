@@ -635,31 +635,38 @@ func NewSessionMovedEvent(sessionID, workDir, workspaceID, updatedAt string) (Ag
 // ProjectSession rebuilds a session projection from its ordered event stream.
 func ProjectSession(events []AggregateEvent) (*Session, error) {
 	var session *Session
-	var version int64
 	for _, event := range events {
-		if event.Aggregate.Type != AggregateSession {
-			return nil, fmt.Errorf("project session: unexpected aggregate type %q", event.Aggregate.Type)
-		}
-		if session != nil && event.Aggregate.ID != session.ID {
-			return nil, fmt.Errorf("project session %s: event belongs to aggregate %s", session.ID, event.Aggregate.ID)
-		}
-		if event.Version != version+1 {
-			return nil, fmt.Errorf("project session %s: expected event version %d, got %d", event.Aggregate.ID, version+1, event.Version)
-		}
-		if event.SchemaVersion != 1 {
-			return nil, fmt.Errorf("project session %s: unsupported %s schema version %d", event.Aggregate.ID, event.Type, event.SchemaVersion)
-		}
 		var err error
-		session, err = projectSessionEvent(session, event)
+		session, err = ApplySessionEvent(session, event)
 		if err != nil {
 			return nil, err
 		}
-		version = event.Version
 	}
 	if session == nil {
 		return nil, errors.New("project session: empty event stream")
 	}
 	return session, nil
+}
+
+// ApplySessionEvent validates one event and advances a Session projection.
+func ApplySessionEvent(session *Session, event AggregateEvent) (*Session, error) {
+	if event.Aggregate.Type != AggregateSession {
+		return nil, fmt.Errorf("project session: unexpected aggregate type %q", event.Aggregate.Type)
+	}
+	var version int64
+	if session != nil {
+		if event.Aggregate.ID != session.ID {
+			return nil, fmt.Errorf("project session %s: event belongs to aggregate %s", session.ID, event.Aggregate.ID)
+		}
+		version = session.AggregateVersion
+	}
+	if event.Version != version+1 {
+		return nil, fmt.Errorf("project session %s: expected event version %d, got %d", event.Aggregate.ID, version+1, event.Version)
+	}
+	if event.SchemaVersion != 1 {
+		return nil, fmt.Errorf("project session %s: unsupported %s schema version %d", event.Aggregate.ID, event.Type, event.SchemaVersion)
+	}
+	return projectSessionEvent(session, event)
 }
 
 // ProjectSessionRuns rebuilds session-run projections from a Session aggregate stream.

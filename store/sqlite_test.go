@@ -14,6 +14,32 @@ import (
 	"time"
 )
 
+func BenchmarkSQLiteMessageRevision(b *testing.B) {
+	data, err := NewSQLiteStore(filepath.Join(b.TempDir(), "wingman.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer data.Close()
+	if err := data.CreateSession(&Session{ID: "ses_benchmark"}); err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	message := StoredMessage{ID: "msg_benchmark", SessionID: "ses_benchmark", Role: "assistant", State: "in_progress", Revision: 1, Parts: []StoredPart{{ID: "prt_benchmark", MessageID: "msg_benchmark", Kind: "text", PayloadJSON: []byte(`{"text":"a"}`)}}}
+	if err := data.SaveMessage(ctx, message); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	text := "a"
+	for i := 0; i < b.N; i++ {
+		text += "a"
+		message.Revision++
+		message.Parts[0].PayloadJSON = []byte(`{"text":"` + text + `"}`)
+		if err := data.SaveMessage(ctx, message); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestSQLiteStoreUsesPrivatePermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix permission bits are not available")

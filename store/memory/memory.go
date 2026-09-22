@@ -207,9 +207,8 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
-	events := s.aggregates[aggregateEvent.Aggregate]
 	aggregateEvent.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), aggregateEvent))
+	projected, err := store.ApplySessionEvent(session, aggregateEvent)
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
@@ -219,7 +218,7 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	}
 	s.globalSeq++
 	aggregateEvent.GlobalSequence = s.globalSeq
-	s.aggregates[aggregateEvent.Aggregate] = append(events, copyAggregateEvent(aggregateEvent))
+	s.aggregates[aggregateEvent.Aggregate] = append(s.aggregates[aggregateEvent.Aggregate], copyAggregateEvent(aggregateEvent))
 	s.sessions[sessionID] = copySession(projected)
 	*next = candidate
 	return store.SessionRunTransition{Run: copySessionRun(next), Event: event, Changed: true}, nil
@@ -256,9 +255,8 @@ func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRu
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
-	events := s.aggregates[aggregateEvent.Aggregate]
 	aggregateEvent.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), aggregateEvent))
+	projected, err := store.ApplySessionEvent(session, aggregateEvent)
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
@@ -268,7 +266,7 @@ func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRu
 	}
 	s.globalSeq++
 	aggregateEvent.GlobalSequence = s.globalSeq
-	s.aggregates[aggregateEvent.Aggregate] = append(events, copyAggregateEvent(aggregateEvent))
+	s.aggregates[aggregateEvent.Aggregate] = append(s.aggregates[aggregateEvent.Aggregate], copyAggregateEvent(aggregateEvent))
 	s.sessions[candidate.SessionID] = copySession(projected)
 	*run = candidate
 	return store.SessionRunTransition{Run: copySessionRun(run), Event: event, Changed: true}, nil
@@ -1038,11 +1036,8 @@ func (s *Store) applySessionMetadataEvent(_ context.Context, event store.Aggrega
 		}
 	}
 	ref := event.Aggregate
-	events := s.aggregates[ref]
-	candidate := append(make([]store.AggregateEvent, 0, len(events)+1), events...)
 	event.Version = expectedVersion + 1
-	candidate = append(candidate, event)
-	projected, err := store.ProjectSession(candidate)
+	projected, err := store.ApplySessionEvent(existing, event)
 	if err != nil {
 		return nil, err
 	}
@@ -1054,7 +1049,7 @@ func (s *Store) applySessionMetadataEvent(_ context.Context, event store.Aggrega
 	}
 	s.globalSeq++
 	event.GlobalSequence = s.globalSeq
-	s.aggregates[ref] = append(events, copyAggregateEvent(event))
+	s.aggregates[ref] = append(s.aggregates[ref], copyAggregateEvent(event))
 	s.sessions[ref.ID] = copySession(projected)
 	return copySession(projected), nil
 }
@@ -1262,15 +1257,14 @@ func (s *Store) appendMessageAggregateLocked(message store.StoredMessage) error 
 	if err != nil {
 		return err
 	}
-	events := s.aggregates[event.Aggregate]
 	event.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	projected, err := store.ApplySessionEvent(session, event)
 	if err != nil {
 		return err
 	}
 	s.globalSeq++
 	event.GlobalSequence = s.globalSeq
-	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.aggregates[event.Aggregate] = append(s.aggregates[event.Aggregate], copyAggregateEvent(event))
 	s.sessions[message.SessionID] = copySession(projected)
 	return nil
 }
@@ -1383,9 +1377,8 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 		return err
 	}
 	session := s.sessions[call.SessionID]
-	events := s.aggregates[event.Aggregate]
 	event.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	projected, err := store.ApplySessionEvent(session, event)
 	if err != nil {
 		return err
 	}
@@ -1393,7 +1386,7 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 	s.modelCalls[call.ID] = &cp
 	s.globalSeq++
 	event.GlobalSequence = s.globalSeq
-	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.aggregates[event.Aggregate] = append(s.aggregates[event.Aggregate], copyAggregateEvent(event))
 	s.sessions[call.SessionID] = copySession(projected)
 	return nil
 }
@@ -1457,7 +1450,6 @@ func (s *Store) InterruptActiveModelCalls(ctx context.Context, runID, errorType,
 		projected *store.Session
 	}
 	updates := []update{}
-	pendingEvents := make(map[store.AggregateRef][]store.AggregateEvent)
 	pendingSessions := make(map[string]*store.Session)
 	for _, call := range s.modelCalls {
 		if call.RunID == runID && call.Status == store.ModelCallStatusStarted {
@@ -1472,16 +1464,11 @@ func (s *Store) InterruptActiveModelCalls(ctx context.Context, runID, errorType,
 			if session == nil {
 				session = s.sessions[candidate.SessionID]
 			}
-			events, ok := pendingEvents[event.Aggregate]
-			if !ok {
-				events = append([]store.AggregateEvent(nil), s.aggregates[event.Aggregate]...)
-			}
 			event.Version = session.AggregateVersion + 1
-			projected, err := store.ProjectSession(append(events, event))
+			projected, err := store.ApplySessionEvent(session, event)
 			if err != nil {
 				return err
 			}
-			pendingEvents[event.Aggregate] = append(events, event)
 			pendingSessions[candidate.SessionID] = projected
 			updates = append(updates, update{call: call, candidate: candidate, event: event, projected: projected})
 		}
@@ -1548,7 +1535,7 @@ func (s *Store) CreatePermissionRequest(ctx context.Context, request store.Permi
 	if err != nil {
 		return store.PermissionRequestTransition{}, err
 	}
-	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(s.sessions[request.SessionID], s.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: request.SessionID}], request, false)
+	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(s.sessions[request.SessionID], request, false)
 	if err != nil {
 		return store.PermissionRequestTransition{}, err
 	}
@@ -1627,12 +1614,11 @@ func (s *Store) ResolvePermissionRequest(ctx context.Context, resolution store.P
 	}
 	aggregateEvents := []store.AggregateEvent{}
 	projected := s.sessions[updated.SessionID]
-	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(projected, s.aggregates[store.AggregateRef{Type: store.AggregateSession, ID: updated.SessionID}], updated, true)
+	aggregateEvent, projected, err := s.permissionRequestAggregateLocked(projected, updated, true)
 	if err != nil {
 		return store.PermissionRequestTransition{}, err
 	}
 	aggregateEvents = append(aggregateEvents, aggregateEvent)
-	history := append(append([]store.AggregateEvent(nil), s.aggregates[aggregateEvent.Aggregate]...), aggregateEvent)
 	grants := []store.PermissionGrant{}
 	if updated.Response == store.PermissionResponseAlways {
 		for _, resource := range updated.Resources {
@@ -1645,13 +1631,12 @@ func (s *Store) ResolvePermissionRequest(ctx context.Context, resolution store.P
 			}
 			if !found {
 				grant := store.PermissionGrant{ID: store.NewID(store.PrefixPermissionGrant), SessionID: updated.SessionID, Action: updated.Action, Resource: resource, CreatedAt: now}
-				aggregateEvent, next, err := s.permissionGrantAggregateLocked(projected, history, grant)
+				aggregateEvent, next, err := s.permissionGrantAggregateLocked(projected, grant)
 				if err != nil {
 					return store.PermissionRequestTransition{}, err
 				}
 				projected = next
 				aggregateEvents = append(aggregateEvents, aggregateEvent)
-				history = append(history, aggregateEvent)
 				grants = append(grants, grant)
 			}
 		}
@@ -1716,7 +1701,6 @@ func (s *Store) InterruptPendingPermissionRequests(ctx context.Context) ([]store
 	}
 	pending := make([]pendingTransition, 0, len(requests))
 	pendingSessions := make(map[string]*store.Session)
-	pendingHistories := make(map[store.AggregateRef][]store.AggregateEvent)
 	for _, request := range requests {
 		updated := copyPermissionRequest(request)
 		updated.Status, updated.ErrorType, updated.ErrorMessage = store.PermissionRequestStatusInterrupted, "process_interrupted", "permission request interrupted because the process stopped"
@@ -1725,18 +1709,15 @@ func (s *Store) InterruptPendingPermissionRequests(ctx context.Context) ([]store
 		if err != nil {
 			return nil, err
 		}
-		ref := store.AggregateRef{Type: store.AggregateSession, ID: updated.SessionID}
 		session := pendingSessions[updated.SessionID]
 		if session == nil {
 			session = s.sessions[updated.SessionID]
-			pendingHistories[ref] = append([]store.AggregateEvent(nil), s.aggregates[ref]...)
 		}
-		aggregateEvent, projected, err := s.permissionRequestAggregateLocked(session, pendingHistories[ref], updated, true)
+		aggregateEvent, projected, err := s.permissionRequestAggregateLocked(session, updated, true)
 		if err != nil {
 			return nil, err
 		}
 		pendingSessions[updated.SessionID] = projected
-		pendingHistories[ref] = append(pendingHistories[ref], aggregateEvent)
 		pending = append(pending, pendingTransition{request: request, updated: updated, event: event, aggregateEvent: aggregateEvent, projected: projected})
 	}
 	for _, transition := range pending {
@@ -1772,7 +1753,7 @@ func (s *Store) newPermissionEventLocked(request *store.PermissionRequest, typ s
 	return event, nil
 }
 
-func (s *Store) permissionRequestAggregateLocked(session *store.Session, history []store.AggregateEvent, request store.PermissionRequest, resolved bool) (store.AggregateEvent, *store.Session, error) {
+func (s *Store) permissionRequestAggregateLocked(session *store.Session, request store.PermissionRequest, resolved bool) (store.AggregateEvent, *store.Session, error) {
 	var (
 		event store.AggregateEvent
 		err   error
@@ -1787,21 +1768,21 @@ func (s *Store) permissionRequestAggregateLocked(session *store.Session, history
 	}
 	event.ClientID = session.ClientID
 	event.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), history...), event))
+	projected, err := store.ApplySessionEvent(session, event)
 	if err != nil {
 		return store.AggregateEvent{}, nil, err
 	}
 	return event, projected, nil
 }
 
-func (s *Store) permissionGrantAggregateLocked(session *store.Session, history []store.AggregateEvent, grant store.PermissionGrant) (store.AggregateEvent, *store.Session, error) {
+func (s *Store) permissionGrantAggregateLocked(session *store.Session, grant store.PermissionGrant) (store.AggregateEvent, *store.Session, error) {
 	event, err := store.NewSessionPermissionGrantCreatedEvent(grant)
 	if err != nil {
 		return store.AggregateEvent{}, nil, err
 	}
 	event.ClientID = session.ClientID
 	event.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), history...), event))
+	projected, err := store.ApplySessionEvent(session, event)
 	if err != nil {
 		return store.AggregateEvent{}, nil, err
 	}
@@ -1916,15 +1897,14 @@ func (s *Store) appendToolUseAggregateLocked(use store.ToolUse) error {
 	if err != nil {
 		return err
 	}
-	events := s.aggregates[event.Aggregate]
 	event.Version = session.AggregateVersion + 1
-	projected, err := store.ProjectSession(append(append([]store.AggregateEvent(nil), events...), event))
+	projected, err := store.ApplySessionEvent(session, event)
 	if err != nil {
 		return err
 	}
 	s.globalSeq++
 	event.GlobalSequence = s.globalSeq
-	s.aggregates[event.Aggregate] = append(events, copyAggregateEvent(event))
+	s.aggregates[event.Aggregate] = append(s.aggregates[event.Aggregate], copyAggregateEvent(event))
 	s.sessions[use.SessionID] = copySession(projected)
 	return nil
 }

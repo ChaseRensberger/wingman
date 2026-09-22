@@ -3,7 +3,9 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +32,67 @@ func TestCreateSessionCommitsEventAndProjection(t *testing.T) {
 	}
 	if !reflect.DeepEqual(projected, stored) {
 		t.Fatalf("replayed projection = %#v, stored = %#v", projected, stored)
+	}
+}
+
+func TestIncrementalSessionProjectionMatchesReplayAfterRevisions(t *testing.T) {
+	data := NewStore()
+	ctx := context.Background()
+	session := &store.Session{ID: "ses_projection_revisions"}
+	if err := data.CreateSession(session); err != nil {
+		t.Fatal(err)
+	}
+	message := store.StoredMessage{ID: "msg_projection_revisions", SessionID: session.ID, Role: "assistant", State: "in_progress", Parts: []store.StoredPart{{ID: "prt_projection_revisions", MessageID: "msg_projection_revisions", Kind: "text"}}}
+	for revision := 1; revision <= 50; revision++ {
+		message.Revision = int64(revision)
+		message.Parts[0].PayloadJSON = []byte(`{"text":"` + strings.Repeat("a", revision) + `"}`)
+		if err := data.SaveMessage(ctx, message); err != nil {
+			t.Fatalf("revision %d: %v", revision, err)
+		}
+		events, err := data.ListAggregateEvents(ctx, store.AggregateRef{Type: store.AggregateSession, ID: session.ID}, 0, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := store.ProjectSession(events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := data.GetSession(session.ID)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("revision %d: projection = %#v, %v; replay = %#v", revision, got, err, want)
+		}
+	}
+}
+
+func BenchmarkMessageRevisionWithHistory(b *testing.B) {
+	for _, history := range []int{10, 100, 1000} {
+		b.Run(fmt.Sprint(history), func(b *testing.B) {
+			data := NewStore()
+			ctx := context.Background()
+			session := &store.Session{ID: "ses_benchmark"}
+			if err := data.CreateSession(session); err != nil {
+				b.Fatal(err)
+			}
+			message := store.StoredMessage{ID: "msg_benchmark", SessionID: session.ID, Role: "assistant", State: "in_progress", Parts: []store.StoredPart{{ID: "prt_benchmark", MessageID: "msg_benchmark", Kind: "text", PayloadJSON: []byte(`{"text":"a"}`)}}}
+			text := ""
+			for revision := 1; revision <= history; revision++ {
+				text += "a"
+				message.Revision = int64(revision)
+				message.Parts[0].PayloadJSON = []byte(`{"text":"` + text + `"}`)
+				if err := data.SaveMessage(ctx, message); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				text += "a"
+				message.Revision++
+				message.Parts[0].PayloadJSON = []byte(`{"text":"` + text + `"}`)
+				if err := data.SaveMessage(ctx, message); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
