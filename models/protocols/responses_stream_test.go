@@ -38,10 +38,16 @@ func TestResponsesStreamFailures(t *testing.T) {
 		{"top level error", `{"type":"error","code":"invalid_api_key","message":"private upstream detail"}`, models.ErrorAuthentication, false},
 		{"error under response", `{"type":"error","response":{"error":{"code":"context_length_exceeded","message":"private upstream detail"}}}`, models.ErrorInvalidRequest, false},
 		{"error type", `{"type":"error","error":{"type":"authorization_error","message":"private upstream detail"}}`, models.ErrorAuthorization, false},
-		{"quota", `{"type":"response.failed","response":{"error":{"code":"insufficient_quota"}}}`, models.ErrorRateLimit, false},
-		{"unknown code", `{"type":"response.failed","response":{"error":{"code":"private upstream detail"}}}`, models.ErrorProvider, false},
-		{"missing details", `{"type":"response.failed","response":{"id":"resp_failed"}}`, models.ErrorProvider, false},
-		{"null details", `{"type":"error","code":null,"message":null,"error":null}`, models.ErrorProvider, false},
+		{"quota", `{"type":"response.failed","response":{"error":{"code":"insufficient_quota"}}}`, models.ErrorQuota, false},
+		{"exhausted credits", `{"type":"error","error":{"code":"credit_balance_exhausted"}}`, models.ErrorQuota, false},
+		{"unknown code with quota type", `{"type":"error","error":{"code":"new_quota_code","type":"insufficient_quota"}}`, models.ErrorQuota, false},
+		{"unknown top level code", `{"type":"error","code":"unknown","error":{"code":"invalid_api_key"}}`, models.ErrorAuthentication, false},
+		{"unknown codes with known type", `{"type":"error","code":"unknown","error":{"code":"also_unknown","type":"authorization_error"}}`, models.ErrorAuthorization, false},
+		{"quota overrides throttle", `{"type":"error","code":429,"error":{"code":"rate_limit_exceeded","type":"insufficient_quota"}}`, models.ErrorQuota, false},
+		{"known code takes precedence", `{"type":"error","code":"invalid_api_key","error":{"type":"server_error"}}`, models.ErrorAuthentication, false},
+		{"unknown code", `{"type":"response.failed","response":{"error":{"code":"private upstream detail"}}}`, models.ErrorProvider, true},
+		{"missing details", `{"type":"response.failed","response":{"id":"resp_failed"}}`, models.ErrorProvider, true},
+		{"null details", `{"type":"error","code":null,"message":null,"error":null}`, models.ErrorProvider, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,6 +84,33 @@ func TestResponsesStreamFailures(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "private upstream detail") {
 				t.Fatalf("public error exposed provider data: %v", err)
+			}
+		})
+	}
+}
+
+func TestOpenAIQuotaStreamDiagnostic(t *testing.T) {
+	const event = `{"type":"error","error":{"code":"credit_balance_exhausted","type":"insufficient_quota","message":"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/."}}`
+	for _, protocol := range []route.Protocol{Responses{}, Chat{}} {
+		t.Run(protocol.ID(), func(t *testing.T) {
+			stream, err := streamModel(protocol, "data: "+event+"\n\n").Stream(context.Background(), models.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			const want = "openai: provider quota exceeded (HTTP 200)"
+			for part := range stream.Iter() {
+				if part, ok := part.(models.ErrorPart); ok && part.Error != want {
+					t.Fatalf("stream error = %q, want %q", part.Error, want)
+				}
+			}
+			_, err = stream.Final()
+			var failure *models.ProviderError
+			if !errors.As(err, &failure) || failure.Category != models.ErrorQuota || failure.Retryable || failure.Error() != want {
+				t.Fatalf("failure = %#v, error = %v", failure, err)
+			}
+			d := failure.Diagnostic
+			if d == nil || d.Code != "credit_balance_exhausted" || d.Type != "insufficient_quota" || d.Retryable || d.Category != models.ErrorQuota || d.HTTPStatus != 200 || d.RequestID != "req_stream" || !strings.HasPrefix(d.Message, "You have no credits remaining.") || d.Body != event {
+				t.Fatalf("diagnostic = %#v", d)
 			}
 		})
 	}

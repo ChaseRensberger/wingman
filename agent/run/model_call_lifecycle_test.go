@@ -214,6 +214,9 @@ func TestModelCallRetriesDispatchFailuresAsDistinctPhysicalAttempts(t *testing.T
 	if finishes[0].ProviderRequestID != "req_1" || !errors.Is(finishes[0].Failure, providerErr) || finishes[0].Assistant != nil {
 		t.Fatalf("first finish = %#v", finishes[0])
 	}
+	if retry := finishes[0].Trace.Retry; retry == nil || retry.Decision != "scheduled" || retry.Reason != "eligible" || retry.DelayMS == nil {
+		t.Fatalf("first attempt retry = %#v", retry)
+	}
 	if len(result.Turns) != 1 || result.Turns[0].Attempt != 2 || result.Turns[0].ModelCallID != "call_2" {
 		t.Fatalf("turns = %#v", result.Turns)
 	}
@@ -266,24 +269,133 @@ func TestModelCallDoesNotRetryNonRetryableOrEstablishedStreamFailures(t *testing
 	for _, test := range []struct {
 		name   string
 		stream func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error)
+		reason string
 	}{
 		{name: "non-retryable dispatch", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 			return nil, &models.ProviderError{Category: models.ErrorInvalidRequest, Message: "invalid"}
-		}},
+		}, reason: "ineligible"},
 		{name: "established stream", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 			stream := models.NewEventStream[models.StreamPart, *models.Message](0)
 			stream.Close(nil, &models.ProviderError{Category: models.ErrorTransport, Retryable: true, Message: "reset"})
 			return stream, nil
-		}},
+		}, reason: "established_stream"},
+		{name: "quota error in established stream", stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+			stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+			stream.Close(nil, &models.ProviderError{Category: models.ErrorQuota, Message: "provider quota exceeded"})
+			return stream, nil
+		}, reason: "ineligible"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &modelCallTestClient{stream: test.stream}
-			_, err := Run(context.Background(), Config{Client: client, Model: testModel, Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Nanosecond}})
+			var settled []ModelCallFinishInfo
+			_, err := Run(context.Background(), Config{Client: client, Model: testModel, Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Nanosecond},
+				ModelCallLifecycle: modelCallLifecycleFuncs{start: func(context.Context, ModelCallStartInfo) (string, error) { return "call_1", nil },
+					finish: func(_ context.Context, info ModelCallFinishInfo) error { settled = append(settled, info); return nil }}})
 			if err == nil {
 				t.Fatal("Run succeeded")
 			}
 			if client.calls != 1 {
 				t.Fatalf("Stream calls = %d, want 1", client.calls)
+			}
+			if len(settled) != 1 || settled[0].Trace.Retry == nil || settled[0].Trace.Retry.Reason != test.reason {
+				t.Fatalf("retry decision = %#v", settled)
+			}
+		})
+	}
+}
+
+func TestModelCallRetryReasonsAfterLimitAndCancellation(t *testing.T) {
+	providerErr := &models.ProviderError{Category: models.ErrorUnavailable, Retryable: true, Message: "unavailable"}
+	for _, tc := range []struct {
+		name       string
+		attempts   int
+		cancelWait bool
+		reason     string
+	}{
+		{"attempt limit", 1, false, "attempt_limit"},
+		{"canceled before decision", 3, true, "canceled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var settled []ModelCallFinishInfo
+			client := &modelCallTestClient{stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+				if tc.cancelWait {
+					cancel()
+				}
+				return nil, providerErr
+			}}
+			_, _ = Run(ctx, Config{Client: client, Model: testModel, Retry: RetryPolicy{MaxAttempts: tc.attempts, InitialDelay: time.Nanosecond},
+				ModelCallLifecycle: modelCallLifecycleFuncs{start: func(context.Context, ModelCallStartInfo) (string, error) { return "call_1", nil },
+					finish: func(_ context.Context, info ModelCallFinishInfo) error { settled = append(settled, info); return nil }}})
+			if client.calls != 1 || len(settled) != 1 || settled[0].Trace.Retry == nil || settled[0].Trace.Retry.Reason != tc.reason {
+				t.Fatalf("calls = %d; decision = %#v", client.calls, settled)
+			}
+		})
+	}
+}
+
+func TestModelCallRetryWaitCancellationReplacesScheduledDecision(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var settled []ModelCallFinishInfo
+	client := &modelCallTestClient{stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+		return nil, &models.ProviderError{Category: models.ErrorUnavailable, Retryable: true, Message: "unavailable"}
+	}}
+	_, err := Run(ctx, Config{Client: client, Model: testModel, Retry: RetryPolicy{MaxAttempts: 3, InitialDelay: time.Hour},
+		ModelCallLifecycle: modelCallLifecycleFuncs{start: func(context.Context, ModelCallStartInfo) (string, error) { return "call_1", nil },
+			finish: func(_ context.Context, info ModelCallFinishInfo) error {
+				settled = append(settled, info)
+				if len(settled) == 1 {
+					cancel()
+				}
+				return nil
+			}}})
+	if !errors.Is(err, context.Canceled) || client.calls != 1 || len(settled) != 2 || settled[0].Trace.Retry.Decision != "scheduled" || settled[1].Trace.Retry.Reason != "canceled" || settled[0].CallID != settled[1].CallID || !errors.Is(settled[1].Failure, context.Canceled) {
+		t.Fatalf("err = %v, calls = %d, settlements = %#v", err, client.calls, settled)
+	}
+}
+
+func TestModelCallTimingPerPhysicalAttempt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		parts  []models.StreamPart
+		answer bool
+	}{
+		{"reasoning then answer", []models.StreamPart{models.StreamStartPart{}, models.ReasoningStartPart{ID: "reason"}, models.ReasoningDeltaPart{ID: "reason", Delta: "thinking"}, models.TextStartPart{ID: "text"}, models.TextDeltaPart{ID: "text", Delta: "hello"}}, true},
+		{"text first", []models.StreamPart{models.StreamStartPart{}, models.TextStartPart{ID: "text"}, models.TextDeltaPart{ID: "text", Delta: "hello"}}, true},
+		{"error before output", []models.StreamPart{models.StreamStartPart{}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var settled ModelCallFinishInfo
+			client := &modelCallTestClient{stream: func(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+				stream := models.NewEventStream[models.StreamPart, *models.Message](0)
+				go func() {
+					for _, part := range tc.parts {
+						time.Sleep(2 * time.Millisecond)
+						stream.Push(part)
+					}
+					if !tc.answer {
+						stream.Close(nil, errors.New("stream failed"))
+						return
+					}
+					stream.Push(models.FinishPart{Reason: models.FinishReasonStop, Usage: models.Usage{OutputTokens: 2}})
+					stream.Close(&models.Message{Role: models.RoleAssistant}, nil)
+				}()
+				return stream, nil
+			}}
+			_, _ = Run(context.Background(), Config{Client: client, Model: testModel,
+				ModelCallLifecycle: modelCallLifecycleFuncs{start: func(context.Context, ModelCallStartInfo) (string, error) { return "call_1", nil },
+					finish: func(_ context.Context, info ModelCallFinishInfo) error { settled = info; return nil }}})
+			timing := settled.Trace.Timing
+			if timing == nil || timing.FirstResponseMS == nil || (timing.FirstAnswerMS != nil) != tc.answer || (timing.FirstActivityMS != nil) != tc.answer {
+				t.Fatalf("timing = %#v", timing)
+			}
+			if tc.answer && (*timing.FirstResponseMS > *timing.FirstActivityMS || *timing.FirstActivityMS > *timing.FirstAnswerMS) {
+				t.Fatalf("unordered timing = %#v", timing)
+			}
+			if tc.name == "reasoning then answer" && *timing.FirstActivityMS == *timing.FirstAnswerMS {
+				t.Fatalf("reasoning milestone lost: %#v", timing)
 			}
 		})
 	}

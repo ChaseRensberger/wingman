@@ -1,6 +1,7 @@
 package protocols
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -119,8 +120,8 @@ func (u chatUsage) usage() models.Usage {
 }
 
 type chatEvent struct {
-	Error   *openAIError `json:"error"`
-	Usage   *chatUsage   `json:"usage"`
+	Error   *json.RawMessage `json:"error"`
+	Usage   *chatUsage       `json:"usage"`
 	Choices []struct {
 		FinishReason string     `json:"finish_reason"`
 		Usage        *chatUsage `json:"usage"`
@@ -157,7 +158,7 @@ func (p *chatParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		return nil, err
 	}
 	if event.Error != nil {
-		return nil, openAIFailure(p.info.Provider, "", event.Error, frame.Data)
+		return nil, models.ClassifyProviderFailure(p.info.Provider, 0, frame.Data)
 	}
 	if len(event.Choices) > 0 {
 		choice := event.Choices[0]

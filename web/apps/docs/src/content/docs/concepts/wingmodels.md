@@ -120,6 +120,8 @@ WingModels returns `models.ProviderError` for provider and transport failures. T
 authentication
 authorization
 rate_limit
+quota
+content_policy
 invalid_request
 unavailable
 timeout
@@ -131,9 +133,16 @@ cancellation
 
 It also carries safe status, provider request ID, retryability, and optional `Retry-After` data. Provider response bodies are not included in public error messages.
 
-HTTP 200 means that the provider accepted the streaming connection, not that generation succeeded. A provider can report a failure inside that stream. The daemon does not retain the native failure frame in model-call records or logs. A generic error and request ID alone cannot establish its cause.
+HTTP 200 means that the provider accepted the streaming connection, not that generation succeeded.
+A provider can report a failure inside that stream.
+Model-call records retain bounded native failure evidence with known credentials redacted.
+The Console inspector can copy this evidence, including provider messages, bodies, response headers, and native causes.
+Read [Observability](/use-wingman/observability) for diagnostic fields and capture limits.
 
-The agent loop retries retryable dispatch failures up to three physical attempts by default. It uses cancellation-aware exponential backoff. It honors `Retry-After`. Every attempt receives a separate durable model-call record. WingModels never retries failures after a stream is established.
+Quota and content-policy failures are not retryable. Unknown provider failures are retry-eligible before an established stream.
+Additional classifications identify context overflow, oversized payloads, and incomplete streams.
+
+The agent loop retries retryable dispatch failures up to three physical attempts by default. It uses cancellation-aware exponential backoff. It honors `Retry-After` and `Retry-After-Ms`. Every attempt receives a separate durable model-call record. WingModels never retries failures after a stream is established.
 
 Embedded Go callers can configure this behavior with `session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
 

@@ -559,6 +559,10 @@ func modelCallRecord(sessionID, runID, agentID string, model models.ModelRef, in
 				call.ErrorType = "model_error"
 			}
 		}
+		var providerErr *models.ProviderError
+		if errors.As(turn.Failure, &providerErr) {
+			turn.Trace.Failure = providerErr.Diagnostic
+		}
 	}
 	if turn.Assistant.Origin != nil {
 		call.Provider = turn.Assistant.Origin.Provider

@@ -29,6 +29,12 @@ wingman console
 If the connection drops, the Console repeats its readiness check.
 When the daemon returns, the Console reloads the active API page.
 
+## Model-call Diagnostics
+
+Open **Inspector**, then select **Copy diagnostics** for an attempt under **Model calls**.
+The snapshot includes provider failure evidence, timing, and correlation IDs.
+Read [Observability](/use-wingman/observability) for diagnostic fields, logs, and capture limits.
+
 ## Macros
 
 Type `/` in a Session composer to show project macros. Type an argument after

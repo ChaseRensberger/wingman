@@ -1,7 +1,7 @@
 package protocols
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 
 	"github.com/chaserensberger/wingman/models"
@@ -108,10 +108,7 @@ func (Gemini) NewParser(info models.ModelInfo) route.Parser {
 
 type geminiParser struct{ state }
 type geminiEvent struct {
-	Error *struct {
-		Code   int    `json:"code"`
-		Status string `json:"status"`
-	} `json:"error"`
+	Error          *json.RawMessage `json:"error"`
 	PromptFeedback struct {
 		BlockReason string `json:"blockReason"`
 	} `json:"promptFeedback"`
@@ -145,20 +142,7 @@ func (p *geminiParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		return nil, err
 	}
 	if event.Error != nil {
-		failure := &models.ProviderError{Provider: p.info.Provider, Category: models.ErrorProvider, Message: "provider response failed", Cause: errors.New(frame.Data)}
-		switch event.Error.Status {
-		case "UNAUTHENTICATED":
-			failure.Category, failure.Message = models.ErrorAuthentication, "provider authentication failed"
-		case "PERMISSION_DENIED":
-			failure.Category, failure.Message = models.ErrorAuthorization, "provider access denied"
-		case "INVALID_ARGUMENT", "NOT_FOUND", "FAILED_PRECONDITION":
-			failure.Category, failure.Message = models.ErrorInvalidRequest, "provider rejected the request"
-		case "RESOURCE_EXHAUSTED":
-			failure.Category, failure.Retryable, failure.Message = models.ErrorRateLimit, true, "provider rate limit exceeded"
-		case "INTERNAL", "UNAVAILABLE":
-			failure.Category, failure.Retryable, failure.Message = models.ErrorUnavailable, true, "provider is unavailable"
-		}
-		return nil, failure
+		return nil, models.ClassifyProviderFailure(p.info.Provider, 0, frame.Data)
 	}
 	u := event.Usage
 	usage := models.Usage{InputTokens: u.Input, OutputTokens: u.Output, TotalTokens: u.Total, CachedInputTokens: u.Cached, ReasoningTokens: u.Reasoning}

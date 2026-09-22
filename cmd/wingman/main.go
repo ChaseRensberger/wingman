@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/chaserensberger/wingman/app"
 	daemonconfig "github.com/chaserensberger/wingman/internal/config"
 	"github.com/chaserensberger/wingman/internal/daemonstate"
+	"github.com/chaserensberger/wingman/internal/observability"
 )
 
 var (
@@ -207,6 +209,15 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			}
 		}
 		state := daemonstate.New(stateDir)
+		var logWriter io.Writer
+		if cmd.Bool("register") {
+			file, err := observability.OpenFileLog(stateDir)
+			if err != nil {
+				return fmt.Errorf("open managed daemon log: %w", err)
+			}
+			defer file.Close()
+			logWriter = io.MultiWriter(os.Stderr, file)
+		}
 		username, password, displayCredentials, err := serverCredentials()
 		if err != nil {
 			return err
@@ -254,7 +265,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 		}
 		application, err := app.New(serveCtx, app.Config{
 			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
-			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel,
+			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel, LogWriter: logWriter,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			GlobalSkillDirs: effective.Skills.Dirs,
 			MCP:             effective.MCP, Providers: effective.Provider,

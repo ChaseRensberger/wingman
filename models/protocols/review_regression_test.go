@@ -18,7 +18,7 @@ func TestNumericProviderErrorCodes(t *testing.T) {
 	}{
 		{"400", models.ErrorInvalidRequest, false},
 		{"401", models.ErrorAuthentication, false},
-		{"402", models.ErrorRateLimit, false},
+		{"402", models.ErrorQuota, false},
 		{"403", models.ErrorAuthorization, false},
 		{"408", models.ErrorTimeout, true},
 		{"429", models.ErrorRateLimit, true},
@@ -26,7 +26,7 @@ func TestNumericProviderErrorCodes(t *testing.T) {
 		{"502", models.ErrorUnavailable, true},
 		{"503", models.ErrorUnavailable, true},
 		{"504", models.ErrorTimeout, true},
-		{"777", models.ErrorProvider, false},
+		{"777", models.ErrorProvider, true},
 	} {
 		for _, wireCode := range []string{tt.code, `"` + tt.code + `"`} {
 			for _, shape := range []struct {

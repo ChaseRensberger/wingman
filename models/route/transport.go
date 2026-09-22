@@ -22,17 +22,23 @@ type HTTP struct{ Client *http.Client }
 func (t HTTP) Open(ctx context.Context, deployment Route, prepared *models.PreparedRequest) (*http.Response, error) {
 	body, err := json.Marshal(prepared.Body)
 	if err != nil {
-		return nil, err
+		failure := &models.ProviderError{Category: models.ErrorInvalidRequest, Provider: prepared.Model.Provider, Message: "invalid provider request", Cause: err}
+		captureDiagnostic(failure, prepared, nil, nil, "prepare", "", false)
+		return nil, failure
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, prepared.URL, bytes.NewReader(body))
 	if err != nil {
-		return nil, &models.ProviderError{Category: models.ErrorInvalidRequest, Provider: prepared.Model.Provider, Message: "invalid provider request", Cause: err}
+		failure := &models.ProviderError{Category: models.ErrorInvalidRequest, Provider: prepared.Model.Provider, Message: "invalid provider request", Cause: err}
+		captureDiagnostic(failure, prepared, nil, nil, "prepare", "", false)
+		return nil, failure
 	}
 	for k, v := range prepared.Headers {
 		req.Header.Set(k, v)
 	}
 	if err := deployment.Apply(req); err != nil {
-		return nil, &models.ProviderError{Category: models.ErrorAuthentication, Provider: prepared.Model.Provider, Message: "provider authentication failed", Cause: err}
+		failure := &models.ProviderError{Category: models.ErrorAuthentication, Provider: prepared.Model.Provider, Message: "provider authentication failed", Cause: err}
+		captureDiagnostic(failure, prepared, req, nil, "prepare", "", false)
+		return nil, failure
 	}
 	client := t.Client
 	if client == nil {
@@ -40,12 +46,23 @@ func (t HTTP) Open(ctx context.Context, deployment Route, prepared *models.Prepa
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, transportError(prepared.Model.Provider, err)
+		failure := transportError(prepared.Model.Provider, err)
+		captureDiagnostic(failure, prepared, req, nil, "request", "", false)
+		return nil, failure
+	}
+	if resp.Request == nil {
+		resp.Request = req
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, diagnosticBodyLimit+1))
 	_ = resp.Body.Close()
-	return nil, responseError(prepared.Model.Provider, resp)
+	failure := responseError(prepared.Model.Provider, resp, string(body))
+	failure.Cause = readErr
+	captureDiagnostic(failure, prepared, req, resp.Header, "response", string(body), false)
+	if readErr != nil {
+		failure.Diagnostic.DetailOmitted = true
+	}
+	return nil, failure
 }

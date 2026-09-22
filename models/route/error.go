@@ -12,24 +12,10 @@ import (
 	"github.com/chaserensberger/wingman/models"
 )
 
-func responseError(provider string, resp *http.Response) *models.ProviderError {
-	category := models.ErrorProvider
-	retryable := false
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		category = models.ErrorAuthentication
-	case resp.StatusCode == http.StatusForbidden:
-		category = models.ErrorAuthorization
-	case resp.StatusCode == http.StatusRequestTimeout:
-		category, retryable = models.ErrorTimeout, true
-	case resp.StatusCode == http.StatusTooManyRequests:
-		category, retryable = models.ErrorRateLimit, true
-	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		category = models.ErrorInvalidRequest
-	case resp.StatusCode >= 500:
-		category, retryable = models.ErrorUnavailable, true
-	}
-	return &models.ProviderError{Category: category, Provider: provider, Status: resp.StatusCode, RequestID: responseRequestID(resp.Header), Retryable: retryable, RetryAfter: retryAfter(resp.Header), Message: "provider request failed"}
+func responseError(provider string, resp *http.Response, body string) *models.ProviderError {
+	failure := models.ClassifyProviderFailure(provider, resp.StatusCode, body)
+	failure.RequestID, failure.RetryAfter = responseRequestID(resp.Header), retryAfter(resp.Header)
+	return failure
 }
 
 func transportError(provider string, err error) *models.ProviderError {
@@ -54,12 +40,16 @@ func decodingError(provider, message string, cause error) *models.ProviderError 
 }
 
 func retryAfter(headers http.Header) *time.Duration {
+	if ms, err := strconv.ParseFloat(headers.Get("Retry-After-Ms"), 64); err == nil && ms >= 0 && ms < float64(1<<63)/float64(time.Millisecond) {
+		d := time.Duration(ms * float64(time.Millisecond))
+		return &d
+	}
 	raw := strings.TrimSpace(headers.Get("Retry-After"))
 	if raw == "" {
 		return nil
 	}
-	if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
-		d := time.Duration(seconds) * time.Second
+	if seconds, err := strconv.ParseFloat(raw, 64); err == nil && seconds >= 0 && seconds < float64(1<<63)/float64(time.Second) {
+		d := time.Duration(seconds * float64(time.Second))
 		return &d
 	}
 	if when, err := http.ParseTime(raw); err == nil {

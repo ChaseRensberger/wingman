@@ -122,8 +122,27 @@ func TestProviderStreamFailureReachesSessionAPI(t *testing.T) {
 			for _, path := range []string{"/sessions/" + sid, "/sessions/" + sid + "/runs/" + admission.RunID, "/sessions/" + sid + "/model-calls"} {
 				response := httptest.NewRecorder()
 				server.router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-				if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "private provider detail") {
+				if response.Code != http.StatusOK {
 					t.Fatalf("%s = %d: %s", path, response.Code, response.Body.String())
+				}
+				if strings.HasSuffix(path, "/model-calls") {
+					var records []api.ModelCall
+					if err := json.Unmarshal(response.Body.Bytes(), &records); err != nil || len(records) != 1 {
+						t.Fatalf("model calls: %v", err)
+					}
+					var trace models.CallTrace
+					if err := json.Unmarshal(records[0].Trace, &trace); err != nil || trace.Failure == nil {
+						t.Fatalf("diagnostic: %v", err)
+					}
+					wantBody := strings.TrimSpace(strings.TrimPrefix(tt.body, "data: "))
+					if strings.Contains(tt.name, "unterminated") {
+						wantBody = tt.body
+					}
+					if trace.Failure.Body != wantBody || strings.Contains(records[0].ErrorMessage, "private provider detail") {
+						t.Fatalf("lost evidence or exposed public detail: %#v", records[0])
+					}
+				} else if strings.Contains(response.Body.String(), "private provider detail") {
+					t.Fatalf("native evidence exposed outside model-call diagnostics: %s", path)
 				}
 			}
 			detail := httptest.NewRecorder()

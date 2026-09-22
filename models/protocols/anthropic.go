@@ -1,7 +1,7 @@
 package protocols
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -117,11 +117,9 @@ type anthropicUsage struct {
 	CacheWrite *int `json:"cache_creation_input_tokens"`
 }
 type anthropicEvent struct {
-	Type  string `json:"type"`
-	Index int    `json:"index"`
-	Error *struct {
-		Type string `json:"type"`
-	} `json:"error"`
+	Type    string           `json:"type"`
+	Index   int              `json:"index"`
+	Error   *json.RawMessage `json:"error"`
 	Message struct {
 		Usage anthropicUsage `json:"usage"`
 	} `json:"message"`
@@ -174,22 +172,7 @@ func (p *anthropicParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		return nil, err
 	}
 	if event.Type == "error" || event.Error != nil {
-		failure := &models.ProviderError{Provider: p.info.Provider, Category: models.ErrorProvider, Message: "provider response failed", Cause: errors.New(frame.Data)}
-		if event.Error != nil {
-			switch event.Error.Type {
-			case "authentication_error":
-				failure.Category, failure.Message = models.ErrorAuthentication, "provider authentication failed"
-			case "permission_error":
-				failure.Category, failure.Message = models.ErrorAuthorization, "provider access denied"
-			case "invalid_request_error", "not_found_error", "request_too_large":
-				failure.Category, failure.Message = models.ErrorInvalidRequest, "provider rejected the request"
-			case "rate_limit_error":
-				failure.Category, failure.Retryable, failure.Message = models.ErrorRateLimit, true, "provider rate limit exceeded"
-			case "api_error", "overloaded_error":
-				failure.Category, failure.Retryable, failure.Message = models.ErrorUnavailable, true, "provider is unavailable"
-			}
-		}
-		return nil, failure
+		return nil, models.ClassifyProviderFailure(p.info.Provider, 0, frame.Data)
 	}
 	switch event.Type {
 	case "message_start":

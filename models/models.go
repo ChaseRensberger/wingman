@@ -876,21 +876,23 @@ type OutputSchema struct {
 // CallTrace
 // ------------------------------------------------------------------
 
-// CallTrace is a safe, versioned structural snapshot of a model call.
-// It contains only structural information and never credentials,
-// request text, message content, raw tool output, HTTP headers, or
-// raw payloads.
+// CallTrace is a versioned snapshot of request structure and bounded failure evidence.
+// Failure evidence redacts known credentials but can contain quoted input or output.
 type CallTrace struct {
-	Version      string         `json:"version"`
-	Model        ModelRef       `json:"model"`
-	API          API            `json:"api"`
-	Provider     string         `json:"provider"`
-	Capabilities Capabilities   `json:"capabilities"`
-	Runtime      RuntimeTrace   `json:"runtime"`
-	Tools        []ToolTrace    `json:"tools,omitempty"`
-	Messages     MessageTrace   `json:"messages"`
-	System       SystemTrace    `json:"system"`
-	Lowered      LoweredOptions `json:"lowered,omitempty"`
+	Version      string          `json:"version"`
+	Model        ModelRef        `json:"model"`
+	API          API             `json:"api"`
+	Provider     string          `json:"provider"`
+	Capabilities Capabilities    `json:"capabilities"`
+	Runtime      RuntimeTrace    `json:"runtime"`
+	Tools        []ToolTrace     `json:"tools,omitempty"`
+	Messages     MessageTrace    `json:"messages"`
+	System       SystemTrace     `json:"system"`
+	Lowered      LoweredOptions  `json:"lowered,omitempty"`
+	Build        *BuildTrace     `json:"build,omitempty"`
+	Failure      *CallDiagnostic `json:"failure,omitempty"`
+	Retry        *CallRetry      `json:"retry,omitempty"`
+	Timing       *CallTiming     `json:"timing,omitempty"`
 }
 
 type RuntimeTrace struct {
@@ -921,6 +923,7 @@ type LoweredOptions struct {
 
 // NewCallTrace builds a CallTrace from a Request and provider lowering info.
 func NewCallTrace(req Request, lowered LoweredOptions) CallTrace {
+	build := callBuild
 	tools := make([]ToolTrace, len(req.Tools))
 	for i, t := range req.Tools {
 		schemaJSON, _ := json.Marshal(t.InputSchema)
@@ -943,7 +946,7 @@ func NewCallTrace(req Request, lowered LoweredOptions) CallTrace {
 	sysBytes := []byte(req.System)
 	return CallTrace{
 		Version:      "1",
-		Model:        req.Model,
+		Model:        ModelRef{Provider: req.Model.Provider, ID: req.Model.ID, Variant: req.Model.Variant, API: req.Model.API, ContextWindow: req.Model.ContextWindow, MaxOutput: req.Model.MaxOutput, Capabilities: req.Model.Capabilities},
 		API:          req.Model.API,
 		Provider:     req.Model.Provider,
 		Capabilities: req.Capabilities,
@@ -954,6 +957,7 @@ func NewCallTrace(req Request, lowered LoweredOptions) CallTrace {
 		Messages: MessageTrace{Count: len(req.Messages), ByRole: byRole, PartKinds: partKinds},
 		System:   SystemTrace{SHA256: sha256hex(sysBytes), Bytes: len(sysBytes)},
 		Lowered:  lowered,
+		Build:    &build,
 	}
 }
 

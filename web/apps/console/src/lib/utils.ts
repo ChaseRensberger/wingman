@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { Message, Usage } from "@/lib/types";
+import type { Message, ModelCall, Usage } from "@/lib/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -48,6 +48,15 @@ export function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
   return String(tokens);
+}
+
+export function modelCallAnswerSpeed(call: ModelCall): string | undefined {
+  const first = call.trace?.timing?.first_answer_ms;
+  if (first === undefined || !call.started_at || !call.completed_at) return;
+  const answerTokens = Math.max(0, call.output_tokens - (call.reasoning_tokens ?? 0));
+  const generatedMS = Date.parse(call.completed_at) - Date.parse(call.started_at) - first;
+  if (answerTokens <= 0 || generatedMS <= 0) return;
+  return (answerTokens / (generatedMS / 1000)).toFixed(1);
 }
 
 export function formatContextPercent(tokens: number, contextWindow?: number): string | null {

@@ -360,7 +360,7 @@ func jsonEqual(a, b any) bool {
 
 func TestNewCallTraceRedactsAndShapes(t *testing.T) {
 	req := Request{
-		Model:  ModelRef{Provider: "openai", ID: "gpt-4", API: APIOpenAIResponses},
+		Model:  ModelRef{Provider: "openai", ID: "gpt-4", API: APIOpenAIResponses, BaseURL: "https://user:secret@provider.test/?key=secret", Env: []string{"PRIVATE_API_KEY"}},
 		System: "Current date: 2024-01-01.\nBe helpful.",
 		Messages: []Message{
 			{Role: RoleUser, Content: Content{TextPart{Text: "hello"}}},
@@ -407,8 +407,13 @@ func TestNewCallTraceRedactsAndShapes(t *testing.T) {
 	if !trace.Lowered.ReasoningSummaryAuto {
 		t.Fatal("expected reasoning_summary_auto")
 	}
-	// Verify no message content or credentials leaked into trace fields
-	if trace.Messages.Count == 0 {
-		t.Fatal("structural info missing")
+	encoded, err := json.Marshal(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"secret", "PRIVATE_API_KEY", "Be helpful", "hello"} {
+		if strings.Contains(string(encoded), value) {
+			t.Fatalf("trace contains %q: %s", value, encoded)
+		}
 	}
 }

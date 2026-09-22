@@ -303,7 +303,7 @@ export interface ModelCall {
 
 export interface CallTrace {
   version: string;
-  model: { provider?: string; id?: string; api?: string };
+  model: { provider?: string; id?: string; variant?: string; api?: string };
   api?: string;
   provider?: string;
   capabilities: { thinking?: boolean };
@@ -312,6 +312,59 @@ export interface CallTrace {
   messages: { count: number; by_role: Record<string, number>; part_kinds: Record<string, number> };
   system: { sha256: string; bytes: number };
   lowered?: { reasoning_summary_auto?: boolean };
+  build?: { version: string; revision?: string; modified?: boolean; go: string };
+  failure?: CallDiagnostic;
+  retry?: { decision: string; reason: string; delay_ms?: number };
+  timing?: { first_response_ms?: number; first_activity_ms?: number; first_answer_ms?: number };
+}
+
+export interface CallDiagnostic {
+  stage: string;
+  route?: string;
+  protocol?: string;
+  endpoint?: string;
+  model?: string;
+  settings?: Record<string, number | boolean | string>;
+  http_status?: number;
+  request_id?: string;
+  category: string;
+  classification?: string;
+  retryable: boolean;
+  retry_after_ms?: number;
+  event?: string;
+  code?: string;
+  type?: string;
+  param?: string;
+  message?: string;
+  body?: string;
+  body_kind?: string;
+  response_headers?: Record<string, string[]>;
+  rate_limit?: {
+    limit?: Record<string, string>;
+    remaining?: Record<string, string>;
+    reset?: Record<string, string>;
+  };
+  transport?: {
+    kind: string;
+    operation: string;
+    code?: string;
+    phase?: string;
+    delivery: string;
+    recovery: string;
+  };
+  causes?: DiagnosticCause[];
+  output_started: boolean;
+  redacted?: boolean;
+  truncated?: boolean;
+  detail_omitted?: boolean;
+}
+
+export interface DiagnosticCause {
+  type: string;
+  message: string;
+  code?: string;
+  stack?: string;
+  causes?: DiagnosticCause[];
 }
 
 export type Part =

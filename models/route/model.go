@@ -38,10 +38,19 @@ func (m *Model) Prepare(ctx context.Context, req models.Request) (*models.Prepar
 func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
 	prepared, err := m.Prepare(ctx, req)
 	if err != nil {
-		return nil, err
+		failure := &models.ProviderError{Provider: m.Info_.Provider, Category: models.ErrorInvalidRequest, Message: "provider request preparation failed", Cause: err}
+		if ctx.Err() != nil {
+			failure = transportError(m.Info_.Provider, ctx.Err())
+		}
+		captureDiagnostic(failure, nil, nil, nil, "prepare", "", false)
+		return nil, failure
 	}
 	resp, err := m.Route.Transport.Open(ctx, m.Route, prepared)
 	if err != nil {
+		var failure *models.ProviderError
+		if errors.As(err, &failure) && failure.Diagnostic == nil {
+			captureDiagnostic(err, prepared, nil, nil, "request", "", false)
+		}
 		return nil, err
 	}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](64)
@@ -55,6 +64,7 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 		}
 		parser := m.Route.Protocol.NewParser(m.Info_)
 		terminal := false
+		outputStarted := false
 		var finish *models.FinishPart
 		emit := func(parts []models.StreamPart) error {
 			for _, part := range parts {
@@ -67,23 +77,32 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 				case models.ErrorPart:
 					return &models.ProviderError{Provider: m.Info_.Provider, Category: models.ErrorProvider, Message: p.Error}
 				default:
+					switch part.(type) {
+					case models.TextDeltaPart, models.ReasoningDeltaPart, models.ToolInputStartPart, models.ToolCallPart_:
+						outputStarted = true
+					}
 					stream.Push(part)
 				}
 			}
 			return nil
 		}
 		var failure error
-		for frame, err := range m.Route.Framing(ctx, resp.Body) {
+		var failureData string
+		var failureEvent string
+		reader := &diagnosticReader{Reader: resp.Body}
+		for frame, err := range m.Route.Framing(ctx, reader) {
 			if err != nil {
 				failure = transportError(m.Info_.Provider, err)
 				break
 			}
 			parts, err := parser.Step(frame)
 			if failure = emit(parts); failure != nil {
+				failureData, failureEvent = frame.Data, frame.Event
 				break
 			}
 			if err != nil {
 				failure = err
+				failureData, failureEvent = frame.Data, frame.Event
 				break
 			}
 			if terminal {
@@ -101,7 +120,9 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 			failure = transportError(m.Info_.Provider, ctx.Err())
 		}
 		if failure == nil && !terminal {
-			failure = decodingError(m.Info_.Provider, "provider response ended without a completion event", nil)
+			incomplete := decodingError(m.Info_.Provider, "provider response ended without a completion event", nil)
+			incomplete.Classification = "incomplete-stream"
+			failure = incomplete
 		}
 		msg := parser.Message()
 		if failure != nil {
@@ -109,7 +130,22 @@ func (m *Model) Stream(ctx context.Context, req models.Request) (*models.EventSt
 			var providerErr *models.ProviderError
 			if errors.As(failure, &providerErr) {
 				providerErr.RequestID, providerErr.Status = requestID, resp.StatusCode
+				providerErr.RetryAfter = retryAfter(resp.Header)
 			}
+			bodyKind := "event"
+			if failureData == "" {
+				failureData, bodyKind = string(reader.prefix), "stream"
+			}
+			if providerErr != nil {
+				if providerErr.Diagnostic == nil {
+					providerErr.Diagnostic = models.ClassifyProviderFailure(m.Info_.Provider, resp.StatusCode, failureData).Diagnostic
+				}
+				providerErr.Diagnostic.BodyKind = bodyKind
+				if failureEvent != "" {
+					providerErr.Diagnostic.Event = failureEvent
+				}
+			}
+			captureDiagnostic(failure, prepared, resp.Request, resp.Header, "stream", failureData, outputStarted)
 			stream.Push(models.ErrorPart{Error: failure.Error()})
 			stream.Close(msg, failure)
 			return

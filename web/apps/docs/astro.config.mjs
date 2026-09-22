@@ -41,6 +41,7 @@ export default defineConfig({
           items: [
             { label: "Run the Server", slug: "use-wingman/run-server" },
             { label: "Use the Console", slug: "use-wingman/web-ui" },
+            { label: "Observability", slug: "use-wingman/observability" },
           ],
         },
         {

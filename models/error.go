@@ -12,6 +12,8 @@ const (
 	ErrorAuthentication ErrorCategory = "authentication"
 	ErrorAuthorization  ErrorCategory = "authorization"
 	ErrorRateLimit      ErrorCategory = "rate_limit"
+	ErrorQuota          ErrorCategory = "quota"
+	ErrorContentPolicy  ErrorCategory = "content_policy"
 	ErrorInvalidRequest ErrorCategory = "invalid_request"
 	ErrorUnavailable    ErrorCategory = "unavailable"
 	ErrorTimeout        ErrorCategory = "timeout"
@@ -24,15 +26,17 @@ const (
 // ProviderError is a safe, provider-neutral failure returned by model clients.
 // Its cause remains available through errors.Is and errors.As.
 type ProviderError struct {
-	Category   ErrorCategory
-	Provider   string
-	Status     int
-	RequestID  string
-	Retryable  bool
-	RetryAfter *time.Duration
-	Message    string
-	Metadata   map[string]string
-	Cause      error
+	Category       ErrorCategory
+	Classification string
+	Provider       string
+	Status         int
+	RequestID      string
+	Retryable      bool
+	RetryAfter     *time.Duration
+	Message        string
+	Metadata       map[string]string
+	Diagnostic     *CallDiagnostic
+	Cause          error
 }
 
 // Error returns a safe diagnostic and never includes a provider response body.

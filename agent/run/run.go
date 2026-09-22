@@ -344,20 +344,29 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		turn.ProviderRequestID = providerRequestID(err)
 		failure := fmt.Errorf("model stream: %w", err)
 		turn.Failure = failure
-		if attempt < policy.MaxAttempts && retryableProviderError(err) {
+		if attempt < policy.MaxAttempts && retryableProviderError(err) && ctx.Err() == nil {
+			delay := retryDelay(policy, attempt, err)
+			ms := delay.Milliseconds()
+			turn.Trace.Retry = &models.CallRetry{Decision: "scheduled", Reason: "eligible", DelayMS: &ms}
 			if settleErr := r.settleModelCall(ctx, turn, nil, models.Usage{}, failure); settleErr != nil {
 				failure = errors.Join(failure, settleErr)
 				failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 				turn.Assistant, turn.Failure = assistantMsg, failure
 				return turn, failure
 			}
-			if err := waitRetry(ctx, retryDelay(policy, attempt, err)); err != nil {
-				failure = errors.Join(failure, err)
+			if err := waitRetry(ctx, delay); err != nil {
+				turn.Trace.Retry = &models.CallRetry{Decision: "not_retried", Reason: "canceled"}
+				stopped := errors.Join(failure, err)
+				failure = errors.Join(stopped, r.settleModelCall(ctx, turn, nil, models.Usage{}, stopped))
 				failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 				turn.Assistant, turn.Failure = assistantMsg, failure
 				return turn, failure
 			}
 			continue
+		}
+		turn.Trace.Retry = &models.CallRetry{Decision: "not_retried", Reason: retryStopReason(ctx, err, attempt, policy.MaxAttempts)}
+		if ctx.Err() != nil {
+			failure = errors.Join(failure, ctx.Err())
 		}
 		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 		turn.Assistant, turn.Failure = assistantMsg, failure
@@ -372,8 +381,25 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	var turnUsage models.Usage
 	var finishReason models.FinishReason
 	var providerRequestID string
+	timing := &models.CallTiming{}
+	elapsed := func() *int64 { ms := time.Since(turn.StartedAt).Milliseconds(); return &ms }
 	partIndexes := make(map[string]int)
 	for part := range stream.Iter() {
+		if _, ok := part.(models.StreamStartPart); ok && timing.FirstResponseMS == nil {
+			timing.FirstResponseMS = elapsed()
+		}
+		switch part.(type) {
+		case models.TextStartPart, models.TextDeltaPart, models.ReasoningStartPart, models.ReasoningDeltaPart, models.ToolInputStartPart, models.ToolCallPart_:
+			if timing.FirstActivityMS == nil {
+				timing.FirstActivityMS = elapsed()
+			}
+		}
+		switch part.(type) {
+		case models.TextStartPart, models.TextDeltaPart:
+			if timing.FirstAnswerMS == nil {
+				timing.FirstAnswerMS = elapsed()
+			}
+		}
 		if fp, ok := part.(models.FinishPart); ok {
 			turnUsage = fp.Usage
 			finishReason = fp.Reason
@@ -388,6 +414,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			assistantMsg.Revision++
 			if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
 				cancelStream()
+				turn.Trace.Timing = timing
 				go func() {
 					for range stream.Iter() {
 					}
@@ -405,11 +432,21 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	}
 	finalMsg, err := stream.Final()
 	turn.CompletedAt = time.Now()
+	if timing.FirstResponseMS != nil || timing.FirstActivityMS != nil || timing.FirstAnswerMS != nil {
+		turn.Trace.Timing = timing
+	}
 	if err != nil {
 		failure := fmt.Errorf("stream.Final: %w", err)
 		turn.Failure = failure
 		turn.Usage = turnUsage
 		turn.ProviderRequestID = providerRequestID
+		reason := "established_stream"
+		if ctx.Err() != nil {
+			reason = "canceled"
+		} else if !retryableProviderError(err) {
+			reason = "ineligible"
+		}
+		turn.Trace.Retry = &models.CallRetry{Decision: "not_retried", Reason: reason}
 		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 		turn.Assistant = assistantMsg
 		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, failure, failure)
@@ -814,6 +851,19 @@ func normalizedRetryPolicy(policy RetryPolicy) RetryPolicy {
 func retryableProviderError(err error) bool {
 	var providerErr *models.ProviderError
 	return errors.As(err, &providerErr) && providerErr.Retryable
+}
+
+func retryStopReason(ctx context.Context, err error, attempt, maxAttempts int) string {
+	if ctx.Err() != nil {
+		return "canceled"
+	}
+	if !retryableProviderError(err) {
+		return "ineligible"
+	}
+	if attempt >= maxAttempts {
+		return "attempt_limit"
+	}
+	return "established_stream"
 }
 
 func providerRequestID(err error) string {

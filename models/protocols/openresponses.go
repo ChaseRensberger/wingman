@@ -110,11 +110,9 @@ type responsesParser struct {
 	arguments map[string]*strings.Builder
 }
 type responsesEvent struct {
-	Type   string          `json:"type"`
-	Code   openAIErrorCode `json:"code"`
-	Error  *openAIError    `json:"error"`
-	Delta  string          `json:"delta"`
-	ItemID string          `json:"item_id"`
+	Type   string `json:"type"`
+	Delta  string `json:"delta"`
+	ItemID string `json:"item_id"`
 	Item   struct {
 		Type             string `json:"type"`
 		ID               string `json:"id"`
@@ -124,7 +122,6 @@ type responsesEvent struct {
 		EncryptedContent string `json:"encrypted_content"`
 	} `json:"item"`
 	Response struct {
-		Error             *openAIError `json:"error"`
 		IncompleteDetails struct {
 			Reason string `json:"reason"`
 		} `json:"incomplete_details"`
@@ -153,11 +150,7 @@ func (p *responsesParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 	}
 	switch event.Type {
 	case "response.failed", "error":
-		nested := event.Error
-		if nested == nil {
-			nested = event.Response.Error
-		}
-		return nil, openAIFailure(p.info.Provider, string(event.Code), nested, frame.Data)
+		return nil, models.ClassifyProviderFailure(p.info.Provider, 0, frame.Data)
 	case "response.output_text.delta":
 		p.textDelta("text-0", event.Delta)
 	case "response.reasoning_text.delta", "response.reasoning_summary.delta", "response.reasoning_summary_text.delta":

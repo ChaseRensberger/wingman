@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { StackIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopyIcon, StackIcon } from "@phosphor-icons/react";
 
 import type { CallTrace, ModelCall, Session } from "@/lib/types";
-import { formatTokenCount } from "@/lib/utils";
+import { formatTokenCount, modelCallAnswerSpeed } from "@/lib/utils";
+import { formatModelCallDiagnostics } from "@/lib/model-call-diagnostics";
+import { showErrorToast } from "@/lib/toast";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import {
@@ -92,6 +94,27 @@ function RequestManifest({ trace }: { trace?: CallTrace }) {
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function CopyDiagnostics({ call }: { call: ModelCall }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(formatModelCallDiagnostics(call));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      showErrorToast(err, "Could not copy diagnostics");
+    }
+  }
+
+  return (
+    <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => void copy()}>
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? "Copied diagnostics" : "Copy diagnostics"}
+    </Button>
   );
 }
 
@@ -219,12 +242,36 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
                         {call.error_message}
                       </div>
                     )}
+                    {call.trace?.failure && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {call.trace.failure.category}
+                        {call.trace.failure.code ? ` · ${call.trace.failure.code}` : ""}
+                        {call.trace.retry
+                          ? ` · ${call.trace.retry.decision === "scheduled" ? `Retry scheduled${call.trace.retry.delay_ms !== undefined ? ` in ${call.trace.retry.delay_ms} ms` : ""}` : `No retry (${call.trace.retry.reason.replaceAll("_", " ")})`}`
+                          : ""}
+                      </div>
+                    )}
+                    {call.trace?.timing && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {call.trace.timing.first_response_ms !== undefined
+                          ? `First response ${call.trace.timing.first_response_ms} ms · `
+                          : ""}
+                        {call.trace.timing.first_activity_ms !== undefined
+                          ? `First activity ${call.trace.timing.first_activity_ms} ms`
+                          : "No activity reported"}
+                        {call.trace.timing.first_answer_ms !== undefined
+                          ? ` · first answer ${call.trace.timing.first_answer_ms} ms`
+                          : ""}
+                        {modelCallAnswerSpeed(call) ? ` · ${modelCallAnswerSpeed(call)} answer tokens/s` : ""}
+                      </div>
+                    )}
                     {call.provider_request_id && (
                       <div className="mt-2 truncate font-mono text-xs text-muted-foreground">
                         Provider request {call.provider_request_id}
                       </div>
                     )}
                     <RequestManifest trace={call.trace} />
+                    <CopyDiagnostics call={call} />
                   </div>
                 ))}
               </div>
