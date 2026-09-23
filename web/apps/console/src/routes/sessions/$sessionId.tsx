@@ -172,10 +172,17 @@ function SessionDetailPage() {
 
   useEffect(() => {
     if (
-      !session || session.id !== sessionId || sessionId === "new" ||
-      !session.history.length || !shouldAutoGenerateTitle(session) ||
-      pendingTitle || run.isStreaming || isTitleStreaming || titleSessionIdRef.current === sessionId
-    ) return;
+      !session ||
+      session.id !== sessionId ||
+      sessionId === "new" ||
+      !session.history.length ||
+      !shouldAutoGenerateTitle(session) ||
+      pendingTitle ||
+      run.isStreaming ||
+      isTitleStreaming ||
+      titleSessionIdRef.current === sessionId
+    )
+      return;
     const message = titleSourceMessage(session, "");
     if (message) setPendingTitle({ id: sessionId, title: generatedSessionTitle("", message) });
   }, [session, sessionId, pendingTitle, run.isStreaming, isTitleStreaming]);

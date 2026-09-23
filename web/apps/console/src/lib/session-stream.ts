@@ -13,9 +13,10 @@ export function generatedSessionTitle(response: string, message: string): string
   const fallback = cleanTitle(message)
     .replace(/^(?:what(?:'s| is)|can you|could you|please)\s+/i, "")
     .replace(/^the\s+/i, "");
-  const source = candidate && candidate.split(" ").length <= 7 && !/^(i\b|sorry\b|as an ai\b)/i.test(candidate)
-    ? candidate
-    : fallback;
+  const source =
+    candidate && candidate.split(" ").length <= 7 && !/^(i\b|sorry\b|as an ai\b)/i.test(candidate)
+      ? candidate
+      : fallback;
   const words = source.split(" ");
   let title = "";
   for (const word of words.slice(0, 7)) {

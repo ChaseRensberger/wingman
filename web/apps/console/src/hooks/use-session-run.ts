@@ -389,7 +389,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
     void watch();
     return () => controller.abort();
-  }, [sessionId]);
+  }, [sessionId, load]);
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)

@@ -518,7 +518,9 @@ function SessionsPage() {
                             {session.title || session.id}
                           </span>
                           {session.run_status === "queued" && (
-                            <span className="shrink-0 text-xs font-normal text-muted-foreground">Queued</span>
+                            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                              Queued
+                            </span>
                           )}
                         </span>
                       </TableCell>
