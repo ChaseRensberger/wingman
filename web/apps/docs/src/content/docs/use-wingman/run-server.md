@@ -36,7 +36,7 @@ To install and start Wingman in the background, run this command:
 wingman service start
 ```
 
-The managed service runs for the current user. It does not require `sudo`.
+The managed service runs for the current user without `sudo`.
 
 `wingman service start` returns after the daemon passes its readiness check.
 The state files are in
@@ -88,7 +88,7 @@ wingman update --version 0.1.15
 
 ## Address and Port
 
-To change the bind address, use `--host` and `--port`:
+To change the address and port, use `--host` and `--port`:
 
 ```bash
 wingman serve --host 127.0.0.1 --port 2424

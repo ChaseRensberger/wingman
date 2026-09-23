@@ -6,7 +6,7 @@ order: 101
 
 # Clients
 
-Wingman supports multiple applications on one instance. A client identity lets Wingman attribute and list sessions.
+One Wingman instance supports multiple applications. A client identity groups their sessions.
 
 A session belongs to one client. Any caller with daemon access can select a registered client with `X-Wingman-Client`.
 
@@ -15,7 +15,7 @@ logs, plugins, or filesystem access.
 
 Every persisted session and Workspace belongs to a client. If you omit `X-Wingman-Client`, Wingman uses the built-in default client. Its name is `WingClient`. Its ID is `cli_wingclient`. Manual API calls and local scripts work without configuration.
 
-Client IDs are explicit and stable. They must start with `cli_`. Display names are unique without case sensitivity. Creating a client registers its attribution identity. It does not issue credentials.
+Client IDs must start with `cli_` and remain stable. Display names are unique without case sensitivity. A new client does not receive credentials.
 
 To make a request in a client context, send the client ID with `X-Wingman-Client`:
 

@@ -6,7 +6,7 @@ order: 103
 
 # Durable Events
 
-Persisted sessions keep durable records for session changes, queued runs, messages, tool use, permission requests, and session events. Clients can reload this state after a disconnect or restart.
+Persisted sessions record changes, runs, messages, tool use, permission requests, and events. Clients can reload these records after a disconnect or restart.
 
 ## Session Versions
 

@@ -6,7 +6,7 @@ order: 100
 
 # Agents
 
-An agent is a reusable definition for a [session](/concepts/sessions) turn. It contains instructions, allowed tools, a default model, and an optional output schema.
+An agent defines instructions, allowed tools, a default model, and an optional output schema for a [session](/concepts/sessions) turn.
 
 This command finds and authenticates with the managed daemon.
 

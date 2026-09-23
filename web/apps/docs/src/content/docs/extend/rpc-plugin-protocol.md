@@ -11,7 +11,7 @@ RPC plugins are external programs that Wingman supervises. They exchange
 newline-delimited JSON-RPC 2.0 messages with Wingman through stdin and stdout.
 Protocol version 1 supports tool contributions.
 
-Use RPC plugins when the stock `wingman serve` binary loads a polyglot, out-of-process extension.
+Use RPC plugins to extend the stock `wingman serve` binary with an external process.
 RPC isolates Wingman from plugin crashes. RPC is not an OS security sandbox.
 The plugin runs with the same operating system permissions as Wingman.
 

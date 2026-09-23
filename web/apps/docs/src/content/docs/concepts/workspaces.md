@@ -6,7 +6,7 @@ order: 103
 
 # Workspaces
 
-A Workspace is a saved session context. It can point to a directory. It can also act as a label and filter.
+A Workspace groups sessions. It can supply a working directory or act as a label and filter.
 
 Each Workspace stores:
 

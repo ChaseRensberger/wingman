@@ -94,6 +94,7 @@ wingman service start --no-plugins
 Project-local plugins are available only to sessions in that working directory. Tool names must be unique across native, RPC, and MCP sources. A name collision prevents the tool catalog from loading.
 
 An external plugin uses a `wingman-plugin.json` file. Files ending in `.plugin.json` also load.
+The manifest starts the process. The process returns its tools during `plugin.initialize`.
 
 Minimal manifest:
 
@@ -101,26 +102,13 @@ Minimal manifest:
 {
   "id": "example.greet",
   "name": "Greeting Plugin",
-  "command": ["node", "/absolute/path/to/greet-plugin.js"],
-  "tools": [
-    {
-      "name": "greet",
-      "description": "Greet someone by name",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string", "description": "Name to greet" }
-        },
-        "required": ["name"]
-      }
-    }
-  ]
+  "command": ["node", "/absolute/path/to/greet-plugin.js"]
 }
 ```
 
 Wingman runs `command` directly. Shell expansion is not applied. Pass each argument as a separate array item.
 
-See [RPC Plugin Protocol](/extend/rpc-plugin-protocol) for manifest fields, the JSON-RPC request shape, and a minimal Node plugin.
+See [RPC Plugin Protocol](/extend/rpc-plugin-protocol) for manifest fields and the initialization response that declares tools.
 
 ## Using Plugin Tools
 

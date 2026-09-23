@@ -164,8 +164,8 @@ An `ask` rule creates an approval request.
 ## Run Snapshots
 
 Persistent runs store the skill body and supporting-file contents at admission.
-The built-in `wingskill` stores only bundled documentation paths and hashes; it
-loads page content from the running Wingman binary. Later skill edits affect
+The built-in `wingskill` stores only bundled documentation paths and hashes.
+It loads page content from the running Wingman binary. Later skill edits affect
 later runs only. A retry with the same `request_id` returns the saved run.
 Wingman does not resolve skills again.
 

@@ -39,7 +39,7 @@ The SQLite schema stores:
 | Table                 | Purpose                                                                                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agents`              | Agent definitions: instructions, tool names, model ref, options, output schema.                                                                                                       |
-| `clients`             | API consumer identities, including the built-in `Wingman` default client.                                                                                                             |
+| `clients`             | API consumer identities, including the built-in `WingClient` default client.                                                                                                          |
 | `workspaces`          | Client-owned saved contexts used to group sessions and optionally seed working directories.                                                                                           |
 | `sessions`            | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps.                                                                                         |
 | `session_runs`        | Durably admitted session work, request identity, immutable execution snapshot, and status.                                                                                            |
@@ -108,5 +108,4 @@ provide a different store implementation.
 
 ## Embedding
 
-Embedded Go applications can provide a different store implementation. See the
-exported `store.Store` interface for the current contract.
+See the exported `store.Store` interface for the current contract.

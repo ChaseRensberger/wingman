@@ -108,6 +108,9 @@ if err != nil {
 | `GetSessionRunWithResponse(ctx, id, runID, nil)`                    | Get one run.                                                                                         |
 | `AbortSessionRunWithResponse(ctx, id, runID, nil)`                  | Abort one run.                                                                                       |
 | `ListSessionToolUsesWithResponse(ctx, id, nil)`                     | List tool uses for a session.                                                                        |
+| `ListSessionMacrosWithResponse(ctx, id, nil)`                       | List project macros for a session.                                                                   |
+| `RunSessionMacroWithResponse(ctx, id, nil, body)`                   | Admit a project macro.                                                                               |
+| `RunSessionActionWithResponse(ctx, id, action, nil, body)`          | Admit a named session action.                                                                        |
 
 Before the first `AdmitMessage` request, use `NewMessageAdmission`. Save the
 returned request before you send it. If the result is unknown, reuse the saved
@@ -219,6 +222,8 @@ if err := stream.Err(); err != nil {
 | `ListDirectoriesWithResponse(ctx, params)`        | List immediate subdirectories. Omit `params.Path` for the daemon user home directory. |
 | `ListLogsWithResponse(ctx, nil)`                  | Read recent process-local daemon log entries.                                         |
 | `GetDiagnosticsWithResponse(ctx, nil)`            | Read a bounded daemon diagnostic snapshot.                                            |
+| `ListActionsWithResponse(ctx, nil)`               | List available session actions.                                                       |
+| `RestartServiceWithResponse(ctx, params)`         | Restart the managed daemon. Set the required `X-Wingman-Console: 1` header parameter. |
 
 ## Errors and Types
 

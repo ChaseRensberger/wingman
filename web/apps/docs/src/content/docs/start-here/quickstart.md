@@ -49,8 +49,7 @@ Expected response:
 
 ## Configure provider auth
 
-Store the Anthropic API key in the local Wingman authentication store. Replace
-`{key}` with your key:
+Store the Anthropic API key in Wingman. Replace `{key}` with your key:
 
 ```bash
 export ANTHROPIC_API_KEY={key}
@@ -66,8 +65,7 @@ only whether a provider is configured. They do not return the secret.
 
 ## Create an agent
 
-An agent is a reusable definition. It contains instructions, allowed tools, a
-model, and model options.
+An agent defines instructions, allowed tools, a model, and model options.
 
 ```bash
 AGENT_ID=$(wingman api createAgent -d '{
@@ -83,8 +81,7 @@ printf 'agent: %s\n' "$AGENT_ID"
 
 ## Create a session
 
-A session is a running conversation. It contains the message history and an
-optional working directory.
+A session stores a conversation and an optional working directory.
 
 ```bash
 SESSION_ID=$(wingman api createSession \
@@ -104,8 +101,7 @@ wingman api messageSession --param "id=${SESSION_ID}" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response shows that the server accepted the message. Use the session event
-stream for progress and completion:
+The response confirms message admission. Read the session event stream for progress and completion:
 
 ```json
 {

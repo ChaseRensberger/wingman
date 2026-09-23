@@ -6,10 +6,10 @@ order: 1000
 
 # API
 
-Workspace URL: `http://localhost:2424` (set with `--host` and `--port`).
+Default server URL: `http://localhost:2424` (set with `--host` and `--port`).
 
-All endpoints accept and return JSON unless noted. Non-success JSON responses
-contain `error.code`, `error.message`, and `error.request_id`. The
+Most endpoints accept and return JSON. Event streams use SSE. Catalog logos return images.
+Non-success JSON responses contain `error.code`, `error.message`, and `error.request_id`. The
 `X-Request-ID` header returns the same request ID. See [HTTP API Basics](/build-clients/http-api-basics#handle-errors).
 
 The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
@@ -33,6 +33,7 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 | ------ | --------- | ------------------------------------------------- |
 | `GET`  | `/health` | Health check                                      |
 | `GET`  | `/ready`  | Authenticated readiness, instance ID, and version |
+| `GET`  | `/`      | Authenticated service metadata                    |
 
 ```json
 { "status": "ok" }
@@ -155,6 +156,14 @@ and update requests return `400 Bad Request` for unknown or duplicate names.
 | `GET`  | `/logs`                               | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart.                                                                             |
 | `GET`  | `/diagnostics`                        | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health.                                       |
 | `GET`  | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                                                                            |
+| `GET`    | `/actions`                           | List available session actions.                                                                                                                                                 |
+| `GET`    | `/catalog`                           | Get the model catalog.                                                                                                                                                          |
+| `GET`    | `/catalog/labs/{id}/logo`            | Get a catalog lab logo image.                                                                                                                                                   |
+| `POST`   | `/mcp/{name}/auth`                   | Start MCP authorization.                                                                                                                                                        |
+| `DELETE` | `/mcp/{name}/auth`                   | Remove MCP authorization.                                                                                                                                                       |
+| `POST`   | `/service/restart`                   | Restart the managed daemon.                                                                                                                                                     |
+
+`POST /service/restart` requires `X-Wingman-Console: 1`. It returns `409` for a foreground server.
 
 Plugin directories and MCP server definitions use server-wide configuration. See
 [Global Config](/configure/config), [Plugins](/concepts/plugins#external-plugins),
@@ -190,6 +199,9 @@ authoritative state for each run, use the session and run APIs.
 | `POST`   | `/sessions/{id}/move`                                  | Move a session to a working directory or Workspace at an expected aggregate version |
 | `DELETE` | `/sessions/{id}?expected_version={version}`            | Permanently purge a session and all associated data                                 |
 | `POST`   | `/sessions/{id}/message`                               | Durably queue a message and return its run ID (`202 Accepted`)                      |
+| `GET`    | `/sessions/{id}/macros`                                | List project macros for the session working directory                               |
+| `POST`   | `/sessions/{id}/macros`                                | Admit a project macro as a session run                                               |
+| `POST`   | `/sessions/{id}/actions/{action}`                      | Admit a named session action as a run                                                |
 | `GET`    | `/sessions/{id}/events`                                | Replay durable events after a cursor, synchronize, then stream new events           |
 | `GET`    | `/sessions/{id}/events/history`                        | Read one finite page of durable session events                                      |
 | `POST`   | `/sessions/{id}/abort`                                 | Cancel the active run. Queued messages remain scheduled.                            |
@@ -212,6 +224,10 @@ server starts. A run that was active at restart is recorded as aborted.
 The response includes the canonical run ID, current run status, and aggregate
 version after admission. For authoritative status, read `/sessions/{id}/runs/{runID}`.
 For execution progress, read `/sessions/{id}/events`.
+
+`GET /sessions/{id}/macros` lists project macros for the session working directory.
+`POST /sessions/{id}/macros` admits one macro expansion. Read [Macros](/configure/macros) for the request shape.
+`POST /sessions/{id}/actions/{action}` admits a named action. Get available actions from `GET /actions`.
 
 ### Create request
 

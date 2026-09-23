@@ -5,7 +5,7 @@ order: 1
 
 # Introduction
 
-Wingman is an open-source, client-agnostic agent harness. This means that Wingman is not coupled to a specific (agentic) use case (like being a coding tui). It is designed as a standalone runtime that you can build arbitrary clients on top of.
+Wingman is an open-source agent runtime. It runs as a service that different clients can use. Build a web app, CLI, or other client on its HTTP API.
 
 [Quick Start](/start-here/quickstart)
 

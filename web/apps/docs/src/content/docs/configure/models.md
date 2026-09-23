@@ -204,4 +204,4 @@ gemini_generate
 Wingman's embedded catalog provides provider defaults, model metadata, and
 capability flags.
 
-Catalog details live in [WingModels](/concepts/wingmodels#catalog).
+Read [WingModels](/concepts/wingmodels) for supported providers and protocols.

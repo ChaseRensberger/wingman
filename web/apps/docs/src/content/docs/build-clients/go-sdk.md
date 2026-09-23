@@ -16,7 +16,7 @@ method index.
 Install the SDK version that matches the Wingman daemon:
 
 ```bash
-go get github.com/chaserensberger/wingman/client@v0.1.41
+go get github.com/chaserensberger/wingman/client@v0.1.60
 ```
 
 ## Connect
@@ -24,8 +24,8 @@ go get github.com/chaserensberger/wingman/client@v0.1.41
 ### Local Managed Daemon
 
 If the application runs as the daemon user, use `NewLocal`. It reads the
-private daemon registration from the XDG state directory. On Linux, it reads
-the managed-service state directory too. It accepts only a loopback origin.
+daemon registration from the XDG state directory and private credentials from
+the configuration directory. It accepts only a loopback origin.
 
 ```go
 wingman, err := client.NewLocal(context.Background())

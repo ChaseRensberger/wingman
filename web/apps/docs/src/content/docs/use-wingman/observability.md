@@ -249,7 +249,7 @@ Attempt limits, cancellation, and the state of the stream also control retries.
 Wingman does not automatically replay an established stream, even before visible output starts.
 
 `retry.decision` records `scheduled` or `not_retried` for a failed attempt.
-`scheduled` means Wingman recorded a retry plan; the next attempt confirms that it dispatched.
+`scheduled` means Wingman recorded a retry plan. A later attempt shows that Wingman sent another request.
 If cancellation stops the retry wait, Wingman changes the decision to `not_retried`.
 `retry.delay_ms` records the selected wait in milliseconds, including a provider's `Retry-After` value.
 `retry.reason` is `eligible`, `ineligible`, `attempt_limit`, `canceled`, or `established_stream`.

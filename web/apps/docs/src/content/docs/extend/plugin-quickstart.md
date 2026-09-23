@@ -22,8 +22,8 @@ import (
     "fmt"
     "log/slog"
 
-    "github.com/chaserensberger/wingman/agent/run"
     "github.com/chaserensberger/wingman/agent/plugin"
+    "github.com/chaserensberger/wingman/agent/run"
 )
 
 type Plugin struct {
@@ -78,7 +78,7 @@ func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
     if err := r.RegisterTransformContext(p.transformContext); err != nil { return nil, err }
     if err := r.RegisterBeforeToolCall(p.beforeToolCall); err != nil { return nil, err }
     if err := r.RegisterAfterToolCall(p.afterToolCall); err != nil { return nil, err }
-    if err := r.RegisterSink(p.sink); err != nil { return nil, err }
+    if err := r.RegisterSink(run.SinkFunc(p.sink)); err != nil { return nil, err }
     if err := r.RegisterTool(p.tool); err != nil { return nil, err }
     return func(ctx context.Context) error { return p.close(ctx) }, nil
 }
