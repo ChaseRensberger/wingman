@@ -33,7 +33,7 @@ The daemon publishes an OpenAPI 3.1 document at `GET /openapi.json`.
 | ------ | --------- | ------------------------------------------------- |
 | `GET`  | `/health` | Health check                                      |
 | `GET`  | `/ready`  | Authenticated readiness, instance ID, and version |
-| `GET`  | `/`      | Authenticated service metadata                    |
+| `GET`  | `/`       | Authenticated service metadata                    |
 
 ```json
 { "status": "ok" }
@@ -141,27 +141,27 @@ and update requests return `400 Bad Request` for unknown or duplicate names.
 
 ## Operational endpoints
 
-| Method | Path                                  | Description                                                                                                                                                                     |
-| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/tools`                              | List the unique effective native, plugin, and connected MCP catalog with input/output schemas, execution traits, source, and availability. Returns an error if sources collide. |
-| `GET`  | `/plugins`                            | List loaded external plugins and non-fatal load errors.                                                                                                                         |
-| `POST` | `/plugins/reload`                     | Reload configured external plugins, then return plugin status.                                                                                                                  |
-| `GET`  | `/mcp`                                | List configured MCP servers and their status.                                                                                                                                   |
-| `POST` | `/mcp/{name}/connect`                 | Connect a configured MCP server.                                                                                                                                                |
-| `POST` | `/mcp/{name}/disconnect`              | Disconnect a configured MCP server.                                                                                                                                             |
-| `GET`  | `/client`                             | Get the client for the current request.                                                                                                                                         |
-| `GET`  | `/clients`                            | List registered clients.                                                                                                                                                        |
-| `POST` | `/clients`                            | Register a client by name.                                                                                                                                                      |
-| `GET`  | `/clients/{id}`                       | Get a registered client.                                                                                                                                                        |
-| `GET`  | `/logs`                               | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart.                                                                             |
-| `GET`  | `/diagnostics`                        | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health.                                       |
-| `GET`  | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                                                                            |
-| `GET`    | `/actions`                           | List available session actions.                                                                                                                                                 |
-| `GET`    | `/catalog`                           | Get the model catalog.                                                                                                                                                          |
-| `GET`    | `/catalog/labs/{id}/logo`            | Get a catalog lab logo image.                                                                                                                                                   |
-| `POST`   | `/mcp/{name}/auth`                   | Start MCP authorization.                                                                                                                                                        |
-| `DELETE` | `/mcp/{name}/auth`                   | Remove MCP authorization.                                                                                                                                                       |
-| `POST`   | `/service/restart`                   | Restart the managed daemon.                                                                                                                                                     |
+| Method   | Path                                  | Description                                                                                                                                                                     |
+| -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/tools`                              | List the unique effective native, plugin, and connected MCP catalog with input/output schemas, execution traits, source, and availability. Returns an error if sources collide. |
+| `GET`    | `/plugins`                            | List loaded external plugins and non-fatal load errors.                                                                                                                         |
+| `POST`   | `/plugins/reload`                     | Reload configured external plugins, then return plugin status.                                                                                                                  |
+| `GET`    | `/mcp`                                | List configured MCP servers and their status.                                                                                                                                   |
+| `POST`   | `/mcp/{name}/connect`                 | Connect a configured MCP server.                                                                                                                                                |
+| `POST`   | `/mcp/{name}/disconnect`              | Disconnect a configured MCP server.                                                                                                                                             |
+| `GET`    | `/client`                             | Get the client for the current request.                                                                                                                                         |
+| `GET`    | `/clients`                            | List registered clients.                                                                                                                                                        |
+| `POST`   | `/clients`                            | Register a client by name.                                                                                                                                                      |
+| `GET`    | `/clients/{id}`                       | Get a registered client.                                                                                                                                                        |
+| `GET`    | `/logs`                               | Read up to 500 recent, process-local buffered server log entries. The buffer is cleared on restart.                                                                             |
+| `GET`    | `/diagnostics`                        | Read bounded daemon state: queued and active runs, cached scopes, subscriber backlog/closure/overflow state, and aggregate plugin health.                                       |
+| `GET`    | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                                                                            |
+| `GET`    | `/actions`                            | List available session actions.                                                                                                                                                 |
+| `GET`    | `/catalog`                            | Get the model catalog.                                                                                                                                                          |
+| `GET`    | `/catalog/labs/{id}/logo`             | Get a catalog lab logo image.                                                                                                                                                   |
+| `POST`   | `/mcp/{name}/auth`                    | Start MCP authorization.                                                                                                                                                        |
+| `DELETE` | `/mcp/{name}/auth`                    | Remove MCP authorization.                                                                                                                                                       |
+| `POST`   | `/service/restart`                    | Restart the managed daemon.                                                                                                                                                     |
 
 `POST /service/restart` requires `X-Wingman-Console: 1`. It returns `409` for a foreground server.
 
@@ -200,8 +200,8 @@ authoritative state for each run, use the session and run APIs.
 | `DELETE` | `/sessions/{id}?expected_version={version}`            | Permanently purge a session and all associated data                                 |
 | `POST`   | `/sessions/{id}/message`                               | Durably queue a message and return its run ID (`202 Accepted`)                      |
 | `GET`    | `/sessions/{id}/macros`                                | List project macros for the session working directory                               |
-| `POST`   | `/sessions/{id}/macros`                                | Admit a project macro as a session run                                               |
-| `POST`   | `/sessions/{id}/actions/{action}`                      | Admit a named session action as a run                                                |
+| `POST`   | `/sessions/{id}/macros`                                | Admit a project macro as a session run                                              |
+| `POST`   | `/sessions/{id}/actions/{action}`                      | Admit a named session action as a run                                               |
 | `GET`    | `/sessions/{id}/events`                                | Replay durable events after a cursor, synchronize, then stream new events           |
 | `GET`    | `/sessions/{id}/events/history`                        | Read one finite page of durable session events                                      |
 | `POST`   | `/sessions/{id}/abort`                                 | Cancel the active run. Queued messages remain scheduled.                            |

@@ -96,9 +96,9 @@ await client.clients.ensure("cli_example", "Example client");
 | `client.sessions.runs.get(id, runID)`                              | Get one run.                                                                                           |
 | `client.sessions.runs.abort(id, runID)`                            | Abort one run.                                                                                         |
 | `client.sessions.toolUses.list(id)`                                | List tool uses for a session.                                                                          |
-| `client.sessions.macros.list(id)`                                   | List project macros for a session.                                                                     |
-| `client.sessions.macros.admit(id, request)`                         | Admit a project macro with a `request_id`.                                                            |
-| `client.sessions.actions.admit(id, action, request)`                | Admit a named action with a `request_id`.                                                              |
+| `client.sessions.macros.list(id)`                                  | List project macros for a session.                                                                     |
+| `client.sessions.macros.admit(id, request)`                        | Admit a project macro with a `request_id`.                                                             |
+| `client.sessions.actions.admit(id, action, request)`               | Admit a named action with a `request_id`.                                                              |
 
 Before the first `admit` request, use `newMessageAdmission`. Save the returned
 request before you send it. If the result is unknown, reuse the saved request.
@@ -186,7 +186,7 @@ for await (const result of client.run.stream({
 | `client.logs.list()`                   | Read recent process-local daemon log entries.                                  |
 | `client.diagnostics.get()`             | Read a bounded daemon diagnostic snapshot.                                     |
 | `client.actions.list()`                | List available session actions.                                                |
-| `client.service.restart()`             | Restart the managed daemon. The client sends `X-Wingman-Console: 1`.          |
+| `client.service.restart()`             | Restart the managed daemon. The client sends `X-Wingman-Console: 1`.           |
 
 ## Errors and Stream Helpers
 
@@ -195,7 +195,7 @@ for await (const result of client.run.stream({
 | `APIError`                          | Error for a non-success HTTP response. It includes `status`, `code`, `message`, `requestId`, `details`, `headers`, and `retryAfterMs`.   |
 | `StreamError`                       | Error for an invalid, interrupted, or oversized SSE stream. Its `code` is `invalid_stream`, `stream_interrupted`, or `stream_too_large`. |
 | `newMessageAdmission(request)`      | Return the request unchanged when it has `request_id`. Otherwise, return a copy with a new UUID.                                         |
-| `newMacroAdmission(request)`        | Add a `request_id` to a macro admission if it has none.                                                                                 |
+| `newMacroAdmission(request)`        | Add a `request_id` to a macro admission if it has none.                                                                                  |
 | `newActionAdmission(request)`       | Add a `request_id` to an action admission if it has none.                                                                                |
 | `readSSE(response, maxEventBytes?)` | Parse raw SSE frames into an async iterable. Use resource stream methods unless you need raw frames.                                     |
 | `parseSessionEvent(value)`          | Parse one session event envelope.                                                                                                        |

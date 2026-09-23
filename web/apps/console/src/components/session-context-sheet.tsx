@@ -262,7 +262,9 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
                         {call.trace.timing.first_answer_ms !== undefined
                           ? ` · first answer ${call.trace.timing.first_answer_ms} ms`
                           : ""}
-                        {modelCallAnswerSpeed(call) ? ` · ${modelCallAnswerSpeed(call)} answer tokens/s` : ""}
+                        {modelCallAnswerSpeed(call)
+                          ? ` · ${modelCallAnswerSpeed(call)} answer tokens/s`
+                          : ""}
                       </div>
                     )}
                     {call.provider_request_id && (

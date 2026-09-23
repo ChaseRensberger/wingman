@@ -18,7 +18,7 @@ Normal chat errors remain concise.
 | Why did a provider reject a model call? | Inspector diagnostics or the model-call API                           |
 | Did Wingman retry the call?             | Model-call records with the same run and step, but different attempts |
 | Why did a stream stop?                  | The failure body, transport operation, and cause chain                |
-| Why was a failed attempt not retried?  | The attempt's `retry.decision` and `retry.reason`                      |
+| Why was a failed attempt not retried?   | The attempt's `retry.decision` and `retry.reason`                     |
 | Where did the model spend time?         | Per-attempt timing milestones and duration                            |
 | How much did a call use?                | Token usage and estimated cost in the inspector                       |
 
@@ -263,11 +263,11 @@ An absent `phase` means that the native error does not identify a more specific 
 
 `timing` contains elapsed milliseconds from the start of one physical attempt:
 
-| Field | Meaning |
-| --- | --- |
-| `first_response_ms` | Wingman received the provider's stream start. |
+| Field               | Meaning                                                         |
+| ------------------- | --------------------------------------------------------------- |
+| `first_response_ms` | Wingman received the provider's stream start.                   |
 | `first_activity_ms` | Wingman first received text, reasoning, or tool-input activity. |
-| `first_answer_ms` | Wingman first received answer text. |
+| `first_answer_ms`   | Wingman first received answer text.                             |
 
 The model-call start and completion timestamps give the full attempt duration.
 The inspector calculates answer tokens per second from visible output tokens and the time after the first answer.
