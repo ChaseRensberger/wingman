@@ -8,7 +8,7 @@ import { createWingmanClient } from "@wingman-actor/client";
 import { formatModelCallDiagnostics } from "./src/lib/model-call-diagnostics";
 import type { ModelCall } from "./src/lib/types";
 
-test("split development proxies model-call diagnostics to the authenticated daemon", async () => {
+test("split development proxies session data to the authenticated daemon", async () => {
   const call: ModelCall = {
     id: "mcl_proxy",
     session_id: "ses_proxy",
@@ -49,6 +49,16 @@ test("split development proxies model-call diagnostics to the authenticated daem
       if (request.headers.get("Authorization") !== `Basic ${btoa("diagnostic:test-password")}`) {
         return new Response("unauthorized", { status: 401 });
       }
+      if (new URL(request.url).pathname === "/sessions")
+        return Response.json([
+          {
+            id: "ses_proxy",
+            version: 1,
+            created_at: "2026-09-22T00:00:00Z",
+            updated_at: "2026-09-22T00:00:00Z",
+            run_status: "running",
+          },
+        ]);
       return Response.json([call]);
     },
   });
@@ -81,6 +91,9 @@ test("split development proxies model-call diagnostics to the authenticated daem
     expect(formatModelCallDiagnostics(calls[0]!)).toContain('"http_status": 200');
     expect(formatModelCallDiagnostics(calls[0]!)).toContain("Use the Responses API");
     expect(formatModelCallDiagnostics(calls[0]!)).toContain("ECONNRESET");
+    const sessions = (await client.sessions.list()) as Array<{ run_status?: string }>;
+    expect(requests).toEqual(["/sessions/ses_proxy/model-calls", "/sessions"]);
+    expect(sessions[0]?.run_status).toBe("running");
   } finally {
     await vite?.close();
     upstream.stop(true);

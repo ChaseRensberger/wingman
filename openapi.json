@@ -224,14 +224,191 @@
         ],
         "type": "object"
       },
+      "BuildTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "go": {
+            "type": "string"
+          },
+          "modified": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "go"
+        ],
+        "type": "object"
+      },
+      "CallDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "body_kind": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "causes": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticCause"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "classification": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "detail_omitted": {
+            "type": "boolean"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "http_status": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "output_started": {
+            "type": "boolean"
+          },
+          "param": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "rate_limit": {
+            "$ref": "#/components/schemas/RateLimitDiagnostic"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "response_headers": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": "object"
+          },
+          "retry_after_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "route": {
+            "type": "string"
+          },
+          "settings": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/TransportDiagnostic"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "category",
+          "retryable",
+          "output_started"
+        ],
+        "type": "object"
+      },
+      "CallRetry": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "type": "string"
+          },
+          "delay_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CallTiming": {
+        "additionalProperties": false,
+        "properties": {
+          "first_activity_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_answer_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_response_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "CallTrace": {
         "additionalProperties": false,
         "properties": {
           "api": {
             "type": "string"
           },
+          "build": {
+            "$ref": "#/components/schemas/BuildTrace"
+          },
           "capabilities": {
             "$ref": "#/components/schemas/Capabilities"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/CallDiagnostic"
           },
           "lowered": {
             "$ref": "#/components/schemas/LoweredOptions"
@@ -245,11 +422,17 @@
           "provider": {
             "type": "string"
           },
+          "retry": {
+            "$ref": "#/components/schemas/CallRetry"
+          },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeTrace"
           },
           "system": {
             "$ref": "#/components/schemas/SystemTrace"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/CallTiming"
           },
           "tools": {
             "items": {
@@ -515,6 +698,37 @@
         "required": [
           "name",
           "path"
+        ],
+        "type": "object"
+      },
+      "DiagnosticCause": {
+        "additionalProperties": false,
+        "properties": {
+          "causes": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticCause"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "stack": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
         ],
         "type": "object"
       },
@@ -1884,6 +2098,30 @@
         ],
         "type": "object"
       },
+      "RateLimitDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "remaining": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "reset": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "ReadinessDiagnostic": {
         "additionalProperties": false,
         "properties": {
@@ -2865,6 +3103,9 @@
           "id": {
             "type": "string"
           },
+          "run_status": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           },
@@ -2913,6 +3154,9 @@
           },
           "latest_model_call": {
             "$ref": "#/components/schemas/ModelCall"
+          },
+          "run_status": {
+            "type": "string"
           },
           "title": {
             "type": "string"
@@ -3945,6 +4189,36 @@
           "ordinal",
           "name",
           "status"
+        ],
+        "type": "object"
+      },
+      "TransportDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "delivery": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recovery": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "operation",
+          "delivery",
+          "recovery"
         ],
         "type": "object"
       },

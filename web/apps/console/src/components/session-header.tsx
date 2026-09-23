@@ -53,7 +53,7 @@ export function SessionHeader(props: Props) {
         <ArrowLeftIcon className="size-4" />
       </Button>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-semibold tracking-tight">
+        <h1 className="truncate text-sm font-semibold tracking-tight" title={props.title}>
           {props.title || "Untitled session"}
         </h1>
       </div>

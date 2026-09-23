@@ -122,7 +122,16 @@ export function formatSessionError(err: unknown): string {
 }
 
 export function shouldAutoGenerateTitle(session: Session | null): boolean {
-  if (!session || session.history.length > 0) return false;
+  if (!session) return false;
   const title = (session.title ?? "").trim();
   return title === "" || title === DEFAULT_SESSION_TITLE;
+}
+
+export function titleSourceMessage(session: Session | null, message: string): string {
+  const first = session?.history.find((item) => item.role === "user");
+  const text = first?.content
+    .map((part) => (part.type === "text" && "text" in part ? part.text : ""))
+    .join(" ")
+    .trim();
+  return text || message;
 }

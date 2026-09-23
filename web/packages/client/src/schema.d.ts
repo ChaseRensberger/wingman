@@ -969,15 +969,74 @@ export interface components {
             name?: string;
             type: string;
         };
+        BuildTrace: {
+            go: string;
+            modified?: boolean;
+            revision?: string;
+            version: string;
+        };
+        CallDiagnostic: {
+            body?: string;
+            body_kind?: string;
+            category: string;
+            causes?: components["schemas"]["DiagnosticCause"][] | null;
+            classification?: string;
+            code?: string;
+            detail_omitted?: boolean;
+            endpoint?: string;
+            event?: string;
+            /** Format: int64 */
+            http_status?: number;
+            message?: string;
+            model?: string;
+            output_started: boolean;
+            param?: string;
+            protocol?: string;
+            rate_limit?: components["schemas"]["RateLimitDiagnostic"];
+            redacted?: boolean;
+            request_id?: string;
+            response_headers?: {
+                [key: string]: string[] | null;
+            };
+            /** Format: int64 */
+            retry_after_ms?: number;
+            retryable: boolean;
+            route?: string;
+            settings?: {
+                [key: string]: unknown;
+            };
+            stage: string;
+            transport?: components["schemas"]["TransportDiagnostic"];
+            truncated?: boolean;
+            type?: string;
+        };
+        CallRetry: {
+            decision: string;
+            /** Format: int64 */
+            delay_ms?: number;
+            reason: string;
+        };
+        CallTiming: {
+            /** Format: int64 */
+            first_activity_ms?: number;
+            /** Format: int64 */
+            first_answer_ms?: number;
+            /** Format: int64 */
+            first_response_ms?: number;
+        };
         CallTrace: {
             api: string;
+            build?: components["schemas"]["BuildTrace"];
             capabilities: components["schemas"]["Capabilities"];
+            failure?: components["schemas"]["CallDiagnostic"];
             lowered?: components["schemas"]["LoweredOptions"];
             messages: components["schemas"]["MessageTrace"];
             model: components["schemas"]["ModelRef"];
             provider: string;
+            retry?: components["schemas"]["CallRetry"];
             runtime: components["schemas"]["RuntimeTrace"];
             system: components["schemas"]["SystemTrace"];
+            timing?: components["schemas"]["CallTiming"];
             tools?: components["schemas"]["ToolTrace"][] | null;
             version: string;
         };
@@ -1043,6 +1102,13 @@ export interface components {
         CreateWorkspaceRequest: {
             name: string;
             path: string;
+        };
+        DiagnosticCause: {
+            causes?: components["schemas"]["DiagnosticCause"][] | null;
+            code?: string;
+            message: string;
+            stack?: string;
+            type: string;
         };
         DiagnosticsResponse: {
             /** Format: int64 */
@@ -1453,6 +1519,17 @@ export interface components {
             };
             updated_at?: string;
         };
+        RateLimitDiagnostic: {
+            limit?: {
+                [key: string]: string;
+            };
+            remaining?: {
+                [key: string]: string;
+            };
+            reset?: {
+                [key: string]: string;
+            };
+        };
         ReadinessDiagnostic: {
             recovery_action: string;
             subsystem: string;
@@ -1730,6 +1807,7 @@ export interface components {
             client_id?: string;
             created_at: string;
             id: string;
+            run_status?: string;
             title?: string;
             updated_at: string;
             /** Format: int64 */
@@ -1743,6 +1821,7 @@ export interface components {
             history: components["schemas"]["Message"][] | null;
             id: string;
             latest_model_call?: components["schemas"]["ModelCall"];
+            run_status?: string;
             title?: string;
             updated_at: string;
             /** Format: int64 */
@@ -2069,6 +2148,14 @@ export interface components {
             structured?: unknown;
             /** Format: date-time */
             updated_at?: string;
+        };
+        TransportDiagnostic: {
+            code?: string;
+            delivery: string;
+            kind: string;
+            operation: string;
+            phase?: string;
+            recovery: string;
         };
         UpdateAgentRequest: {
             instructions?: string;

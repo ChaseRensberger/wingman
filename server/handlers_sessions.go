@@ -87,7 +87,28 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, apiSessions(sessions))
+	running, err := s.store.ListRunningSessionRuns(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	queued, err := s.store.ListQueuedSessionRunSessions(r.Context())
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	statuses := make(map[string]string, len(running)+len(queued))
+	for _, id := range queued {
+		statuses[id] = store.SessionRunStatusQueued
+	}
+	for _, run := range running {
+		statuses[run.SessionID] = store.SessionRunStatusRunning
+	}
+	result := apiSessions(sessions)
+	for i := range result {
+		result[i].RunStatus = statuses[result[i].ID]
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {

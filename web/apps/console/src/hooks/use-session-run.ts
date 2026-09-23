@@ -64,6 +64,28 @@ export function latestActiveSessionRun(runs: readonly SessionRun[]): SessionRun 
   }, undefined);
 }
 
+export async function followNextSessionRun(options: {
+  isCurrent: () => boolean;
+  list: () => Promise<SessionRun[]>;
+  start: (run: SessionRun) => void;
+  waitForRetry: (delay: number) => Promise<void>;
+  reportFailure?: (message: string, error: unknown) => void;
+}) {
+  let attempt = 0;
+  while (options.isCurrent()) {
+    try {
+      const next = latestActiveSessionRun(await options.list());
+      if (!options.isCurrent()) return;
+      if (next) options.start(next);
+      return;
+    } catch (err) {
+      if (!options.isCurrent()) return;
+      (options.reportFailure ?? console.error)("Failed to find next session run", err);
+      await options.waitForRetry(sessionRunRetryDelay(attempt++));
+    }
+  }
+}
+
 export function isTerminalSessionRunEvent(type: string): boolean {
   return terminalRunEvents.has(type);
 }
@@ -232,6 +254,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const load = loadSession;
   const submissionControllerRef = useRef<AbortController | null>(null);
   const eventControllerRef = useRef<AbortController | null>(null);
+  const followControllerRef = useRef<AbortController | null>(null);
   const lastEventSeqRef = useRef(0);
   const activeRunRef = useRef<{ sessionId: string; runId?: string; completed: boolean } | null>(
     null,
@@ -278,7 +301,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     permissionRepliesInFlightRef.current = new Set();
     setPermissionRepliesInFlight(new Set());
     reset();
-    return () => eventControllerRef.current?.abort();
+    return () => {
+      eventControllerRef.current?.abort();
+      followControllerRef.current?.abort();
+    };
   }, [sessionId]);
 
   async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
@@ -302,26 +328,67 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   useEffect(() => {
     if (sessionId === "new") return;
     const controller = new AbortController();
-    let cancelled = false;
+    const { signal } = controller;
 
     async function recover() {
+      const runs = (await client.sessions.runs.list(sessionId)) as SessionRun[];
+      const run = latestActiveSessionRun(runs);
+      if (signal.aborted || !run || activeRunRef.current || submissionControllerRef.current) return;
+      setIsStreaming(true);
+      startRecoveredRun(sessionId, run.id);
+    }
+
+    async function watch() {
+      let after = 0;
+      let retry = 0;
       try {
-        const runs = (await client.sessions.runs.list(sessionId)) as SessionRun[];
-        const run = latestActiveSessionRun(runs);
-        if (cancelled || !run || activeRunRef.current || submissionControllerRef.current) return;
-        setIsStreaming(true);
-        startRecoveredRun(sessionId, run.id);
+        after = await latestSessionEventSeq(sessionId);
+        if (signal.aborted) return;
+        await recover();
       } catch (err) {
-        if ((err as Error).name !== "AbortError" && !cancelled)
-          console.error("Failed to recover session run", err);
+        if (!signal.aborted) console.error("Failed to recover session run", err);
+      }
+      while (!signal.aborted) {
+        try {
+          for await (const parsed of client.sessions.streamEvents(sessionId, {
+            after,
+            lastEventID: after || undefined,
+            signal,
+          })) {
+            if (signal.aborted) return;
+            if (parsed.event.type === "session.events.resync_required") {
+              after = await latestSessionEventSeq(sessionId);
+              await load(sessionId);
+              await recover();
+              break;
+            }
+            if (typeof parsed.event.cursor?.seq === "number")
+              after = Math.max(after, parsed.event.cursor.seq);
+            retry = 0;
+            if (!parsed.known || activeRunRef.current || submissionControllerRef.current) continue;
+            if (
+              parsed.event.type === "session.run.queued" ||
+              parsed.event.type === "session.run.started"
+            ) {
+              await load(sessionId);
+              await recover();
+            } else if (parsed.event.type === "session.message.created") {
+              await load(sessionId);
+            }
+          }
+          if (signal.aborted) return;
+          await load(sessionId);
+          await recover();
+        } catch (err) {
+          if (signal.aborted) return;
+          console.error("Session event stream failed", err);
+        }
+        await waitForRetry(sessionRunRetryDelay(retry++), signal);
       }
     }
 
-    void recover();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
+    void watch();
+    return () => controller.abort();
   }, [sessionId]);
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
@@ -467,6 +534,25 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     if (request && error) setFailedRun({ ...request, error });
     reset();
     await load(id);
+    if (sessionId !== id || submissionControllerRef.current || activeRunRef.current) return;
+    const followController = new AbortController();
+    followControllerRef.current?.abort();
+    followControllerRef.current = followController;
+    const isCurrent = () =>
+      !followController.signal.aborted &&
+      followControllerRef.current === followController &&
+      !activeRunRef.current &&
+      !submissionControllerRef.current;
+    try {
+      await followNextSessionRun({
+        isCurrent,
+        list: () => client.sessions.runs.list(id) as Promise<SessionRun[]>,
+        start: (next) => start(id, next.id),
+        waitForRetry: (delay) => waitForRetry(delay, followController.signal),
+      });
+    } finally {
+      if (followControllerRef.current === followController) followControllerRef.current = null;
+    }
   }
 
   function waitForRetry(delay: number, signal: AbortSignal): Promise<void> {
@@ -524,7 +610,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   }
 
   function start(id: string, runID: string) {
+    followControllerRef.current?.abort();
     activeRunRef.current = { sessionId: id, runId: runID, completed: false };
+    setIsStreaming(true);
     const controller = new AbortController();
     eventControllerRef.current?.abort();
     eventControllerRef.current = controller;

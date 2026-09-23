@@ -133,6 +133,7 @@ export interface PluginsResponse {
 
 export interface SessionSummary {
   id: string;
+  run_status?: "queued" | "running";
   version: number;
   title?: string;
   work_dir?: string;

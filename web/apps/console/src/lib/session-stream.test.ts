@@ -1,6 +1,19 @@
 import { expect, test } from "bun:test";
 
 import { parseRunStreamEvent, parseSessionEvent, readSSE } from "@wingman-actor/client";
+import { generatedSessionTitle } from "./session-stream";
+
+test("session titles use a short topic instead of a model's answer", () => {
+  const message = "What is the current weather in New York City?";
+  expect(generatedSessionTitle("New York weather", message)).toBe("New York weather");
+  expect(generatedSessionTitle("I don't have live internet access or real-time data feeds, so I can't help", message)).toBe(
+    "Current weather in New York City",
+  );
+  expect(generatedSessionTitle("", message)).toBe("Current weather in New York City");
+  expect(generatedSessionTitle("A very long generated answer that goes far beyond seven words", message)).toBe(
+    "Current weather in New York City",
+  );
+});
 
 test("readSSE preserves SSE event ids", async () => {
   const response = new Response('id:42\nevent: session.text.delta\ndata: {"delta":"hello"}\n\n');

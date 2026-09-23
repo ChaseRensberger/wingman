@@ -177,16 +177,73 @@ type AuthType struct {
 	Type string  `json:"type"`
 }
 
+// BuildTrace defines model for BuildTrace.
+type BuildTrace struct {
+	Go       string  `json:"go"`
+	Modified *bool   `json:"modified,omitempty"`
+	Revision *string `json:"revision,omitempty"`
+	Version  string  `json:"version"`
+}
+
+// CallDiagnostic defines model for CallDiagnostic.
+type CallDiagnostic struct {
+	Body            *string                 `json:"body,omitempty"`
+	BodyKind        *string                 `json:"body_kind,omitempty"`
+	Category        string                  `json:"category"`
+	Causes          *[]DiagnosticCause      `json:"causes,omitempty"`
+	Classification  *string                 `json:"classification,omitempty"`
+	Code            *string                 `json:"code,omitempty"`
+	DetailOmitted   *bool                   `json:"detail_omitted,omitempty"`
+	Endpoint        *string                 `json:"endpoint,omitempty"`
+	Event           *string                 `json:"event,omitempty"`
+	HttpStatus      *int64                  `json:"http_status,omitempty"`
+	Message         *string                 `json:"message,omitempty"`
+	Model           *string                 `json:"model,omitempty"`
+	OutputStarted   bool                    `json:"output_started"`
+	Param           *string                 `json:"param,omitempty"`
+	Protocol        *string                 `json:"protocol,omitempty"`
+	RateLimit       *RateLimitDiagnostic    `json:"rate_limit,omitempty"`
+	Redacted        *bool                   `json:"redacted,omitempty"`
+	RequestId       *string                 `json:"request_id,omitempty"`
+	ResponseHeaders *map[string]*[]string   `json:"response_headers,omitempty"`
+	RetryAfterMs    *int64                  `json:"retry_after_ms,omitempty"`
+	Retryable       bool                    `json:"retryable"`
+	Route           *string                 `json:"route,omitempty"`
+	Settings        *map[string]interface{} `json:"settings,omitempty"`
+	Stage           string                  `json:"stage"`
+	Transport       *TransportDiagnostic    `json:"transport,omitempty"`
+	Truncated       *bool                   `json:"truncated,omitempty"`
+	Type            *string                 `json:"type,omitempty"`
+}
+
+// CallRetry defines model for CallRetry.
+type CallRetry struct {
+	Decision string `json:"decision"`
+	DelayMs  *int64 `json:"delay_ms,omitempty"`
+	Reason   string `json:"reason"`
+}
+
+// CallTiming defines model for CallTiming.
+type CallTiming struct {
+	FirstActivityMs *int64 `json:"first_activity_ms,omitempty"`
+	FirstAnswerMs   *int64 `json:"first_answer_ms,omitempty"`
+	FirstResponseMs *int64 `json:"first_response_ms,omitempty"`
+}
+
 // CallTrace defines model for CallTrace.
 type CallTrace struct {
 	Api          string          `json:"api"`
+	Build        *BuildTrace     `json:"build,omitempty"`
 	Capabilities Capabilities    `json:"capabilities"`
+	Failure      *CallDiagnostic `json:"failure,omitempty"`
 	Lowered      *LoweredOptions `json:"lowered,omitempty"`
 	Messages     MessageTrace    `json:"messages"`
 	Model        ModelRef        `json:"model"`
 	Provider     string          `json:"provider"`
+	Retry        *CallRetry      `json:"retry,omitempty"`
 	Runtime      RuntimeTrace    `json:"runtime"`
 	System       SystemTrace     `json:"system"`
+	Timing       *CallTiming     `json:"timing,omitempty"`
 	Tools        *[]ToolTrace    `json:"tools,omitempty"`
 	Version      string          `json:"version"`
 }
@@ -245,6 +302,15 @@ type CreateSessionRequest struct {
 type CreateWorkspaceRequest struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+}
+
+// DiagnosticCause defines model for DiagnosticCause.
+type DiagnosticCause struct {
+	Causes  *[]DiagnosticCause `json:"causes,omitempty"`
+	Code    *string            `json:"code,omitempty"`
+	Message string             `json:"message"`
+	Stack   *string            `json:"stack,omitempty"`
+	Type    string             `json:"type"`
 }
 
 // DiagnosticsResponse defines model for DiagnosticsResponse.
@@ -645,6 +711,13 @@ type ProvidersAuthResponse struct {
 	UpdatedAt *string                     `json:"updated_at,omitempty"`
 }
 
+// RateLimitDiagnostic defines model for RateLimitDiagnostic.
+type RateLimitDiagnostic struct {
+	Limit     *map[string]string `json:"limit,omitempty"`
+	Remaining *map[string]string `json:"remaining,omitempty"`
+	Reset     *map[string]string `json:"reset,omitempty"`
+}
+
 // ReadinessDiagnostic defines model for ReadinessDiagnostic.
 type ReadinessDiagnostic struct {
 	RecoveryAction string `json:"recovery_action"`
@@ -862,6 +935,7 @@ type Session struct {
 	ClientId    *string `json:"client_id,omitempty"`
 	CreatedAt   string  `json:"created_at"`
 	Id          string  `json:"id"`
+	RunStatus   *string `json:"run_status,omitempty"`
 	Title       *string `json:"title,omitempty"`
 	UpdatedAt   string  `json:"updated_at"`
 	Version     int64   `json:"version"`
@@ -876,6 +950,7 @@ type SessionDetail struct {
 	History         *[]Message `json:"history"`
 	Id              string     `json:"id"`
 	LatestModelCall *ModelCall `json:"latest_model_call,omitempty"`
+	RunStatus       *string    `json:"run_status,omitempty"`
 	Title           *string    `json:"title,omitempty"`
 	UpdatedAt       string     `json:"updated_at"`
 	Version         int64      `json:"version"`
@@ -1046,6 +1121,16 @@ type ToolUse struct {
 	Step               int64       `json:"step"`
 	Structured         interface{} `json:"structured,omitempty"`
 	UpdatedAt          *time.Time  `json:"updated_at,omitempty"`
+}
+
+// TransportDiagnostic defines model for TransportDiagnostic.
+type TransportDiagnostic struct {
+	Code      *string `json:"code,omitempty"`
+	Delivery  string  `json:"delivery"`
+	Kind      string  `json:"kind"`
+	Operation string  `json:"operation"`
+	Phase     *string `json:"phase,omitempty"`
+	Recovery  string  `json:"recovery"`
 }
 
 // UpdateAgentRequest defines model for UpdateAgentRequest.

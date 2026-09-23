@@ -102,7 +102,7 @@ function SessionsPage() {
   const { workspace: workspaceFilter } = Route.useSearch();
   const queryClient = useQueryClient();
   const workspacesResult = useQuery(workspacesQuery);
-  const sessionsResult = useQuery(sessionsQuery);
+  const sessionsResult = useQuery({ ...sessionsQuery, refetchInterval: 2_000 });
   const workspaces = workspacesResult.data ?? emptyWorkspaces;
   const sessions = sessionsResult.data ?? emptySessions;
   const loading = workspacesResult.isPending || sessionsResult.isPending;
@@ -509,7 +509,19 @@ function SessionsPage() {
                         navigate({ to: "/sessions/$sessionId", params: { sessionId: session.id } })
                       }
                     >
-                      <TableCell className="font-medium">{session.title || session.id}</TableCell>
+                      <TableCell className="max-w-[320px] font-medium">
+                        <span className="flex min-w-0 items-center gap-2">
+                          {session.run_status === "running" && (
+                            <Spinner size={16} label="Running" className="shrink-0" />
+                          )}
+                          <span className="min-w-0 truncate" title={session.title || session.id}>
+                            {session.title || session.id}
+                          </span>
+                          {session.run_status === "queued" && (
+                            <span className="shrink-0 text-xs font-normal text-muted-foreground">Queued</span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="max-w-[420px]">
                         {workspace ? (
                           <div className="flex min-w-0 items-center gap-2">

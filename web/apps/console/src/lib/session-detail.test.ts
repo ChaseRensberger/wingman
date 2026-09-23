@@ -4,9 +4,23 @@ import {
   formatSessionError,
   modelRefExists,
   reasoningSummary,
+  shouldAutoGenerateTitle,
   shouldShowThinking,
+  titleSourceMessage,
   withFailedUserMessage,
 } from "./session-detail";
+import type { Session } from "./types";
+
+test("an untitled session uses its first user message on a later turn", () => {
+  const session = {
+    id: "ses_untitled",
+    title: "New session",
+    history: [{ role: "user", content: [{ type: "text", text: "What is the current weather?" }] }],
+  } as Session;
+  expect(shouldAutoGenerateTitle(session)).toBe(true);
+  expect(titleSourceMessage(session, "A follow-up question")).toBe("What is the current weather?");
+  expect(shouldAutoGenerateTitle({ ...session, title: "Weather in New York" })).toBe(false);
+});
 
 describe("reasoningSummary", () => {
   test("extracts a provider reasoning-summary heading", () => {

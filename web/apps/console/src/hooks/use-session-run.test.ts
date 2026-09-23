@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   isTerminalSessionRunEvent,
+  followNextSessionRun,
   addPermissionReplyInFlight,
   latestActiveSessionRun,
   maintainSessionRunStream,
@@ -57,6 +58,47 @@ describe("session run recovery", () => {
         run("failed", 4, "failed"),
       ]),
     ).toMatchObject({ id: "running" });
+  });
+
+  test("follows a queued run after a transient list failure", async () => {
+    let calls = 0;
+    const started: string[] = [];
+    const delays: number[] = [];
+    await followNextSessionRun({
+      isCurrent: () => true,
+      list: async () => {
+        if (++calls === 1) throw new Error("HTTP 503");
+        return [run("completed", 1, "completed"), run("queued", 2, "queued")];
+      },
+      start: (next) => started.push(next.id),
+      waitForRetry: async (delay) => {
+        delays.push(delay);
+      },
+      reportFailure: () => {},
+    });
+    expect(calls).toBe(2);
+    expect(delays).toEqual([250]);
+    expect(started).toEqual(["queued"]);
+  });
+
+  test("stops following when the session changes during a failed lookup", async () => {
+    let current = true;
+    let calls = 0;
+    await followNextSessionRun({
+      isCurrent: () => current,
+      list: async () => {
+        calls++;
+        current = false;
+        throw new Error("HTTP 503");
+      },
+      start: () => {
+        throw new Error("stale run started");
+      },
+      waitForRetry: async () => {
+        throw new Error("stale session retried");
+      },
+    });
+    expect(calls).toBe(1);
   });
 });
 

@@ -73,6 +73,91 @@ func TestSessionSummaryAndDetailUsePublicDTOs(t *testing.T) {
 	}
 }
 
+func TestListSessionsReportsActiveRunsForAuthorizedClient(t *testing.T) {
+	data := memory.NewStore()
+	client, err := data.EnsureDefaultClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := data.CreateClient("Other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"ses_running", "ses_queued", "ses_idle"} {
+		if err := data.CreateSession(&store.Session{ID: id, ClientID: client.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := data.CreateSession(&store.Session{ID: "ses_other", ClientID: other.ID}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, id := range []string{"ses_running", "ses_queued", "ses_other"} {
+		if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_" + id, SessionID: id, Message: "hello"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := data.ClaimNextSessionRun(ctx, "ses_running"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(ctx, "ses_other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.AdmitSessionRun(ctx, store.SessionRun{ID: "run_next", SessionID: "ses_running", Message: "next"}); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{Store: data})
+	list := func() map[string]string {
+		t.Helper()
+		response := httptest.NewRecorder()
+		s.router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sessions", nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
+		}
+		var summaries []api.Session
+		if err := json.Unmarshal(response.Body.Bytes(), &summaries); err != nil {
+			t.Fatal(err)
+		}
+		statuses := make(map[string]string)
+		for _, summary := range summaries {
+			statuses[summary.ID] = summary.RunStatus
+		}
+		return statuses
+	}
+	statuses := list()
+	if statuses["ses_running"] != "running" || statuses["ses_queued"] != "queued" || statuses["ses_idle"] != "" || len(statuses) != 3 {
+		t.Fatalf("active statuses = %#v", statuses)
+	}
+	if _, err := data.SettleSessionRun(ctx, store.SessionRunSettlement{ID: "run_ses_running", ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	if statuses := list(); statuses["ses_running"] != "queued" {
+		t.Fatalf("next queued run is not visible: %#v", statuses)
+	}
+	if _, err := data.SettleSessionRun(ctx, store.SessionRunSettlement{ID: "run_next", ExpectedStatus: store.SessionRunStatusQueued, Status: store.SessionRunStatusAborted}); err != nil {
+		t.Fatal(err)
+	}
+	if statuses := list(); statuses["ses_running"] != "" {
+		t.Fatalf("terminal runs still active: %#v", statuses)
+	}
+	frontend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/console/" {
+			t.Errorf("API request reached Console proxy: %s", r.URL.Path)
+		}
+	}))
+	defer frontend.Close()
+	proxied := New(Config{Store: data, ConsoleDevURL: frontend.URL})
+	response := httptest.NewRecorder()
+	proxied.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/sessions", nil))
+	var summaries []api.Session
+	if err := json.Unmarshal(response.Body.Bytes(), &summaries); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || len(summaries) != 3 {
+		t.Fatalf("proxied status = %d, sessions = %#v", response.Code, summaries)
+	}
+}
+
 func TestCanonicalRunStreamEventUsesPublicPayloadShape(t *testing.T) {
 	event, err := canonicalRunStreamEvent(session.StreamEvent{
 		Type: "context_transformed", Version: session.EnvelopeVersion,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { client, moveSession, purgeSession, renameSession } from "@/lib/client";
+import { APIError, client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { actionInvocation } from "@/lib/action";
 import { selectGreeting } from "@/lib/greeting";
 import { macroInvocation } from "@/lib/macro";
@@ -13,12 +13,14 @@ import {
   persistLastModelRef,
   persistModelVariant,
   shouldAutoGenerateTitle,
+  titleSourceMessage,
+  DEFAULT_SESSION_TITLE,
   storedModelVariant,
   withFailedUserMessage,
   LAST_AGENT_ID_KEY,
   LAST_MODEL_REF_KEY,
 } from "@/lib/session-detail";
-import { generateSessionTitle } from "@/lib/session-stream";
+import { generateSessionTitle, generatedSessionTitle } from "@/lib/session-stream";
 import { showErrorToast } from "@/lib/toast";
 import type {
   Session,
@@ -83,6 +85,7 @@ function SessionDetailPage() {
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const [streamingTitle, setStreamingTitle] = useState("");
+  const [pendingTitle, setPendingTitle] = useState<{ id: string; title: string } | null>(null);
   const [isTitleStreaming, setIsTitleStreaming] = useState(false);
   const [copiedFailedRunError, setCopiedFailedRunError] = useState(false);
   const [editingSession, setEditingSession] = useState(false);
@@ -94,7 +97,7 @@ function SessionDetailPage() {
   const activeSessionIdRef = useRef(sessionId);
   const skipNextSessionLoadRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const titleSessionIdRef = useRef(sessionId);
+  const titleSessionIdRef = useRef("");
   const pendingSubmissionRef = useRef<{
     requestId: string;
     sessionId: string;
@@ -105,6 +108,7 @@ function SessionDetailPage() {
 
   useEffect(() => {
     activeSessionIdRef.current = sessionId;
+    setPendingTitle((previous) => (previous?.id === sessionId ? previous : null));
     setJSONMode(false);
     if (titleSessionIdRef.current !== sessionId) {
       setStreamingTitle("");
@@ -165,6 +169,59 @@ function SessionDetailPage() {
   );
 
   const run = useSessionRun({ sessionId, loadSession, setSession });
+
+  useEffect(() => {
+    if (
+      !session || session.id !== sessionId || sessionId === "new" ||
+      !session.history.length || !shouldAutoGenerateTitle(session) ||
+      pendingTitle || run.isStreaming || isTitleStreaming || titleSessionIdRef.current === sessionId
+    ) return;
+    const message = titleSourceMessage(session, "");
+    if (message) setPendingTitle({ id: sessionId, title: generatedSessionTitle("", message) });
+  }, [session, sessionId, pendingTitle, run.isStreaming, isTitleStreaming]);
+
+  useEffect(() => {
+    if (!pendingTitle || pendingTitle.id !== sessionId) return;
+    const { id, title } = pendingTitle;
+    let cancelled = false;
+    async function saveTitle() {
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const latest = (await client.sessions.get(id)) as Session;
+          if (cancelled) return;
+          if (latest.title && latest.title !== DEFAULT_SESSION_TITLE) {
+            setPendingTitle(null);
+            return;
+          }
+          try {
+            const updated = await renameSession(latest, title);
+            if (cancelled) return;
+            setSession((previous) =>
+              previous?.id === updated.id
+                ? {
+                    ...previous,
+                    title: updated.title,
+                    version: Math.max(previous.version, updated.version),
+                    updated_at: updated.updated_at,
+                  }
+                : previous,
+            );
+            setPendingTitle(null);
+            return;
+          } catch (err) {
+            if (!(err instanceof APIError) || err.status !== 409) throw err;
+            if (run.isStreaming) return;
+          }
+        }
+      } catch (err) {
+        if (!cancelled) console.warn("Failed to persist generated session title", err);
+      }
+    }
+    void saveTitle();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingTitle, run.isStreaming, sessionId]);
   const visibleStreamingText = useStreamReveal(run.streamingText, run.isStreaming);
   const visibleStreamingTitle = useStreamReveal(streamingTitle, isTitleStreaming);
   const transcriptScroll = useTranscriptScroll(
@@ -325,6 +382,7 @@ function SessionDetailPage() {
     let invocation = action ? undefined : macroInvocation(outboundText, macros);
 
     const shouldGenerateTitle = !action && shouldAutoGenerateTitle(session);
+    const titleSource = titleSourceMessage(session, outboundText);
     persistLastAgentId(outboundAgentId);
     persistLastModelRef(outboundModelRef);
     setMessageText("");
@@ -346,49 +404,37 @@ function SessionDetailPage() {
     let activeSessionId = sessionId;
     let titlePromise: Promise<string> | null = null;
 
-    if (shouldGenerateTitle && outboundModelRef) {
+    if (shouldGenerateTitle) {
       titleSessionIdRef.current = sessionId;
-      setIsTitleStreaming(true);
-      setStreamingTitle("");
-      titlePromise = generateSessionTitle(
-        outboundText,
-        outboundModelRef,
-        controller.signal,
-        (title) => {
-          if (!title) return;
-          setStreamingTitle(title);
-        },
-      )
-        .catch((err) => {
-          if ((err as Error).name !== "AbortError") {
-            console.warn("Session title generation failed", err);
-          }
-          return "";
-        })
-        .finally(() => {
-          setIsTitleStreaming(false);
-        });
+      const fallback = generatedSessionTitle("", titleSource);
+      if (outboundModelRef) {
+        setIsTitleStreaming(true);
+        setStreamingTitle("");
+        titlePromise = generateSessionTitle(
+          titleSource,
+          outboundModelRef,
+          controller.signal,
+          (title) => {
+            if (title) setStreamingTitle(title);
+          },
+        )
+          .catch((err) => {
+            if ((err as Error).name !== "AbortError")
+              console.warn("Session title generation failed", err);
+            return fallback;
+          })
+          .finally(() => {
+            setIsTitleStreaming(false);
+          });
+      } else {
+        titlePromise = Promise.resolve(fallback);
+      }
     }
 
-    const persistGeneratedTitle = (target: Pick<SessionSummary, "id" | "version">) => {
+    const persistGeneratedTitle = (id: string) => {
       if (!titlePromise) return;
-      void titlePromise.then(async (title) => {
-        if (!title || titleSessionIdRef.current !== target.id) return;
-        try {
-          const updated = await renameSession(target, title);
-          setSession((prev) =>
-            prev && prev.id === target.id
-              ? {
-                  ...prev,
-                  title: updated.title,
-                  version: updated.version,
-                  updated_at: updated.updated_at,
-                }
-              : prev,
-          );
-        } catch (err) {
-          console.warn("Failed to persist generated session title", err);
-        }
+      void titlePromise.then((title) => {
+        if (title && titleSessionIdRef.current === id) setPendingTitle({ id, title });
       });
     };
 
@@ -457,7 +503,7 @@ function SessionDetailPage() {
           ? { ...prev, version: admitted.session_version! }
           : prev,
       );
-      persistGeneratedTitle({ id: activeSessionId, version: admitted.session_version });
+      persistGeneratedTitle(activeSessionId);
       pendingSubmissionRef.current = null;
       accepted = true;
       if (admitted.status === "queued" || admitted.status === "running") {

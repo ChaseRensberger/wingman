@@ -89,6 +89,7 @@ type UpdateWorkspaceRequest struct {
 // Session is the summary returned by list, create, and metadata commands.
 type Session struct {
 	ID          string `json:"id"`
+	RunStatus   string `json:"run_status,omitempty"`
 	Title       string `json:"title,omitempty"`
 	WorkDir     string `json:"work_dir,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
