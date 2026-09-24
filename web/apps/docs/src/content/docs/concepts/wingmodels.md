@@ -67,7 +67,7 @@ import (
 )
 
 client := provider.NewClient(nil)
-model := openai.Model("gpt-5.6-luna")
+model := openai.Model("gpt-6-luna")
 ```
 
 If your application constructs model references from configuration, use a blank import instead:

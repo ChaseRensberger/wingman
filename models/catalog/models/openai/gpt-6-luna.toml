@@ -1,0 +1,3 @@
+lab = "openai"
+name = "GPT-6 Luna"
+description = "OpenAI's efficient GPT-6 model."

@@ -53,6 +53,39 @@ func TestOpenCodeNemotron3UltraFree(t *testing.T) {
 	t.Fatal("canonical Nemotron 3 Ultra Free model not found")
 }
 
+func TestUpdatedAnthropicAndOpenAIModels(t *testing.T) {
+	for _, tc := range []struct {
+		provider, id, name string
+	}{
+		{"anthropic", "claude-opus-5-5", "Claude Opus 5.5"},
+		{"openai", "gpt-6-sol", "GPT-6 Sol"},
+		{"openai", "gpt-6-luna", "GPT-6 Luna"},
+	} {
+		model, ok := Get(tc.provider, tc.id)
+		if !ok || model.Provider != tc.provider || model.ID != tc.id {
+			t.Errorf("route %s/%s = %#v, found = %v", tc.provider, tc.id, model, ok)
+		}
+		found := false
+		for _, canonical := range ListCanonicalModels() {
+			if canonical.ID == tc.provider+"/"+tc.id && canonical.Name == tc.name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("canonical model %s/%s (%s) not found", tc.provider, tc.id, tc.name)
+		}
+	}
+	for _, tc := range []struct{ provider, id string }{
+		{"anthropic", "claude-opus-5"},
+		{"openai", "gpt-5.6-sol"},
+		{"openai", "gpt-5.6-luna"},
+	} {
+		if _, ok := Get(tc.provider, tc.id); ok {
+			t.Errorf("old route %s/%s still present", tc.provider, tc.id)
+		}
+	}
+}
+
 func TestOpenAIVariants(t *testing.T) {
 	model, ok := Get("openai", "gpt-5.6-terra")
 	if !ok {

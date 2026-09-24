@@ -16,7 +16,7 @@ func TestMissingOAuthRouteRegistration(t *testing.T) {
 	// Other tests import OpenAI; this isolated generation models a caller that does not.
 	delete(registry.routes, "openai")
 	client := registry.NewClientWithCredentials(map[string]Credential{"openai": {Type: "oauth", Access: "private-token"}}, nil)
-	req := models.Request{Model: models.ModelRef{Provider: "openai", ID: "gpt-5.6-luna"}}
+	req := models.Request{Model: models.ModelRef{Provider: "openai", ID: "gpt-6-luna"}}
 	prepared, err := client.Prepare(context.Background(), req)
 	var failure *models.ProviderError
 	if prepared != nil || !errors.As(err, &failure) || failure.Category != models.ErrorAuthentication || failure.Message != "provider OAuth route is not registered" {
