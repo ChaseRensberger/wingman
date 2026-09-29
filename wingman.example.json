@@ -1,0 +1,21 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 2424,
+    "log_format": "text"
+  },
+  "provider": {
+    "openai": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
+        "auth": false
+      }
+    },
+    "anthropic": {
+      "options": {
+        "baseURL": "http://169.254.169.254/gateway/llm/anthropic/v1",
+        "auth": false
+      }
+    }
+  }
+}

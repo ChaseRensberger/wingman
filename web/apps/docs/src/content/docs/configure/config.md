@@ -46,47 +46,26 @@ The file uses strict JSON. Comments cause startup failure. Trailing commas cause
 startup failure. Trailing JSON values cause startup failure. Unknown keys cause
 startup failure. The error identifies the configuration file.
 
-Example:
+The [example configuration](https://github.com/ChaseRensberger/wingman/blob/main/wingman.example.json)
+runs Wingman on an exe.dev box with local access, text logs, and the exe.dev LLM
+Gateway. The gateway addresses work inside an exe.dev box. From the root of a
+Wingman checkout on that box, run:
 
-```json
-{
-  "server": {
-    "host": "127.0.0.1",
-    "port": 2424,
-    "db": "~/.local/share/wingman/wingman.db",
-    "log_level": "info",
-    "log_format": "json"
-  },
-  "provider": {
-    "exe-openai": {
-      "name": "exe.dev OpenAI Gateway",
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      },
-      "models": {
-        "gpt-5.6-terra": {
-          "api": "openai_responses",
-          "context_window": 1050000,
-          "max_output": 128000,
-          "capabilities": {
-            "tools": true,
-            "images": true,
-            "reasoning": true,
-            "structured_output": true
-          }
-        }
-      }
-    }
-  },
-  "plugins": {
-    "dirs": ["~/.config/wingman/plugins"]
-  },
-  "skills": {
-    "dirs": ["~/shared-wingman-skills"]
-  }
-}
+```bash
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wingman"
+mkdir -p "$config_dir"
+(set -C; cat wingman.example.json > "$config_dir/wingman.json")
 ```
+
+The command refuses to overwrite an existing configuration file. If the file
+already exists, merge the example's `provider` entries into it instead.
+
+Start Wingman or restart it if it is already running. Agents can use catalog
+model references such as `openai/gpt-5.6-terra` and
+`anthropic/claude-sonnet-5`. Both providers use the exe.dev gateway instead of
+their direct endpoints. Wingman sends no stored provider API keys to these
+routes. See [Providers](/configure/providers#exe-dev-gateway-example) for other
+gateway routes.
 
 Flags for `wingman serve` or `wingman service start` override configuration values.
 

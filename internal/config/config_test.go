@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	wingmcp "github.com/chaserensberger/wingman/mcp"
+	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
 )
 
@@ -93,6 +94,39 @@ func TestLoad(t *testing.T) {
 			}
 			test.check(t, cfg)
 		})
+	}
+}
+
+func TestLoadExample(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "wingman.example.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Default()
+	want.Server.LogFormat = "text"
+	if cfg.Server != want.Server {
+		t.Fatalf("example server = %#v, want %#v", cfg.Server, want.Server)
+	}
+	registry, err := provider.NewRegistry(cfg.Provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []struct {
+		provider string
+		baseURL  string
+		model    string
+	}{
+		{"openai", "http://169.254.169.254/gateway/llm/openai/v1", "gpt-5.6-terra"},
+		{"anthropic", "http://169.254.169.254/gateway/llm/anthropic/v1", "claude-sonnet-5"},
+	} {
+		configured, ok := cfg.Provider[route.provider]
+		if !ok || configured.Options.BaseURL != route.baseURL || configured.Options.Auth == nil || *configured.Options.Auth || len(configured.Models) != 0 {
+			t.Fatalf("example provider %q = %#v, want catalog models on unauthenticated %s route", route.provider, configured, route.baseURL)
+		}
+		model, ok := registry.Catalog().Get(route.provider, route.model)
+		if !ok || model.BaseURL != route.baseURL {
+			t.Fatalf("catalog model %s/%s = %#v, want %s route", route.provider, route.model, model, route.baseURL)
+		}
 	}
 }
 

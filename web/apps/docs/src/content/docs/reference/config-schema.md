@@ -39,45 +39,10 @@ The file is parsed as strict JSON:
 
 ## Example
 
-```json
-{
-  "server": {
-    "host": "127.0.0.1",
-    "port": 2424,
-    "db": "~/.local/share/wingman/wingman.db",
-    "log_level": "info",
-    "log_format": "json"
-  },
-  "provider": {
-    "exe-openai": {
-      "name": "exe.dev OpenAI Gateway",
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      },
-      "models": {
-        "gpt-5.6-terra": {
-          "api": "openai_responses",
-          "context_window": 1050000,
-          "max_output": 128000,
-          "capabilities": {
-            "tools": true,
-            "images": true,
-            "reasoning": true,
-            "structured_output": true
-          }
-        }
-      }
-    }
-  },
-  "plugins": {
-    "dirs": ["~/.config/wingman/plugins"]
-  },
-  "skills": {
-    "dirs": ["~/shared-wingman-skills"]
-  }
-}
-```
+On an exe.dev box, copy
+[wingman.example.json](https://github.com/ChaseRensberger/wingman/blob/main/wingman.example.json)
+to use its LLM Gateway with local server access and text logs. See
+[Global Config](/configure/config) for the copy commands.
 
 ## Top-Level Object
 
