@@ -1,0 +1,13 @@
+services:
+  wingman:
+    image: ghcr.io/chaserensberger/wingman:v0.1.62
+    ports:
+      - "127.0.0.1:2424:2424"
+    environment:
+      WINGMAN_PASSWORD: ${WINGMAN_PASSWORD:?Set WINGMAN_PASSWORD}
+    volumes:
+      - wingman-data:/data
+    restart: unless-stopped
+
+volumes:
+  wingman-data:

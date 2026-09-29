@@ -40,6 +40,7 @@ export default defineConfig({
           label: "Use Wingman",
           items: [
             { label: "Run the Server", slug: "use-wingman/run-server" },
+            { label: "Run in Docker", slug: "use-wingman/docker" },
             { label: "Use the Console", slug: "use-wingman/web-ui" },
             { label: "Observability", slug: "use-wingman/observability" },
           ],

@@ -77,6 +77,9 @@ jobs:
       - name: Test installer
         run: ./scripts/test-install.sh
 
+      - name: Test release preparation
+        run: bash scripts/test-prepare-release.sh
+
   macos:
     runs-on: macos-latest
     steps:
@@ -131,3 +134,13 @@ jobs:
 
       - name: Smoke test Linux artifact
         run: ./scripts/smoke-release-artifact.sh "$(find dist -type f -name 'wingman_*_linux_amd64.tar.gz' -print -quit)"
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build container image
+        run: docker build -t wingman:container-test .
+      - name: Smoke test container
+        run: bash scripts/smoke-container.sh wingman:container-test
