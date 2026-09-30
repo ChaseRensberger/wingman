@@ -6,7 +6,9 @@ import { selectGreeting } from "@/lib/greeting";
 import { macroInvocation } from "@/lib/macro";
 import { isProviderSelectable } from "@/lib/providers";
 import {
-  agentExists,
+  sessionAgents,
+  selectSessionAgent,
+  loadSessionTools,
   buildUserMessage,
   modelRefExists,
   persistLastAgentId,
@@ -34,6 +36,8 @@ import type {
   ToolResultPart,
   Macro,
   PluginAction,
+  ToolCatalogItem,
+  ToolsResponse,
 } from "@/lib/types";
 import { toolActivityKey } from "@/lib/tool-activity-state";
 import {
@@ -74,12 +78,19 @@ function SessionDetailPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [tools, setTools] = useState<ToolCatalogItem[] | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Record<string, ProviderModel[]>>({});
   const [macros, setMacros] = useState<Macro[]>([]);
   const [actions, setActions] = useState<PluginAction[]>([]);
   const [modelCalls, setModelCalls] = useState<ModelCall[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState("");
+  const [selectedAgentId, setSelectedAgent] = useState("");
+  const availableAgents = sessionAgents(
+    agents,
+    tools,
+    isDraft ? workspace?.path : session?.work_dir,
+  );
+  const selectedAgent = selectSessionAgent(availableAgents, selectedAgentId)?.id ?? "";
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
@@ -249,8 +260,9 @@ function SessionDetailPage() {
 
     let cancelled = false;
     async function load() {
+      setTools(null);
       try {
-        const [sessData, agentsData, providerData, callsData, macrosData, actionsData] =
+        const [sessData, agentsData, providerData, callsData, macrosData, actionsData, toolsData] =
           await Promise.all([
             isDraft ? Promise.resolve(null) : (client.sessions.get(sessionId) as Promise<Session>),
             client.agents.list() as Promise<Agent[]>,
@@ -262,6 +274,9 @@ function SessionDetailPage() {
               ? Promise.resolve([] as Macro[])
               : (client.sessions.macros.list(sessionId) as Promise<Macro[]>),
             client.actions.list() as Promise<PluginAction[]>,
+            loadSessionTools(client.tools.list() as Promise<ToolsResponse>, (error) => {
+              if (!cancelled) showErrorToast(error, "Could not load tools");
+            }),
           ]);
         const selectableProviders = providerData.filter(isProviderSelectable);
         const modelEntries = await Promise.all(
@@ -296,28 +311,33 @@ function SessionDetailPage() {
             });
           }
           const workspaceID = sessData?.workspace_id ?? (isDraft ? draftWorkspaceId : undefined);
+          let loadedWorkspace: Workspace | null = null;
           if (workspaceID) {
             try {
-              setWorkspace((await client.workspaces.get(workspaceID)) as Workspace);
+              loadedWorkspace = (await client.workspaces.get(workspaceID)) as Workspace;
             } catch {
-              setWorkspace(null);
+              loadedWorkspace = null;
             }
-          } else {
-            setWorkspace(null);
           }
+          setWorkspace(loadedWorkspace);
           const modelMap: Record<string, ProviderModel[]> = Object.fromEntries(modelEntries);
           setAgents(agentsData);
+          setTools(toolsData);
           setProviders(providerData);
           setModels(modelMap);
           setMacros(macrosData);
           setActions(actionsData);
           setModelCalls(callsData);
-          if (agentsData.length > 0) {
-            const storedAgentId = localStorage.getItem(LAST_AGENT_ID_KEY) ?? "";
-            const initialAgent = agentExists(agentsData, storedAgentId)
-              ? agentsData.find((agent) => agent.id === storedAgentId)!
-              : agentsData[0];
-            setSelectedAgent(initialAgent.id);
+          const initialAgent = selectSessionAgent(
+            sessionAgents(
+              agentsData,
+              toolsData,
+              isDraft ? loadedWorkspace?.path : sessData?.work_dir,
+            ),
+            localStorage.getItem(LAST_AGENT_ID_KEY) ?? "",
+          );
+          setSelectedAgent(initialAgent?.id ?? "");
+          if (initialAgent) {
             const storedModelRef = localStorage.getItem(LAST_MODEL_REF_KEY) ?? "";
             const initialModelRef = modelRefExists(modelMap, storedModelRef)
               ? storedModelRef
@@ -347,6 +367,10 @@ function SessionDetailPage() {
       cancelled = true;
     };
   }, [draftWorkspaceId, isDraft, sessionId]);
+
+  useEffect(() => {
+    if (!loading) setSelectedAgent(selectedAgent);
+  }, [loading, selectedAgent]);
 
   useEffect(() => {
     if (!isDraft || loading || run.isStreaming || session?.history.length) return;
@@ -383,7 +407,7 @@ function SessionDetailPage() {
     const outboundAgentId = retry?.agentId ?? selectedAgent;
     const outboundModelRef =
       retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
-    if (!outboundText || !outboundAgentId) return;
+    if (!outboundText || !availableAgents.some((agent) => agent.id === outboundAgentId)) return;
 
     const action = actionInvocation(outboundText, actions);
     let invocation = action ? undefined : macroInvocation(outboundText, macros);
@@ -579,7 +603,7 @@ function SessionDetailPage() {
     }
   }
 
-  const selectedAgentName = agents.find((a) => a.id === selectedAgent)?.name;
+  const selectedAgentName = availableAgents.find((a) => a.id === selectedAgent)?.name;
   const selectableProviders = providers.filter(isProviderSelectable);
   const selectedProviderName = selectableProviders.find(
     (provider) => provider.id === selectedProvider,
@@ -686,7 +710,7 @@ function SessionDetailPage() {
         selectedModel={selectedModel}
         selectedVariant={selectedVariant}
         selectedProviderName={selectedProviderName}
-        agents={agents}
+        agents={availableAgents}
         providers={selectableProviders}
         models={models}
         macros={macros}

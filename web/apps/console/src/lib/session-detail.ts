@@ -1,4 +1,12 @@
-import type { Agent, Message, Part, ProviderModel, Session } from "@/lib/types";
+import type {
+  Agent,
+  Message,
+  Part,
+  ProviderModel,
+  Session,
+  ToolCatalogItem,
+  ToolsResponse,
+} from "@/lib/types";
 import { splitModelRef } from "@/lib/utils";
 
 export const LAST_AGENT_ID_KEY = "wingman_last_agent_id";
@@ -101,8 +109,34 @@ export function persistModelVariant(provider: string, model: string, variant: st
   localStorage.setItem(MODEL_VARIANTS_KEY, JSON.stringify(variants));
 }
 
-export function agentExists(agents: Agent[], agentId: string): boolean {
-  return Boolean(agentId && agents.some((agent) => agent.id === agentId));
+export async function loadSessionTools(
+  request: Promise<ToolsResponse>,
+  onError: (error: unknown) => void,
+): Promise<ToolCatalogItem[] | null> {
+  try {
+    const response = await request;
+    return response.tools ?? [];
+  } catch (error) {
+    onError(error);
+    return null;
+  }
+}
+
+export function sessionAgents(
+  agents: Agent[],
+  tools: ToolCatalogItem[] | null,
+  workDir?: string,
+): Agent[] {
+  if (tools === null) return [];
+  if (workDir) return agents;
+  const directoryTools = new Set(
+    tools.filter((tool) => tool.directory_scoped).map((tool) => tool.name),
+  );
+  return agents.filter((agent) => !agent.tools?.some((name) => directoryTools.has(name)));
+}
+
+export function selectSessionAgent(agents: Agent[], agentId: string): Agent | undefined {
+  return agents.find((agent) => agent.id === agentId) ?? agents[0];
 }
 
 export function persistLastAgentId(agentId: string) {

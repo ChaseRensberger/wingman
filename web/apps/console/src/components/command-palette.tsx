@@ -26,7 +26,7 @@ function isEditableTarget(target: EventTarget | null) {
   );
 }
 
-export function CommandPalette() {
+export function CommandPalette({ workspace }: { workspace?: string }) {
   const navigate = useNavigate();
   const { theme, colorMode, setColorMode, setTheme } = useTheme();
   const connection = useDaemonConnection();
@@ -68,7 +68,7 @@ export function CommandPalette() {
 
   function navigateTo(to: (typeof navItems)[number]["to"]) {
     setOpen(false);
-    navigate({ to });
+    navigate({ to, search: to === "/sessions" ? { workspace } : {} });
   }
 
   function selectTheme(themeID: typeof theme.id) {

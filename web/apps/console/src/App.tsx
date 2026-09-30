@@ -14,7 +14,7 @@ import { ListIcon } from "@phosphor-icons/react";
 import { CommandPalette } from "@/components/command-palette";
 import { DaemonConnectionBanner } from "@/components/daemon-connection";
 import { useDaemonConnection } from "@/components/daemon-connection-context";
-import { navItems } from "@/lib/navigation";
+import { navItems, sessionsWorkspace } from "@/lib/navigation";
 import { client as wingman } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
@@ -65,19 +65,21 @@ function NavLink({
   label,
   className,
   onNavigate,
+  workspace,
 }: {
   to: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   className?: string;
   onNavigate?: () => void;
+  workspace?: string;
 }) {
   const { location } = useRouterState();
   const isActive = location.pathname === to || location.pathname.startsWith(to + "/");
 
   return (
     <Button
-      render={<Link to={to} />}
+      render={<Link to={to} search={to === "/sessions" ? { workspace } : {}} />}
       nativeButton={false}
       variant={isActive ? "default" : "outline"}
       size="lg"
@@ -93,6 +95,11 @@ function NavLink({
 export default function App() {
   const { location } = useRouterState();
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [lastWorkspace, setLastWorkspace] = useState<string>();
+  const workspace = sessionsWorkspace(location.pathname, location.search.workspace, lastWorkspace);
+  useEffect(() => {
+    setLastWorkspace(workspace);
+  }, [workspace]);
   const { revision, hasConnected } = useDaemonConnection();
   const client = useCurrentClient(hasConnected, revision);
   const isSessionDetail = /^\/sessions\/[^/]+$/.test(location.pathname);
@@ -102,7 +109,7 @@ export default function App() {
 
   return (
     <div className={cn("flex flex-col", isSessionDetail ? "h-dvh" : "min-h-screen")}>
-      <CommandPalette />
+      <CommandPalette workspace={workspace} />
       <DaemonConnectionBanner />
       {!isSessionDetail && (
         <>
@@ -130,6 +137,7 @@ export default function App() {
                       <NavLink
                         key={item.to}
                         {...item}
+                        workspace={workspace}
                         className="w-full justify-start text-sm"
                         onNavigate={() => setNavigationOpen(false)}
                       />
@@ -146,7 +154,7 @@ export default function App() {
               </Link>
               <nav className="flex items-center gap-3 text-xs text-muted-foreground">
                 {navItems.map((item) => (
-                  <NavLink key={item.to} {...item} />
+                  <NavLink key={item.to} {...item} workspace={workspace} />
                 ))}
               </nav>
             </div>
