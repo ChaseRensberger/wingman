@@ -60,7 +60,7 @@ function ProvidersPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-4 flex flex-col gap-4">
         <div>
           <PageBreadcrumb items={[{ label: "Providers" }]} />

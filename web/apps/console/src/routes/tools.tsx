@@ -64,7 +64,7 @@ function ToolsPage() {
   }, [tools]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-4">
         <PageBreadcrumb items={[{ label: "Tools" }]} />
       </div>

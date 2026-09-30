@@ -153,7 +153,7 @@ function AgentDetailPage() {
   const crumbLabel = agent?.name || agentId;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-4">
         <PageBreadcrumb items={[{ label: "Agents", to: "/agents" }, { label: crumbLabel }]} />
         {agent && (
