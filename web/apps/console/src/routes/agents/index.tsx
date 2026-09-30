@@ -28,7 +28,7 @@ import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import { timeAgo } from "@/lib/utils";
 import { emptyForm, agentFormSchema, buildAgentPayload } from "@/lib/agent-form";
-import { MagnifyingGlassIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import {
@@ -115,15 +115,10 @@ function AgentsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-4 py-6">
       <div className="mb-4">
         <PageBreadcrumb items={[{ label: "Agents" }]} />
         <div className="mt-4 flex items-center justify-between gap-3">
-          <Button size="sm" onClick={openNew}>
-            <PlusIcon className="size-4" />
-            New
-          </Button>
-
           <div
             className={`flex h-9 items-center rounded-md border bg-card text-muted-foreground shadow-sm transition-all duration-200 focus-within:text-foreground hover:bg-accent hover:text-foreground ${
               filterOpen || filter ? "w-64 gap-2 px-2" : "w-9 justify-center"
@@ -165,6 +160,9 @@ function AgentsPage() {
               </Button>
             )}
           </div>
+          <Button className="h-10 px-5" onClick={openNew}>
+            New
+          </Button>
         </div>
       </div>
 
