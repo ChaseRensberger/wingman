@@ -142,6 +142,17 @@ Open the Console for the managed daemon:
 wingman console
 ```
 
+To open a new session for the current directory, pass `.`:
+
+```bash
+wingman console .
+```
+
+You can also pass another directory, such as `wingman console ~/code/my-project`.
+Wingman reuses the workspace for that directory or creates one if needed.
+The new session uses that directory. The Console saves the session when you send its first message.
+Without a directory, the command opens the Console home page.
+
 The Console uses the browser HTTP Basic Auth prompt for managed-service
 credentials. It has no password form or session cookie.
 

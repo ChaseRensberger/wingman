@@ -26,6 +26,10 @@ To open the managed daemon from the CLI, run this command:
 wingman console
 ```
 
+To open a new session in the current directory, run `wingman console .`.
+Wingman reuses the workspace for that directory or creates one if needed.
+The Console saves the session when you send its first message.
+
 If the connection drops, the Console repeats its readiness check.
 When the daemon returns, the Console reloads the active API page.
 

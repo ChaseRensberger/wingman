@@ -30,11 +30,18 @@ var runBrowserCommand = func(ctx context.Context, name, target string) error {
 }
 
 func runConsole(ctx context.Context, cmd *cli.Command) error {
+	if cmd.Args().Present() {
+		return fmt.Errorf("expected at most one directory")
+	}
 	client, err := discoverManagedDaemon(ctx)
 	if err != nil {
 		return err
 	}
-	consoleURL, err := resolveURL(client.URL(), "/console")
+	return runConsoleWithClient(ctx, cmd, client)
+}
+
+func runConsoleWithClient(ctx context.Context, cmd *cli.Command, client consoleDaemonClient) error {
+	consoleURL, err := consoleTargetURL(ctx, client, cmd.StringArgs("directory"))
 	if err != nil {
 		return err
 	}

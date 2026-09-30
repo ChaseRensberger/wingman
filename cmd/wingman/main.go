@@ -126,8 +126,12 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 			},
 			clientsCommand(),
 			{
-				Name:   "console",
-				Usage:  "Open the managed daemon console",
+				Name:      "console",
+				Usage:     "Open the managed daemon console",
+				ArgsUsage: "[directory]",
+				Arguments: []cli.Argument{
+					&cli.StringArgs{Name: "directory", Max: 1},
+				},
 				Action: runConsole,
 			},
 		},
