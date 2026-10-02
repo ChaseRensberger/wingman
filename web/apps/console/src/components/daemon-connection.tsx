@@ -88,6 +88,7 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
           phase: "live",
           revision: current.revision + (recovered ? 1 : 0),
           hasConnected: true,
+          version: ready.version,
         }));
         if (recovered) void queryClient.invalidateQueries();
         if (restarted)

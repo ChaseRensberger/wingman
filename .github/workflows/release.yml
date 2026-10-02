@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -78,6 +78,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern 'wingman_*_linux_*.tar.gz' --dir "$RUNNER_TEMP/release-archives"
+          for arch in amd64 arm64; do
+            mkdir -p "$RUNNER_TEMP/container-binaries/$arch"
+            tar -xzf "$RUNNER_TEMP/release-archives"/wingman_*_linux_"$arch".tar.gz -C "$RUNNER_TEMP/container-binaries/$arch" wingman
+          done
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
@@ -101,6 +114,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.container-tags.outputs.tags }}
-          build-args: |
-            VERSION=${{ github.ref_name }}
-            COMMIT=${{ github.sha }}
+          build-contexts: |
+            build=${{ runner.temp }}/container-binaries
+          cache-from: type=registry,ref=ghcr.io/chaserensberger/wingman:buildcache
+          cache-to: type=registry,ref=ghcr.io/chaserensberger/wingman:buildcache,mode=max

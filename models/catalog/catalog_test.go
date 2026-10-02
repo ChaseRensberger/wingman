@@ -58,7 +58,7 @@ func TestUpdatedAnthropicAndOpenAIModels(t *testing.T) {
 		provider, id, name string
 	}{
 		{"anthropic", "claude-opus-5-5", "Claude Opus 5.5"},
-		{"openai", "gpt-6-sol", "GPT-6 Sol"},
+		{"openai", "gpt-6.1-sol", "GPT-6.1 Sol"},
 		{"openai", "gpt-6-luna", "GPT-6 Luna"},
 	} {
 		model, ok := Get(tc.provider, tc.id)
@@ -78,6 +78,7 @@ func TestUpdatedAnthropicAndOpenAIModels(t *testing.T) {
 	for _, tc := range []struct{ provider, id string }{
 		{"anthropic", "claude-opus-5"},
 		{"openai", "gpt-5.6-sol"},
+		{"openai", "gpt-6-sol"},
 		{"openai", "gpt-5.6-luna"},
 	} {
 		if _, ok := Get(tc.provider, tc.id); ok {

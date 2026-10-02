@@ -135,6 +135,17 @@ jobs:
       - name: Smoke test Linux artifact
         run: ./scripts/smoke-release-artifact.sh "$(find dist -type f -name 'wingman_*_linux_amd64.tar.gz' -print -quit)"
 
+      - name: Build container from release artifacts
+        run: |
+          for arch in amd64 arm64; do
+            mkdir -p "$RUNNER_TEMP/container-binaries/$arch"
+            tar -xzf dist/wingman_*_linux_"$arch".tar.gz -C "$RUNNER_TEMP/container-binaries/$arch" wingman
+          done
+          docker build --build-context "build=$RUNNER_TEMP/container-binaries" -t wingman:release-container-test .
+
+      - name: Smoke test release container
+        run: bash scripts/smoke-container.sh wingman:release-container-test
+
   container-smoke:
     runs-on: ubuntu-latest
     steps:

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@wingman/core/components/core/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@wingman/core/components/core/card";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { useDaemonConnection } from "@/components/daemon-connection-context";
 import { getDisplayName, setDisplayName } from "@/lib/greeting";
 import { Input } from "@wingman/core/components/core/input";
 import { ThemePreviewSwitcher } from "@wingman/core/components/theme-preview-switcher";
@@ -15,12 +16,21 @@ export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
 function SettingsPage() {
   const [displayName, setDisplayNameInput] = useState(getDisplayName());
+  const connection = useDaemonConnection();
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-4">
         <PageBreadcrumb items={[{ label: "Settings" }]} />
       </div>
       <div className="space-y-4">
+        <Card size="sm">
+          <CardContent>
+            <dl className="flex items-center justify-between gap-4 text-sm">
+              <dt className="font-bold">Wingman Version</dt>
+              <dd className="font-mono text-muted-foreground">{connection.version ?? "Unknown"}</dd>
+            </dl>
+          </CardContent>
+        </Card>
         <ClientManagement />
         <Card size="sm">
           <CardHeader>

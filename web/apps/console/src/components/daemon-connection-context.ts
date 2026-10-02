@@ -6,6 +6,7 @@ export type DaemonConnection = {
   phase: DaemonConnectionPhase;
   revision: number;
   hasConnected: boolean;
+  version?: string;
   failure?: string;
 };
 
