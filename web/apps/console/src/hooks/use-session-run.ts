@@ -9,6 +9,7 @@ import {
 import { type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
 
 import { client } from "@/lib/client";
+import { onPageResume } from "@/lib/connection";
 import { formatSessionError } from "@/lib/session-detail";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
 import type {
@@ -260,6 +261,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     null,
   );
   const requestRef = useRef<SessionRunRequest | null>(null);
+  const [resumeRevision, setResumeRevision] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingReasoning, setStreamingReasoning] = useState("");
@@ -274,6 +276,17 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   );
   const permissionRepliesInFlightRef = useRef(new Set<string>());
   const startRecoveredRun = useEffectEvent((id: string, runID: string) => start(id, runID));
+  const resumeSession = useEffectEvent(() => {
+    if (sessionId === "new") return;
+    setResumeRevision((revision) => revision + 1);
+    const active = activeRunRef.current;
+    if (active?.runId) start(sessionId, active.runId);
+    else
+      void reloadPermissionRequests(sessionId).catch((err) => {
+        console.error("Failed to reload permission requests", err);
+      });
+  });
+  useEffect(() => onPageResume(resumeSession), []);
 
   function reset() {
     eventControllerRef.current?.abort();
@@ -344,6 +357,9 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       try {
         after = await latestSessionEventSeq(sessionId);
         if (signal.aborted) return;
+        // Capture the cursor first so changes during the reload are replayed.
+        if (resumeRevision > 0 && !submissionControllerRef.current) await load(sessionId);
+        if (signal.aborted) return;
         await recover();
       } catch (err) {
         if (!signal.aborted) console.error("Failed to recover session run", err);
@@ -389,7 +405,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
     void watch();
     return () => controller.abort();
-  }, [sessionId, load]);
+  }, [sessionId, load, resumeRevision]);
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)

@@ -11,6 +11,7 @@ import { ThemePreviewSwitcher } from "@wingman/core/components/theme-preview-swi
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import { clientsQuery, queryKeys } from "@/lib/queries";
+import { PwaSettings } from "@/components/pwa";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -32,6 +33,7 @@ function SettingsPage() {
           </CardContent>
         </Card>
         <ClientManagement />
+        <PwaSettings />
         <Card size="sm">
           <CardHeader>
             <CardTitle>Console display name</CardTitle>

@@ -4,6 +4,35 @@
 
 @source "../../../packages/core/src/**/*.{ts,tsx}";
 
+:root {
+  --console-height: 100dvh;
+  --console-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.console-shell {
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) var(--console-bottom)
+    env(safe-area-inset-left, 0px);
+}
+
+.console-session {
+  height: var(--console-height);
+  overflow: hidden;
+}
+
+[data-slot="sheet-content"] {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, var(--console-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  max-height: var(--console-height);
+  overflow-y: auto;
+}
+
+[data-slot="sheet-close"] {
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
 .katex-display {
   margin: 0.75rem 0;
   overflow-x: auto;
@@ -24,7 +53,10 @@
   z-index: 50;
   display: flex;
   justify-content: center;
-  padding: max(1rem, 12vh) 1rem 1rem;
+  padding: max(1rem, calc(var(--console-height) * 0.12), env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px)) max(1rem, var(--console-bottom))
+    max(1rem, env(safe-area-inset-left, 0px));
+  height: var(--console-height);
 }
 
 [cmdk-root] {
@@ -48,7 +80,7 @@
 }
 
 [cmdk-list] {
-  max-height: min(22rem, 55vh);
+  max-height: min(22rem, calc(var(--console-height) - 8rem));
   overflow-y: auto;
   padding: 0.5rem;
 }

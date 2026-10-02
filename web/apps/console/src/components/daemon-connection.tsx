@@ -150,6 +150,7 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
 
     window.addEventListener("online", resume);
     window.addEventListener("offline", resume);
+    window.addEventListener("pageshow", resume);
     window.addEventListener(daemonConnectionFailureEvent, connectionFailed);
     window.addEventListener(daemonRestartRequestedEvent, restartService);
     document.addEventListener("visibilitychange", resume);
@@ -159,6 +160,7 @@ export function DaemonConnectionProvider({ children }: { children: ReactNode }) 
       clearPending();
       window.removeEventListener("online", resume);
       window.removeEventListener("offline", resume);
+      window.removeEventListener("pageshow", resume);
       window.removeEventListener(daemonConnectionFailureEvent, connectionFailed);
       window.removeEventListener(daemonRestartRequestedEvent, restartService);
       document.removeEventListener("visibilitychange", resume);

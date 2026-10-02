@@ -57,6 +57,13 @@ import { SessionTranscript } from "@/components/session-transcript";
 import { useSessionRun, type FailedRun } from "@/hooks/use-session-run";
 import { useStreamReveal } from "@/hooks/use-stream-reveal";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
+import {
+  draftKey,
+  readDraft,
+  saveDraft,
+  matchingSubmission,
+  type PendingSubmission,
+} from "@/lib/session-draft";
 
 type SessionDetailSearch = {
   workspace?: string;
@@ -74,6 +81,7 @@ function SessionDetailPage() {
   const { workspace: draftWorkspaceId } = Route.useSearch();
   const navigate = useNavigate();
   const isDraft = sessionId === "new";
+  const storageKey = draftKey(sessionId, draftWorkspaceId);
   const [greeting] = useState(() => selectGreeting());
   const [session, setSession] = useState<Session | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -95,7 +103,7 @@ function SessionDetailPage() {
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
-  const [messageText, setMessageText] = useState("");
+  const [messageText, setMessageText] = useState(() => readDraft(storageKey).text);
   const [streamingTitle, setStreamingTitle] = useState("");
   const [pendingTitle, setPendingTitle] = useState<{ id: string; title: string } | null>(null);
   const [isTitleStreaming, setIsTitleStreaming] = useState(false);
@@ -110,13 +118,19 @@ function SessionDetailPage() {
   const skipNextSessionLoadRef = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const titleSessionIdRef = useRef("");
-  const pendingSubmissionRef = useRef<{
-    requestId: string;
-    sessionId: string;
-    agentId: string;
-    modelRef: string;
-    message: string;
-  } | null>(null);
+  const pendingSubmissionRef = useRef<PendingSubmission | null>(
+    readDraft(storageKey).pending ?? null,
+  );
+  useEffect(() => {
+    const draft = readDraft(storageKey);
+    setMessageText(draft.text);
+    pendingSubmissionRef.current = draft.pending ?? null;
+  }, [storageKey]);
+
+  function changeMessageText(text: string) {
+    setMessageText(text);
+    saveDraft(storageKey, { text, pending: pendingSubmissionRef.current ?? undefined });
+  }
 
   useEffect(() => {
     activeSessionIdRef.current = sessionId;
@@ -181,6 +195,27 @@ function SessionDetailPage() {
   );
 
   const run = useSessionRun({ sessionId, loadSession, setSession });
+
+  useEffect(() => {
+    const pending = readDraft(storageKey).pending;
+    if (!pending || isDraft) return;
+    let cancelled = false;
+    void client.sessions.runs
+      .list(sessionId)
+      .then((runs) => {
+        if (cancelled || !runs?.some((item) => item.request_id === pending.requestId)) return;
+        const draft = readDraft(storageKey);
+        if (draft.pending?.requestId !== pending.requestId) return;
+        const text = draft.text === pending.message ? "" : draft.text;
+        saveDraft(storageKey, { text });
+        pendingSubmissionRef.current = null;
+        setMessageText(text);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey, isDraft, sessionId]);
 
   useEffect(() => {
     if (
@@ -335,11 +370,14 @@ function SessionDetailPage() {
               toolsData,
               isDraft ? loadedWorkspace?.path : sessData?.work_dir,
             ),
-            localStorage.getItem(LAST_AGENT_ID_KEY) ?? "",
+            pendingSubmissionRef.current?.agentId ?? localStorage.getItem(LAST_AGENT_ID_KEY) ?? "",
           );
           setSelectedAgent(initialAgent?.id ?? "");
           if (initialAgent) {
-            const storedModelRef = localStorage.getItem(LAST_MODEL_REF_KEY) ?? "";
+            const storedModelRef =
+              pendingSubmissionRef.current?.modelRef ??
+              localStorage.getItem(LAST_MODEL_REF_KEY) ??
+              "";
             const initialModelRef = modelRefExists(modelMap, storedModelRef)
               ? storedModelRef
               : initialAgent.model_ref;
@@ -410,6 +448,16 @@ function SessionDetailPage() {
       retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
     if (!outboundText || !availableAgents.some((agent) => agent.id === outboundAgentId)) return;
 
+    // Recovery can clear the pending ref while cursor capture is in flight.
+    const requestId =
+      matchingSubmission(
+        pendingSubmissionRef.current,
+        sessionId,
+        outboundAgentId,
+        outboundModelRef,
+        outboundText,
+      ) ?? newRequestID();
+
     const action = actionInvocation(outboundText, actions);
     let invocation = action ? undefined : macroInvocation(outboundText, macros);
 
@@ -417,6 +465,10 @@ function SessionDetailPage() {
     const titleSource = titleSourceMessage(session, outboundText);
     persistLastAgentId(outboundAgentId);
     persistLastModelRef(outboundModelRef);
+    saveDraft(storageKey, {
+      text: outboundText,
+      pending: pendingSubmissionRef.current ?? undefined,
+    });
     setMessageText("");
     transcriptScroll.reset();
     if (!action) {
@@ -477,6 +529,8 @@ function SessionDetailPage() {
         )) as SessionSummary;
         activeSessionId = created.id;
         activeSessionIdRef.current = created.id;
+        saveDraft(draftKey(created.id), { text: outboundText });
+        saveDraft(storageKey, { text: "" });
         if (titlePromise) titleSessionIdRef.current = created.id;
         skipNextSessionLoadRef.current = true;
         setSession({
@@ -489,15 +543,6 @@ function SessionDetailPage() {
         invocation = macroInvocation(outboundText, createdMacros);
       }
       await run.captureCursor(activeSessionId);
-      const pending = pendingSubmissionRef.current;
-      const requestId =
-        pending &&
-        pending.sessionId === activeSessionId &&
-        pending.agentId === outboundAgentId &&
-        pending.modelRef === outboundModelRef &&
-        pending.message === outboundText
-          ? pending.requestId
-          : newRequestID();
       pendingSubmissionRef.current = {
         requestId,
         sessionId: activeSessionId,
@@ -505,6 +550,10 @@ function SessionDetailPage() {
         modelRef: outboundModelRef,
         message: outboundText,
       };
+      saveDraft(draftKey(activeSessionId), {
+        text: outboundText,
+        pending: pendingSubmissionRef.current,
+      });
 
       const admitted = action
         ? await client.sessions.actions.admit(activeSessionId, action.action, {
@@ -536,7 +585,16 @@ function SessionDetailPage() {
           : prev,
       );
       persistGeneratedTitle(activeSessionId);
-      pendingSubmissionRef.current = null;
+      const savedDraftKey = draftKey(activeSessionId);
+      const draft = readDraft(savedDraftKey);
+      if (draft.pending?.requestId === requestId) {
+        saveDraft(savedDraftKey, { text: draft.text === outboundText ? "" : draft.text });
+      }
+      if (pendingSubmissionRef.current?.requestId === requestId) {
+        pendingSubmissionRef.current = null;
+        if (activeSessionIdRef.current === activeSessionId)
+          setMessageText((text) => (text === outboundText ? "" : text));
+      }
       accepted = true;
       if (admitted.status === "queued" || admitted.status === "running") {
         run.start(activeSessionId, admitted.run_id);
@@ -719,7 +777,7 @@ function SessionDetailPage() {
         hasModels={hasModels}
         isStreaming={run.isStreaming}
         isNearTranscriptBottom={transcriptScroll.isNearBottom}
-        onMessageChange={setMessageText}
+        onMessageChange={changeMessageText}
         onAgentChange={(agentId) => {
           setSelectedAgent(agentId);
           persistLastAgentId(agentId);

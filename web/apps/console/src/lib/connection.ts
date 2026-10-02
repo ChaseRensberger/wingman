@@ -21,6 +21,21 @@ export function isReplacementInstance(previous: string, current: string): boolea
   return previous !== "" && current !== previous;
 }
 
+export function onPageResume(resume: () => void): () => void {
+  const visible = () => {
+    if (document.visibilityState === "visible") resume();
+  };
+  const restored = (event: PageTransitionEvent) => {
+    if (event.persisted) visible();
+  };
+  document.addEventListener("visibilitychange", visible);
+  window.addEventListener("pageshow", restored);
+  return () => {
+    document.removeEventListener("visibilitychange", visible);
+    window.removeEventListener("pageshow", restored);
+  };
+}
+
 export function daemonConnectionFailureMessage(error: unknown): string | undefined {
   const status =
     error && typeof error === "object" && "status" in error && typeof error.status === "number"

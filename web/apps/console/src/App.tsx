@@ -17,6 +17,7 @@ import { useDaemonConnection } from "@/components/daemon-connection-context";
 import { navItems, sessionsWorkspace } from "@/lib/navigation";
 import { client as wingman } from "@/lib/client";
 import { cn } from "@/lib/utils";
+import { PwaLifecycle } from "@/components/pwa";
 
 type Client = { id: string; name: string };
 
@@ -108,7 +109,13 @@ export default function App() {
   );
 
   return (
-    <div className={cn("flex flex-col", isSessionDetail ? "h-dvh" : "min-h-screen")}>
+    <div
+      className={cn(
+        "console-shell flex flex-col",
+        isSessionDetail ? "console-session" : "min-h-dvh",
+      )}
+    >
+      <PwaLifecycle />
       <CommandPalette workspace={workspace} />
       <DaemonConnectionBanner />
       {!isSessionDetail && (
