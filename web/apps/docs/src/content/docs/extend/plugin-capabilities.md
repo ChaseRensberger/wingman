@@ -36,8 +36,8 @@ Go plugins register hooks with `plugin.Registry`.
 | --------------------------- | ---------------------------------------------------------- |
 | `RegisterBeforeRun`         | Observe or prepend messages before a run starts.           |
 | `RegisterAfterRun`          | Observe run completion, including paths with errors.       |
-| `RegisterTransformHistory`  | Rewrite saved history before a turn. |
-| `RegisterTransformContext`  | Rewrite the messages sent to the model for one turn. |
+| `RegisterTransformHistory`  | Rewrite saved history before a turn.                       |
+| `RegisterTransformContext`  | Rewrite the messages sent to the model for one turn.       |
 | `RegisterTransformToolDefs` | Rewrite tool definitions for one turn.                     |
 | `RegisterTransformParams`   | Rewrite request parameters for one turn.                   |
 | `RegisterBeforeToolCall`    | Mutate, deny, or skip a tool call.                         |

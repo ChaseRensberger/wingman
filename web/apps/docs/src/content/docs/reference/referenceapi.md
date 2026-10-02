@@ -139,27 +139,27 @@ and update requests return `400 Bad Request` for unknown or duplicate names.
 
 ## Operational endpoints
 
-| Method   | Path                                  | Description                                                                                                                                                                     |
-| -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Method   | Path                                  | Description                                                                                                              |
+| -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `GET`    | `/tools`                              | List built-in, plugin, and connected MCP tools with schemas and execution requirements. Duplicate names return an error. |
-| `GET`    | `/plugins`                            | List loaded external plugins and non-fatal load errors.                                                                                                                         |
-| `POST`   | `/plugins/reload`                     | Reload configured external plugins, then return plugin status.                                                                                                                  |
-| `GET`    | `/mcp`                                | List configured MCP servers and their status.                                                                                                                                   |
-| `POST`   | `/mcp/{name}/connect`                 | Connect a configured MCP server.                                                                                                                                                |
-| `POST`   | `/mcp/{name}/disconnect`              | Disconnect a configured MCP server.                                                                                                                                             |
-| `GET`    | `/client`                             | Get the client for the current request.                                                                                                                                         |
-| `GET`    | `/clients`                            | List registered clients.                                                                                                                                                        |
-| `POST`   | `/clients`                            | Register a client by name.                                                                                                                                                      |
-| `GET`    | `/clients/{id}`                       | Get a registered client.                                                                                                                                                        |
-| `GET`    | `/logs`                               | Read up to 500 recent server log entries. Restart clears the buffer. |
-| `GET`    | `/diagnostics`                        | Read current run queues, event connections, and plugin health. |
-| `GET`    | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                                                                            |
-| `GET`    | `/actions`                            | List available session actions.                                                                                                                                                 |
-| `GET`    | `/catalog`                            | Get the model catalog.                                                                                                                                                          |
-| `GET`    | `/catalog/labs/{id}/logo`             | Get a catalog lab logo image.                                                                                                                                                   |
-| `POST`   | `/mcp/{name}/auth`                    | Start MCP authorization.                                                                                                                                                        |
-| `DELETE` | `/mcp/{name}/auth`                    | Remove MCP authorization.                                                                                                                                                       |
-| `POST`   | `/service/restart`                    | Restart the managed daemon.                                                                                                                                                     |
+| `GET`    | `/plugins`                            | List loaded external plugins and non-fatal load errors.                                                                  |
+| `POST`   | `/plugins/reload`                     | Reload configured external plugins, then return plugin status.                                                           |
+| `GET`    | `/mcp`                                | List configured MCP servers and their status.                                                                            |
+| `POST`   | `/mcp/{name}/connect`                 | Connect a configured MCP server.                                                                                         |
+| `POST`   | `/mcp/{name}/disconnect`              | Disconnect a configured MCP server.                                                                                      |
+| `GET`    | `/client`                             | Get the client for the current request.                                                                                  |
+| `GET`    | `/clients`                            | List registered clients.                                                                                                 |
+| `POST`   | `/clients`                            | Register a client by name.                                                                                               |
+| `GET`    | `/clients/{id}`                       | Get a registered client.                                                                                                 |
+| `GET`    | `/logs`                               | Read up to 500 recent server log entries. Restart clears the buffer.                                                     |
+| `GET`    | `/diagnostics`                        | Read current run queues, event connections, and plugin health.                                                           |
+| `GET`    | `/filesystem/directories?path=<path>` | List immediate subdirectories. Omit `path` to list the server user's home directory.                                     |
+| `GET`    | `/actions`                            | List available session actions.                                                                                          |
+| `GET`    | `/catalog`                            | Get the model catalog.                                                                                                   |
+| `GET`    | `/catalog/labs/{id}/logo`             | Get a catalog lab logo image.                                                                                            |
+| `POST`   | `/mcp/{name}/auth`                    | Start MCP authorization.                                                                                                 |
+| `DELETE` | `/mcp/{name}/auth`                    | Remove MCP authorization.                                                                                                |
+| `POST`   | `/service/restart`                    | Restart the managed daemon.                                                                                              |
 
 `POST /service/restart` requires `X-Wingman-Console: 1`. It returns `409` for a foreground server.
 
@@ -173,30 +173,30 @@ Do not put secrets in API URLs. Keep the endpoint on trusted local access.
 
 ## Session endpoints
 
-| Method   | Path                                                   | Description                                                                         |
-| -------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `POST`   | `/sessions`                                            | Create session                                                                      |
-| `GET`    | `/sessions`                                            | List sessions                                                                       |
-| `GET`    | `/sessions/{id}`                                       | Get session including history                                                       |
-| `GET`    | `/sessions/{id}/model-calls`                           | List provider attempts in start-time order. |
-| `GET`    | `/sessions/{id}/tool-uses`                             | List durable tool invocations in proposal/source order                              |
-| `GET`    | `/sessions/{id}/permission-requests`                   | List durable permission requests in creation order                                  |
-| `GET`    | `/sessions/{id}/permission-grants`                     | List exact remembered grants for the session                                        |
-| `POST`   | `/sessions/{id}/permission-requests/{requestID}/reply` | Reply `once`, `always`, or `reject` to a pending request                            |
-| `GET`    | `/sessions/{id}/runs`                                  | List saved runs in request order. |
-| `GET`    | `/sessions/{id}/runs/{runID}`                          | Read one run's status. |
-| `POST`   | `/sessions/{id}/runs/{runID}/abort`                    | Abort one queued or locally running run                                             |
-| `POST`   | `/sessions/{id}/rename`                                | Rename a session if its version matches. |
-| `POST`   | `/sessions/{id}/move`                                  | Move a session to a directory or Workspace if its version matches. |
-| `DELETE` | `/sessions/{id}?expected_version={version}`            | Permanently purge a session and all associated data                                 |
-| `POST`   | `/sessions/{id}/message`                               | Durably queue a message and return its run ID (`202 Accepted`)                      |
-| `GET`    | `/sessions/{id}/macros`                                | List project macros for the session working directory                               |
-| `POST`   | `/sessions/{id}/macros`                                | Admit a project macro as a session run                                              |
-| `POST`   | `/sessions/{id}/actions/{action}`                      | Admit a named session action as a run                                               |
-| `GET`    | `/sessions/{id}/events`                                | Replay durable events after a cursor, synchronize, then stream new events           |
-| `GET`    | `/sessions/{id}/events/history`                        | Read one finite page of durable session events                                      |
-| `POST`   | `/sessions/{id}/abort`                                 | Cancel the active run. Queued messages remain scheduled.                            |
-| `POST`   | `/run`                                                 | Run one ephemeral session without persisting it                                     |
+| Method   | Path                                                   | Description                                                               |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `POST`   | `/sessions`                                            | Create session                                                            |
+| `GET`    | `/sessions`                                            | List sessions                                                             |
+| `GET`    | `/sessions/{id}`                                       | Get session including history                                             |
+| `GET`    | `/sessions/{id}/model-calls`                           | List provider attempts in start-time order.                               |
+| `GET`    | `/sessions/{id}/tool-uses`                             | List durable tool invocations in proposal/source order                    |
+| `GET`    | `/sessions/{id}/permission-requests`                   | List durable permission requests in creation order                        |
+| `GET`    | `/sessions/{id}/permission-grants`                     | List exact remembered grants for the session                              |
+| `POST`   | `/sessions/{id}/permission-requests/{requestID}/reply` | Reply `once`, `always`, or `reject` to a pending request                  |
+| `GET`    | `/sessions/{id}/runs`                                  | List saved runs in request order.                                         |
+| `GET`    | `/sessions/{id}/runs/{runID}`                          | Read one run's status.                                                    |
+| `POST`   | `/sessions/{id}/runs/{runID}/abort`                    | Abort one queued or locally running run                                   |
+| `POST`   | `/sessions/{id}/rename`                                | Rename a session if its version matches.                                  |
+| `POST`   | `/sessions/{id}/move`                                  | Move a session to a directory or Workspace if its version matches.        |
+| `DELETE` | `/sessions/{id}?expected_version={version}`            | Permanently purge a session and all associated data                       |
+| `POST`   | `/sessions/{id}/message`                               | Durably queue a message and return its run ID (`202 Accepted`)            |
+| `GET`    | `/sessions/{id}/macros`                                | List project macros for the session working directory                     |
+| `POST`   | `/sessions/{id}/macros`                                | Admit a project macro as a session run                                    |
+| `POST`   | `/sessions/{id}/actions/{action}`                      | Admit a named session action as a run                                     |
+| `GET`    | `/sessions/{id}/events`                                | Replay durable events after a cursor, synchronize, then stream new events |
+| `GET`    | `/sessions/{id}/events/history`                        | Read one finite page of durable session events                            |
+| `POST`   | `/sessions/{id}/abort`                                 | Cancel the active run. Queued messages remain scheduled.                  |
+| `POST`   | `/run`                                                 | Run one ephemeral session without persisting it                           |
 
 Session responses include `version`, starting at `1`. Rename and move commands
 require that value as `expected_version`. A stale command returns `409 Conflict`.

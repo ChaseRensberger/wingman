@@ -18,11 +18,11 @@ Wingman has two layers:
 
 Each matching rule resolves to one effect:
 
-| Effect  | Behavior                                                                     |
-| ------- | ---------------------------------------------------------------------------- |
-| `allow` | Run the tool call.                                                           |
-| `deny`  | Block the tool call and return a model-visible permission error.             |
-| `ask`   | Wait for approval before running the tool. |
+| Effect  | Behavior                                                         |
+| ------- | ---------------------------------------------------------------- |
+| `allow` | Run the tool call.                                               |
+| `deny`  | Block the tool call and return a model-visible permission error. |
+| `ask`   | Wait for approval before running the tool.                       |
 
 ## Actions
 
@@ -146,6 +146,7 @@ Requests time out after five minutes. Canceling the run or stopping Wingman inte
 
 API clients can list and answer requests through the session permission endpoints.
 A non-interactive Go `run.Config` without a `PermissionPrompter` declines `ask` immediately.
+
 ## Client Behavior
 
 Denied and rejected calls return a text error to the model.

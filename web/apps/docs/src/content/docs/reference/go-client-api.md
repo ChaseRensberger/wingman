@@ -207,8 +207,8 @@ if err := stream.Err(); err != nil {
 | Method                                            | Description                                                                           |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `GetServiceWithResponse(ctx, nil)`                | Get service metadata for the current daemon.                                          |
-| `GetHealthWithResponse(ctx, nil)`                 | Read public process health. |
-| `GetReadinessWithResponse(ctx, nil)`              | Read authenticated server readiness. |
+| `GetHealthWithResponse(ctx, nil)`                 | Read public process health.                                                           |
+| `GetReadinessWithResponse(ctx, nil)`              | Read authenticated server readiness.                                                  |
 | `ListToolsWithResponse(ctx, nil)`                 | List the effective tool catalog.                                                      |
 | `ListPluginsWithResponse(ctx, nil)`               | List external plugins and load errors.                                                |
 | `ReloadPluginsWithResponse(ctx, nil)`             | Reload external plugins.                                                              |
@@ -218,8 +218,8 @@ if err := stream.Err(); err != nil {
 | `ConnectMCPServerWithResponse(ctx, name, nil)`    | Connect an MCP server.                                                                |
 | `DisconnectMCPServerWithResponse(ctx, name, nil)` | Disconnect an MCP server.                                                             |
 | `ListDirectoriesWithResponse(ctx, params)`        | List immediate subdirectories. Omit `params.Path` for the daemon user home directory. |
-| `ListLogsWithResponse(ctx, nil)`                  | Read recent server logs from the current process. |
-| `GetDiagnosticsWithResponse(ctx, nil)`            | Read current server diagnostics. |
+| `ListLogsWithResponse(ctx, nil)`                  | Read recent server logs from the current process.                                     |
+| `GetDiagnosticsWithResponse(ctx, nil)`            | Read current server diagnostics.                                                      |
 | `ListActionsWithResponse(ctx, nil)`               | List available session actions.                                                       |
 | `RestartServiceWithResponse(ctx, params)`         | Restart the managed daemon. Set the required `X-Wingman-Console: 1` header parameter. |
 

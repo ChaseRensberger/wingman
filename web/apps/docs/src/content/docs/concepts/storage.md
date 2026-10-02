@@ -36,22 +36,22 @@ Ephemeral mode does not save runs. Endpoints for stored resources return `501 No
 
 The database contains:
 
-| Table                 | Purpose                                                                                                                                                                               |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents`              | Agent definitions: instructions, tool names, model ref, options, output schema.                                                                                                       |
-| `clients`             | API consumer identities, including the built-in `WingClient` default client.                                                                                                          |
-| `workspaces`          | Session groups with optional working directories. |
-| `sessions`            | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps.                                                                                         |
-| `session_runs`        | Queued work, saved input, request ID, and status. |
-| `session_events`      | Public session event history used for SSE replay.                                                                                                                                     |
-| `messages`            | Ordered message rows for each session.                                                                                                                                                |
-| `model_calls`         | Provider attempts, status, timing, usage, and errors. |
-| `tool_uses`           | Tool calls, input, results, status, and timing. |
-| `permission_requests` | Tool approval requests and decisions. |
-| `permission_grants`   | Exact action/resource approvals remembered for one session.                                                                                                                           |
-| `parts`               | Ordered typed content parts for each message.                                                                                                                                         |
-| `auth`                | Local provider credentials, stored as JSON.                                                                                                                                           |
-| `schema_migrations`   | Applied migration versions, names, and SQL checksums.                                                                                                                                 |
+| Table                 | Purpose                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| `agents`              | Agent definitions: instructions, tool names, model ref, options, output schema.               |
+| `clients`             | API consumer identities, including the built-in `WingClient` default client.                  |
+| `workspaces`          | Session groups with optional working directories.                                             |
+| `sessions`            | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps. |
+| `session_runs`        | Queued work, saved input, request ID, and status.                                             |
+| `session_events`      | Public session event history used for SSE replay.                                             |
+| `messages`            | Ordered message rows for each session.                                                        |
+| `model_calls`         | Provider attempts, status, timing, usage, and errors.                                         |
+| `tool_uses`           | Tool calls, input, results, status, and timing.                                               |
+| `permission_requests` | Tool approval requests and decisions.                                                         |
+| `permission_grants`   | Exact action/resource approvals remembered for one session.                                   |
+| `parts`               | Ordered typed content parts for each message.                                                 |
+| `auth`                | Local provider credentials, stored as JSON.                                                   |
+| `schema_migrations`   | Applied migration versions, names, and SQL checksums.                                         |
 
 Each queued run saves its input and configuration. Later agent edits or session moves do not change queued work.
 Deleting a session permanently removes its associated records.

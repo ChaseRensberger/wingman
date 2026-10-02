@@ -60,7 +60,7 @@ Name a manifest `wingman-plugin.json` or use the suffix `.plugin.json`.
 | Field     |         Type | Required | Description                                                                  |
 | --------- | -----------: | -------: | ---------------------------------------------------------------------------- |
 | `id`      |       string |      yes | Stable plugin identifier. The initialized process must return this exact ID. |
-| `name`    |       string |       no | Initial display name. Initialization can replace it. |
+| `name`    |       string |       no | Initial display name. Initialization can replace it.                         |
 | `command` | string array |      yes | Executable and arguments. Wingman does not use shell expansion.              |
 | `config`  |       object |       no | Plugin-specific configuration sent during initialization.                    |
 

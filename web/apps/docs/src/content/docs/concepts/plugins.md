@@ -14,10 +14,10 @@ Plugins work within one session. To manage multiple sessions, build a client on 
 
 Choose a plugin type:
 
-| Form                | Use it when                                                                                     |
-| ------------------- | ----------------------------------------------------------------------------------------------- |
+| Form                | Use it when                                                |
+| ------------------- | ---------------------------------------------------------- |
 | Go plugin           | Embed Wingman or build a custom binary with session hooks. |
-| External RPC plugin | Add tools to `wingman serve` through an external program. |
+| External RPC plugin | Add tools to `wingman serve` through an external program.  |
 
 See [Plugin Capabilities](/extend/plugin-capabilities) for supported hooks and tools.
 

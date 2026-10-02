@@ -53,9 +53,9 @@ Create `config/wingman.json` before you start Compose. Make sure that the contai
 Add this read-only mount under the service's `volumes` entry, alongside the data volume:
 
 ```yaml
-    volumes:
-      - wingman-data:/data
-      - ./config/wingman.json:/home/wingman/.config/wingman/wingman.json:ro
+volumes:
+  - wingman-data:/data
+  - ./config/wingman.json:/home/wingman/.config/wingman/wingman.json:ro
 ```
 
 Edit the host JSON file, then restart Wingman:
@@ -76,7 +76,7 @@ Host project directories are not available in the container unless you mount the
 To give Wingman access to a project, add a mount under the service's `volumes` entry:
 
 ```yaml
-      - /absolute/host/project:/workspace
+- /absolute/host/project:/workspace
 ```
 
 Use `/workspace` as the session's working directory.

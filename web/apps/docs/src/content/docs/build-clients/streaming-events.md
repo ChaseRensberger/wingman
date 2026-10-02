@@ -117,9 +117,9 @@ Use `type` to choose how to read the data. Ignore unknown event types.
 
 Control events coordinate replay and recovery. Do not render them as session activity.
 
-| Event                            | Meaning                                                                                     |
-| -------------------------------- | ------------------------------------------------------------------------------------------- |
-| `session.events.synchronized`    | Every durable event through this cursor was delivered. Subsequent frames are live.          |
+| Event                            | Meaning                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `session.events.synchronized`    | Every durable event through this cursor was delivered. Subsequent frames are live.                  |
 | `session.events.resync_required` | Delivery overflowed or the cursor could not be matched. Reload the session and run, then reconnect. |
 
 After `session.events.resync_required`, the server disconnects.

@@ -63,6 +63,7 @@ This abbreviated example identifies a quota failure:
 ```
 
 For this failure, add credits to the provider account that owns the API key.
+
 ## Read Daemon Logs
 
 Wingman writes logs to standard error. The default format is JSON, and the default level is `info`.

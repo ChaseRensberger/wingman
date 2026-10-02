@@ -168,8 +168,8 @@ for await (const result of client.run.stream({
 | -------------------------------------- | ------------------------------------------------------------------------------ |
 | `client.current.service()`             | Get service metadata for the current daemon.                                   |
 | `client.current.client()`              | Get the active request client.                                                 |
-| `client.health.get()`                  | Read public process health. |
-| `client.health.ready(options?)`        | Read authenticated readiness. `options.signal` aborts the request. |
+| `client.health.get()`                  | Read public process health.                                                    |
+| `client.health.ready(options?)`        | Read authenticated readiness. `options.signal` aborts the request.             |
 | `client.tools.list()`                  | List the effective tool catalog.                                               |
 | `client.plugins.list()`                | List external plugins and load errors.                                         |
 | `client.plugins.reload()`              | Reload external plugins.                                                       |
@@ -179,8 +179,8 @@ for await (const result of client.run.stream({
 | `client.mcp.connect(name)`             | Connect an MCP server.                                                         |
 | `client.mcp.disconnect(name)`          | Disconnect an MCP server.                                                      |
 | `client.filesystem.directories(path?)` | List immediate subdirectories. Omit `path` for the daemon user home directory. |
-| `client.logs.list()`                   | Read recent server logs from the current process. |
-| `client.diagnostics.get()`             | Read current server diagnostics. |
+| `client.logs.list()`                   | Read recent server logs from the current process.                              |
+| `client.diagnostics.get()`             | Read current server diagnostics.                                               |
 | `client.actions.list()`                | List available session actions.                                                |
 | `client.service.restart()`             | Restart the managed daemon. The client sends `X-Wingman-Console: 1`.           |
 

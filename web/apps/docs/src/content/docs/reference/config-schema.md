@@ -46,15 +46,15 @@ to use its LLM Gateway with local server access and text logs. See
 
 ## Top-Level Object
 
-| Field               |                          Type | Required | Description                                                                |
-| ------------------- | ----------------------------: | -------: | -------------------------------------------------------------------------- |
-| `server`            |                        object |       no | Server defaults used by `wingman serve` and `wingman service start`.       |
-| `provider`          |                        object |       no | Provider destinations and custom models. |
-| `mcp`               |                        object |       no | Configured Model Context Protocol servers.                                 |
-| `plugins`           |                        object |       no | External plugin discovery defaults.                                        |
-| `skills`            |                        object |       no | Additional global Agent Skill directories.                                 |
-| `permissions`       | string, object, or rule array |       no | Daemon-wide tool permission rules.                                         |
-| `agent_permissions` |                        object |       no | Server permission overrides keyed by agent ID or name. |
+| Field               |                          Type | Required | Description                                                          |
+| ------------------- | ----------------------------: | -------: | -------------------------------------------------------------------- |
+| `server`            |                        object |       no | Server defaults used by `wingman serve` and `wingman service start`. |
+| `provider`          |                        object |       no | Provider destinations and custom models.                             |
+| `mcp`               |                        object |       no | Configured Model Context Protocol servers.                           |
+| `plugins`           |                        object |       no | External plugin discovery defaults.                                  |
+| `skills`            |                        object |       no | Additional global Agent Skill directories.                           |
+| `permissions`       | string, object, or rule array |       no | Daemon-wide tool permission rules.                                   |
+| `agent_permissions` |                        object |       no | Server permission overrides keyed by agent ID or name.               |
 
 ## `server`
 
@@ -247,7 +247,7 @@ Supported model fields under `provider.<id>.models.<model-id>`:
 | `env`                  | string array |       no | Environment variables checked for credentials when auth is enabled.                                                                   |
 | `context_window`       |       number |       no | Context window used for UI/API metadata and context usage percentage.                                                                 |
 | `max_output`           |       number |       no | Maximum output tokens used for UI/API metadata.                                                                                       |
-| `capabilities`         |       object |       no | Supported model features used by the runtime and UI. |
+| `capabilities`         |       object |       no | Supported model features used by the runtime and UI.                                                                                  |
 | `input_cost_per_mtok`  |       number |       no | Input cost metadata per million tokens.                                                                                               |
 | `output_cost_per_mtok` |       number |       no | Output cost metadata per million tokens.                                                                                              |
 
