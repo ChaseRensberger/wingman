@@ -4,18 +4,9 @@
 
 # Wingman
 
-The open-source client-agnostic agent harness
+Wingman is an open-source service that runs AI agents. Web apps, command-line tools, and other clients can share one instance through its HTTP API.
 
-> Wingman is not production ready. Expect frequent changes to APIs and data models for the time being.
-
-## What is Wingman?
-
-Wingman is yet another agent harness, but this one is:
-
-- Written in Go.
-- Client agnostic: multiple clients/UIs on one machine can use Wingman as a shared dependency. Wingman is decoupled from any specific use case, so it does not come bundled with a coding TUI, but you can run a coding TUI on top of it.
-- Independent of external dependencies, making it ideal for running in secure or airgapped environments.
-- Highly extensible: plugin support via in-process Go modules or out-of-process JSON-RPC. Plugins can register tools, attach to lifecycle events, rewrite history, and more.
+It is written in Go. Plugins can add tools and change agent behavior.
 
 ## Install
 

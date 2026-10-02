@@ -6,7 +6,7 @@ order: 103
 
 # WingModels
 
-WingModels is the provider-agnostic model SDK for Wingman. It gives the agent runtime common request, message, and stream formats. The model client hides provider wire formats.
+WingModels is Wingman's Go library for calling model providers through one request and response format.
 
 ## Supported Providers
 
@@ -24,7 +24,7 @@ Custom routes can target endpoints that use one of Wingman's supported protocols
 
 ## Runtime API
 
-The loop uses a `models.Client`:
+Use `models.Client` to call a model:
 
 ```go
 type Client interface {
@@ -34,9 +34,10 @@ type Client interface {
 }
 ```
 
-`Prepare` converts a WingModels request to provider-native JSON without sending it. `Stream` sends the request and returns normalized stream parts. `Generate` drains the stream and returns the final assembled assistant message.
+`Prepare` builds provider JSON without sending it. `Stream` sends the request and returns response parts.
+`Generate` reads the stream and returns the complete assistant message.
 
-Requests carry a provider-qualified model ref:
+A model reference names the provider and model:
 
 ```text
 provider/model
@@ -56,7 +57,7 @@ opencode-go/kimi-k3
 
 ### Provider Imports In Go
 
-For embedded Go use, import the provider package for each provider-specific deployment you use. The import registers its authentication and routing behavior.
+In an embedded Go application, import each provider package you use. This registers its authentication and routing behavior.
 
 For example, the OpenAI model helper registers the OpenAI deployment, including Codex OAuth:
 
@@ -76,13 +77,14 @@ If your application constructs model references from configuration, use a blank 
 import _ "github.com/chaserensberger/wingman/models/providers/openai"
 ```
 
-Catalog lookup does not register a provider deployment. Without its registered deployment, an OAuth request fails before dispatch instead of using an API-key endpoint. API-key routes can use the supported protocol defaults.
+Catalog lookup alone does not register a provider. OAuth requests fail without the provider import.
+API-key routes can use protocol defaults.
 
 The Wingman daemon already registers its built-in providers. HTTP clients do not need these Go imports.
 
 ## Provider-Neutral Messages
 
-WingModels stores conversation content as provider-neutral messages with typed parts:
+Messages contain parts that use the same format across providers:
 
 - Text
 - Image
@@ -91,11 +93,11 @@ WingModels stores conversation content as provider-neutral messages with typed p
 - Tool result
 - Plugin-defined opaque content
 
-Providers convert this common format to native wire formats at request time. This lets the store, HTTP API, UI, and plugins use one content model instead of provider-specific payloads.
+WingModels converts these parts to the provider's format when it sends a request.
 
 ## Streaming
 
-Every provider emits normalized `models.StreamPart` values. After `Stream` returns a stream, its lifecycle is:
+Every provider returns `models.StreamPart` values in this order:
 
 ```text
 StreamStartPart
@@ -106,11 +108,12 @@ StreamStartPart
 
 `FinishPart` carries usage, a finish reason, and the final assembled assistant message. A failed stream does not emit `FinishPart`.
 
-Drain the stream, then check the error from `EventStream.Final()` before you treat the response as complete. `Final()` returns the partial message and the error when a stream fails. Cancellation can prevent delivery of `ErrorPart`, so that event is not a substitute for the final error.
+Read the stream to its end, then check `EventStream.Final()` for an error.
+On failure, it returns the partial message and error. Cancellation can prevent an `ErrorPart` event.
+If you stop reading, cancel the request context.
 
-A closed provider connection does not establish completion. WingModels requires completion evidence from the provider protocol. An interrupted stream fails even when it contains partial output. A completed response can contain no text. Token limits and content restrictions appear in the finish reason.
-
-Provider-backed streams bind their producer to the request context. If the consumer stops draining a full stream, cancellation unblocks the producer. Malformed tool arguments fail with a decoding error instead of becoming an empty object. Parallel OpenAI-compatible tool calls retain provider index order.
+A closed connection alone does not prove completion. Interrupted streams fail even if they contain output.
+Successful responses can contain no text. Check the finish reason for token limits or content restrictions.
 
 ## Provider Errors And Retries
 
@@ -131,18 +134,18 @@ decoding
 cancellation
 ```
 
-It also carries safe status, provider request ID, retryability, and optional `Retry-After` data. Provider response bodies are not included in public error messages.
+The error includes status, provider request ID, retry eligibility, and optional `Retry-After` data.
+Public error messages omit provider response bodies.
 
-HTTP 200 means that the provider accepted the streaming connection, not that generation succeeded.
-A provider can report a failure inside that stream.
-Model-call records retain bounded native failure evidence with known credentials redacted.
-The Console inspector can copy this evidence, including provider messages, bodies, response headers, and native causes.
-Read [Observability](/use-wingman/observability) for diagnostic fields and capture limits.
+HTTP 200 does not prove success. A provider can report an error inside the stream.
+See [Observability](/use-wingman/observability) for captured failure details.
 
 Quota and content-policy failures are not retryable. Unknown provider failures are retry-eligible before an established stream.
 Additional classifications identify context overflow, oversized payloads, and incomplete streams.
 
-The agent loop retries retryable dispatch failures up to three physical attempts by default. It uses cancellation-aware exponential backoff. It honors `Retry-After` and `Retry-After-Ms`. Every attempt receives a separate durable model-call record. WingModels never retries failures after a stream is established.
+The agent loop makes up to three attempts for eligible failures before a stream starts.
+It increases the wait between attempts and honors `Retry-After` and `Retry-After-Ms`.
+Each attempt has its own model-call record. Failures after a stream starts are not retried.
 
 Embedded Go callers can configure this behavior with `session.WithRetryPolicy`. Set `MaxAttempts` to `1` to disable retries.
 
@@ -154,51 +157,14 @@ HTTP header names are case-insensitive. Request headers override variant headers
 
 ## Provider Route Overlays
 
-Wingman configuration can override catalog provider routes for the running daemon.
-
-```json
-{
-  "provider": {
-    "openai": {
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      }
-    }
-  }
-}
-```
-
-The agent `model_ref` remains `openai/gpt-5.6-terra`. The daemon routes OpenAI requests to the configured endpoint.
-
-See [Providers](/configure/providers) for auth and gateway details.
+Change a provider's destination in `wingman.json` without changing agent model references.
+See [Providers](/configure/providers#route-a-provider-through-a-gateway) for a gateway example.
 
 ## Custom Models
 
-Use explicit route metadata if the catalog does not know a model. Also use it if an agent/request needs a custom endpoint.
-
-HTTP agents use `model_route`:
-
-```json
-{
-  "name": "custom-openai",
-  "model_ref": "openai/gpt-4.1",
-  "model_route": {
-    "api": "openai_responses",
-    "base_url": "https://api.openai.com/v1",
-    "env": ["OPENAI_API_KEY"],
-    "context_window": 1047576,
-    "max_output": 32768,
-    "capabilities": {
-      "tools": true,
-      "images": true,
-      "structured_output": true
-    }
-  }
-}
-```
-
-If `model_ref` is in the catalog, the catalog wins. Use `model_route` for uncataloged models and explicit custom deployments.
+For a model outside the catalog, provide `model_route` on an agent or request.
+Catalog entries take precedence over `model_route`.
+See [Custom Model Routes](/configure/models#custom-model-routes) for examples.
 
 ## Supported Protocols
 

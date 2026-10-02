@@ -7,21 +7,17 @@ description: "Authenticate to the Wingman server."
 
 # Authentication
 
-This page explains Wingman server authentication.
+Wingman requires HTTP Basic Auth for all routes except `/health`.
 
 ## Managed Service Credentials
 
-Wingman is a managed service for one user. Its public registration is in
-`~/.local/state/wingman/registration.json`. Its generated HTTP credentials are private. Wingman stores them in `~/.config/wingman/service.env`.
-
-Managed native clients find the local registration and use the generated credentials automatically. Do not copy these credentials into client configuration.
+The managed service saves its URL in `~/.local/state/wingman/registration.json` and credentials in the private file `~/.config/wingman/service.env`.
+Local clients that support service discovery load both automatically. Do not copy these credentials into client configuration.
 
 Run `wingman pair` to display the managed server URL, username, password, and a
 QR code for another client.
 
-`wingman api` is a managed native client. It adds these credentials to every
-request automatically. Use it for interactive requests to the local managed
-daemon.
+`wingman api` connects to the local managed service and adds credentials automatically.
 
 ## Direct HTTP Requests
 
@@ -45,7 +41,7 @@ For more raw HTTP examples, read [HTTP API Basics](/build-clients/http-api-basic
 
 ## Foreground Server Authentication
 
-An explicit foreground server also requires HTTP Basic authentication. It uses `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` when both values are configured. Otherwise, it creates or reuses credentials in `service.env`.
+Foreground servers use configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` values, or create or reuse credentials in `service.env`.
 
 For an explicit server, set `WINGMAN_URL` to its URL. Set `WINGMAN_AUTH` from
 that server's credentials.
@@ -56,10 +52,10 @@ Auth is not a multi-user authorization system.
 
 ## Console Authentication
 
-The Console uses the browser HTTP Basic Auth prompt. It has no password form, session cookie, or `/auth/login` endpoint. Enter the generated credentials from `service.env` in this prompt.
+Enter the server's credentials in the browser HTTP Basic Auth prompt. The Console has no separate login form.
 
 ## Client Identity
 
-Any caller with daemon access can register a client. Any caller with daemon access can select a registered client with `X-Wingman-Client`.
+Any authenticated caller can register a client or select one with `X-Wingman-Client`.
 
-Client binding organizes sessions and Workspaces. It does not isolate providers, tools, logs, plugins, or filesystem access.
+Client identities group sessions and Workspaces. They do not restrict access to providers, tools, logs, plugins, or files.

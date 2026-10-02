@@ -6,7 +6,7 @@ order: 103
 
 # Durable Events
 
-Persisted sessions record changes, runs, messages, tool use, permission requests, and events. Clients can reload these records after a disconnect or restart.
+Saved sessions retain messages, runs, tool calls, permission decisions, and events across restarts.
 
 ## Session Versions
 
@@ -16,7 +16,8 @@ If the session changed first, Wingman returns `409 Conflict`. Reload the session
 
 ## Queued Runs
 
-`POST /sessions/{id}/message` creates a durable run before it returns `202 Accepted`. The run stores the message, selected Agent and model, client, and working directory for that execution.
+`POST /sessions/{id}/message` saves the run before returning `202 Accepted`.
+The run keeps the message and configuration selected when the request was accepted.
 
 Queued runs for one session run in order. Use `GET /sessions/{id}/runs` or `GET /sessions/{id}/runs/{runID}` to read the current status.
 
@@ -26,7 +27,8 @@ If the server restarts, queued runs resume. Wingman records an active run as `ab
 
 `GET /sessions/{id}/events` replays durable session events after a cursor. It then continues with live events. Durable events include run status changes, completed message content, tool state, and permission decisions.
 
-Live text, reasoning, tool-input, and tool-progress updates are not replayed. After you reconnect, use replayed events and session or run resources as the authoritative state.
+Partial text, reasoning, tool input, and progress are not replayed.
+After reconnecting, use saved events and session or run records for current state.
 
 See [Streaming Events](/build-clients/streaming-events) for the event contract and reconnect procedure.
 

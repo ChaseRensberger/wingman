@@ -5,8 +5,7 @@ description: "Use Wingman from your own client over HTTP."
 
 # HTTP API Basics
 
-Clients control Wingman. A client can be a web app, CLI, TUI, editor extension,
-script, or internal service.
+Use Wingman's HTTP API from an application or script.
 
 ## Choose a Client
 
@@ -26,15 +25,13 @@ or an SDK when you have an explicit server URL.
 
 Most clients follow this sequence:
 
-1. Make sure that the daemon is healthy with `GET /health`.
-2. Set the server URL and HTTP Basic Auth credentials.
-3. Make sure that the daemon is ready with `GET /ready`.
-4. Configure provider auth with `PUT /provider/auth`.
-5. Create or reuse an agent with `/agents`.
-6. If the session needs saved context, create or reuse a Workspace with `/workspaces`.
-7. Create a session with `POST /sessions`.
-8. Admit messages with `POST /sessions/{id}/message`.
-9. Subscribe to updates with `GET /sessions/{id}/events`.
+1. Set the server URL and HTTP Basic Auth credentials.
+2. Make sure that the server is ready with `GET /ready`.
+3. Store provider credentials with `PUT /provider/auth`.
+4. Create or reuse an agent with `/agents`.
+5. Create a session with `POST /sessions`.
+6. Send messages with `POST /sessions/{id}/message`.
+7. Read updates with `GET /sessions/{id}/events`.
 
 ## Authentication
 
@@ -45,14 +42,12 @@ before you run the examples in this guide. They use `WINGMAN_URL` and
 
 For an explicit foreground or remote server, set those variables from that
 server's credentials. Before you send credentials to a remote daemon, use TLS
-or an SSH tunnel. The `X-Wingman-Client` header selects attribution. It is not a
+or an SSH tunnel. The `X-Wingman-Client` header selects a client identity. It is not a
 credential.
 
 ## OpenAPI and SDKs
 
-The running daemon publishes its OpenAPI 3.1 contract at `/openapi.json`. The
-contract includes canonical errors, request and response resources, and typed
-unions for persistent-session and one-shot run events.
+The server publishes its OpenAPI 3.1 schema at `/openapi.json`, including request, response, error, and event types.
 
 Use the [Go SDK](/build-clients/go-sdk) or
 [TypeScript SDK](/build-clients/typescript-sdk) for generated, typed clients.
@@ -81,7 +76,7 @@ curl -sS -X POST "$WINGMAN_URL/sessions" \
 
 ## Workspaces
 
-Workspaces are client-scoped saved contexts with optional directories.
+Workspaces group sessions for one client and can supply a working directory.
 `GET /workspaces` lists Workspaces for the active client.
 
 Create one when needed:
@@ -120,7 +115,7 @@ send both fields.
 
 ## Handle Errors
 
-Every non-success JSON response uses one envelope:
+JSON error responses use this format:
 
 ```json
 {

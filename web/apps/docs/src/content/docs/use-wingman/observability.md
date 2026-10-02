@@ -1,13 +1,11 @@
 ---
 title: "Observability"
-description: "Use daemon logs and model-call diagnostics to investigate failed runs, provider errors, and connection failures."
+description: "Investigate failed runs with logs and model-call diagnostics."
 ---
 
 # Observability
 
-Wingman provides daemon logs, health endpoints, and persistent records of model calls.
-The Console inspector can copy detailed evidence for an individual model call.
-Normal chat errors remain concise.
+Use the Console inspector for provider failures and server logs for HTTP or startup failures.
 
 ## Choose the Right Record
 
@@ -22,25 +20,19 @@ Normal chat errors remain concise.
 | Where did the model spend time?         | Per-attempt timing milestones and duration                            |
 | How much did a call use?                | Token usage and estimated cost in the inspector                       |
 
-A model call is one physical attempt to contact a provider.
-A run can contain several steps, and a step can contain several attempts.
-Each attempt has its own model-call ID and diagnostic record.
+A model call is one attempt to contact a provider. Retries have separate records grouped by run and step.
 
 ## Inspect a Failed Model Call
 
 1. Open the affected Session in the Console.
-2. Open **Inspector** from the context-usage indicator.
-3. Find the failed attempt under **Model calls**.
-4. Select **Copy diagnostics**.
-5. Paste the result into a local text editor.
-6. Read the error summary, then the `failure` object in the JSON snapshot.
+2. Open Inspector from the context-usage indicator.
+3. Find the failed attempt under Model calls.
+4. Select Copy diagnostics.
+5. Read the error summary and `failure` object in a text editor.
 
-The snapshot contains correlation IDs, timing, usage, build information, request structure, and captured failure evidence.
-Request structure includes message counts and tool-schema hashes. It does not include the complete outbound request.
+The snapshot includes request IDs, timing, usage, and failure details, but not the complete outbound request.
 
-Provider evidence can contain quoted input, generated output, account details, or URLs.
-Wingman redacts known credentials, but this operation does not remove all private content.
-Before you share a snapshot, review its contents.
+Review a snapshot before sharing it. Wingman removes known credentials, but private conversation content and account details can remain.
 
 ### Example: Exhausted API Credits
 
@@ -71,8 +63,6 @@ This abbreviated example identifies a quota failure:
 ```
 
 For this failure, add credits to the provider account that owns the API key.
-A different model on the same account can have the same failure.
-
 ## Read Daemon Logs
 
 Wingman writes logs to standard error. The default format is JSON, and the default level is `info`.
@@ -80,13 +70,13 @@ Model-call diagnostics do not require the `debug` level.
 
 ### Foreground Server
 
-To use readable text logs, start the server with this command:
+For text logs, run:
 
 ```bash
 wingman serve --log-format text --log-level info
 ```
 
-To capture debug logs in a file, use this command:
+To save debug logs, run:
 
 ```bash
 wingman serve --log-format json --log-level debug 2>wingman-debug.jsonl
@@ -109,8 +99,7 @@ To print the original log lines, use `jq`:
 wingman api get /logs | jq -r '.[].raw'
 ```
 
-The endpoint returns the latest 500 log entries from the current process.
-It does not provide a durable log archive. A daemon restart clears this buffer.
+`/logs` returns the latest 500 entries. A restart clears this buffer.
 Managed daemons also write a private log file at `${XDG_STATE_HOME:-$HOME/.local/state}/wingman/wingman.log`.
 The daemon keeps approximately 25 MiB of recent complete lines after the file reaches 50 MiB.
 This file survives a daemon restart. A foreground `wingman serve` process does not write this file.
@@ -129,15 +118,12 @@ To change the managed-service log configuration, run:
 wingman service start --log-format json --log-level debug
 ```
 
-This command applies the runtime flags to the service definition.
 Include any other runtime flags that the service needs, such as `--port` or `--db`.
 For service commands and runtime flags, read the [CLI reference](/reference/cli).
 
 ### Interpret Log Entries
 
-HTTP log entries include the method, path, route, status, response bytes, and duration in milliseconds.
-They also include a Wingman `request_id`, the remote address, and the user agent.
-Requests with query parameters include the query string.
+HTTP logs include method, path, status, duration, `request_id`, and connection details.
 
 Model-call completion entries include `model_call_id`, `step`, `attempt`, `status`, `provider_request_id`, and `duration_ms`.
 Provider failures also include the error category, HTTP status, and retry eligibility.
@@ -195,8 +181,7 @@ curl -sS -u "$WINGMAN_AUTH" \
   "$WINGMAN_URL/sessions/ses_example/model-calls"
 ```
 
-The API path starts at `/sessions`, not `/console/sessions`.
-The model-call list returns the same captured evidence that the inspector copies.
+The API returns the same failure details as the inspector.
 
 ## Diagnostic Fields
 
@@ -225,8 +210,7 @@ For a normal stream error, it contains the triggering frame's data.
 For an interrupted or incomplete stream, it can contain a prefix of the response, including earlier output.
 Truncation can leave an incomplete JSON document in this field.
 
-Cause records can contain nested `causes` and a `stack` supplied by the original error formatter.
-Wingman does not invent an original stack for Go errors that do not contain one.
+Cause records can include nested `causes` and an available `stack`.
 
 ### Retry and Transport Details
 
@@ -253,8 +237,6 @@ Wingman does not automatically replay an established stream, even before visible
 If cancellation stops the retry wait, Wingman changes the decision to `not_retried`.
 `retry.delay_ms` records the selected wait in milliseconds, including a provider's `Retry-After` value.
 `retry.reason` is `eligible`, `ineligible`, `attempt_limit`, `canceled`, or `established_stream`.
-This decision describes the attempt. The `transport.recovery` field describes what the failure type permits.
-
 `accepted` means that the provider established the HTTP stream. It does not prove that the model completed the request.
 `ambiguous` means that Wingman cannot determine whether the provider received the request.
 An absent `phase` means that the native error does not identify a more specific phase.
@@ -269,13 +251,9 @@ An absent `phase` means that the native error does not identify a more specific 
 | `first_activity_ms` | Wingman first received text, reasoning, or tool-input activity. |
 | `first_answer_ms`   | Wingman first received answer text.                             |
 
-The model-call start and completion timestamps give the full attempt duration.
-The inspector calculates answer tokens per second from visible output tokens and the time after the first answer.
-It subtracts reported reasoning tokens from output tokens.
-If the provider reported no visible output tokens or there was no answer, the inspector omits that rate.
-An absent milestone means that the activity did not occur or its time was not captured.
-For example, a failed attempt before output has no `first_activity_ms`.
-Each retry starts a new clock, so backoff time does not inflate an attempt's latency.
+Start and completion timestamps give the attempt duration. Each retry starts a new clock, excluding the wait between attempts.
+The inspector calculates answer tokens per second without reported reasoning tokens. It omits the rate when answer data is unavailable.
+Missing timing fields indicate that the activity did not occur or its time was not captured.
 
 ### Failure Categories
 
@@ -296,22 +274,15 @@ Each retry starts a new clock, so backoff time does not inflate an attempt's lat
 
 HTTP status alone does not determine the category.
 For example, HTTP 429 can mean temporary throttling or exhausted account credits.
-Wingman uses native codes and messages to distinguish these failures.
-Explicit quota evidence takes precedence over throttling evidence.
+Wingman uses provider codes and messages to distinguish these failures.
 
 ## Retention, Redaction, and Limits
 
-Persistent Sessions retain diagnostics with each model-call record.
-These records survive daemon restarts. Historical calls contain only the evidence that their original server captured.
-Restarting a newer server cannot restore details that an older server omitted.
+Saved sessions retain model-call diagnostics across restarts. Ephemeral runs do not.
+Upgrades cannot add details to earlier records.
 
-Ephemeral runs do not provide persistent Session records for the inspector.
-Recent daemon logs have separate retention: the process keeps only its latest 500 entries.
-
-Wingman removes credentials from known request headers, URL credentials, and query values when these values appear in captured evidence.
-It also redacts credential-bearing response headers and recognized credential patterns.
-This redaction preserves ordinary provider messages and schema identifiers.
-The copied evidence can still contain private conversation content.
+Wingman removes recognized credentials from captured headers, URLs, and text.
+This does not remove all private content. Review diagnostics before sharing them.
 
 | Capture item                     | Limit                                 |
 | -------------------------------- | ------------------------------------- |
@@ -328,7 +299,6 @@ The copied evidence can still contain private conversation content.
 `redacted` indicates that Wingman replaced captured values.
 `truncated` indicates that at least one capture limit removed data.
 `detail_omitted` indicates unavailable detail, such as an incomplete read of an HTTP error response.
-Older records can also use this flag for omitted provider text.
 An absent field means that the call did not provide that information or the server did not capture it.
 
 ## Diagnose Server Availability
@@ -350,5 +320,3 @@ The authenticated `/ready` endpoint reports whether the daemon is ready to serve
 Provider credentials and account credits can still fail after the server becomes ready.
 
 If the inspector lacks expected details after an upgrade, compare the snapshot's `build` object with `wingman version`.
-The snapshot identifies the executable that captured the call.
-A newer Console cannot add evidence to a call that an older daemon recorded.

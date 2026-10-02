@@ -6,7 +6,7 @@ order: 106
 
 # Tools
 
-Tools are functions that the model can call during a session turn. An agent stores an allow-list of tool names. When a session runs, Wingman resolves these names to live `tool.Tool` implementations. It sends JSON Schema definitions to the model provider. It dispatches each model tool call.
+Tools are functions that a model can call. An agent's `tools` list selects which tools it can use.
 
 ## Built-In Tools
 
@@ -25,19 +25,16 @@ Wingman ships these built-ins:
 | `websearch`   | Search the web for current information through a configured search provider.       | No                  |
 | `skill`       | Load discovered local Agent Skill instructions or supporting files.                | No                  |
 
-Directory-scoped tools require a session with a working directory. Before you allow file or shell tools, create the session with `working_directory` or `workspace_id`. You can also move the session with `POST /sessions/{id}/move`.
-
-These commands find and authenticate with the managed daemon.
+File and shell tools require a working directory. Set `working_directory` or use a [Workspace](/concepts/workspaces) with a path.
+This example connects to the local managed service:
 
 ```bash
 SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Project\",\"working_directory\":\"$PWD\"}" | jq -r .id)
 ```
 
-For repeated work in one directory, use a [Workspace](/concepts/workspaces).
-Create sessions with `workspace_id`.
-
-`DirectoryScopedTool` is a session-start requirement. It is not a security sandbox. It requires a non-empty working directory. It does not confine a tool process, network access, or all filesystem operations to that directory. `bash` starts in that directory and can run arbitrary shell commands. Enabled tools and Wingman process OS permissions are the security boundary.
+The working directory does not restrict file or network access. Tools run with Wingman's operating system permissions.
+`bash` can run arbitrary commands. Enable it only for trusted work.
 
 `bash` has a default timeout of two minutes. Its optional `timeout` is a Go duration, for example `30s` or `5m`. Invalid values use the default. Wingman does not impose a separate maximum. It streams combined standard output and standard error during the command.
 
@@ -58,14 +55,13 @@ wingman api createAgent -d '{
 
 Agent creation and tool-list updates reject unknown and duplicate names. If an
 allowed tool is unavailable when a session starts, the session fails to start.
-Wingman never silently removes a tool.
-
 Wingman adds `skill` automatically when it discovers local skills. Do not add
 `skill` to an Agent's `tools` list. See [Skills](/configure/skills).
 
 ## Web Search Configuration
 
-`websearch` uses Exa by default. The provider comes from the Wingman server process environment when the tool runs. It does not come from the browser or model environment. Set `WINGMAN_WEBSEARCH_PROVIDER` to `exa` or `parallel`. Any other value fails the tool call.
+Set search variables in the Wingman server's environment, not the browser.
+`WINGMAN_WEBSEARCH_PROVIDER` accepts `exa` or `parallel`. The default is `exa`. Other values fail the tool call.
 
 For Exa, Wingman includes `EXA_API_KEY` when it is set:
 
@@ -81,7 +77,8 @@ export WINGMAN_WEBSEARCH_PROVIDER=parallel
 export PARALLEL_API_KEY=your_parallel_key
 ```
 
-The tool accepts a required `query`. It accepts optional `numResults`, `livecrawl`, `type`, and `contextMaxCharacters` fields. Exa receives optional search controls. Parallel receives only the query. The Parallel service can ignore controls and return different results. Both providers are external services. The selected service determines availability, authentication requirements, result quality, and live-crawl support. Use `websearch` for current or discoverable information. If you have a specific URL, use `webfetch`.
+`query` is required. Exa also accepts `numResults`, `livecrawl`, `type`, and `contextMaxCharacters`. Parallel receives only the query.
+For a known URL, use `webfetch` instead.
 
 ## Runtime Contract
 
@@ -108,9 +105,18 @@ type Result struct {
 }
 ```
 
-`Definition()` returns the JSON-Schema-shaped declaration for the model. It also returns optional execution traits and an `output_schema`. Wingman validates definitions when it composes the catalog. It rejects duplicate names. `Execute` runs after the model emits a matching tool call. A tool can call `invocation.Progress.Report(outputDelta, metadata)` to publish live progress. Tools without incremental work ignore it. `Result.Text` returns to the model. `Result.Structured` is optional client-neutral structured content. `Result.Metadata` contains client rendering hints. Both are durable. Neither is model-visible output.
+`Definition()` describes the tool's JSON Schema and execution requirements. Wingman rejects invalid definitions and duplicate names.
+`Execute` receives the model's input and returns a result:
 
-Progress events are live-only. Wingman stores the final result, metadata, error, and timing on the assistant-owned tool part. Reconnecting clients recover the completed state without replaying each output chunk. If execution fails after it produces output, Wingman retains that partial output separately from the error. If a definition declares `output_schema`, successful execution must return matching `Structured` content. Missing or invalid content settles the tool use as failed with `error_type: result_validation`. Wingman preserves returned text, structured content, and metadata for diagnosis.
+- `Text` goes to the model.
+- `Structured` holds data for clients.
+- `Metadata` holds display hints for clients.
+
+Wingman saves all three fields. It does not send `Structured` or `Metadata` to the model.
+If the tool declares `output_schema`, `Structured` must match it. Invalid output fails with `error_type: result_validation`.
+
+Call `invocation.Progress.Report(outputDelta, metadata)` for live progress.
+Progress is not replayed. Wingman saves the final result and retains partial output if execution fails.
 
 ## Durable Execution Lifecycle
 
@@ -121,13 +127,14 @@ proposed -> authorized -> started -> completed | failed | interrupted
          \-> declined
 ```
 
-Wingman checkpoints proposed IDs on the assistant message before tool workers start. Hooks can then rewrite input. Validation and permissions then run. Wingman stores allowed input as `authorized`. `started` must commit before `Execute` runs. Unknown tools, invalid input, skipped calls, denied calls, and calls that require unavailable approval settle as `declined` without execution.
+Wingman records `started` before execution. Invalid, denied, or skipped calls become `declined` without running.
+An `ask` rule waits for [approval](/configure/permissions#interactive-approval) before authorization.
 
-An `ask` permission suspends between proposal and authorization. Wingman stores the pending request. It emits `session.permission.requested`. No tool side effect can occur while it waits. `once` or `always` continues authorization. Reject, timeout, cancellation, and recovery settle the request and tool without execution. An `always` reply remembers only the exact requested action/resources for that session.
+On restart, unfinished calls become `interrupted`. Wingman does not repeat them automatically.
+A tool can change external state before a crash, even if its result was not saved.
+Read `GET /sessions/{id}/tool-uses` for execution status.
 
-On restart, unfinished tool uses become `interrupted`. Wingman does not replay them automatically. This prevents blind repetition. It is not an exactly-once guarantee. A process can crash after an external side effect and before terminal settlement. If recovery decisions need the authoritative lifecycle, inspect `GET /sessions/{id}/tool-uses`. Do not use transcript presentation state.
-
-File-oriented tools use OpenCode-style model-facing argument names: `filePath`,
+File tools use `filePath`,
 `oldString`, `newString`, `replaceAll`, `content`, and `patchText`.
 Search-scoped tools use `path` for the base path of a search (`glob`, `grep`).
 
@@ -154,19 +161,17 @@ type SequentialTool interface {
 }
 ```
 
-If any tool in a batch is sequential, Wingman runs the whole batch sequentially. External definitions declare the equivalent with `sequential: true`. They can also declare a permission action and `resource_fields`. Wingman reads those fields from validated input. If none contain resources, it uses `*`.
+If any tool is sequential, Wingman runs the whole batch in sequence. External tools use `sequential: true`.
+They can also declare a permission action and `resource_fields`. Wingman reads resources from validated input, or uses `*` if none exist.
 
 ## Custom Tools
 
-There are two extension paths:
-
-- In-process Go plugins can register `tool.Tool` implementations through the plugin registry.
-- External plugins can expose tool specifications from a manifest and run tool calls over stdio JSON-RPC.
-
-If you control the embedding process and need typed hooks, use Go tools. If you want to extend the stock `wingman serve` binary without rebuilding it, use external plugin tools.
-
-See [Plugins](/concepts/plugins) for plugin installation and manifest details.
+Use Go plugins in embedded applications or custom binaries.
+Use external plugins to add tools to `wingman serve` without rebuilding it.
+See [Plugins](/concepts/plugins) for installation and examples.
 
 ## Tool Results
 
-Tool text returns to the model. Session history keeps each invocation on its assistant message as a tool part. It has pending, running, completed, or error state. Optional structured content and metadata remain on that part. They are not model-visible output. If a pre-tool hook stops a run, Wingman keeps the pending tool part in history. It does not discard the model action. Tool errors become error-shaped results for the model to process. They do not fail the session turn unless the surrounding loop or request is canceled.
+Session history stores tool calls and results on the assistant message that requested them.
+Tool errors return to the model so it can respond or try another action.
+A tool error alone does not fail the turn.

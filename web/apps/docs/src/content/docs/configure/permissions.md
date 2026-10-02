@@ -5,7 +5,7 @@ description: "Control tool actions that run automatically, request approval, or 
 
 # Permissions
 
-Permissions control the result when an agent calls a tool.
+Permissions allow tool calls, require approval, or block them.
 
 Wingman has two layers:
 
@@ -22,7 +22,7 @@ Each matching rule resolves to one effect:
 | ------- | ---------------------------------------------------------------------------- |
 | `allow` | Run the tool call.                                                           |
 | `deny`  | Block the tool call and return a model-visible permission error.             |
-| `ask`   | Create a durable approval request and suspend before the tool is authorized. |
+| `ask`   | Wait for approval before running the tool. |
 
 ## Actions
 
@@ -65,8 +65,7 @@ Put daemon-wide defaults in `~/.config/wingman/wingman.json`:
 }
 ```
 
-Global permissions are runtime policy. SQLite does not store them. They do not
-change stored agents.
+Global rules apply during a run without changing stored agents.
 
 ## Agent Overrides In Config
 
@@ -96,8 +95,7 @@ Keys can be an agent ID or agent name. If both match, the ID-specific rules run 
 
 ## Stored Agent Permissions
 
-SQLite stores agents. The `permissions` field is part of the agent definition.
-Set it through the agent API:
+Set an agent's `permissions` through the agent API:
 
 ```json
 {
@@ -136,25 +134,22 @@ is denied.
 
 ## Interactive Approval
 
-When `ask` wins, Wingman stores a request before it authorizes or starts the tool.
-The bundled console shows the action and each resource. It has three choices:
+When an `ask` rule matches, Wingman waits before running the tool.
+The Console shows the action and resources with three choices:
 
-- **Allow once** permits only the waiting call.
-- **Always allow** permits the waiting call. It remembers each exact action/resource pair for this session.
-- **Reject** declines the tool call and returns a model-visible permission error.
+- Allow once permits only the waiting call.
+- Always allow permits the call and remembers the exact action and resources for this session.
+- Reject blocks the call and returns a permission error to the model.
 
-Remembered grants are separate from authored agent and daemon rules. They satisfy later `ask` decisions in the same session.
-They cannot override a `deny`. Pending requests time out after five minutes.
-Canceling the run interrupts them without running the tool. Stopping the daemon also interrupts them without running the tool.
+Remembered approvals satisfy later `ask` rules in the same session, but cannot override `deny`.
+Requests time out after five minutes. Canceling the run or stopping Wingman interrupts them without running the tool.
 
 API clients can list and answer requests through the session permission endpoints.
 A non-interactive Go `run.Config` without a `PermissionPrompter` declines `ask` immediately.
-It does not wait indefinitely.
-
 ## Client Behavior
 
-Denied and rejected tool calls return failed tool results. The model-facing output remains plain text.
-Clients must use structured metadata and durable permission records instead of parsing that text.
+Denied and rejected calls return a text error to the model.
+Clients must read permission metadata and saved requests instead of parsing the error text.
 
 Denied example:
 
@@ -194,14 +189,12 @@ Do not depend on the original request event.
 
 ## Precedence
 
-Wingman assembles effective permissions at run time:
+Wingman applies these rules in order. Later matching rules take precedence:
 
 1. Stored agent permissions from SQLite.
 2. Global `permissions` from `wingman.json`.
 3. Name-matched `agent_permissions` from `wingman.json`.
 4. ID-matched `agent_permissions` from `wingman.json`.
-
-Daemon-local configuration can restrict or refine stored agents without rewriting them.
 
 ## Supported Syntax
 

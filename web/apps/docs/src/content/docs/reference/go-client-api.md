@@ -5,13 +5,11 @@ description: "Reference for the Wingman Go client public API."
 
 # Go Client API
 
-This page lists the public API in `github.com/chaserensberger/wingman/client`.
-Use the [Go SDK guide](/build-clients/go-sdk/) to connect to a daemon. The guide
-also describes one-shot and persistent streams.
+API reference for `github.com/chaserensberger/wingman/client`.
+See the [Go SDK guide](/build-clients/go-sdk/) for connection and streaming examples.
 
-`SDK` embeds the generated client. For JSON endpoints, use generated methods
-with the `WithResponse` suffix. They return an HTTP response structure with
-typed fields for each success status. They return `*APIError` for non-success responses.
+For JSON endpoints, use methods with the `WithResponse` suffix.
+They return typed response fields on success and `*APIError` for HTTP errors.
 
 ```go
 wingman, err := client.New(
@@ -209,8 +207,8 @@ if err := stream.Err(); err != nil {
 | Method                                            | Description                                                                           |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `GetServiceWithResponse(ctx, nil)`                | Get service metadata for the current daemon.                                          |
-| `GetHealthWithResponse(ctx, nil)`                 | Get public liveness status.                                                           |
-| `GetReadinessWithResponse(ctx, nil)`              | Get protected readiness status.                                                       |
+| `GetHealthWithResponse(ctx, nil)`                 | Read public process health. |
+| `GetReadinessWithResponse(ctx, nil)`              | Read authenticated server readiness. |
 | `ListToolsWithResponse(ctx, nil)`                 | List the effective tool catalog.                                                      |
 | `ListPluginsWithResponse(ctx, nil)`               | List external plugins and load errors.                                                |
 | `ReloadPluginsWithResponse(ctx, nil)`             | Reload external plugins.                                                              |
@@ -220,8 +218,8 @@ if err := stream.Err(); err != nil {
 | `ConnectMCPServerWithResponse(ctx, name, nil)`    | Connect an MCP server.                                                                |
 | `DisconnectMCPServerWithResponse(ctx, name, nil)` | Disconnect an MCP server.                                                             |
 | `ListDirectoriesWithResponse(ctx, params)`        | List immediate subdirectories. Omit `params.Path` for the daemon user home directory. |
-| `ListLogsWithResponse(ctx, nil)`                  | Read recent process-local daemon log entries.                                         |
-| `GetDiagnosticsWithResponse(ctx, nil)`            | Read a bounded daemon diagnostic snapshot.                                            |
+| `ListLogsWithResponse(ctx, nil)`                  | Read recent server logs from the current process. |
+| `GetDiagnosticsWithResponse(ctx, nil)`            | Read current server diagnostics. |
 | `ListActionsWithResponse(ctx, nil)`               | List available session actions.                                                       |
 | `RestartServiceWithResponse(ctx, params)`         | Restart the managed daemon. Set the required `X-Wingman-Console: 1` header parameter. |
 

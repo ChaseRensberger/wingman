@@ -5,8 +5,7 @@ description: "Create project macros for repeated Session instructions."
 
 # Macros
 
-Macros are named project templates. A macro expands into one normal Session
-message. It does not run a shell command or change later Session behavior.
+A macro is a named template for a session message. It does not run shell commands or change later messages.
 
 ## Create A Macro
 
@@ -86,7 +85,7 @@ Clients can list the macros for a Session:
 GET /sessions/{id}/macros
 ```
 
-Clients invoke a macro with a normal admission request:
+Clients run a macro with:
 
 ```http
 POST /sessions/{id}/macros
@@ -100,8 +99,5 @@ Content-Type: application/json
 }
 ```
 
-The `request_id` makes retries idempotent. The request Agent and model are
-fallback values. A macro Agent or model applies to that run only.
-
-Slash actions that change the Console are not macros. For example, a model menu
-can use `/model` without a daemon macro.
+Retry the same input with the same `request_id` to avoid duplicate runs.
+The macro's agent and model override the request values for that run only.

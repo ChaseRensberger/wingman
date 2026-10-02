@@ -6,29 +6,15 @@ order: 102
 
 # Sessions
 
-A session is the runtime record for agent work. It stores message history. It runs model turns. It dispatches tool calls. It emits events. It persists the transcript when storage is enabled.
+A session stores a conversation and runs its messages. Each message can use a different agent or model.
+Saved sessions and queued work survive server restarts.
 
-A session stores runtime state. An agent provides reusable configuration:
-
-- An agent is a reusable definition.
-- A session is a running conversation or one-shot run.
-- A session is not permanently bound to one agent.
-- A session is not permanently bound to one model.
-- Each message chooses the agent configuration for that turn.
-
-One session can move between agents or models without a new conversation record.
-
-Changes to a persisted session and newly admitted work are durable.
-
-Sessions can belong to a [Workspace](/concepts/workspaces). A Workspace is a saved context that groups sessions. It can set the initial working directory.
+A [Workspace](/concepts/workspaces) groups sessions and can supply their initial working directory.
 
 ## Create Then Send
 
-Create a session first, then send messages to it.
-
-The commands find and authenticate with the managed daemon.
-
-Create a session:
+These examples use `wingman api`, which connects to the local managed service.
+Create a session before you send a message:
 
 ```bash
 SESSION_ID=$(wingman api createSession \
@@ -44,7 +30,7 @@ SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
-`working_directory` and `workspace_id` are mutually exclusive. When you use `workspace_id`, Wingman stores it for grouping. If the Workspace has a path, Wingman copies it to the session `work_dir`.
+Send either `working_directory` or `workspace_id`, not both. Wingman copies a Workspace path to the session's `work_dir`.
 
 ## Rename And Move
 
@@ -62,11 +48,12 @@ wingman api moveSession --param "id=${SESSION_ID}" \
   -d '{"working_directory":"/home/me/other-project","expected_version":2}'
 ```
 
-Each changed result increments `version`. If another client changes the session first, Wingman returns `409 Conflict`. Reload the session before you retry. Sending the current title or location is a no-op. It does not increment the version.
+Changes increment `version`. An unchanged title or location leaves it unchanged.
+If another client changes the session first, Wingman returns `409 Conflict`. Reload the session before you retry.
 
 ## Delete
 
-Deletion permanently purges the session. Pass the version that you read as a query parameter:
+Deleting a session permanently removes its history and associated records. Pass its current version:
 
 ```bash
 wingman api deleteSession \
@@ -74,7 +61,8 @@ wingman api deleteSession \
   --param expected_version=2
 ```
 
-Wingman permanently removes the session, event history, runs, messages, parts, model calls, tool uses, and permission records. Active event streams close before the endpoint returns success. Wingman cancels active execution before the endpoint returns success. A stale version returns `409 Conflict`. It does not delete the session or cancel its work.
+Wingman cancels active work and closes event streams before deletion returns success.
+A stale version returns `409 Conflict` without deleting the session or canceling work.
 
 ## Admit Work
 
@@ -91,15 +79,15 @@ wingman api messageSession --param "id=${SESSION_ID}" \
 
 `POST /sessions/{id}/message` requires an existing session. A typo in the ID returns `404`. It does not create a new session.
 
-The endpoint returns `202 Accepted` when it durably queues the message. The response includes `run_id`, the current run `status`, and `session_version`. A daemon-owned worker runs queued messages serially for each session. Clients observe progress and completion through the event stream. They do not wait for this request.
+The endpoint queues the message and returns `202 Accepted` with `run_id`, `status`, and `session_version`.
+Messages run in order within each session. Use the event stream to follow progress.
 
-`request_id` is optional and applies to one session. Retrying the same effective input with the same ID returns the existing run. It does not publish another queued event. Reusing the ID after you change the prompt, effective Agent, model, output schema, client, or session placement returns `409 Conflict`. If you omit it, Wingman always admits a new run.
+Retry the same input with the same `request_id` to return the existing run.
+Changed input with that ID returns `409 Conflict`. Without an ID, each request creates a new run.
+See the [message reference](/reference/referenceapi#message-request) for the fields that must match.
 
-Admission stores the authored Agent snapshot separately from the resolved [`AGENTS.md` instructions](/configure/project-instructions). It also stores the output schema, working directory, Workspace, and client. Moving the session or editing the Agent or instruction files later affects future admissions only. Queued work runs from its snapshot.
-
-When [Skills](/configure/skills) are available, admission also stores their
-instructions and supporting-file contents. Later skill edits affect future runs
-only.
+Queued work uses the agent, model, location, [project instructions](/configure/project-instructions), and [skills](/configure/skills) saved when the request was accepted.
+Later edits and session moves affect only new requests.
 
 ## Per-Message Agent and Model
 
@@ -131,7 +119,7 @@ Each accepted message emits `session.run.queued`. It then emits `session.run.sta
 
 ## Run Status And Recovery
 
-The durable run record is authoritative after a reload or lost event stream:
+After a reload or disconnect, read the saved run status:
 
 ```bash
 wingman api listSessionRuns --param "id=${SESSION_ID}"
@@ -147,11 +135,13 @@ Abort a specific queued or running run with:
 wingman api abortSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
-Wingman does not automatically replay work that can have reached a provider or tool. During shutdown or restart, a running run becomes `aborted`. Started model calls become `aborted`. Unfinished tool uses become `interrupted`. An active message becomes `failed` and retains checkpointed content. Only runs that never started remain queued and resume automatically. If a recovery write fails, the server does not serve requests.
+After a restart, queued runs resume and running runs become `aborted`. Partial messages remain in history as `failed`.
+Wingman does not repeat provider calls or tool actions that started before the interruption.
+See [Durable Events](/concepts/durable-events) for recovery behavior.
 
 ## Ephemeral Sessions
 
-Some agent runs do not need durable state. Wingman provides them as ephemeral runs:
+An ephemeral run executes without saving a conversation:
 
 ```bash
 wingman api runAgent -d '{
@@ -165,42 +155,35 @@ wingman api runAgent -d '{
   }'
 ```
 
-An ephemeral run has a runtime, tools, model calls, and events. Wingman does not write it to the store.
-
 If the server starts with `--ephemeral`, persisted endpoints such as `/sessions`, `/agents`, `/clients`, `/workspaces`, and `/provider/auth` return `501 Not Implemented`. In this mode, use inline agent specs with `/run`.
 
 ## Working Directory
 
-A session can have a working directory. Directory-scoped tools such as `read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` use that directory as the workspace.
+A working directory is required for file and shell tools. Web tools can run without one.
+See [Tools](/concepts/tools) for requirements and access limits.
 
-If the selected agent uses only tools without a working directory requirement, sessions without one are valid. These tools include `webfetch` and `websearch`.
-
-A session created or moved with `workspace_id` stores the Workspace path as a `work_dir` snapshot. Changing the Workspace later affects future sessions and moves. It does not affect an existing session `work_dir` value.
+Changing a Workspace path does not change existing sessions. Create or move a session to use the new path.
 
 ## Message Parts
 
-Session history uses messages with typed parts. A part is a provider-neutral Wingman content block:
+A message contains content blocks called parts:
 
 - Text.
 - Image.
 - Reasoning.
-- Tool invocation. A tool part belongs to the assistant message that requested
-  it. It records pending, running, completed, or error state. When the session continues, the provider receives a derived tool result. Session history does not store separate tool-role messages.
+- Tool calls and results, stored on the assistant message that requested them.
 - Structured output.
 - Plugin-defined opaque content.
 
-Tool result parts contain model-facing text. They can also contain metadata for clients. File-editing tools use this metadata for changed files, patches, and addition/deletion counts. UIs can show diffs without parsing prose. Parts let Wingman preserve provider-specific content without provider-native wire formats. UIs can show each block differently. Plugins can add custom content.
+Messages have a stable `id`, increasing `revision`, and a `state` of `in_progress`, `completed`, or `failed`.
+Partial content remains available after a stream failure.
+See [Streaming Events](/build-clients/streaming-events) for updating messages in a client.
 
-Persisted messages have a stable `id`, monotonic `revision`, and a `state` of `in_progress`, `completed`, or `failed`. Every built-in part also has a stable `id`. Wingman stores each complete message revision and its parts atomically. A reload cannot observe a message row from one revision with parts from another. Wingman checkpoints text, reasoning, and raw tool input during the provider stream. If streaming fails, the identified partial assistant message remains in history with `state: "failed"`.
-
-Wingman checkpoints pending tool parts before local tool execution starts. This preserves truthful input and state for inspection after interruption. It does not provide exactly-once execution of external side effects.
-
-Each persisted tool part also has a stable `tool_use_id`. The tool-use record commits `started` before execution. It stores the exact durable lifecycle, rewritten input, output, metadata, errors, and timing. Unfinished records become `interrupted` on server startup. Wingman does not replay them automatically. If a client needs execution authority, use `/sessions/{id}/tool-uses`. The tool part remains the transcript presentation.
+Tool metadata includes file changes and patches that clients can display without parsing text.
+For execution status, read `/sessions/{id}/tool-uses` rather than the displayed tool part.
 
 ## Usage and Context
 
-Persisted sessions store one normalized model-call record for each physical upstream attempt. Each record has a stable call ID. It contains its `run_id`, loop step, attempt number, provider/model route, lifecycle state, timing, token usage, context fullness, and provider request ID when available. Wingman stores the started record before dispatch. It settles the record when the provider stream ends.
-
-A model call completes before requested tools run. A later tool failure can fail the run. It does not change the successful upstream attempt to failed. Steps restart at one for each run. Run-scoped identity keeps each turn history.
-
-When clients show session usage or context-window fullness after a reload, use the latest model call. Do not estimate it from transcript text.
+Each provider attempt has a model-call record with status, timing, and token usage.
+Use the latest record for usage and context-window fullness. Do not estimate these values from transcript text.
+See [Observability](/use-wingman/observability) for inspecting calls and failures.

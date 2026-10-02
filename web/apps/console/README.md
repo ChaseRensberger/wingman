@@ -1,16 +1,11 @@
 # Wingman Console
 
-Bundled Wingman management UI. It is a Vite/React app served by `wingman serve` at `/console`.
-
-Ordinary API requests and SSE framing use `@wingman-actor/client`. Replay
-cursors and reconnect policy stay local because they belong to the Console.
-The connection banner reports daemon readiness and reloads the active route after
-the daemon recovers. A protected Console uses the browser's HTTP Basic Auth
-prompt; it has no password form or session cookie.
+The Console is Wingman's browser interface. `wingman serve` serves it at `/console/`.
+Enter the server's HTTP Basic Auth credentials in the browser prompt.
 
 ## Development
 
-Run the Vite dev server, then proxy `/console` from the Go server:
+From `web/`, run the Vite server and Wingman in separate terminals:
 
 ```sh
 bun --filter @wingman/console dev
@@ -25,7 +20,7 @@ Vite after the daemon URL or service credentials change.
 
 ## Build
 
-Build the console app before building the Go binary so `web/apps/console/dist` exists for embedding:
+From `web/`, build the Console before you build the Go binary with the `webdist` tag:
 
 ```sh
 bun run build:console

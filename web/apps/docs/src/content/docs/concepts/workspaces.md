@@ -6,7 +6,7 @@ order: 103
 
 # Workspaces
 
-A Workspace groups sessions. It can supply a working directory or act as a label and filter.
+A Workspace groups sessions and can supply a working directory.
 
 Each Workspace stores:
 
@@ -19,15 +19,15 @@ Users create Workspaces. If you omit `X-Wingman-Client`, `GET /workspaces` lists
 
 ## Names and Paths
 
-Wingman trims Workspace names. Names must not be empty. Names are unique for each owning client without case sensitivity. If you create a Workspace with a path and no name, Wingman uses the final directory name. A dirless Workspace must have a name.
+Names must be non-empty and unique within a client, ignoring case.
+If you omit the name, Wingman uses the final directory name. A Workspace without a path requires a name.
 
-The Wingman server resolves and validates paths. It trims whitespace. It expands `~` from the server process home directory. It resolves relative paths from the server process current directory. The path must already exist. The path must be a directory. It is not a browser-local path. Run the server where it can access the directory.
+Paths must refer to existing directories on the Wingman server, not the browser's machine.
+Wingman expands `~` from its home directory and relative paths from its current directory.
 
 ## Create A Session In A Workspace
 
-Create or reuse a Workspace. Then create a session with `workspace_id`:
-
-These commands find and authenticate with the managed daemon.
+Select an existing Workspace on the local managed service, then create a session with `workspace_id`:
 
 ```bash
 WORKSPACE_ID=$(wingman api listWorkspaces | jq -r '.[0].id')
@@ -36,6 +36,7 @@ SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
 ```
 
-Wingman records `workspace_id` on the session. If the Workspace has a path, Wingman copies it to the session `work_dir`. Dirless Workspaces create sessions without a working directory. Later Workspace path edits do not rewrite existing sessions. `POST /sessions/{id}/move` uses the same snapshot behavior when it moves an existing session into a Workspace.
+Wingman copies the Workspace path to the session's `work_dir` when you create or move the session.
+Later Workspace edits do not change existing sessions. A Workspace without a path supplies no working directory.
 
-Do not send both `working_directory` and `workspace_id` when you create or move a session. If the session belongs to a saved context, use `workspace_id`. For an ad hoc directory, use `working_directory`.
+Send either `workspace_id` or `working_directory`, not both, when creating or moving a session.

@@ -49,14 +49,12 @@ to use its LLM Gateway with local server access and text logs. See
 | Field               |                          Type | Required | Description                                                                |
 | ------------------- | ----------------------------: | -------: | -------------------------------------------------------------------------- |
 | `server`            |                        object |       no | Server defaults used by `wingman serve` and `wingman service start`.       |
-| `provider`          |                        object |       no | Provider route overlays and configuration-defined provider/model metadata. |
+| `provider`          |                        object |       no | Provider destinations and custom models. |
 | `mcp`               |                        object |       no | Configured Model Context Protocol servers.                                 |
 | `plugins`           |                        object |       no | External plugin discovery defaults.                                        |
 | `skills`            |                        object |       no | Additional global Agent Skill directories.                                 |
 | `permissions`       | string, object, or rule array |       no | Daemon-wide tool permission rules.                                         |
-| `agent_permissions` |                        object |       no | Daemon-local permission overlays keyed by agent ID or name.                |
-
-Only the documented fields are supported.
+| `agent_permissions` |                        object |       no | Server permission overrides keyed by agent ID or name. |
 
 ## `server`
 
@@ -145,16 +143,14 @@ Wingman includes the default global skill directory:
 | `discovery_timeout` |       number |       no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
 | `execution_timeout` |       number |       no | Per-tool-call timeout in milliseconds. Defaults to `30000`.                 |
 
-Wingman validates MCP definitions at startup. The `cwd` field supports `~` and
-`~/...` expansion for the effective user.
+Wingman validates MCP definitions at startup.
 
 See [MCP Servers](/configure/mcp) for local and remote examples and status
 checks.
 
 ## `permissions`
 
-`permissions` defines daemon-wide tool policy. Wingman evaluates it during a run.
-It is not written into stored agents.
+`permissions` sets server-wide tool rules without changing stored agents.
 
 Supported effects are `allow`, `ask`, and `deny`.
 
@@ -179,13 +175,9 @@ Example:
 See [Permissions](/configure/permissions) for actions, resources, and
 precedence.
 
-Permission failures include structured tool-result metadata. Clients can render
-policy failures without parsing text output.
-
 ## `agent_permissions`
 
-`agent_permissions` overlays daemon-local rules on stored SQLite agents by ID
-or name.
+`agent_permissions` sets server rules for agents matched by ID or name.
 
 Example:
 
@@ -200,13 +192,12 @@ Example:
 }
 ```
 
-If both overlays match, ID-specific overlays run after name-specific overlays.
+If both match, ID-specific rules apply after name-specific rules.
 
 ## `provider`
 
-`provider` maps provider IDs to provider definitions. It overlays WingModels
-catalog provider routes. It can define custom providers and models when the
-daemon starts. It is not stored in SQLite. It does not store credentials.
+`provider` maps IDs to provider definitions. It can change catalog destinations or add providers and models at startup.
+It does not store credentials.
 
 Supported provider fields:
 
@@ -256,7 +247,7 @@ Supported model fields under `provider.<id>.models.<model-id>`:
 | `env`                  | string array |       no | Environment variables checked for credentials when auth is enabled.                                                                   |
 | `context_window`       |       number |       no | Context window used for UI/API metadata and context usage percentage.                                                                 |
 | `max_output`           |       number |       no | Maximum output tokens used for UI/API metadata.                                                                                       |
-| `capabilities`         |       object |       no | Capability flags for runtime gating and UI metadata.                                                                                  |
+| `capabilities`         |       object |       no | Supported model features used by the runtime and UI. |
 | `input_cost_per_mtok`  |       number |       no | Input cost metadata per million tokens.                                                                                               |
 | `output_cost_per_mtok` |       number |       no | Output cost metadata per million tokens.                                                                                              |
 
@@ -292,21 +283,6 @@ Custom provider example:
             "structured_output": true
           }
         }
-      }
-    }
-  }
-}
-```
-
-Route overlay example for an existing catalog provider:
-
-```json
-{
-  "provider": {
-    "openai": {
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
       }
     }
   }

@@ -5,9 +5,7 @@ description: "Install, create, and control local Agent Skills."
 
 # Skills
 
-Skills are Markdown instructions for specialized tasks. Wingman advertises a
-skill to the model. The model loads the skill when the task matches its
-description.
+Skills are Markdown instructions for specific tasks. The model sees their descriptions and loads matching skills as needed.
 
 ## Install A Skill
 
@@ -17,9 +15,7 @@ Install one skill in the current project:
 wingman skills add https://github.com/aminblg/simpleenglish
 ```
 
-The command requires Git. It performs a shallow clone. It accepts a repository
-with exactly one discoverable skill. It prints the installed commit. It does not
-replace an existing skill.
+The command requires Git and a repository with exactly one skill. It does not replace an existing skill.
 
 Install one skill for all projects:
 
@@ -83,8 +79,8 @@ The skill ID comes from the file path. It does not come from `name`.
 | `skills/release-notes/SKILL.md` | `release-notes` |
 | `skills/team/release/SKILL.md`  | `release`       |
 
-Use a unique lowercase kebab-case directory or file name. The `name` field is a
-display name. The `description` tells the model when to load the skill.
+Use a unique lowercase name with hyphens, such as `release-notes`.
+The `name` field is for display. The `description` tells the model when to load the skill.
 
 Wingman does not advertise a skill without a description. The user can still
 request that skill by its ID.
@@ -104,9 +100,7 @@ A later source with the same ID replaces an earlier source. A session without a
 working directory uses global sources only. Wingman does not search parent or
 nested project directories.
 
-The built-in `wingskill` skill loads bundled official documentation about the
-Wingman runtime and how to use it. Create a global or project skill with the
-same ID to replace it.
+The built-in `wingskill` loads Wingman documentation. A global or project skill with the same ID replaces it.
 
 ## Configure Sources
 
@@ -163,10 +157,8 @@ An `ask` rule creates an approval request.
 
 ## Run Snapshots
 
-Persistent runs store the skill body and supporting-file contents at admission.
-The built-in `wingskill` stores only bundled documentation paths and hashes.
-It loads page content from the running Wingman binary. Later skill edits affect
-later runs only. A retry with the same `request_id` returns the saved run.
-Wingman does not resolve skills again.
+Saved runs capture skill instructions and supporting files when Wingman accepts the request.
+Later edits affect new runs only. Retrying the same `request_id` uses the saved copy.
+The built-in `wingskill` loads documentation from the running binary instead of saving page contents.
 
 Ephemeral runs resolve skills before execution. They do not store a snapshot.

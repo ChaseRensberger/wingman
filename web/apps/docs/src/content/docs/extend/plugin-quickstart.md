@@ -10,7 +10,7 @@ order: 1002
 Go plugins are Go packages that implement the Wingman `plugin.Plugin` interface.
 Use this path when you embed Wingman or ship a custom binary.
 
-This guide creates a plugin that observes session events through a sink.
+This example logs session events:
 
 ## 1. Create A Plugin Package
 
@@ -69,8 +69,7 @@ Go plugins are linked into the Go process. The stock `wingman serve` binary does
 
 ## 3. Add More Capabilities
 
-Inside `Activate`, register the capabilities that the plugin contributes.
-Return cleanup for resources such as files, workers, or subscriptions:
+Register hooks and tools in `Activate`. Return cleanup for resources that the plugin opens:
 
 ```go
 func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
@@ -85,17 +84,10 @@ func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
 ```
 
 Hooks run in activation order. Transform hooks receive the output from the previous hook.
-Sinks use a bounded callback time. If activation fails, existing plugins remain active.
+Event callbacks have a timeout. If activation fails, existing plugins remain active.
 
 ## When To Use Go Plugins
 
-Use Go plugins for:
-
-- Lifecycle hooks.
-- Event sinks.
-- Context, history, tool definition, and parameter transforms.
-- Custom tools in embedded applications.
-- Custom message-part decoders.
-- Performance-sensitive extensions.
-
-Use [RPC plugins](/extend/rpc-plugin-protocol) when the stock server loads an out-of-process plugin from disk.
+Use Go plugins for session hooks and tools in an embedded application or custom binary.
+See [Plugin Capabilities](/extend/plugin-capabilities) for available hooks.
+Use [RPC plugins](/extend/rpc-plugin-protocol) to add tools to `wingman serve` without rebuilding it.

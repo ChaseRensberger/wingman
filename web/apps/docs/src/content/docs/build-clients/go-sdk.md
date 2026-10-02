@@ -5,8 +5,7 @@ description: "Use the generated Go client with a Wingman daemon."
 
 # Go SDK
 
-The Go SDK provides typed REST methods, local daemon discovery, and typed
-Wingman event streams.
+Use the Go SDK to call Wingman's HTTP API and read event streams.
 
 See the [Go Client API](/reference/go-client-api/) for the complete public
 method index.
@@ -23,9 +22,8 @@ go get github.com/chaserensberger/wingman/client@v0.1.60
 
 ### Local Managed Daemon
 
-If the application runs as the daemon user, use `NewLocal`. It reads the
-daemon registration from the XDG state directory and private credentials from
-the configuration directory. It accepts only a loopback origin.
+Use `NewLocal` when the application runs on the same machine and as the same user as the managed service.
+It reads the service URL and credentials automatically and accepts only a local loopback address.
 
 ```go
 wingman, err := client.NewLocal(context.Background())
@@ -33,9 +31,6 @@ if err != nil {
 	return err
 }
 ```
-
-Use `NewLocal` only in a local application that can read daemon state. It does
-not connect to a remote daemon.
 
 ### Explicit Server
 
@@ -59,8 +54,7 @@ send Basic Auth credentials to a remote server, use TLS or an SSH tunnel. Read
 
 ## Client Identity
 
-At application startup, call `EnsureClient`. It creates the client identity on
-the first start. On later starts, it reads and compares the existing identity.
+Call `EnsureClient` at startup to create or reuse a client identity:
 
 ```go
 bootstrap, err := client.NewLocal(ctx)
@@ -97,8 +91,8 @@ fmt.Println(ready.JSON200.Version)
 
 ## Admit Messages Safely
 
-Persistent message admission is idempotent when each retry uses the same
-`request_id`. `NewMessageAdmission` adds an ID if the request has none.
+Retrying the same input with the same `request_id` does not create another run.
+`NewMessageAdmission` adds an ID if the request has none.
 
 Save the returned request before you send the first network request:
 
@@ -122,8 +116,7 @@ request. Do not create a new request ID for this retry.
 
 ## One-Shot Streams
 
-`Run` starts an ephemeral run. It does not create a session or save a
-transcript. The returned stream ends after a terminal event.
+`Run` executes without saving a conversation. Its stream ends on completion or failure.
 
 ```go
 modelRef := "openai/gpt-5.6-terra"
@@ -147,9 +140,8 @@ if err := stream.Err(); err != nil {
 
 ## Persistent Session Streams
 
-`StreamSessionEvents` opens one SSE connection for a persistent session. The
-SDK parses frames and typed event envelopes. The application saves cursors,
-reloads state, and reconnects.
+`StreamSessionEvents` reads server-sent events (SSE) for a saved session.
+Your application must save the last event sequence, reload state, and reconnect after a disconnect.
 
 Set `LastEventID` to send the saved cursor in the `Last-Event-ID` header. If
 both `After` and `LastEventID` are set, `After` takes precedence.
@@ -202,5 +194,4 @@ the parsed `Retry-After` value. Use this data for diagnostics and retry logic.
 
 ## Version Compatibility
 
-The SDK is generated from the daemon OpenAPI contract. Until the API is stable,
-use the SDK version with the same tag as the daemon.
+Use the SDK version that matches the server release.

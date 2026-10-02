@@ -7,8 +7,7 @@ description: "Wingman command-line interface reference."
 
 # CLI
 
-The `wingman` binary runs the local Wingman HTTP server. It manages the
-background service, installs release updates, and prints build information.
+Use `wingman` to run the server, manage the background service, and install updates.
 
 ```bash
 wingman <command> [flags]
@@ -45,15 +44,10 @@ wingman serve
 wingman service start
 ```
 
-The service runs for the user who runs the command. It does not require `sudo`.
-Its public registration is `~/.local/state/wingman/registration.json`. Its
-generated private credentials are `~/.config/wingman/service.env`. The default
-SQLite database is `~/.local/share/wingman/wingman.db`. The command waits until
-the service is ready.
+The service runs for the current user without `sudo`. The command waits until it is ready.
+Its URL is in `~/.local/state/wingman/registration.json` and credentials are in the private file `~/.config/wingman/service.env`.
 
 `wingman service start` accepts the same runtime flags as `wingman serve`.
-The command writes selected values to the generated service definition.
-
 `wingman serve` prints its URL, username, and password when it uses generated
 credentials. To show the managed service connection details later, run:
 
@@ -90,8 +84,8 @@ wingman service start --port 2424
 
 ## API Command
 
-`wingman api` finds the verified managed daemon and uses its HTTP Basic Auth
-credentials. Call an endpoint with an HTTP method and path:
+`wingman api` connects to the local managed service with its credentials.
+Call an endpoint with an HTTP method and path:
 
 ```bash
 wingman api get /sessions
@@ -153,8 +147,7 @@ Wingman reuses the workspace for that directory or creates one if needed.
 The new session uses that directory. The Console saves the session when you send its first message.
 Without a directory, the command opens the Console home page.
 
-The Console uses the browser HTTP Basic Auth prompt for managed-service
-credentials. It has no password form or session cookie.
+Enter the service credentials in the browser HTTP Basic Auth prompt.
 
 ## Service Commands
 
@@ -165,8 +158,6 @@ wingman service status
 ```
 
 The command reports `ready`, `starting`, `stale`, `incompatible`, or missing.
-It then shows the managed-service status.
-
 If you edit `~/.config/wingman/wingman.json`, restart the service:
 
 ```bash
@@ -198,21 +189,15 @@ wingman dev (commit: none, built: unknown)
 
 ## Update
 
-`wingman update` downloads the latest stable GitHub release for the current
-Linux or macOS architecture. It compares the downloaded archive with the
-release `checksums.txt`. It atomically replaces the resolved executable:
+`wingman update` downloads the latest stable release for your Linux or macOS architecture.
+It compares the archive with `checksums.txt`, then replaces the executable:
 
 ```bash
 wingman update
 ```
 
-The executable directory must be writable. This works with the default installer
-location (`~/.wingman/bin`) and other writable standalone installations. Update
-an installation owned by a package manager or another user with its original
-installation method.
-
-The public installer also compares the downloaded release archive with the
-published `checksums.txt` before it installs the binary.
+The executable directory must be writable, as it is at the default location, `~/.wingman/bin`.
+For installations owned by a package manager or another user, use the original installation method.
 
 If Wingman runs as a managed service, the command restarts it after replacement.
 It does not start an installed service that is stopped.

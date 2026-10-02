@@ -7,12 +7,12 @@ order: 1005
 
 # Embed the Daemon
 
-Use the `app` package when a Go program owns a complete Wingman daemon.
-The application root owns storage, external plugins, MCP connections, background workers, and the HTTP adapter.
+Use the `app` package to run a Wingman server inside a Go application.
+It manages storage, plugins, MCP connections, and HTTP requests.
 
 ## Serve on a Listener
 
-Create the listener before the application. Then a bind failure occurs before Wingman opens the database or starts external processes.
+Create the listener first so a bind failure does not open storage or start external programs.
 
 ```go
 ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -45,7 +45,7 @@ When the context ends, `App.Serve` stops accepting HTTP requests. Then it closes
 
 ## Use the Handler Without a Listener
 
-Use `App.Handler` for exact HTTP behavior in a test or an in-process transport.
+Use `App.Handler` to send HTTP requests in a test or through another server:
 
 ```go
 application, err := app.New(context.Background(), app.Config{
@@ -65,12 +65,11 @@ application.Handler().ServeHTTP(response, request)
 `App.Close` coordinates automatically with `App.Serve`.
 If another HTTP server uses `App.Handler`, drain that server before you call `App.Close`.
 
-Use the direct packages under `agent/`, `models/`, and `store/` when a program
-does not need daemon HTTP behavior.
+Use `agent`, `models`, and `store` directly if your application does not need an HTTP server.
 
 ## Shutdown Contract
 
 `App.Close` cancels application work. It waits for the server to stop. Then it closes daemon resources.
 
-If the supplied context ends before server work drains, dependencies remain open.
-Call `App.Close` again with a new context. This continues shutdown.
+If the context ends before active work finishes, resources remain open.
+Call `App.Close` again with a new context to finish shutdown.

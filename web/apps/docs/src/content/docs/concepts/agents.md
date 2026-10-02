@@ -6,9 +6,9 @@ order: 100
 
 # Agents
 
-An agent defines instructions, allowed tools, a default model, and an optional output schema for a [session](/concepts/sessions) turn.
+An agent defines instructions, allowed tools, a default model, and an optional schema for structured output.
 
-This command finds and authenticates with the managed daemon.
+Create an agent on the local managed service:
 
 ```bash
 wingman api createAgent -d '{

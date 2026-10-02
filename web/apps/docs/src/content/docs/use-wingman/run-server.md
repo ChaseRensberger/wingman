@@ -10,13 +10,13 @@ It stores persistent data in `~/.local/share/wingman/wingman.db`.
 
 ## Foreground Server
 
-If you develop or test Wingman, run it in the foreground:
+To run Wingman in your terminal:
 
 ```bash
 wingman serve
 ```
 
-To view the server status, run this command:
+Read the health endpoint:
 
 ```bash
 curl -sS http://localhost:2424/health
@@ -30,7 +30,7 @@ Expected response:
 
 ## Managed Service
 
-To install and start Wingman in the background, run this command:
+To start Wingman in the background:
 
 ```bash
 wingman service start
@@ -38,23 +38,16 @@ wingman service start
 
 The managed service runs for the current user without `sudo`.
 
-`wingman service start` returns after the daemon passes its readiness check.
-The state files are in
-`${XDG_STATE_HOME:-$HOME/.local/state}/wingman`:
+The command returns when Wingman is ready.
+Credentials are in the private file `~/.config/wingman/service.env`.
 
-- `registration.json` contains the instance ID, version, URL, PID, and creation time. It is public service-discovery data.
-- `daemon.lock` selects one managed daemon for this state directory.
-
-The managed-service credentials are in `~/.config/wingman/service.env`.
-Only the file owner can read this private file.
-
-To view the service status, run this command:
+Read the service status:
 
 ```bash
 wingman service status
 ```
 
-To stop and remove the service, run this command:
+To stop and remove the service:
 
 ```bash
 wingman service stop
@@ -62,25 +55,23 @@ wingman service stop
 
 ## Updates
 
-To update a release installation to the latest stable release, run this command:
+To install the latest stable release:
 
 ```bash
 wingman update
 ```
 
-Wingman downloads the archive for the current Linux or macOS architecture.
-It compares the archive with the release `checksums.txt` file.
-It replaces the executable atomically and restarts a running managed service.
+Wingman verifies the download, replaces the executable, and restarts a running managed service.
 The executable directory must be writable.
 If a package manager manages the executable, use that package manager to update it.
 
-To view updates without changes, run this command:
+To look for updates without installing them:
 
 ```bash
 wingman update --check
 ```
 
-To install a specific release, including a prerelease, run this command:
+To install a specific release:
 
 ```bash
 wingman update --version 0.1.15
@@ -94,33 +85,27 @@ To change the address and port, use `--host` and `--port`:
 wingman serve --host 127.0.0.1 --port 2424
 ```
 
-Wingman disables cross-origin browser access by default. The Console is served
-from `/console` on the API origin.
+Wingman does not enable cross-origin browser access. The Console and API use the same server address.
 
 ## Authentication
 
 The managed service uses credentials from `~/.config/wingman/service.env`.
 Managed native clients find and use these credentials automatically.
 
-An explicit foreground server also requires HTTP Basic authentication.
-It uses configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` values.
-Otherwise, it creates or reuses the credentials in `service.env`.
+Foreground servers use `WINGMAN_USERNAME` and `WINGMAN_PASSWORD`, or generate credentials in `service.env`.
 
-For protected routes, use HTTP Basic authentication:
+Before using direct HTTP, load the URL and credentials from the [authentication setup](/concepts/authentication#direct-http-requests).
+For remote access, use TLS or an SSH tunnel before sending credentials.
 
 ```bash
 curl -sS "$WINGMAN_URL/ready" -u "$WINGMAN_AUTH"
 ```
 
-The Console uses browser HTTP Basic Auth. It has no password form or session
-cookie. Before you send credentials to a remote machine, use TLS or an SSH
-tunnel. Complete the [direct HTTP setup](/concepts/authentication#direct-http-requests)
-before you run this command. Read [HTTP API Basics](/build-clients/http-api-basics)
-for raw HTTP examples.
+The Console asks for these credentials through the browser's HTTP Basic Auth prompt.
 
 ## Ephemeral Mode
 
-To run without persistence, use this command:
+To run without saving data:
 
 ```bash
 wingman serve --ephemeral

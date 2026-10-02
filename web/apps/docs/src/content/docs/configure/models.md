@@ -5,7 +5,7 @@ description: "Select models with model refs and custom routes."
 
 # Models
 
-Wingman selects models with provider-qualified references.
+Select a model with its provider and model ID:
 
 ```text
 provider/model
@@ -23,12 +23,9 @@ opencode/claude-sonnet-5
 opencode-go/kimi-k3
 ```
 
-The provider selects a catalog entry. The model selects a model from that entry.
-
 ## Model Variants
 
-A catalog model can provide named request variants. Add `#variant` to the model
-reference:
+A variant is a named set of model options. Add `#variant` to select one:
 
 ```text
 openai/gpt-5.6-terra#high
@@ -37,7 +34,7 @@ openai/gpt-5.6-terra#high
 The catalog lists the valid variants for each route. Wingman returns an error
 before the provider call when a selected variant is not available.
 
-The initial variant catalog supports `none`, `low`, `medium`, `high`, `xhigh`,
+The catalog supports `none`, `low`, `medium`, `high`, `xhigh`,
 and `max` for the built-in OpenAI GPT-5.6 routes. These names select OpenAI
 reasoning-effort values. They do not specify a fixed token count or latency.
 
@@ -48,7 +45,7 @@ model reference, including the variant, remains in the model-call record.
 
 1. In the Session composer, open the model menu.
 2. Select a model, then select its variant when it has variants.
-3. Select **Provider default** to use the model without a named variant.
+3. Select Provider default to use the model without a named variant.
 
 The Agent editor has separate model and Variant menus.
 
@@ -88,82 +85,13 @@ Wingman returns an error before the first provider call if neither the message n
 
 ## Provider Routes and Model Refs
 
-Provider route overlays change the destination for cataloged model refs. They do
-not change the model ref.
-
-For example, this configuration routes `openai/*` refs through a gateway:
-
-```json
-{
-  "provider": {
-    "openai": {
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      }
-    }
-  }
-}
-```
-
-Agents continue to use the normal refs:
-
-```json
-{
-  "name": "Assistant",
-  "model_ref": "openai/gpt-5.6-terra"
-}
-```
-
-Use a provider route overlay for a known provider with a proxy, local gateway, or compatible endpoint.
-See [Providers](/configure/providers) for authentication and route details.
+Change a provider's destination in `wingman.json` to use a gateway while keeping the same model references.
+See [Providers](/configure/providers#route-a-provider-through-a-gateway) for configuration and authentication.
 
 ## Custom Model Routes
 
-Use configuration-defined providers for daemon-wide custom providers and models.
-Use `model_route` when one agent or request needs route metadata. This metadata
-travels with that agent or request.
-
-For example, a custom provider in `~/.config/wingman/wingman.json` adds
-`exe-openai/gpt-5.6-terra` to the normal provider and model APIs:
-
-```json
-{
-  "provider": {
-    "exe-openai": {
-      "name": "exe.dev OpenAI Gateway",
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      },
-      "models": {
-        "gpt-5.6-terra": {
-          "api": "openai_responses",
-          "context_window": 1050000,
-          "max_output": 128000,
-          "capabilities": {
-            "tools": true,
-            "images": true,
-            "reasoning": true,
-            "structured_output": true
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-Agents can use the custom ref directly:
-
-```json
-{
-  "name": "Assistant",
-  "model_ref": "exe-openai/gpt-5.6-terra"
-}
-```
-
-For an uncataloged route in an agent or request, use `model_route`:
+For shared custom models, [define a provider](/configure/providers#add-a-custom-provider) in `wingman.json`.
+For a model outside the catalog on one agent or request, use `model_route`:
 
 ```json
 {
@@ -184,8 +112,7 @@ For an uncataloged route in an agent or request, use `model_route`:
 }
 ```
 
-Metadata from the embedded catalog or configuration-defined models takes precedence over `model_route`.
-Use `model_route` for uncataloged models and custom deployments.
+Catalog entries and configuration-defined models take precedence over `model_route`.
 
 ## Supported Protocols
 

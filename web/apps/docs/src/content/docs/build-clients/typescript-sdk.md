@@ -1,11 +1,11 @@
 ---
 title: "TypeScript SDK"
-description: "Use the typed Wingman REST and event-stream client."
+description: "Call Wingman and read event streams from TypeScript."
 ---
 
 # TypeScript SDK
 
-The TypeScript SDK provides typed REST methods and typed Wingman event streams.
+Use the TypeScript SDK to call Wingman's HTTP API and read event streams.
 
 See the [TypeScript Client API](/reference/typescript-client-api/) for the
 complete public method index.
@@ -60,9 +60,7 @@ const client = createWingmanClient({
 
 ## Client Identity
 
-At application startup, call `clients.ensure`. It creates the client identity
-on the first start. On later starts, it reads and compares the existing
-identity.
+Call `clients.ensure` at startup to create or reuse a client identity:
 
 ```ts
 await client.clients.ensure("cli_wingcode", "Wingcode");
@@ -85,8 +83,8 @@ const sessions = await client.sessions.list();
 
 ## Admit Messages Safely
 
-Persistent message admission is idempotent when each retry uses the same
-`request_id`. `newMessageAdmission` adds an ID when the request has none.
+Retrying the same input with the same `request_id` does not create another run.
+`newMessageAdmission` adds an ID if the request has none.
 
 Save the returned request before the first network request:
 
@@ -108,9 +106,9 @@ request. Do not create a new request ID for this retry.
 
 ## One-Shot Streams
 
-`client.run.stream` sends `POST /run` and returns typed stream envelopes. Pass
-an `AbortSignal` to stop the request. It throws `StreamError` when the server
-does not return SSE or ends before a terminal event.
+`client.run.stream` sends `POST /run` and reads server-sent events (SSE).
+Pass an `AbortSignal` to stop the request.
+It throws `StreamError` if the response is not SSE or ends before `done` or `error`.
 
 ```ts
 const controller = new AbortController();
@@ -125,14 +123,12 @@ for await (const result of client.run.stream(
 }
 ```
 
-Unknown event types return as `{ known: false, event }`. Ignore them. A newer
-daemon can add stream events without breaking the client.
+Unknown event types return as `{ known: false, event }`. Ignore them.
 
 ## Persistent Session Streams
 
 `client.sessions.streamEvents` opens one `GET /sessions/{id}/events` connection.
-It does not reconnect automatically. The application owns the durable cursor
-and authoritative session state.
+It does not reconnect automatically. Your application must save the last event sequence and reload session state.
 
 ```ts
 let lastSequence = loadLastSequence();
@@ -154,9 +150,8 @@ for await (const result of client.sessions.streamEvents(sessionID, {
 }
 ```
 
-If transport fails, reload the authoritative session and run. Reconnect only
-while the run is queued or running. Use the last saved durable sequence. Read
-[Streaming Events](/build-clients/streaming-events) for the event recovery contract.
+After a disconnect, reload the session and run. Reconnect from the last saved sequence if the run is queued or running.
+See [Streaming Events](/build-clients/streaming-events) for recovery steps.
 
 ## Handle Errors
 
@@ -185,6 +180,5 @@ credential in a remote browser application.
 
 ## Version Compatibility
 
-The SDK is generated from the daemon OpenAPI contract. Until the API is stable,
-use the exact SDK version that matches the daemon release tag. For example,
-Wingman `v0.1.64` requires `@wingman-actor/client@0.1.64`.
+Use the SDK version that matches the server release.
+For Wingman `v0.1.64`, use `@wingman-actor/client@0.1.64`.

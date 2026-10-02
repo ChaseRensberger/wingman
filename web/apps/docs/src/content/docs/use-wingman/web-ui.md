@@ -5,8 +5,7 @@ description: "Open the local Wingman Console."
 
 # Use the Console
 
-Wingman includes a local Console on the API HTTP origin. It uses browser HTTP
-Basic Auth.
+The Console is Wingman's browser interface. It uses the same server address as the API.
 
 ## Local Console
 
@@ -20,7 +19,7 @@ Enter the credentials from `~/.config/wingman/service.env` in the browser
 prompt. The managed service uses these credentials.
 The foreground server uses them unless it has explicit environment credentials.
 
-To open the managed daemon from the CLI, run this command:
+To open the local managed service's Console:
 
 ```bash
 wingman console
@@ -30,13 +29,12 @@ To open a new session in the current directory, run `wingman console .`.
 Wingman reuses the workspace for that directory or creates one if needed.
 The Console saves the session when you send its first message.
 
-If the connection drops, the Console repeats its readiness check.
-When the daemon returns, the Console reloads the active API page.
+After a disconnect, the Console waits for the server and reloads the current page when it returns.
 
 ## Model-call Diagnostics
 
-Open **Inspector**, then select **Copy diagnostics** for an attempt under **Model calls**.
-The snapshot includes provider failure evidence, timing, and correlation IDs.
+Open Inspector, then select Copy diagnostics for an attempt under Model calls.
+The snapshot includes provider errors, timing, and request IDs.
 Read [Observability](/use-wingman/observability) for diagnostic fields, logs, and capture limits.
 
 ## Macros
@@ -44,6 +42,3 @@ Read [Observability](/use-wingman/observability) for diagnostic fields, logs, an
 Type `/` in a Session composer to show project macros. Type an argument after
 the macro ID, then send the message. See [Macros](/configure/macros) to create
 project macros.
-
-The Console has no password form, session cookie, or `/auth/login` endpoint.
-Read [Authentication](/concepts/authentication) for the authentication model.

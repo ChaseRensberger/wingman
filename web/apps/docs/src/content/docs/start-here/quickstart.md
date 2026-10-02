@@ -27,13 +27,7 @@ curl -fsSL https://wingman.actor/install | bash
 wingman service start
 ```
 
-Wingman runs as a managed service for one user. This guide uses `wingman api`,
-which finds the managed daemon and adds its generated credentials. You do not
-need to specify HTTP authentication for these commands.
-
-To call the HTTP API directly, read [HTTP API Basics](/build-clients/http-api-basics).
-To build an application, use the [Go SDK](/build-clients/go-sdk) or
-[TypeScript SDK](/build-clients/typescript-sdk).
+`wingman api` connects to the local managed service and adds its credentials automatically.
 
 ## Server Status
 
@@ -60,8 +54,7 @@ wingman api setProviderAuth \
   -d "{\"providers\":{\"anthropic\":{\"type\":\"api_key\",\"key\":\"${ANTHROPIC_API_KEY}\"}}}"
 ```
 
-The server saves the key in its SQLite database. Auth status responses report
-only whether a provider is configured. They do not return the secret.
+Wingman saves the key in its database. Auth status responses do not return the secret.
 
 ## Create an agent
 
@@ -90,9 +83,7 @@ SESSION_ID=$(wingman api createSession \
 printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must already exist. Directory-scoped tools such as
-`read`, `glob`, `grep`, `write`, `edit`, `apply_patch`, and `bash` run relative
-to this session directory.
+The working directory must exist. The agent's file tools use this directory.
 
 ## Send a message
 
@@ -101,7 +92,7 @@ wingman api messageSession --param "id=${SESSION_ID}" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-The response confirms message admission. Read the session event stream for progress and completion:
+Wingman queues the message and returns a run ID:
 
 ```json
 {
@@ -114,9 +105,9 @@ The response confirms message admission. Read the session event stream for progr
 If the response is lost, repeat this request with the same `request_id` and
 input. The server returns the same run instead of queuing duplicate work.
 
-## Stream a message
+## Read the response
 
-To receive lifecycle events while the agent runs, subscribe to session events:
+Read the session events to follow progress and see the agent's response:
 
 ```bash
 wingman api streamSessionEvents \
@@ -124,8 +115,7 @@ wingman api streamSessionEvents \
   --param after=0
 ```
 
-The server sends each event as a server-sent event. Each event has an `event:`
-type and a JSON `data:` value.
+Events include a type and JSON data. Press Ctrl+C to stop reading the stream without canceling the run.
 
 ## Next steps
 

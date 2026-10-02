@@ -5,13 +5,11 @@ description: "Reference for the @wingman-actor/client public API."
 
 # TypeScript Client API
 
-This page lists the public API in `@wingman-actor/client`. Use the
-[TypeScript SDK guide](/build-clients/typescript-sdk/) to connect a client. The
-guide also describes one-shot and persistent streams.
+API reference for `@wingman-actor/client`.
+See the [TypeScript SDK guide](/build-clients/typescript-sdk/) for connection and streaming examples.
 
-All resource methods return response data. A non-success HTTP response throws
-`APIError`. The package provides TypeScript types for request and response
-fields. The [OpenAPI document](/reference/referenceapi/#api) defines the complete HTTP contract.
+Resource methods return response data or throw `APIError` for HTTP errors.
+The package includes request and response types. See [OpenAPI](/reference/referenceapi/#api) for the HTTP schema.
 
 ```ts
 import { createWingmanClient } from "@wingman-actor/client";
@@ -123,10 +121,8 @@ See [Streaming Events](/build-clients/streaming-events/) for replay and recovery
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `client.run.stream(request, options?)` | Start `POST /run` and return an async iterable of one-shot run events. `options.signal` aborts the request. |
 
-The iterable returns parsed event envelopes. It returns `{ known: false, event }`
-for a valid event type unknown to this SDK version. Ignore unknown events. If the
-server does not return SSE, it throws `StreamError`. It also throws `StreamError`
-if the stream ends before `done` or `error`.
+The iterable returns parsed events. Unknown types return `{ known: false, event }`. Ignore them.
+`StreamError` indicates a non-SSE response or a stream that ends before `done` or `error`.
 
 ```ts
 for await (const result of client.run.stream({
@@ -172,8 +168,8 @@ for await (const result of client.run.stream({
 | -------------------------------------- | ------------------------------------------------------------------------------ |
 | `client.current.service()`             | Get service metadata for the current daemon.                                   |
 | `client.current.client()`              | Get the active request client.                                                 |
-| `client.health.get()`                  | Get public liveness status.                                                    |
-| `client.health.ready(options?)`        | Get protected readiness status. `options.signal` aborts the request.           |
+| `client.health.get()`                  | Read public process health. |
+| `client.health.ready(options?)`        | Read authenticated readiness. `options.signal` aborts the request. |
 | `client.tools.list()`                  | List the effective tool catalog.                                               |
 | `client.plugins.list()`                | List external plugins and load errors.                                         |
 | `client.plugins.reload()`              | Reload external plugins.                                                       |
@@ -183,8 +179,8 @@ for await (const result of client.run.stream({
 | `client.mcp.connect(name)`             | Connect an MCP server.                                                         |
 | `client.mcp.disconnect(name)`          | Disconnect an MCP server.                                                      |
 | `client.filesystem.directories(path?)` | List immediate subdirectories. Omit `path` for the daemon user home directory. |
-| `client.logs.list()`                   | Read recent process-local daemon log entries.                                  |
-| `client.diagnostics.get()`             | Read a bounded daemon diagnostic snapshot.                                     |
+| `client.logs.list()`                   | Read recent server logs from the current process. |
+| `client.diagnostics.get()`             | Read current server diagnostics. |
 | `client.actions.list()`                | List available session actions.                                                |
 | `client.service.restart()`             | Restart the managed daemon. The client sends `X-Wingman-Console: 1`.           |
 

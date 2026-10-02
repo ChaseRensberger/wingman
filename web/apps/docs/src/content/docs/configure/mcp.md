@@ -5,10 +5,11 @@ description: "Connect Model Context Protocol servers and use their tools with Wi
 
 # Configure MCP Servers
 
-Add Model Context Protocol (MCP) servers to `~/.config/wingman/wingman.json`.
+Model Context Protocol (MCP) connects agents to external tools.
+Add servers to `~/.config/wingman/wingman.json`.
 Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
-Wingman supports local stdio servers and remote HTTP servers. Wingman validates MCP configuration at startup.
+Local servers use standard input and output. Remote servers use HTTP.
 
 ## Add A Local Server
 
@@ -67,7 +68,7 @@ Use `type: "remote"` for a remote MCP endpoint. Put required credentials in `hea
 
 ## Use MCP Tools In An Agent
 
-After you change `wingman.json`, restart Wingman. After the restart, Wingman lists connected tools on the Console Tools page and at `GET /tools`.
+After changing `wingman.json`, restart Wingman. Connected tools appear on the Console Tools page and at `GET /tools`.
 
 Wingman prefixes each MCP tool with its server name. For example, the remote
 `search` tool from `company-tools` becomes `company_tools_search`.
@@ -83,13 +84,9 @@ Add that name to an agent `tools` allow-list:
 }
 ```
 
-Only connected MCP tools are available to agents. Use the Console at `http://127.0.0.1:2424/console/tools` to view them.
-
-Agent writes reject disconnected or unknown MCP tool names. If sanitized MCP tool names collide, tool catalog creation fails.
-
-To view the daemon directly, run these commands:
-
-These commands find and authenticate with the managed daemon.
+Agents can use only connected tools. Agent creation and updates reject unknown or disconnected tool names.
+Duplicate names after normalization prevent the tool catalog from loading.
+To list servers and tools on the local managed service:
 
 ```bash
 wingman api listMCPServers | jq

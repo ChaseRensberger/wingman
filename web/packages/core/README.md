@@ -1,8 +1,7 @@
 # WingUI
 
-WingUI is the shared React component library for Wingman projects. It contains reusable visual primitives, theme tokens, and a local showcase app for checking component states.
-
-The package is intentionally separate from app-specific UI code. Apps such as the docs site, hero site, and bundled console UI import shared primitives from `@wingman/core`.
+WingUI provides shared React components and themes for Wingman apps.
+Import them from `@wingman/core`. Use the showcase app to view component states.
 
 ## Stack
 
@@ -14,13 +13,11 @@ The package is intentionally separate from app-specific UI code. Apps such as th
 
 ## Development
 
-Install dependencies:
+Run these commands from `web/`. Install dependencies:
 
 ```bash
 bun install
 ```
-
-Run Bun commands from `web/`; `packages/core/` is part of the nested Bun workspace.
 
 Run the showcase app:
 
@@ -28,7 +25,7 @@ Run the showcase app:
 bun --filter ui dev
 ```
 
-Build the package/showcase:
+Build the package and showcase:
 
 ```bash
 bun run build:core
@@ -40,29 +37,9 @@ Run linting:
 bun --filter ui lint
 ```
 
-## Structure
-
-```text
-src/components/core/       Reusable component primitives
-src/components/            Theme controls and app-level showcase helpers
-src/showcases/             Component examples used by the showcase app
-src/themes/                Named theme registry and theme metadata
-src/themes.css             Shared semantic token values for each theme and mode
-src/globals.css            Tailwind import and design-token bindings
-src/lib/utils.ts           Shared className helpers
-```
-
-## Component Guidelines
-
-- Keep primitives reusable and app-agnostic.
-- Preserve accessibility behavior from Base UI/Headless UI where applicable.
-- Prefer small component APIs over speculative configuration.
-- Put visual examples in `src/showcases` instead of bloating primitives.
-- Update the showcase when adding or changing a public component state.
-
 ## Shared Imports
 
-Apps import shared primitives directly from the workspace package:
+Import components and helpers:
 
 ```tsx
 import { Button } from "@wingman/core/components/core/button";
