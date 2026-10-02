@@ -86,13 +86,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set container tags
+        id: container-tags
+        run: |
+          tags="ghcr.io/chaserensberger/wingman:${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            tags="$tags,ghcr.io/chaserensberger/wingman:latest"
+          fi
+          printf 'tags=%s\n' "$tags" >> "$GITHUB_OUTPUT"
       - name: Publish container image
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/chaserensberger/wingman:${{ github.ref_name }}
+          tags: ${{ steps.container-tags.outputs.tags }}
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}

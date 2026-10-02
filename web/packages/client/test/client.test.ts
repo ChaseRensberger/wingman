@@ -7,6 +7,7 @@ import {
   newActionAdmission,
   newMacroAdmission,
   newMessageAdmission,
+  newRequestID,
   parseRunStreamEvent,
   parseSessionEvent,
   readSSE,
@@ -301,6 +302,45 @@ test("newMessageAdmission creates and preserves request IDs", () => {
     ...request,
     request_id: "req_1",
   });
+});
+
+test("admission IDs work without randomUUID and survive a message retry", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+  Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+  try {
+    const message = newMessageAdmission({ agent_id: "agt_1", message: "hello" });
+    const action = newActionAdmission({ agent_id: "agt_1" });
+    const macro = newMacroAdmission({ agent_id: "agt_1", macro_id: "review" });
+    const ids = [newRequestID(), message.request_id, action.request_id, macro.request_id];
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(new Set(ids).size).toBe(4);
+    expect(newActionAdmission(action)).toBe(action);
+    expect(newMacroAdmission(macro)).toBe(macro);
+
+    const requests: Request[] = [];
+    const client = createWingmanClient({
+      baseUrl: "http://wingman.test:2424",
+      fetch: async (input, init) => {
+        requests.push(new Request(input, init));
+        if (requests.length === 1) throw new TypeError("connection lost");
+        return Response.json({ run_id: "run_1", status: "queued", session_version: 2 });
+      },
+    });
+    await expect(client.sessions.admit("ses_1", message)).rejects.toThrow("connection lost");
+    const retry = newMessageAdmission(message);
+    expect(retry).toBe(message);
+    await expect(client.sessions.admit("ses_1", retry)).resolves.toMatchObject({ run_id: "run_1" });
+    for (const request of requests) {
+      expect(request.url).toBe("http://wingman.test:2424/sessions/ses_1/message");
+      expect(request.method).toBe("POST");
+      expect(await request.json()).toEqual(message);
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(crypto, "randomUUID", descriptor);
+    else Reflect.deleteProperty(crypto, "randomUUID");
+  }
 });
 
 test("newMacroAdmission creates and preserves request IDs", () => {

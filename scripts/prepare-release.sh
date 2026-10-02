@@ -15,7 +15,6 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 package_json="$repo_root/web/packages/client/package.json"
 sdk_guide="$repo_root/web/apps/docs/src/content/docs/build-clients/typescript-sdk.md"
-compose_file="$repo_root/compose.yaml"
 
 if git -C "$repo_root" rev-parse --verify --quiet "refs/tags/v$version" >/dev/null; then
   printf 'release tag v%s already exists locally\n' "$version" >&2
@@ -31,27 +30,21 @@ if [[ -n "$remote_tag" ]]; then
   exit 1
 fi
 
-node - "$version" "$package_json" "$sdk_guide" "$compose_file" <<'NODE'
+node - "$version" "$package_json" "$sdk_guide" <<'NODE'
 const fs = require("node:fs");
 
-const [version, packagePath, guidePath, composePath] = process.argv.slice(2);
+const [version, packagePath, guidePath] = process.argv.slice(2);
 const packageJSON = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 const previousVersion = packageJSON.version;
 const guide = fs.readFileSync(guidePath, "utf8");
-const compose = fs.readFileSync(composePath, "utf8");
-const previousImage = `    image: ghcr.io/chaserensberger/wingman:v${previousVersion}`;
 
 if (!guide.includes(previousVersion)) {
   throw new Error(`${guidePath} does not mention package version ${previousVersion}`);
-}
-if (!compose.split("\n").includes(previousImage)) {
-  throw new Error(`${composePath} does not reference image ${previousImage}`);
 }
 
 packageJSON.version = version;
 fs.writeFileSync(packagePath, `${JSON.stringify(packageJSON, null, 2)}\n`);
 fs.writeFileSync(guidePath, guide.replaceAll(previousVersion, version));
-fs.writeFileSync(composePath, compose.replace(previousImage, `    image: ghcr.io/chaserensberger/wingman:v${version}`));
 NODE
 
 (cd "$repo_root/web" && bun install --lockfile-only)

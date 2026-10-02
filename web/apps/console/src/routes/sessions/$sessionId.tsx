@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { newRequestID } from "@wingman-actor/client";
 import { APIError, client, moveSession, purgeSession, renameSession } from "@/lib/client";
 import { actionInvocation } from "@/lib/action";
 import { selectGreeting } from "@/lib/greeting";
@@ -496,7 +497,7 @@ function SessionDetailPage() {
         pending.modelRef === outboundModelRef &&
         pending.message === outboundText
           ? pending.requestId
-          : crypto.randomUUID();
+          : newRequestID();
       pendingSubmissionRef.current = {
         requestId,
         sessionId: activeSessionId,

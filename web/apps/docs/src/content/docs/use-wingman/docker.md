@@ -31,6 +31,19 @@ Compose keeps your data in a volume.
 
 The Compose file binds Wingman to localhost. For remote access, use a secure tunnel.
 
+## Updates
+
+The Compose file uses `latest`, which points to the most recently published stable release.
+Running containers do not update automatically.
+To update Wingman, run these commands from the deployment directory:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To keep a specific version, replace `:latest` in the Compose image with a release tag, such as `:v0.1.64`.
+
 ## Configuration
 
 Keep configuration in `config/wingman.json` beside the Compose file. See [Global Config](/configure/config) for supported options.

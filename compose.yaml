@@ -1,6 +1,6 @@
 services:
   wingman:
-    image: ghcr.io/chaserensberger/wingman:v0.1.64
+    image: ghcr.io/chaserensberger/wingman:latest
     ports:
       - "127.0.0.1:2424:2424"
     environment:
