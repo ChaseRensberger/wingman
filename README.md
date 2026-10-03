@@ -4,9 +4,7 @@
 
 # Wingman
 
-Wingman is an open-source service that runs AI agents. Web apps, command-line tools, and other clients can share one instance through its HTTP API.
-
-It is written in Go. Plugins can add tools and change agent behavior.
+Wingman is an open-source client-agnostic (not specialized for coding) agent harness.
 
 ## Install
 
