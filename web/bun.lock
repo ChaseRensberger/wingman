@@ -115,7 +115,7 @@
     },
     "packages/client": {
       "name": "@wingman-actor/client",
-      "version": "0.1.65",
+      "version": "0.0.0-dev",
       "dependencies": {
         "openapi-fetch": "^0.14.0",
       },

@@ -12,10 +12,11 @@ complete public method index.
 
 ## Install
 
-Install the SDK version that matches the Wingman daemon:
+Install the SDK version that matches the Wingman daemon. Replace `VERSION`
+with the daemon's version number, without the leading `v`:
 
 ```bash
-npm install @wingman-actor/client@0.1.65
+npm install @wingman-actor/client@VERSION
 ```
 
 The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
@@ -181,4 +182,4 @@ credential in a remote browser application.
 ## Version Compatibility
 
 Use the SDK version that matches the server release.
-For Wingman `v0.1.65`, use `@wingman-actor/client@0.1.65`.
+Each release publishes the server and SDK with the same version number.
