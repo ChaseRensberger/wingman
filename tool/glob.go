@@ -24,6 +24,7 @@ func (t *GlobTool) Description() string {
 
 func (t *GlobTool) Definition() Definition {
 	return Definition{
+		ReplaySafe:  true,
 		Name:        t.Name(),
 		Description: t.Description(),
 		InputSchema: InputSchema{

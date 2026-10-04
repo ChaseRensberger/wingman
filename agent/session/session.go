@@ -59,6 +59,7 @@ type Session struct {
 	logger      *slog.Logger
 	agentID     string
 	runID       string
+	recoverRun  bool
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -252,6 +253,11 @@ func WithAgentID(id string) Option {
 // WithRunID associates persisted model attempts with a durable session run.
 func WithRunID(id string) Option {
 	return func(s *Session) { s.runID = id }
+}
+
+// WithRunRecovery resumes the durable run selected by WithRunID.
+func WithRunRecovery() Option {
+	return func(s *Session) { s.recoverRun = true }
 }
 
 // WithCleanup adds cleanup that runs in reverse order when the session closes.
@@ -796,21 +802,43 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		return nil, err
 	}
 	finalizeUnsettledTools(s.history)
+	var recovery *run.Recovery
+	var userSaved bool
+	if s.recoverRun {
+		var err error
+		recovery, userSaved, err = s.prepareRecovery(ctx, tools)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+	}
 
 	// Append the user message before starting the loop so it ends up in
 	// history even if the loop fails immediately.
-	s.history = append(s.history, models.Message{
-		Role:    models.RoleUser,
-		Content: models.Content{models.TextPart{Text: message}},
-	})
-	userMsgIdx := len(s.history) - 1
-	userMsg, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx)
-	if err != nil {
-		s.mu.Unlock()
-		return nil, err
+	if !userSaved {
+		s.history = append(s.history, models.Message{
+			Role:    models.RoleUser,
+			Content: models.Content{models.TextPart{Text: message}},
+		})
+		userMsgIdx := len(s.history) - 1
+		userMsg, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		s.history[userMsgIdx] = userMsg
 	}
-	s.history[userMsgIdx] = userMsg
 	historySnap := append([]models.Message(nil), s.history...)
+	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(historySnap)}
+	if recovery != nil && recovery.Turn != nil {
+		for i, message := range historySnap {
+			if message.ID == recovery.Turn.Assistant.ID {
+				messagePersistence.assistantIndexes = map[int]int{recovery.Step: i}
+				historySnap = append(historySnap[:i], historySnap[i+1:]...)
+				break
+			}
+		}
+	}
 	s.mu.Unlock()
 
 	// Inject the session's own in-memory history as the final
@@ -844,7 +872,6 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	// messageSink, plugin sinks, and extraSink. Tool results are
 	// collected from res.Turns after the loop returns.
 	var persistErr error
-	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(historySnap)}
 	if logger != nil {
 		logger = logger.With(
 			"session_id", s.id,
@@ -882,6 +909,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
+		Recovery:           recovery,
 		SessionID:          s.id,
 		RunID:              runID,
 		AgentID:            agentID,

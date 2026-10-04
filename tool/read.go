@@ -30,6 +30,7 @@ func (t *ReadTool) Description() string {
 
 func (t *ReadTool) Definition() Definition {
 	return Definition{
+		ReplaySafe:  true,
 		Name:        t.Name(),
 		Description: t.Description(),
 		InputSchema: InputSchema{

@@ -316,6 +316,9 @@ func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projec
 		if _, err := tx.ExecContext(ctx, `INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, kind, message, action, input_json, agent_json, effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, kind, run.Message, run.Action, nullableJSON(run.InputJSON), string(agent), run.EffectiveInstructions, string(sources), string(skills), nullableBytes(run.OutputSchemaJSON), run.ErrorType, run.ErrorMessage, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.CompletedAt), formatTime(run.UpdatedAt)); err != nil {
 			return fmt.Errorf("insert session run: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, `UPDATE session_runs SET recovery_attempts = ? WHERE id = ?`, run.RecoveryAttempts, run.ID); err != nil {
+			return err
+		}
 	}
 	for _, message := range projection.Messages {
 		if err := insertMessageTx(ctx, tx, message, message.CreatedAt); err != nil {
@@ -2114,13 +2117,15 @@ func (s *SQLiteStore) SaveToolUse(ctx context.Context, use ToolUse) error {
 	}
 	use.CreatedAt = existing.CreatedAt
 	use.ProposedAt = existing.ProposedAt
+	use.ReplaySafe = existing.ReplaySafe
+	recovering := IsToolUseRecovery(existing, use)
 	if use.AuthorizedAt.IsZero() {
 		use.AuthorizedAt = existing.AuthorizedAt
 	}
-	if use.StartedAt.IsZero() {
+	if use.StartedAt.IsZero() && !recovering {
 		use.StartedAt = existing.StartedAt
 	}
-	if use.CompletedAt.IsZero() {
+	if use.CompletedAt.IsZero() && !recovering {
 		use.CompletedAt = existing.CompletedAt
 	}
 	if use.UpdatedAt.IsZero() {
@@ -2132,7 +2137,7 @@ func (s *SQLiteStore) SaveToolUse(ctx context.Context, use ToolUse) error {
 		}
 		return tx.Commit(ctx)
 	}
-	if !legalToolUseTransition(existing.Status, use.Status) {
+	if !recovering && !legalToolUseTransition(existing.Status, use.Status) {
 		return ErrToolUseInvalidTransition
 	}
 	if use.Status != ToolUseStatusAuthorized && !bytes.Equal(existing.InputJSON, use.InputJSON) {
@@ -2413,14 +2418,17 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 		return SessionRunTransition{}, err
 	}
 	now := time.Now().UTC()
-	result, err := tx.ExecContext(ctx, `UPDATE session_runs SET status = ?, started_at = ?, updated_at = ? WHERE id = ? AND status = ?`, SessionRunStatusRunning, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), run.ID, SessionRunStatusQueued)
+	result, err := tx.ExecContext(ctx, `UPDATE session_runs SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ? AND status = ?`, SessionRunStatusRunning, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), run.ID, SessionRunStatusQueued)
 	if err != nil {
 		return SessionRunTransition{}, err
 	}
 	if n, _ := result.RowsAffected(); n != 1 {
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
-	run.Status, run.StartedAt, run.UpdatedAt = SessionRunStatusRunning, now, now
+	run.Status, run.UpdatedAt = SessionRunStatusRunning, now
+	if run.StartedAt.IsZero() {
+		run.StartedAt = now
+	}
 	aggregateEvent, err := NewSessionRunTransitionEvent(run)
 	if err != nil {
 		return SessionRunTransition{}, err
@@ -2446,6 +2454,15 @@ func (s *SQLiteStore) SettleSessionRun(ctx context.Context, settlement SessionRu
 	if !isSessionRunTerminal(settlement.Status) {
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
+	return s.transitionSessionRun(ctx, settlement)
+}
+
+// RequeueSessionRun durably counts one recovery before the run can execute again.
+func (s *SQLiteStore) RequeueSessionRun(ctx context.Context, runID string) (SessionRunTransition, error) {
+	return s.transitionSessionRun(ctx, SessionRunSettlement{ID: runID, ExpectedStatus: SessionRunStatusRunning, Status: SessionRunStatusQueued})
+}
+
+func (s *SQLiteStore) transitionSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error) {
 	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return SessionRunTransition{}, err
@@ -2467,18 +2484,27 @@ func (s *SQLiteStore) SettleSessionRun(ctx context.Context, settlement SessionRu
 		}
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
-	if run.Status != settlement.ExpectedStatus || !legalSessionRunSettlement(run.Status, settlement.Status) {
+	recovering := run.Status == SessionRunStatusRunning && settlement.Status == SessionRunStatusQueued
+	if recovering && run.RecoveryAttempts >= MaxRunRecoveryAttempts {
+		return SessionRunTransition{}, ErrSessionRunTransitionConflict
+	}
+	if run.Status != settlement.ExpectedStatus || (!recovering && !legalSessionRunSettlement(run.Status, settlement.Status)) {
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
 	now := time.Now().UTC()
-	result, err := tx.ExecContext(ctx, `UPDATE session_runs SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ? WHERE id = ? AND status = ?`, settlement.Status, nullableString(settlement.ErrorType), nullableString(settlement.ErrorMessage), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), run.ID, run.Status)
+	completedAt := now
+	if recovering {
+		completedAt = time.Time{}
+		run.RecoveryAttempts++
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE session_runs SET status = ?, error_type = ?, error_message = ?, completed_at = ?, updated_at = ?, recovery_attempts = ? WHERE id = ? AND status = ?`, settlement.Status, nullableString(settlement.ErrorType), nullableString(settlement.ErrorMessage), nullableTime(completedAt), now.Format(time.RFC3339Nano), run.RecoveryAttempts, run.ID, run.Status)
 	if err != nil {
 		return SessionRunTransition{}, err
 	}
 	if n, _ := result.RowsAffected(); n != 1 {
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
-	run.Status, run.ErrorType, run.ErrorMessage, run.CompletedAt, run.UpdatedAt = settlement.Status, settlement.ErrorType, settlement.ErrorMessage, now, now
+	run.Status, run.ErrorType, run.ErrorMessage, run.CompletedAt, run.UpdatedAt = settlement.Status, settlement.ErrorType, settlement.ErrorMessage, completedAt, now
 	session, err := getSessionTx(ctx, tx, run.SessionID)
 	if err != nil {
 		return SessionRunTransition{}, err
@@ -2538,6 +2564,28 @@ func (s *SQLiteStore) ListQueuedSessionRunSessions(ctx context.Context) ([]strin
 	return out, rows.Err()
 }
 
+// ListSessionRunsForRecovery includes running runs and aborted runs with unfinished records.
+func (s *SQLiteStore) ListSessionRunsForRecovery(ctx context.Context) ([]SessionRun, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs
+		WHERE status = ? OR (status = ? AND id IN (
+			SELECT run_id FROM model_calls WHERE status = ?
+			UNION SELECT run_id FROM messages WHERE state = ?
+		)) ORDER BY session_id, sequence`, SessionRunStatusRunning, SessionRunStatusAborted, ModelCallStatusStarted, "in_progress")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SessionRun{}
+	for rows.Next() {
+		run, err := scanSessionRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLiteStore) CountQueuedSessionRuns(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE status = ?`, SessionRunStatusQueued).Scan(&count)
@@ -2593,7 +2641,7 @@ func scanSessionRun(row rowScanner) (SessionRun, error) {
 	var agentJSON, effectiveInstructions string
 	var workDir, workspaceID, clientID, action, input, instructionSourcesJSON, skillsJSON, schema, errorType, errorMessage, started, completed sql.NullString
 	var created, updated string
-	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Kind, &run.Message, &action, &input, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &skillsJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated); err != nil {
+	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Kind, &run.Message, &action, &input, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &skillsJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated, &run.RecoveryAttempts); err != nil {
 		return SessionRun{}, err
 	}
 	if skillsJSON.Valid {
@@ -2879,12 +2927,12 @@ const modelCallColumns = `
 const toolUseColumns = `
 	id, session_id, COALESCE(run_id, ''), COALESCE(model_call_id, ''), COALESCE(assistant_message_id, ''), COALESCE(part_id, ''),
 	step, ordinal, call_id, name, status, input_json, output, structured_json, metadata_json, error_type, error_message,
-	proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
+	proposed_at, authorized_at, started_at, completed_at, created_at, updated_at, replay_safe, output_parts_json`
 
 const sessionRunColumns = `
 	id, session_id, request_id, request_hash, admitted_version,
 	work_dir, workspace_id, client_id, sequence, status, kind, message, action, input_json, agent_json,
-	effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at`
+	effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at, recovery_attempts`
 
 // SessionRunRequestHash returns the canonical hash for an admission request.
 func SessionRunRequestHash(run SessionRun) (string, error) {
@@ -3003,16 +3051,19 @@ func toolUseSessionExists(ctx context.Context, tx *immediateTx, sessionID string
 
 func scanToolUse(r rowScanner) (ToolUse, error) {
 	var use ToolUse
-	var input, output, structured, metadata, errorType, errorMessage, authorizedAt, startedAt, completedAt sql.NullString
+	var input, output, structured, metadata, errorType, errorMessage, authorizedAt, startedAt, completedAt, outputParts sql.NullString
 	var proposedAt, createdAt, updatedAt string
 	err := r.Scan(&use.ID, &use.SessionID, &use.RunID, &use.ModelCallID, &use.AssistantMessageID, &use.PartID,
 		&use.Step, &use.Ordinal, &use.CallID, &use.Name, &use.Status, &input, &output, &structured, &metadata, &errorType, &errorMessage,
-		&proposedAt, &authorizedAt, &startedAt, &completedAt, &createdAt, &updatedAt)
+		&proposedAt, &authorizedAt, &startedAt, &completedAt, &createdAt, &updatedAt, &use.ReplaySafe, &outputParts)
 	if err != nil {
 		return ToolUse{}, err
 	}
 	if input.Valid {
 		use.InputJSON = []byte(input.String)
+	}
+	if outputParts.Valid {
+		use.OutputPartsJSON = []byte(outputParts.String)
 	}
 	if output.Valid {
 		use.Output = output.String
@@ -3045,20 +3096,20 @@ func scanToolUse(r rowScanner) (ToolUse, error) {
 }
 
 func insertToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO tool_uses (`+toolUseColumnsInsert+`) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, toolUseArgs(use)...)
+	_, err := tx.ExecContext(ctx, `INSERT INTO tool_uses (`+toolUseColumnsInsert+`) VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, toolUseArgs(use)...)
 	return err
 }
 
 func updateToolUse(ctx context.Context, tx *immediateTx, use ToolUse) error {
-	_, err := tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, input_json = ?, output = ?, structured_json = ?, metadata_json = ?, error_type = ?, error_message = ?, authorized_at = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
-		use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.UpdatedAt), use.ID)
+	_, err := tx.ExecContext(ctx, `UPDATE tool_uses SET status = ?, input_json = ?, output = ?, structured_json = ?, metadata_json = ?, error_type = ?, error_message = ?, authorized_at = ?, started_at = ?, completed_at = ?, updated_at = ?, output_parts_json = ? WHERE id = ?`,
+		use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.UpdatedAt), nullableBytes(use.OutputPartsJSON), use.ID)
 	return err
 }
 
-const toolUseColumnsInsert = `id, session_id, run_id, model_call_id, assistant_message_id, part_id, step, ordinal, call_id, name, status, input_json, output, structured_json, metadata_json, error_type, error_message, proposed_at, authorized_at, started_at, completed_at, created_at, updated_at`
+const toolUseColumnsInsert = `id, session_id, run_id, model_call_id, assistant_message_id, part_id, step, ordinal, call_id, name, status, input_json, output, structured_json, metadata_json, error_type, error_message, proposed_at, authorized_at, started_at, completed_at, created_at, updated_at, replay_safe, output_parts_json`
 
 func toolUseArgs(use ToolUse) []any {
-	return []any{use.ID, use.SessionID, use.RunID, use.ModelCallID, use.AssistantMessageID, use.PartID, use.Step, use.Ordinal, use.CallID, use.Name, use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.ProposedAt), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.CreatedAt), nullableTime(use.UpdatedAt)}
+	return []any{use.ID, use.SessionID, use.RunID, use.ModelCallID, use.AssistantMessageID, use.PartID, use.Step, use.Ordinal, use.CallID, use.Name, use.Status, nullableBytes(use.InputJSON), nullableString(use.Output), nullableBytes(use.StructuredJSON), nullableBytes(use.MetadataJSON), nullableString(use.ErrorType), nullableString(use.ErrorMessage), nullableTime(use.ProposedAt), nullableTime(use.AuthorizedAt), nullableTime(use.StartedAt), nullableTime(use.CompletedAt), nullableTime(use.CreatedAt), nullableTime(use.UpdatedAt), use.ReplaySafe, nullableBytes(use.OutputPartsJSON)}
 }
 
 func nullableString(v string) *string {
@@ -3081,6 +3132,9 @@ func sameToolUseIdentity(a, b ToolUse) bool {
 }
 
 func sameToolUse(a, b ToolUse) bool {
+	if a.ReplaySafe != b.ReplaySafe || !bytes.Equal(a.OutputPartsJSON, b.OutputPartsJSON) {
+		return false
+	}
 	return sameToolUseIdentity(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.StructuredJSON, b.StructuredJSON) && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
 }
 

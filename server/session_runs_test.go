@@ -362,15 +362,35 @@ func TestSessionRunManagerRetriesTerminalSettlementBeforeNextClaim(t *testing.T)
 }
 
 func TestSessionRunAbortCancelsRunButNotWorker(t *testing.T) {
-	manager := newSessionRunManager(New(Config{Store: memory.NewStore()}))
+	data := memory.NewStore()
+	ctx := context.Background()
+	if err := data.CreateSession(&store.Session{ID: "ses_abort"}); err != nil {
+		t.Fatal(err)
+	}
+	admitted, err := data.AdmitSessionRun(ctx, store.SessionRun{SessionID: "ses_abort"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(ctx, "ses_abort"); err != nil {
+		t.Fatal(err)
+	}
+	manager := newSessionRunManager(New(Config{Store: data}))
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 	runCtx, cancelRun := context.WithCancel(workerCtx)
 	defer cancelWorker()
 	manager.active["ses_abort"] = cancelWorker
 	manager.runCancel["ses_abort"] = cancelRun
+	manager.runIDs["ses_abort"] = admitted.Run.ID
 
-	if got := manager.abort("ses_abort"); got != 1 {
-		t.Fatalf("abort = %d, want 1", got)
+	if got, err := manager.abort(ctx, "ses_abort", admitted.Run.ID); got != 1 || err != nil {
+		t.Fatalf("abort = %d, %v, want 1", got, err)
+	}
+	saved, err := data.GetSessionRun(ctx, "ses_abort", admitted.Run.ID)
+	if err != nil || saved.Status != store.SessionRunStatusAborted || saved.ErrorType != "cancelled" {
+		t.Fatalf("saved cancellation = %#v, %v", saved, err)
+	}
+	if _, err := data.RequeueSessionRun(ctx, admitted.Run.ID); !errors.Is(err, store.ErrSessionRunTransitionConflict) {
+		t.Fatalf("cancelled run recovered: %v", err)
 	}
 	if runCtx.Err() != context.Canceled {
 		t.Fatalf("run context error = %v, want canceled", runCtx.Err())

@@ -71,6 +71,17 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 		}
 	}
 
+	// Exclude incomplete attempts before any context hook can summarize them.
+	// Their persisted message records remain in the durable transcript.
+	if recovery := cfg.Recovery; recovery != nil && len(recovery.InterruptedMessageIDs) > 0 {
+		filtered := make([]models.Message, 0, len(initial))
+		for _, message := range initial {
+			if !recovery.InterruptedMessageIDs[message.ID] {
+				filtered = append(filtered, message)
+			}
+		}
+		initial = filtered
+	}
 	r := &runner{
 		cfg:      cfg,
 		messages: initial,
@@ -125,6 +136,22 @@ type runner struct {
 // run is the main loop body.
 func (r *runner) run(ctx context.Context) (*Result, error) {
 	step := 0
+	if recovery := r.cfg.Recovery; recovery != nil {
+		step, r.usage = recovery.Step, recovery.Usage
+		if recovery.Turn != nil {
+			turn, err := r.runAssistant(ctx, *recovery.Turn, recovery.Turn.Assistant)
+			if err != nil {
+				return r.finalize(step, StopReasonError), err
+			}
+			r.turns = append(r.turns, turn)
+			if len(turn.Results) == 0 {
+				if err := r.handleStructuredOutput(turn); err != nil {
+					return r.finalize(step, StopReasonError), err
+				}
+				return r.finalize(step, StopReasonEndTurn), nil
+			}
+		}
+	}
 	for {
 		// Cancellation check at top of every iteration. Provider streams
 		// honor ctx independently; this catches cancellations between
@@ -321,7 +348,10 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	var streamCtx context.Context
 	var cancelStream context.CancelFunc
 	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
-		turn = Turn{Step: step, Attempt: attempt, Trace: trace, StartedAt: time.Now()}
+		turn = Turn{Step: step, Attempt: attempt, Trace: trace, StartedAt: time.Now(), Assistant: models.Message{ID: assistantMsg.ID}}
+		if recovery := r.cfg.Recovery; recovery != nil && step == recovery.Step+1 {
+			turn.Attempt += recovery.AttemptOffset
+		}
 		if r.cfg.ModelCallLifecycle != nil {
 			callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
 				Step: turn.Step, Attempt: turn.Attempt, MessageID: assistantMsg.ID,
@@ -488,6 +518,11 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	r.usage.CachedInputTokens += turnUsage.CachedInputTokens
 	r.usage.CacheWriteTokens += turnUsage.CacheWriteTokens
 
+	return r.runAssistant(ctx, turn, assistantMsg)
+}
+
+func (r *runner) runAssistant(ctx context.Context, turn Turn, assistantMsg models.Message) (Turn, error) {
+	step := turn.Step
 	calls := extractToolCalls(assistantMsg)
 	if len(calls) == 0 {
 		assistantMsg.State = models.MessageStateCompleted
@@ -505,6 +540,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 
 	// Retain the assistant turn before executing tools so a hook failure does
 	// not discard the model's tool calls. The terminal state is emitted below.
+	assistantMsg.State = models.MessageStateInProgress
 	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, nil)
 	assistantMsg.Revision++
 	if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
@@ -527,14 +563,24 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 			args = map[string]any{}
 		}
 		resolved[i] = ToolCall{ID: c.CallID, ToolUseID: c.ToolUseID, Name: c.Name, Args: args, Tool: t, MessageID: assistantMsg.ID, PartID: c.ID, ModelCallID: turn.ModelCallID, Step: step, Ordinal: i + 1}
+		if r.cfg.Recovery != nil {
+			if saved, ok := r.cfg.Recovery.Tools[c.ID]; ok {
+				resolved[i].ToolUseID = saved.ToolUseID
+			}
+		}
 	}
 	if r.cfg.ToolUseLifecycle != nil {
 		proposed := make([]ToolCall, 0, len(resolved))
 		proposedIDs := make(map[string]struct{}, len(resolved))
 		for i := range resolved {
 			call := &resolved[i]
+			if r.cfg.Recovery != nil {
+				if _, ok := r.cfg.Recovery.Tools[call.PartID]; ok {
+					continue
+				}
+			}
 			call.ProposedAt = time.Now()
-			id, proposalErr := r.cfg.ToolUseLifecycle.Propose(ctx, ToolUseProposeInfo{Step: call.Step, Ordinal: call.Ordinal, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt})
+			id, proposalErr := r.cfg.ToolUseLifecycle.Propose(ctx, ToolUseProposeInfo{ReplaySafe: call.Tool != nil && call.Tool.Definition().ReplaySafe, Step: call.Step, Ordinal: call.Ordinal, CallID: call.ID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt})
 			if proposalErr != nil || id == "" {
 				if proposalErr == nil {
 					proposalErr = errors.New("tool use proposal returned empty ID")
@@ -818,6 +864,7 @@ func (r *runner) settleModelCall(ctx context.Context, turn Turn, assistant *mode
 		return nil
 	}
 	return r.cfg.ModelCallLifecycle.Finish(context.WithoutCancel(ctx), ModelCallFinishInfo{
+		MessageID:         turn.Assistant.ID,
 		Step:              turn.Step,
 		Attempt:           turn.Attempt,
 		CallID:            turn.ModelCallID,
@@ -1002,6 +1049,17 @@ func toolPartsFromResults(content models.Content, results []ToolResult) models.C
 // and lifecycle transition errors. Tool execution errors become
 // part of the result (IsError=true), not return errors.
 func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, error) {
+	if r.cfg.Recovery != nil {
+		if saved, ok := r.cfg.Recovery.Tools[call.PartID]; ok {
+			if saved.Result != nil {
+				return *saved.Result, nil
+			}
+			call.Args, call.ProposedAt, call.AuthorizedAt = saved.Args, saved.ProposedAt, saved.AuthorizedAt
+			if !call.AuthorizedAt.IsZero() {
+				return r.executeAuthorized(ctx, call)
+			}
+		}
+	}
 	// BeforeToolCall: may rewrite args or skip.
 	if r.cfg.Hooks.BeforeToolCall != nil {
 		newArgs, err := r.cfg.Hooks.BeforeToolCall(ctx, call)
@@ -1118,6 +1176,15 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		}
 		call.AuthorizedAt = authorizeInfo.AuthorizedAt
 		r.emit(ToolUseAuthorizedEvent{Call: call})
+	}
+	return r.executeAuthorized(ctx, call)
+}
+
+func (r *runner) executeAuthorized(ctx context.Context, call ToolCall) (ToolResult, error) {
+	if err := ctx.Err(); err != nil {
+		return ToolResult{}, err
+	}
+	if r.cfg.ToolUseLifecycle != nil {
 		startInfo := toolUseStartInfo(call, time.Now())
 		if err := r.cfg.ToolUseLifecycle.Start(ctx, startInfo); err != nil {
 			res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: err.Error(), IsError: true}

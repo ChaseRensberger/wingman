@@ -210,7 +210,8 @@ shape with both fields. An empty detail history is `[]`, not `null`.
 `POST /sessions/{id}/message` requires the session to exist. Unknown IDs return
 `404`. Message endpoints do not create sessions implicitly. Runs for one session
 execute in order. Queued runs survive a server restart. They resume when the
-server starts. A run that was active at restart is recorded as aborted.
+server starts. Eligible active message runs recover under their original run IDs.
+See [Run Status And Recovery](/concepts/sessions#run-status-and-recovery) for recovery limits.
 
 The response includes the run ID, current status, and session version after queuing.
 Read `/sessions/{id}/runs/{runID}` for current run status.
@@ -332,11 +333,11 @@ endpoints enforce the session client scope.
   "request_id": "submit-123",
   "admitted_version": 4,
   "sequence": 2,
-  "status": "aborted",
+  "status": "failed",
   "message": "Write a Python script",
   "agent": { "id": "agt_...", "name": "Builder" },
-  "error_type": "process_interrupted",
-  "error_message": "process interrupted during run",
+  "error_type": "recovery_blocked",
+  "error_message": "tool bash (tlu_...) has an uncertain outcome",
   "created_at": "2026-07-30T12:00:00Z",
   "started_at": "2026-07-30T12:00:01Z",
   "completed_at": "2026-07-30T12:00:03Z",
@@ -344,9 +345,13 @@ endpoints enforce the session client scope.
 }
 ```
 
-On startup, running runs are recorded as aborted. Unfinished tool uses are
-interrupted. Partial messages are retained as failed. Queued runs resume.
-Wingman does not replay provider calls or tool side effects from before restart.
+On startup, eligible message runs return to `queued` under the same run ID.
+Wingman reuses saved responses and results. It retries eligible interrupted model requests and tools that permit replay.
+An uncertain non-replayable tool outcome fails the run with `recovery_blocked`.
+Recovery also stops if a partial model response records a provider-executed tool with an uncertain outcome.
+Three recovery attempts are permitted. A further interruption aborts the run with `recovery_exhausted`.
+Explicit cancellation remains terminal. Interrupted plugin actions remain aborted with `process_interrupted`.
+See [Run Status And Recovery](/concepts/sessions#run-status-and-recovery) for details.
 
 ### Model-call response
 
@@ -411,7 +416,9 @@ assistant message.
 
 Statuses are `proposed`, `authorized`, `started`, `completed`, `failed`,
 `interrupted`, or `declined`. On server startup, unfinished records become
-`interrupted`. Wingman does not automatically replay them.
+`interrupted`. During run recovery, calls that did not start can continue.
+Started calls can run again only when their saved and current tool definitions permit replay.
+See [Tools](/concepts/tools#durable-execution-lifecycle) for replay rules.
 
 ### Permission requests
 

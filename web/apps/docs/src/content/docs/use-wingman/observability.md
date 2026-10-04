@@ -231,7 +231,9 @@ Cause records can include nested `causes` and an available `stack`.
 
 `retryable: true` does not guarantee another attempt.
 Attempt limits, cancellation, and the state of the stream also control retries.
-Wingman does not automatically replay an established stream, even before visible output starts.
+During normal execution, Wingman does not automatically retry a failed established stream, even before visible output starts.
+After a server restart, run recovery can issue a replacement model request for an interrupted attempt.
+This request can incur another provider charge. See [Run Status And Recovery](/concepts/sessions#run-status-and-recovery) for eligibility and limits.
 
 `retry.decision` records `scheduled` or `not_retried` for a failed attempt.
 `scheduled` means Wingman recorded a retry plan. A later attempt shows that Wingman sent another request.

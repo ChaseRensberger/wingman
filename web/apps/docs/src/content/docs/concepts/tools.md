@@ -130,9 +130,18 @@ proposed -> authorized -> started -> completed | failed | interrupted
 Wingman records `started` before execution. Invalid, denied, or skipped calls become `declined` without running.
 An `ask` rule waits for [approval](/configure/permissions#interactive-approval) before authorization.
 
-On restart, unfinished calls become `interrupted`. Wingman does not repeat them automatically.
-A tool can change external state before a crash, even if its result was not saved.
-Read `GET /sessions/{id}/tool-uses` for execution status.
+On restart, unfinished calls become `interrupted`. Recovery reuses completed results instead of executing those calls again.
+Calls that did not start can continue. Wingman repeats a started call only when its saved and current tool definitions permit replay.
+The built-in `read`, `glob`, `grep`, `webfetch`, and `websearch` tools permit replay. Their new results can differ from earlier observations.
+
+In Go, set `tool.Definition.ReplaySafe` to `true` only when repeating the same call is safe.
+The default is `false`. File mutation tools, shell commands, MCP tools, and external plugin tools do not permit automatic replay by default.
+Tool hooks can also run again after an interruption. Keep their effects safe to repeat.
+Wingman retains saved authorization and input when it resumes an authorized call.
+
+A tool can change external state before a crash, even if its result was not saved. If replay is not permitted, recovery fails with `recovery_blocked`.
+Read `GET /sessions/{id}/tool-uses` for execution status. Inspect external effects before you submit replacement work.
+Request-ID deduplication does not prevent duplicate external effects. A tool that permits replay must provide that guarantee itself.
 
 File tools use `filePath`,
 `oldString`, `newString`, `replaceAll`, `content`, and `patchText`.

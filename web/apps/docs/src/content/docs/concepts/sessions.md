@@ -7,7 +7,7 @@ order: 102
 # Sessions
 
 A session stores a conversation and runs its messages. Each message can use a different agent or model.
-Saved sessions and queued work survive server restarts.
+Saved sessions survive server restarts. Wingman resumes unfinished work when it can do so safely.
 
 A [Workspace](/concepts/workspaces) groups sessions and can supply their initial working directory.
 
@@ -135,9 +135,20 @@ Abort a specific queued or running run with:
 wingman api abortSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
-After a restart, queued runs resume and running runs become `aborted`. Partial messages remain in history as `failed`.
-Wingman does not repeat provider calls or tool actions that started before the interruption.
-See [Durable Events](/concepts/durable-events) for recovery behavior.
+After a restart, Wingman resumes queued messages and recovers interrupted message runs under their original run IDs.
+Recovery returns a run to `queued`, then `running`. It does not submit the input again.
+Wingman reuses saved model responses and tool results. It retries eligible interrupted model requests, which can incur another provider charge.
+Partial responses remain in history as `failed`. Wingman excludes these incomplete responses from the recovered model request.
+If a partial response records a tool that the provider executed, its uncertain outcome blocks recovery with `recovery_blocked`.
+
+A replay-safe tool permits repeated execution with the same input. Wingman retries an interrupted tool only when its saved and current definitions permit replay.
+Calls that did not start can proceed through their remaining authorization and execution steps. Saved authorizations remain valid for the same call and input.
+If a non-replayable tool started without a saved outcome, the run fails with `recovery_blocked`.
+Inspect the tool record and its external effects before you submit another request.
+
+Wingman permits three automatic recovery attempts per run. Further interruptions abort the run with `recovery_exhausted`.
+Explicit cancellation remains terminal across restarts. Interrupted plugin actions remain `aborted` because they do not have a recovery contract.
+Ephemeral runs do not recover. See [Tools](/concepts/tools#durable-execution-lifecycle) for replay rules.
 
 ## Ephemeral Sessions
 

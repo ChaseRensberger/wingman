@@ -26,6 +26,7 @@ func (t *GrepTool) Description() string {
 
 func (t *GrepTool) Definition() Definition {
 	return Definition{
+		ReplaySafe:  true,
 		Name:        t.Name(),
 		Description: t.Description(),
 		InputSchema: InputSchema{

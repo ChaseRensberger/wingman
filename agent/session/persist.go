@@ -102,6 +102,8 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 // storedMessageFromModel serializes a complete message snapshot. Existing
 // part timestamps and opaque payloads are retained when supplied by base.
 func storedMessageFromModel(msg models.Message, base store.StoredMessage) (models.Message, store.StoredMessage, error) {
+	// Event sinks can persist a snapshot while the loop still reads its content.
+	msg.Content = append(models.Content(nil), msg.Content...)
 	originalParts := make(map[string]store.StoredPart, len(base.Parts))
 	for _, part := range base.Parts {
 		originalParts[part.ID] = part
@@ -295,6 +297,7 @@ func (r *toolUseRecorder) Propose(ctx context.Context, info run.ToolUseProposeIn
 	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
 	use.ID = store.NewID(store.PrefixToolUse)
 	use.Status = store.ToolUseStatusProposed
+	use.ReplaySafe = info.ReplaySafe
 	use.InputJSON = input
 	use.ProposedAt = info.ProposedAt
 	if err := r.store.SaveToolUse(ctx, use); err != nil {
@@ -351,12 +354,17 @@ func (r *toolUseRecorder) Finish(ctx context.Context, info run.ToolUseFinishInfo
 	if err != nil {
 		return fmt.Errorf("marshal tool use structured result: %w", err)
 	}
+	outputParts, err := json.Marshal(info.ToolResult.OutputParts)
+	if err != nil {
+		return fmt.Errorf("marshal tool use output parts: %w", err)
+	}
 	use := toolUseRecord(r.sessionID, r.runID, info.Step, info.Ordinal, info.CallID, info.Name, info.MessageID, info.PartID, info.ModelCallID)
 	use.ID = info.ToolUseID
 	use.Status = storeToolUseStatus(info.Status)
 	use.InputJSON = input
 	use.Output = info.ToolResult.Output
 	use.StructuredJSON = structured
+	use.OutputPartsJSON = outputParts
 	use.MetadataJSON = metadata
 	use.ErrorType = info.ErrorType
 	use.ErrorMessage = info.ErrorMessage
@@ -458,6 +466,9 @@ func (r *modelCallRecorder) Finish(ctx context.Context, info run.ModelCallFinish
 		turn.Assistant = *info.Assistant
 	}
 	call := modelCallRecord(r.sessionID, r.runID, r.agentID, r.model, r.modelInfo, turn)
+	if info.MessageID != "" {
+		call.AssistantMessageID = info.MessageID
+	}
 	if err := r.store.UpsertModelCall(ctx, call); err != nil {
 		return err
 	}
@@ -510,33 +521,34 @@ func modelCallRecord(sessionID, runID, agentID string, model models.ModelRef, in
 		usage = *turn.Assistant.Usage
 	}
 	call := store.ModelCall{
-		ID:                turn.ModelCallID,
-		SessionID:         sessionID,
-		RunID:             runID,
-		Step:              turn.Step,
-		Attempt:           turn.Attempt,
-		Status:            store.ModelCallStatusCompleted,
-		AgentID:           agentID,
-		ModelRef:          model.Ref(),
-		Provider:          model.Provider,
-		ProviderRequestID: turn.ProviderRequestID,
-		API:               string(model.API),
-		ModelID:           model.ID,
-		FinishReason:      string(turn.Assistant.FinishReason),
-		InputTokens:       usage.InputTokens,
-		OutputTokens:      usage.OutputTokens,
-		ReasoningTokens:   usage.ReasoningTokens,
-		CachedInputTokens: usage.CachedInputTokens,
-		CacheWriteTokens:  usage.CacheWriteTokens,
-		TotalTokens:       usage.TotalOrComputed(),
-		ContextTokens:     usage.ContextTokens(),
-		ContextWindow:     info.ContextWindow,
-		ContextPercent:    usage.ContextPercent(info.ContextWindow),
-		Cost:              estimatedCost(usage, info),
-		StartedAt:         turn.StartedAt.UTC(),
-		CompletedAt:       turn.CompletedAt.UTC(),
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		AssistantMessageID: turn.Assistant.ID,
+		ID:                 turn.ModelCallID,
+		SessionID:          sessionID,
+		RunID:              runID,
+		Step:               turn.Step,
+		Attempt:            turn.Attempt,
+		Status:             store.ModelCallStatusCompleted,
+		AgentID:            agentID,
+		ModelRef:           model.Ref(),
+		Provider:           model.Provider,
+		ProviderRequestID:  turn.ProviderRequestID,
+		API:                string(model.API),
+		ModelID:            model.ID,
+		FinishReason:       string(turn.Assistant.FinishReason),
+		InputTokens:        usage.InputTokens,
+		OutputTokens:       usage.OutputTokens,
+		ReasoningTokens:    usage.ReasoningTokens,
+		CachedInputTokens:  usage.CachedInputTokens,
+		CacheWriteTokens:   usage.CacheWriteTokens,
+		TotalTokens:        usage.TotalOrComputed(),
+		ContextTokens:      usage.ContextTokens(),
+		ContextWindow:      info.ContextWindow,
+		ContextPercent:     usage.ContextPercent(info.ContextWindow),
+		Cost:               estimatedCost(usage, info),
+		StartedAt:          turn.StartedAt.UTC(),
+		CompletedAt:        turn.CompletedAt.UTC(),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	if call.Attempt == 0 {
 		call.Attempt = 1

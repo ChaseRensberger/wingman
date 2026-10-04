@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -287,23 +288,46 @@ func TestDeleteSessionPurgesHistoryAndSettlesRuntime(t *testing.T) {
 	if err := data.CreateSession(session); err != nil {
 		t.Fatal(err)
 	}
+	admitted, err := data.AdmitSessionRun(t.Context(), store.SessionRun{SessionID: session.ID, Message: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.ClaimNextSessionRun(t.Context(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	session, err = data.GetSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := New(Config{Store: data})
 	live, unsubscribe := server.events.subscribe(session.ID)
 	defer unsubscribe()
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer cancelWorker()
+	runCtx, cancelRun := context.WithCancel(workerCtx)
+	defer cancelRun()
 	settled := make(chan struct{})
 	server.runs.active[session.ID] = cancelWorker
+	server.runs.runCancel[session.ID] = cancelRun
+	server.runs.runIDs[session.ID] = admitted.Run.ID
 	server.runs.done[session.ID] = settled
 	go func() {
 		<-workerCtx.Done()
 		close(settled)
 	}()
 
-	request := httptest.NewRequest(http.MethodDelete, "/sessions/ses_delete?expected_version=1", nil)
+	request := httptest.NewRequest(http.MethodDelete, "/sessions/ses_delete?expected_version="+strconv.FormatInt(session.AggregateVersion, 10), nil)
 	response := httptest.NewRecorder()
 	server.router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if runCtx.Err() != context.Canceled {
+		t.Fatalf("run context error = %v, want canceled", runCtx.Err())
+	}
+	var status api.StatusResponse
+	if err := json.NewDecoder(response.Body).Decode(&status); err != nil || status.Status != "deleted" {
+		t.Fatalf("delete response = %#v, %v", status, err)
 	}
 	if _, err := data.GetSession(session.ID); err == nil {
 		t.Fatal("session remains after delete")
@@ -1071,12 +1095,12 @@ func (s *startupRecoveryStore) InterruptActiveToolUses(context.Context) error {
 	return s.Store.InterruptActiveToolUses(context.Background())
 }
 
-func (s *startupRecoveryStore) ListRunningSessionRuns(context.Context) ([]store.SessionRun, error) {
+func (s *startupRecoveryStore) ListSessionRunsForRecovery(context.Context) ([]store.SessionRun, error) {
 	s.order = append(s.order, "list")
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
-	return s.Store.ListRunningSessionRuns(context.Background())
+	return s.Store.ListSessionRunsForRecovery(context.Background())
 }
 
 func (s *startupRecoveryStore) ListQueuedSessionRunSessions(context.Context) ([]string, error) {
@@ -1303,7 +1327,7 @@ func TestRecoverStartupSettlesRunningRunAfterChildState(t *testing.T) {
 	}
 
 	recovered, err := data.GetSessionRun(ctx, admission.Run.SessionID, admission.Run.ID)
-	if err != nil || recovered.Status != store.SessionRunStatusAborted || recovered.ErrorType != "process_interrupted" {
+	if err != nil || recovered.Status != store.SessionRunStatusFailed || recovered.ErrorType != "recovery_blocked" {
 		t.Fatalf("run = %#v, error = %v", recovered, err)
 	}
 	calls, err := data.ListModelCalls(ctx, admission.Run.SessionID)
@@ -1319,7 +1343,7 @@ func TestRecoverStartupSettlesRunningRunAfterChildState(t *testing.T) {
 		t.Fatalf("messages = %#v, error = %v", messages, err)
 	}
 	events, err := data.ListSessionEvents(ctx, admission.Run.SessionID, 0, 10)
-	if err != nil || len(events) != 3 || events[2].Type != "session.run.aborted" {
+	if err != nil || len(events) != 3 || events[2].Type != "session.run.failed" {
 		t.Fatalf("events = %#v, error = %v", events, err)
 	}
 	if err := server.recoverStartup(ctx); err != nil {
@@ -1362,7 +1386,7 @@ func TestStartupRecoveryAfterToolSideEffectDoesNotReplay(t *testing.T) {
 	}
 
 	run, err := data.GetSessionRun(context.Background(), "ses_crash_side_effect", "run_crash_side_effect")
-	if err != nil || run.Status != store.SessionRunStatusAborted || run.ErrorType != "process_interrupted" {
+	if err != nil || run.Status != store.SessionRunStatusFailed || run.ErrorType != "recovery_blocked" {
 		t.Fatalf("run = %#v, error = %v", run, err)
 	}
 	uses, err := data.ListToolUses(context.Background(), "ses_crash_side_effect")
@@ -1377,7 +1401,7 @@ func TestStartupRecoveryAfterToolSideEffectDoesNotReplay(t *testing.T) {
 	}
 }
 
-func TestStartupRecoveryAfterProviderDispatchDoesNotRedispatch(t *testing.T) {
+func TestStartupRecoveryAfterProviderDispatchRequeues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "wingman.db")
 	marker := filepath.Join(t.TempDir(), "dispatch")
 	command := exec.Command(os.Args[0], "-test.run=TestStartupRecoveryAfterProviderDispatchDoesNotRedispatchHelper")
@@ -1394,7 +1418,7 @@ func TestStartupRecoveryAfterProviderDispatchDoesNotRedispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer data.Close()
-	server := New(Config{Store: data})
+	server := New(Config{Store: &startupRecoveryStore{Store: data}})
 	server.runs.reconcileInterval = time.Hour
 	t.Cleanup(func() {
 		server.shutdownCancel()
@@ -1408,7 +1432,7 @@ func TestStartupRecoveryAfterProviderDispatchDoesNotRedispatch(t *testing.T) {
 	}
 
 	run, err := data.GetSessionRun(context.Background(), "ses_crash_dispatch", "run_crash_dispatch")
-	if err != nil || run.Status != store.SessionRunStatusAborted || run.ErrorType != "process_interrupted" {
+	if err != nil || run.Status != store.SessionRunStatusQueued || run.RecoveryAttempts != 1 {
 		t.Fatalf("run = %#v, error = %v", run, err)
 	}
 	calls, err := data.ListModelCalls(context.Background(), "ses_crash_dispatch")

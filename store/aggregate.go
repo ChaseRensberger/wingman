@@ -22,6 +22,7 @@ const (
 	EventSessionMoved                  = "session.moved"
 	EventSessionRunAdmitted            = "session.run.admitted"
 	EventSessionRunStarted             = "session.run.started"
+	EventSessionRunRequeued            = "session.run.requeued"
 	EventSessionRunCompleted           = "session.run.completed"
 	EventSessionRunFailed              = "session.run.failed"
 	EventSessionRunAborted             = "session.run.aborted"
@@ -122,6 +123,8 @@ type sessionPermissionGrantCreatedData struct {
 // []byte deliberately keeps these payloads opaque: the store does not impose
 // JSON validity or rewrite their bytes while serializing aggregate history.
 type toolUseSnapshot struct {
+	ReplaySafe         bool      `json:"replay_safe,omitempty"`
+	OutputPartsJSON    []byte    `json:"output_parts_json,omitempty"`
 	ID                 string    `json:"id"`
 	SessionID          string    `json:"session_id"`
 	RunID              string    `json:"run_id,omitempty"`
@@ -256,6 +259,7 @@ func ProjectSessionRunAdmission(event AggregateEvent) (SessionRun, error) {
 func NewSessionRunTransitionEvent(run SessionRun) (AggregateEvent, error) {
 	typeName, ok := map[string]string{
 		SessionRunStatusRunning:   EventSessionRunStarted,
+		SessionRunStatusQueued:    EventSessionRunRequeued,
 		SessionRunStatusCompleted: EventSessionRunCompleted,
 		SessionRunStatusFailed:    EventSessionRunFailed,
 		SessionRunStatusAborted:   EventSessionRunAborted,
@@ -301,6 +305,7 @@ func ProjectSessionRunTransition(event AggregateEvent) (SessionRun, error) {
 	}
 	wantType, ok := map[string]string{
 		SessionRunStatusRunning:   EventSessionRunStarted,
+		SessionRunStatusQueued:    EventSessionRunRequeued,
 		SessionRunStatusCompleted: EventSessionRunCompleted,
 		SessionRunStatusFailed:    EventSessionRunFailed,
 		SessionRunStatusAborted:   EventSessionRunAborted,
@@ -400,6 +405,7 @@ func ProjectSessionModelCallSaved(event AggregateEvent) (ModelCall, error) {
 // NewSessionToolUseSavedEvent records one authoritative tool-use lifecycle snapshot.
 func NewSessionToolUseSavedEvent(use ToolUse) (AggregateEvent, error) {
 	snapshot := toolUseSnapshot{
+		ReplaySafe: use.ReplaySafe, OutputPartsJSON: use.OutputPartsJSON,
 		ID: use.ID, SessionID: use.SessionID, RunID: use.RunID, ModelCallID: use.ModelCallID,
 		AssistantMessageID: use.AssistantMessageID, PartID: use.PartID, Step: use.Step, Ordinal: use.Ordinal,
 		CallID: use.CallID, Name: use.Name, Status: use.Status, InputJSON: use.InputJSON, Output: use.Output,
@@ -424,6 +430,7 @@ func ProjectSessionToolUseSaved(event AggregateEvent) (ToolUse, error) {
 		return ToolUse{}, fmt.Errorf("project session tool use: decode: %w", err)
 	}
 	use := ToolUse{ID: data.ToolUse.ID, SessionID: data.ToolUse.SessionID, RunID: data.ToolUse.RunID, ModelCallID: data.ToolUse.ModelCallID, AssistantMessageID: data.ToolUse.AssistantMessageID, PartID: data.ToolUse.PartID, Step: data.ToolUse.Step, Ordinal: data.ToolUse.Ordinal, CallID: data.ToolUse.CallID, Name: data.ToolUse.Name, Status: data.ToolUse.Status, InputJSON: data.ToolUse.InputJSON, Output: data.ToolUse.Output, StructuredJSON: data.ToolUse.StructuredJSON, MetadataJSON: data.ToolUse.MetadataJSON, ErrorType: data.ToolUse.ErrorType, ErrorMessage: data.ToolUse.ErrorMessage, ProposedAt: data.ToolUse.ProposedAt, AuthorizedAt: data.ToolUse.AuthorizedAt, StartedAt: data.ToolUse.StartedAt, CompletedAt: data.ToolUse.CompletedAt, CreatedAt: data.ToolUse.CreatedAt, UpdatedAt: data.ToolUse.UpdatedAt}
+	use.ReplaySafe, use.OutputPartsJSON = data.ToolUse.ReplaySafe, data.ToolUse.OutputPartsJSON
 	if use.ID == "" || use.SessionID != event.Aggregate.ID || use.RunID != event.RunID || use.Status == "" || use.ProposedAt.IsZero() || use.CreatedAt.IsZero() || use.UpdatedAt.IsZero() {
 		return ToolUse{}, fmt.Errorf("project session tool use: snapshot does not match aggregate event")
 	}
@@ -691,7 +698,7 @@ func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
 				return nil, fmt.Errorf("project session run %s: duplicate admission", run.ID)
 			}
 			runs[run.ID] = run
-		case EventSessionRunStarted, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+		case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
 			run, err = ProjectSessionRunTransition(event)
 			if err != nil {
 				return nil, err
@@ -813,7 +820,7 @@ func ProjectSessionToolUses(events []AggregateEvent) ([]ToolUse, error) {
 			return nil, err
 		}
 		if previous, exists := uses[use.ID]; exists {
-			if !sameToolUseIdentity(previous, use) || !legalProjectedToolUseTransition(previous.Status, use.Status) {
+			if !sameToolUseIdentity(previous, use) || (!legalProjectedToolUseTransition(previous.Status, use.Status) && !IsToolUseRecovery(previous, use)) {
 				return nil, fmt.Errorf("project session tool use %s: invalid lifecycle snapshot", use.ID)
 			}
 		} else if use.Status != ToolUseStatusProposed {
@@ -1004,7 +1011,7 @@ func legalProjectedToolUseTransition(from, to string) bool {
 
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
-		(from == SessionRunStatusRunning && isSessionRunTerminal(to))
+		(from == SessionRunStatusRunning && (isSessionRunTerminal(to) || to == SessionRunStatusQueued))
 }
 
 func projectSessionEvent(session *Session, event AggregateEvent) (*Session, error) {
@@ -1067,7 +1074,7 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 		projected := *session
 		projected.AggregateVersion = event.Version
 		return &projected, nil
-	case EventSessionRunStarted, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+	case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
 		if session == nil {
 			return nil, fmt.Errorf("project session %s: run transition before creation", event.Aggregate.ID)
 		}

@@ -123,6 +123,8 @@ type PermissionRequestResolution struct {
 
 // ToolUse records one durable tool invocation lifecycle.
 type ToolUse struct {
+	ReplaySafe         bool      `json:"replay_safe,omitempty"`
+	OutputPartsJSON    []byte    `json:"-"`
 	ID                 string    `json:"id"`
 	SessionID          string    `json:"session_id"`
 	RunID              string    `json:"run_id,omitempty"`
@@ -153,20 +155,23 @@ func (u ToolUse) MarshalJSON() ([]byte, error) {
 	type alias ToolUse
 	return json.Marshal(struct {
 		*alias
-		Input      json.RawMessage `json:"input,omitempty"`
-		Structured json.RawMessage `json:"structured,omitempty"`
-		Metadata   json.RawMessage `json:"metadata,omitempty"`
+		Input       json.RawMessage `json:"input,omitempty"`
+		Structured  json.RawMessage `json:"structured,omitempty"`
+		Metadata    json.RawMessage `json:"metadata,omitempty"`
+		OutputParts json.RawMessage `json:"output_parts,omitempty"`
 	}{
-		alias:      (*alias)(&u),
-		Input:      u.InputJSON,
-		Structured: u.StructuredJSON,
-		Metadata:   u.MetadataJSON,
+		alias:       (*alias)(&u),
+		Input:       u.InputJSON,
+		Structured:  u.StructuredJSON,
+		Metadata:    u.MetadataJSON,
+		OutputParts: u.OutputPartsJSON,
 	})
 }
 
 // SessionRun is a durably admitted prompt and its immutable effective agent
 // configuration. Runs are claimed in sequence order per session.
 type SessionRun struct {
+	RecoveryAttempts      int                 `json:"recovery_attempts,omitempty"`
 	ID                    string              `json:"id"`
 	SessionID             string              `json:"session_id"`
 	RequestID             string              `json:"request_id,omitempty"`

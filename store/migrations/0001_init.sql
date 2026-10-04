@@ -86,6 +86,7 @@ CREATE TABLE session_runs (
     request_id          TEXT NOT NULL DEFAULT '',
     request_hash        TEXT NOT NULL DEFAULT '',
     admitted_version    INTEGER NOT NULL,
+    recovery_attempts   INTEGER NOT NULL DEFAULT 0,
     work_dir            TEXT,
     workspace_id        TEXT,
     client_id           TEXT,
@@ -161,6 +162,8 @@ CREATE INDEX idx_model_calls_assistant_message ON model_calls(assistant_message_
 CREATE INDEX idx_model_calls_session_status ON model_calls(session_id, status);
 
 CREATE TABLE tool_uses (
+    replay_safe          INTEGER NOT NULL DEFAULT 0,
+    output_parts_json    TEXT,
     id                   TEXT PRIMARY KEY,
     session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     run_id               TEXT REFERENCES session_runs(id) ON DELETE CASCADE,

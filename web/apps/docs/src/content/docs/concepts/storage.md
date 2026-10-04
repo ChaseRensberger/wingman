@@ -79,7 +79,8 @@ proposed -> authorized -> started -> completed | failed | interrupted
 ```
 
 Wingman saves authorized input and records `started` before execution.
-On restart, unfinished calls become `interrupted` and are not repeated automatically.
+On restart, unfinished calls become `interrupted`. Recovery reuses saved results and resumes calls that did not start.
+Started calls can run again only when their saved and current tool definitions permit replay.
 See [Tools](/concepts/tools#durable-execution-lifecycle) for validation and approval behavior.
 
 ## Message Parts
@@ -90,6 +91,11 @@ See [Sessions](/concepts/sessions#message-parts) for message state and client di
 ## Migrations
 
 Pending schema migrations run when the store opens. If the applied migration history is invalid, Wingman does not start.
+
+The run-recovery update requires a new database. Databases from before this update fail migration checksum validation and cannot open with this version.
+There is no automatic upgrade for those databases.
+To preserve existing data, stop Wingman and keep a backup of the database and any associated `-wal` and `-shm` files.
+Start this version with `--db` set to a new path. The new database contains no previous sessions, agents, or provider credentials.
 
 ## Embedding
 

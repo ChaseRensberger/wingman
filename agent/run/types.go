@@ -159,6 +159,28 @@ type Config struct {
 	// pre-side-effect started fence and terminal accounting; it does not make
 	// tool execution exactly-once.
 	ToolUseLifecycle ToolUseLifecycle
+
+	// Recovery resumes saved model and tool boundaries without adding new input.
+	Recovery *Recovery
+}
+
+// Recovery supplies the last durable execution boundary to the loop.
+type Recovery struct {
+	InterruptedMessageIDs map[string]bool
+	Step                  int
+	AttemptOffset         int
+	Turn                  *Turn
+	Tools                 map[string]RecoveredTool
+	Usage                 models.Usage
+}
+
+// RecoveredTool restores a tool's saved authorization or terminal result.
+type RecoveredTool struct {
+	ToolUseID    string
+	Args         map[string]any
+	ProposedAt   time.Time
+	AuthorizedAt time.Time
+	Result       *ToolResult
 }
 
 // RetryPolicy controls retryable provider dispatch failures.
@@ -218,6 +240,7 @@ type ToolUseLifecycle interface {
 
 // ToolUseProposeInfo identifies a proposed model tool call before execution.
 type ToolUseProposeInfo struct {
+	ReplaySafe                     bool
 	Step, Ordinal                  int
 	CallID, Name                   string
 	Args                           map[string]any
@@ -287,6 +310,7 @@ type ModelCallStartInfo struct {
 // Assistant is nil when the provider did not produce a message. Failure is the
 // physical provider error, if any.
 type ModelCallFinishInfo struct {
+	MessageID         string
 	Step              int
 	Attempt           int
 	CallID            string

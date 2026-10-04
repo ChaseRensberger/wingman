@@ -28,6 +28,7 @@ type sessionRunManager struct {
 	mu                sync.Mutex
 	active            map[string]context.CancelFunc
 	runCancel         map[string]context.CancelFunc
+	runIDs            map[string]string
 	pending           map[string]bool
 	done              map[string]chan struct{}
 	stopped           bool
@@ -41,6 +42,7 @@ func newSessionRunManager(server *Server) *sessionRunManager {
 		server:            server,
 		active:            map[string]context.CancelFunc{},
 		runCancel:         map[string]context.CancelFunc{},
+		runIDs:            map[string]string{},
 		pending:           map[string]bool{},
 		done:              map[string]chan struct{}{},
 		reconcileInterval: defaultRunReconcileInterval,
@@ -159,6 +161,7 @@ func (m *sessionRunManager) finishLocked(sessionID string) {
 	}
 	delete(m.active, sessionID)
 	delete(m.runCancel, sessionID)
+	delete(m.runIDs, sessionID)
 	delete(m.pending, sessionID)
 	delete(m.done, sessionID)
 	close(done)
@@ -176,11 +179,13 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	runCtx, cancel := context.WithCancel(workerCtx)
 	m.mu.Lock()
 	m.runCancel[queued.SessionID] = cancel
+	m.runIDs[queued.SessionID] = queued.ID
 	m.mu.Unlock()
 	defer func() {
 		cancel()
 		m.mu.Lock()
 		delete(m.runCancel, queued.SessionID)
+		delete(m.runIDs, queued.SessionID)
 		m.mu.Unlock()
 	}()
 
@@ -243,7 +248,13 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 			}
 		}
 	}
+	if workerCtx.Err() != nil {
+		return
+	}
 	status, errorType := store.SessionRunStatusFailed, "run_failed"
+	if errors.Is(err, session.ErrRecoveryBlocked) {
+		errorType = "recovery_blocked"
+	}
 	if errors.Is(runCtx.Err(), context.Canceled) {
 		status, errorType = store.SessionRunStatusAborted, "cancelled"
 	}
@@ -269,6 +280,9 @@ func (m *sessionRunManager) settle(ctx context.Context, settlement store.Session
 			}
 			return true
 		}
+		if errors.Is(err, store.ErrSessionRunTransitionConflict) {
+			return false
+		}
 		if ctx.Err() != nil {
 			m.server.logger.Error("terminal run settlement deferred to startup recovery", "run_id", settlement.ID, "attempt", attempt, "error", err)
 			return false
@@ -288,18 +302,31 @@ func (m *sessionRunManager) settle(ctx context.Context, settlement store.Session
 	}
 }
 
-func (m *sessionRunManager) abort(sessionID string) int {
+func (m *sessionRunManager) abort(ctx context.Context, sessionID, expectedRunID string) (int, error) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	cancel, ok := m.runCancel[sessionID]
-	m.mu.Unlock()
-	if !ok {
-		return 0
+	runID := m.runIDs[sessionID]
+	if !ok || (expectedRunID != "" && expectedRunID != runID) {
+		return 0, nil
+	}
+	// Persist cancellation before signaling the worker so a crash cannot revive it.
+	transition, err := m.server.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: runID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled"})
+	if errors.Is(err, store.ErrSessionRunTransitionConflict) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if transition.Changed {
+		m.server.events.publish(transition.Event)
 	}
 	cancel()
-	return 1
+	return 1, nil
 }
 
 func (m *sessionRunManager) stopAndWait(ctx context.Context, sessionID string) error {
+	// Deletion has already purged the run records; only local work remains.
 	m.mu.Lock()
 	cancel := m.active[sessionID]
 	done := m.done[sessionID]

@@ -149,6 +149,8 @@ type PermissionTarget struct {
 // The loop converts Definition into models.ToolDef by reflating the
 // nested schema into the open-ended map shape providers consume.
 type Definition struct {
+	// ReplaySafe permits repeating an interrupted execution with the same input.
+	ReplaySafe  bool        `json:"replay_safe,omitempty"`
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	InputSchema InputSchema `json:"input_schema"`

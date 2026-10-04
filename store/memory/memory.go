@@ -202,7 +202,10 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	}
 	now := time.Now().UTC()
 	candidate := copySessionRun(next)
-	candidate.Status, candidate.StartedAt, candidate.UpdatedAt = store.SessionRunStatusRunning, now, now
+	candidate.Status, candidate.UpdatedAt = store.SessionRunStatusRunning, now
+	if candidate.StartedAt.IsZero() {
+		candidate.StartedAt = now
+	}
 	aggregateEvent, err := store.NewSessionRunTransitionEvent(candidate)
 	if err != nil {
 		return store.SessionRunTransition{}, err
@@ -225,11 +228,20 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 }
 
 func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRunSettlement) (store.SessionRunTransition, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !sessionRunTerminal(settlement.Status) {
 		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
 	}
+	return s.transitionSessionRun(ctx, settlement)
+}
+
+// RequeueSessionRun durably counts one recovery before the run can execute again.
+func (s *Store) RequeueSessionRun(ctx context.Context, runID string) (store.SessionRunTransition, error) {
+	return s.transitionSessionRun(ctx, store.SessionRunSettlement{ID: runID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusQueued})
+}
+
+func (s *Store) transitionSessionRun(ctx context.Context, settlement store.SessionRunSettlement) (store.SessionRunTransition, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	run, ok := s.runs[settlement.ID]
 	if !ok {
 		return store.SessionRunTransition{}, store.ErrSessionRunNotFound
@@ -240,13 +252,21 @@ func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRu
 		}
 		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
 	}
-	if run.Status != settlement.ExpectedStatus || !legalSessionRunSettlement(run.Status, settlement.Status) {
+	recovering := run.Status == store.SessionRunStatusRunning && settlement.Status == store.SessionRunStatusQueued
+	if recovering && run.RecoveryAttempts >= store.MaxRunRecoveryAttempts {
+		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
+	}
+	if run.Status != settlement.ExpectedStatus || (!recovering && !legalSessionRunSettlement(run.Status, settlement.Status)) {
 		return store.SessionRunTransition{}, store.ErrSessionRunTransitionConflict
 	}
 	now := time.Now().UTC()
 	candidate := copySessionRun(run)
 	candidate.Status, candidate.ErrorType, candidate.ErrorMessage = settlement.Status, settlement.ErrorType, settlement.ErrorMessage
 	candidate.CompletedAt, candidate.UpdatedAt = now, now
+	if recovering {
+		candidate.CompletedAt = time.Time{}
+		candidate.RecoveryAttempts++
+	}
 	session, ok := s.sessions[candidate.SessionID]
 	if !ok {
 		return store.SessionRunTransition{}, store.ErrSessionNotFound
@@ -321,6 +341,36 @@ func (s *Store) ListRunningSessionRuns(ctx context.Context) ([]store.SessionRun,
 
 func sessionRunTerminal(status string) bool {
 	return status == store.SessionRunStatusCompleted || status == store.SessionRunStatusFailed || status == store.SessionRunStatusAborted
+}
+
+// ListSessionRunsForRecovery includes running runs and aborted runs with unfinished records.
+func (s *Store) ListSessionRunsForRecovery(ctx context.Context) ([]store.SessionRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	unfinished := make(map[string]bool)
+	for _, call := range s.modelCalls {
+		if call.Status == store.ModelCallStatusStarted {
+			unfinished[call.RunID] = true
+		}
+	}
+	for _, message := range s.messages {
+		if message.State == "in_progress" {
+			unfinished[message.RunID] = true
+		}
+	}
+	out := []store.SessionRun{}
+	for _, run := range s.runs {
+		if run.Status == store.SessionRunStatusRunning || (run.Status == store.SessionRunStatusAborted && unfinished[run.ID]) {
+			out = append(out, copySessionRun(run))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SessionID == out[j].SessionID {
+			return out[i].Sequence < out[j].Sequence
+		}
+		return out[i].SessionID < out[j].SessionID
+	})
+	return out, nil
 }
 func legalSessionRunSettlement(from, to string) bool {
 	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || (from == store.SessionRunStatusQueued && to == store.SessionRunStatusAborted)
@@ -468,6 +518,7 @@ func copyToolUse(use *store.ToolUse) store.ToolUse {
 	cp.InputJSON = append([]byte(nil), use.InputJSON...)
 	cp.StructuredJSON = append([]byte(nil), use.StructuredJSON...)
 	cp.MetadataJSON = append([]byte(nil), use.MetadataJSON...)
+	cp.OutputPartsJSON = append([]byte(nil), use.OutputPartsJSON...)
 	return cp
 }
 
@@ -1843,13 +1894,15 @@ func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
 	}
 	use.CreatedAt = existing.CreatedAt
 	use.ProposedAt = existing.ProposedAt
+	use.ReplaySafe = existing.ReplaySafe
+	recovering := store.IsToolUseRecovery(*existing, use)
 	if use.AuthorizedAt.IsZero() {
 		use.AuthorizedAt = existing.AuthorizedAt
 	}
-	if use.StartedAt.IsZero() {
+	if use.StartedAt.IsZero() && !recovering {
 		use.StartedAt = existing.StartedAt
 	}
-	if use.CompletedAt.IsZero() {
+	if use.CompletedAt.IsZero() && !recovering {
 		use.CompletedAt = existing.CompletedAt
 	}
 	if use.UpdatedAt.IsZero() {
@@ -1861,7 +1914,7 @@ func (s *Store) SaveToolUse(ctx context.Context, use store.ToolUse) error {
 		}
 		return nil
 	}
-	if !legalToolUseTransitionMemory(existing.Status, use.Status) {
+	if !recovering && !legalToolUseTransitionMemory(existing.Status, use.Status) {
 		return store.ErrToolUseInvalidTransition
 	}
 	if use.Status != store.ToolUseStatusAuthorized && !bytes.Equal(existing.InputJSON, use.InputJSON) {
@@ -1962,6 +2015,9 @@ func sameToolUseIdentityMemory(a, b store.ToolUse) bool {
 }
 
 func sameToolUseMemory(a, b store.ToolUse) bool {
+	if a.ReplaySafe != b.ReplaySafe || !bytes.Equal(a.OutputPartsJSON, b.OutputPartsJSON) {
+		return false
+	}
 	return sameToolUseIdentityMemory(a, b) && a.Status == b.Status && bytes.Equal(a.InputJSON, b.InputJSON) && a.Output == b.Output && bytes.Equal(a.StructuredJSON, b.StructuredJSON) && bytes.Equal(a.MetadataJSON, b.MetadataJSON) && a.ErrorType == b.ErrorType && a.ErrorMessage == b.ErrorMessage && a.ProposedAt.Equal(b.ProposedAt) && a.AuthorizedAt.Equal(b.AuthorizedAt) && a.StartedAt.Equal(b.StartedAt) && a.CompletedAt.Equal(b.CompletedAt) && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
 }
 

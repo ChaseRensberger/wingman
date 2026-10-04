@@ -683,7 +683,11 @@ func (s *Server) handleAbortSession(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
 		return
 	}
-	n := s.runs.abort(id)
+	n, err := s.runs.abort(r.Context(), id, "")
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, api.AbortSessionResponse{SessionID: id, Aborted: n})
 }
 
@@ -759,8 +763,18 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, apiSessionRun(transition.Run))
 	case store.SessionRunStatusRunning:
-		if s.runs.abort(id) == 0 {
+		n, err := s.runs.abort(r.Context(), id, runID)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if n == 0 {
 			s.writeError(w, http.StatusConflict, "run is not active on this server")
+			return
+		}
+		run, err = s.store.GetSessionRun(r.Context(), id, runID)
+		if err != nil {
+			s.writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusAccepted, apiSessionRun(*run))
@@ -1111,6 +1125,13 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	}
 	if runID != "" {
 		opts = append(opts, session.WithRunID(runID))
+		admitted, err := st.GetSessionRun(ctx, sess.ID, runID)
+		if err != nil {
+			return nil, err
+		}
+		if admitted.RecoveryAttempts > 0 {
+			opts = append(opts, session.WithRunRecovery())
+		}
 	}
 	tools, err := s.resolveTools(executionScope, stored.Tools)
 	if err != nil {

@@ -506,9 +506,9 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 	if err := s.store.InterruptActiveToolUses(ctx); err != nil {
 		return fmt.Errorf("interrupt active tool uses: %w", err)
 	}
-	runs, err := s.store.ListRunningSessionRuns(ctx)
+	runs, err := s.store.ListSessionRunsForRecovery(ctx)
 	if err != nil {
-		return fmt.Errorf("list running session runs: %w", err)
+		return fmt.Errorf("list session runs for recovery: %w", err)
 	}
 	for _, run := range runs {
 		if err := s.store.InterruptActiveModelCalls(ctx, run.ID, "process_interrupted", "process interrupted during run"); err != nil {
@@ -517,9 +517,34 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 		if err := session.RecoverRunMessages(ctx, s.store, run.SessionID, run.ID); err != nil {
 			return fmt.Errorf("recover messages for run %s: %w", run.ID, err)
 		}
-		transition, err := s.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusAborted, ErrorType: "process_interrupted", ErrorMessage: "process interrupted during run", EventData: map[string]any{"error_type": "process_interrupted", "error_message": "process interrupted during run"}})
+		if run.Status == store.SessionRunStatusAborted {
+			continue
+		}
+		var transition store.SessionRunTransition
+		uses, err := s.store.ListToolUses(ctx, run.SessionID)
 		if err != nil {
-			return fmt.Errorf("abort running session run %s: %w", run.ID, err)
+			return fmt.Errorf("inspect recovery tools: %w", err)
+		}
+		blocked := ""
+		for _, use := range uses {
+			if use.RunID == run.ID && use.Status == store.ToolUseStatusInterrupted && !use.StartedAt.IsZero() && !use.ReplaySafe {
+				blocked = fmt.Sprintf("tool %s (%s) has an uncertain outcome", use.Name, use.ID)
+				break
+			}
+		}
+		if blocked != "" {
+			transition, err = s.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusFailed, ErrorType: "recovery_blocked", ErrorMessage: blocked})
+		} else if run.Kind != store.SessionRunKindAction && run.RecoveryAttempts < store.MaxRunRecoveryAttempts {
+			transition, err = s.store.RequeueSessionRun(ctx, run.ID)
+		} else {
+			errorType, message := "process_interrupted", "action interrupted during execution"
+			if run.RecoveryAttempts >= store.MaxRunRecoveryAttempts {
+				errorType, message = "recovery_exhausted", "run reached the automatic recovery limit"
+			}
+			transition, err = s.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusAborted, ErrorType: errorType, ErrorMessage: message})
+		}
+		if err != nil {
+			return fmt.Errorf("recover session run %s: %w", run.ID, err)
 		}
 		if transition.Changed {
 			s.events.publish(transition.Event)
