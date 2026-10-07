@@ -27,7 +27,7 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 	if admitted.Status != store.SessionRunStatusRunning {
 		return nil, false, fmt.Errorf("%w: the run is not running", ErrRecoveryBlocked)
 	}
-	messages, err := s.store.ListMessages(ctx, s.id)
+	messages, err := s.store.QueryMessages(ctx, s.id, store.MessageQuery{RunID: s.runID, Role: string(models.RoleUser)})
 	if err != nil {
 		return nil, false, err
 	}
@@ -37,11 +37,15 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		if message.RunID == s.runID && message.Role == string(models.RoleUser) {
 			userSaved = true
 		}
-		if message.RunID == s.runID && message.Role == string(models.RoleAssistant) && message.State == string(models.MessageStateFailed) {
-			recovery.InterruptedMessageIDs[message.ID] = true
-		}
 	}
-	calls, err := s.store.ListModelCalls(ctx, s.id)
+	failed, err := s.store.QueryMessages(ctx, s.id, store.MessageQuery{RunID: s.runID, BoundaryPart: s.generation.Runtime().ContextBoundary, Role: string(models.RoleAssistant), State: string(models.MessageStateFailed)})
+	if err != nil {
+		return nil, false, err
+	}
+	for _, message := range failed {
+		recovery.InterruptedMessageIDs[message.ID] = true
+	}
+	calls, err := s.store.QueryModelCalls(ctx, s.id, store.ModelCallQuery{RunID: s.runID})
 	if err != nil {
 		return nil, false, err
 	}
@@ -70,17 +74,23 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 	if !userSaved {
 		return nil, false, fmt.Errorf("%w: saved input is missing", ErrRecoveryBlocked)
 	}
-	var assistant *models.Message
-	for _, message := range s.history {
-		if message.ID == latest.AssistantMessageID {
-			copy := message
-			assistant = &copy
-			break
-		}
-	}
-	if assistant == nil {
+	if latest.AssistantMessageID == "" {
 		return nil, false, fmt.Errorf("%w: assistant checkpoint is missing", ErrRecoveryBlocked)
 	}
+	checkpoint, err := s.store.QueryMessages(ctx, s.id, store.MessageQuery{MessageID: latest.AssistantMessageID})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(checkpoint) != 1 {
+		return nil, false, fmt.Errorf("%w: assistant checkpoint is missing", ErrRecoveryBlocked)
+	}
+	message, err := storedMessageToModel(checkpoint[0], s.partDecoders)
+	if err != nil {
+		return nil, false, err
+	}
+	ApplyModelCall(&message, *latest)
+	assistant := &message
+	recovery.MessageIndex = checkpoint[0].Idx
 	var trace models.CallTrace
 	if len(latest.MetadataJSON) > 0 {
 		if err := json.Unmarshal(latest.MetadataJSON, &trace); err != nil {
@@ -102,7 +112,7 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		recovery.InterruptedMessageIDs[assistant.ID] = true
 		return recovery, userSaved, nil
 	}
-	uses, err := s.store.ListToolUses(ctx, s.id)
+	uses, err := s.store.ListRunToolUses(ctx, s.id, s.runID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -118,6 +128,21 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		t, lookupErr := registry.Get(use.Name)
 		if lookupErr != nil || (!use.StartedAt.IsZero() && (!use.ReplaySafe || !t.Definition().ReplaySafe)) {
 			return nil, false, fmt.Errorf("%w: tool %s (%s) has an uncertain outcome or is unavailable", ErrRecoveryBlocked, use.Name, use.ID)
+		}
+	}
+	// A committed boundary already contains this completed tool round. Start the
+	// next model step instead of adding that assistant and its results again.
+	if len(s.history) > 0 && s.history[0].ID != assistant.ID {
+		active := false
+		for _, message := range s.history {
+			if message.ID == assistant.ID {
+				active = true
+				break
+			}
+		}
+		if !active {
+			recovery.Step = latest.Step
+			return recovery, userSaved, nil
 		}
 	}
 	for _, use := range uses {

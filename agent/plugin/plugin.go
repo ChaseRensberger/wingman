@@ -99,6 +99,7 @@ type Registry struct {
 	tools             []tool.Tool
 	parts             []partRegistration
 	actions           []actionRegistration
+	contextBoundary   string
 	built             bool
 	owner             string
 }
@@ -309,6 +310,18 @@ func (r *Registry) RegisterPart(typeName string, fn models.PartUnmarshaler) erro
 	return nil
 }
 
+// RegisterContextBoundary declares a self-contained part that replaces earlier execution context.
+func (r *Registry) RegisterContextBoundary(typeName string) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(typeName) == "" || r.contextBoundary != "" {
+		return errors.New("plugin: context boundary must be nonempty and unique")
+	}
+	r.contextBoundary = typeName
+	return nil
+}
+
 // RegisterAction adds a plugin-owned session action. Action IDs must be namespaced
 // by the activating plugin name and command aliases are unique per generation.
 func (r *Registry) RegisterAction(action Action) error {
@@ -334,8 +347,9 @@ func (r *Registry) RegisterAction(action Action) error {
 // Built bundles the composed hooks, merged tool slice, and aggregated
 // sink that a session feeds to run.Run. Construct via Registry.Build.
 type Built struct {
-	Hooks run.Hooks
-	Tools []tool.Tool
+	ContextBoundary string
+	Hooks           run.Hooks
+	Tools           []tool.Tool
 	// Sink is non-nil when at least one plugin registered a sink. The
 	// session combines this with its own internal sink.
 	Sink    run.Sink
@@ -558,7 +572,7 @@ func (r *Registry) build() (Built, models.PartDecoders, error) {
 		actions = append(actions, a)
 	}
 
-	return Built{Hooks: hooks, Tools: tools, Sink: sink, Actions: actions}, decoders, nil
+	return Built{ContextBoundary: r.contextBoundary, Hooks: hooks, Tools: tools, Sink: sink, Actions: actions}, decoders, nil
 }
 
 // composeBeforeRun chains BeforeRun hooks. Each receives the

@@ -521,7 +521,7 @@ func (s *Server) recoverStartup(ctx context.Context) error {
 			continue
 		}
 		var transition store.SessionRunTransition
-		uses, err := s.store.ListToolUses(ctx, run.SessionID)
+		uses, err := s.store.ListRunToolUses(ctx, run.SessionID, run.ID)
 		if err != nil {
 			return fmt.Errorf("inspect recovery tools: %w", err)
 		}

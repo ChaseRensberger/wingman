@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/tool"
@@ -60,6 +63,41 @@ func TestMessageCheckpointPrecedesModelStartAndDispatch(t *testing.T) {
 	if len(order) < 3 || order[0] != "checkpoint" || order[1] != "start" || order[2] != "stream" {
 		t.Fatalf("order = %#v", order)
 	}
+}
+
+func TestHistoryMessagePrecedesAssistantCheckpoint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var markerSaved atomic.Bool
+		marker := models.Message{Role: models.RoleUser, Content: models.Content{models.OpaquePart{TypeName: "boundary", Raw: []byte(`{}`)}}}
+		result, err := Run(t.Context(), Config{
+			Client: lifecycleClient{message: models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: "answer after boundary"}}}},
+			Model:  testModel, ContextBoundary: "boundary",
+			Hooks: Hooks{TransformHistory: func(_ context.Context, info TransformHistoryInfo) ([]models.Message, error) {
+				info.Sink.OnEvent(MessageEvent{Message: marker})
+				return append(info.Messages, marker), nil
+			}},
+			Sink: SinkFunc(func(event Event) {
+				if _, ok := event.(IterationStartEvent); ok {
+					time.Sleep(time.Second)
+				}
+				if message, ok := event.(MessageEvent); ok && message.Message.Role == models.RoleUser {
+					markerSaved.Store(true)
+				}
+			}),
+			MessageCheckpoint: checkpointFunc(func(ctx context.Context, info MessageCheckpointInfo) (models.Message, error) {
+				if !markerSaved.Load() {
+					return models.Message{}, errors.New("assistant checkpoint preceded history message")
+				}
+				return identifiedCheckpoint().Save(ctx, info)
+			}),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Messages) != 2 {
+			t.Fatalf("active history = %#v", result.Messages)
+		}
+	})
 }
 
 func TestMessageCheckpointStreamIdentityAndStablePartID(t *testing.T) {

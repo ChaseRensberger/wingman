@@ -99,9 +99,10 @@ type Session struct {
 	// for every message appended to history.
 	store store.Store
 
-	history []models.Message
-	mu      sync.RWMutex
-	runMu   sync.Mutex
+	history        []models.Message
+	nextMessageIdx int
+	mu             sync.RWMutex
+	runMu          sync.Mutex
 }
 
 // sessionMessagePersistence assigns one durable history index to every
@@ -483,7 +484,7 @@ func (s *Session) SetTools(tools []tool.Tool) {
 	s.tools = tools
 }
 
-// History returns a snapshot copy of the running message history.
+// History returns a snapshot of active execution history, bounded by installed context-boundary plugins.
 func (s *Session) History() []models.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -499,14 +500,16 @@ func (s *Session) AddMessage(msg models.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = append(s.history, msg)
+	s.nextMessageIdx++
 }
 
-// SetHistory replaces the entire history. The slice is copied; later
+// SetHistory replaces active history without rewinding durable message indexes. The slice is copied; later
 // mutations of msgs do not affect the session.
 func (s *Session) SetHistory(msgs []models.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = append([]models.Message(nil), msgs...)
+	s.nextMessageIdx = max(s.nextMessageIdx, len(msgs))
 }
 
 // Clear empties the history.
@@ -514,6 +517,7 @@ func (s *Session) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = []models.Message{}
+	s.nextMessageIdx = 0
 }
 
 // Result is the terminal value of a Run / RunStream invocation.
@@ -638,10 +642,11 @@ func (s *Session) RunAction(ctx context.Context, id string, input json.RawMessag
 	history := append([]models.Message(nil), s.history...)
 	info := plugin.ActionInfo{SessionID: s.id, RunID: s.runID, Input: append(json.RawMessage(nil), input...), History: history, Client: s.client, Model: s.model, ModelInfo: s.modelInfo}
 	messageSink, st := s.messageSink, s.store
+	nextIdx := s.nextMessageIdx
 	s.mu.Unlock()
 	var persistErr error
 	emittedMessages := []models.Message{}
-	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(history)}
+	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: nextIdx}
 	info.Sink = run.SinkFunc(func(event run.Event) {
 		if message, ok := event.(run.MessageEvent); ok {
 			persistedOK := st == nil
@@ -677,6 +682,8 @@ func (s *Session) RunAction(ctx context.Context, id string, input json.RawMessag
 	actionErr := action.Handler(ctx, info)
 	s.mu.Lock()
 	s.history = append(s.history, emittedMessages...)
+	s.history = run.ActiveHistory(s.history, built.ContextBoundary)
+	s.nextMessageIdx = messagePersistence.nextIdx
 	s.mu.Unlock()
 	if persistErr != nil {
 		return errors.Join(actionErr, fmt.Errorf("persist: %w", persistErr))
@@ -821,19 +828,20 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			Content: models.Content{models.TextPart{Text: message}},
 		})
 		userMsgIdx := len(s.history) - 1
-		userMsg, err := s.persistMessage(ctx, s.history[userMsgIdx], userMsgIdx)
+		userMsg, err := s.persistMessage(ctx, s.history[userMsgIdx], s.nextMessageIdx)
 		if err != nil {
 			s.mu.Unlock()
 			return nil, err
 		}
 		s.history[userMsgIdx] = userMsg
+		s.nextMessageIdx++
 	}
 	historySnap := append([]models.Message(nil), s.history...)
-	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: len(historySnap)}
+	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: s.nextMessageIdx}
 	if recovery != nil && recovery.Turn != nil {
 		for i, message := range historySnap {
 			if message.ID == recovery.Turn.Assistant.ID {
-				messagePersistence.assistantIndexes = map[int]int{recovery.Step: i}
+				messagePersistence.assistantIndexes = map[int]int{recovery.Step: recovery.MessageIndex}
 				historySnap = append(historySnap[:i], historySnap[i+1:]...)
 				break
 			}
@@ -909,6 +917,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
+		ContextBoundary:    built.ContextBoundary,
 		Recovery:           recovery,
 		SessionID:          s.id,
 		RunID:              runID,
@@ -969,6 +978,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	if res != nil {
 		s.history = append([]models.Message(nil), res.Messages...)
 	}
+	s.nextMessageIdx = messagePersistence.nextIdx
 	s.mu.Unlock()
 
 	// Collect tool calls from res.Turns in source order. Each Turn's

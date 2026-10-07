@@ -88,6 +88,10 @@ See [Tools](/concepts/tools#durable-execution-lifecycle) for validation and appr
 Messages contain text, images, reasoning, tool calls, and plugin content as JSON parts.
 See [Sessions](/concepts/sessions#message-parts) for message state and client display.
 
+With the compaction plugin installed, execution loads the latest completed compaction marker and the messages after it.
+Earlier messages remain in storage and in the session history API. Compaction does not delete them.
+Model-call metadata loads only for the active range. Run recovery reads its own saved records separately.
+
 ## Migrations
 
 Pending schema migrations run when the store opens. If the applied migration history is invalid, Wingman does not start.
@@ -100,3 +104,5 @@ Start this version with `--db` set to a new path. The new database contains no p
 ## Embedding
 
 Embedded Go applications can provide another implementation of `store.Store`.
+Custom stores must support `QueryMessages`, `QueryModelCalls`, and `ListRunToolUses` without loading excluded message content.
+Message queries retain absolute history indexes. A boundary query starts at the latest completed message that contains the requested part type.

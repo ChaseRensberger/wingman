@@ -46,10 +46,17 @@ Go plugins register hooks with `plugin.Registry`.
 | `RegisterSinkTimeout`       | Receive events with an explicit positive callback timeout. |
 | `RegisterTool`              | Add a tool to the session.                                 |
 | `RegisterPart`              | Register a custom message-part decoder.                    |
+| `RegisterContextBoundary`   | Declare a part that replaces earlier execution context.    |
 
 Hooks run in activation order. Transform hooks receive the output from the previous hook.
 `Activate` can return cleanup that uses a context. By default, sink dispatch waits one second.
 It drops events while a callback remains blocked.
+
+A context boundary is a saved message that replaces earlier context.
+Register one boundary part type per plugin generation. Its message must contain all context needed to replace the earlier messages.
+The compaction plugin registers its marker as this boundary. Sessions load and retain the active range from the latest completed boundary.
+`Session.History()` and action handlers receive that active range. Use stored history for earlier messages.
+Transform hooks also receive active history. Do not rely on them to read the complete transcript.
 
 ## RPC Plugin Support
 

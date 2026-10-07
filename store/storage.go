@@ -91,15 +91,21 @@ type Store interface {
 	// ASC. Returns ErrSessionNotFound if the session does not exist.
 	// Returns an empty slice (not nil) when the session has no messages.
 	ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error)
+	// QueryMessages reads a selected history range without loading excluded parts.
+	QueryMessages(ctx context.Context, sessionID string, query MessageQuery) ([]StoredMessage, error)
 	// UpsertModelCall inserts or updates one upstream model-call record keyed by ID.
 	UpsertModelCall(ctx context.Context, call ModelCall) error
 	// LatestModelCall returns the latest call with context usage for a session.
 	LatestModelCall(ctx context.Context, sessionID string) (*ModelCall, error)
 	// ListModelCalls returns all model calls for the session in chronological order.
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
+	// QueryModelCalls reads attempts for a run or an active message range.
+	QueryModelCalls(ctx context.Context, sessionID string, query ModelCallQuery) ([]ModelCall, error)
 	InterruptActiveModelCalls(ctx context.Context, runID, errorType, errorMessage string) error
 	SaveToolUse(ctx context.Context, use ToolUse) error
 	ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error)
+	// ListRunToolUses reads only tool uses owned by one run.
+	ListRunToolUses(ctx context.Context, sessionID, runID string) ([]ToolUse, error)
 	InterruptActiveToolUses(ctx context.Context) error
 	// AppendSessionEvent stores one durable session event and assigns its
 	// session-scoped sequence.

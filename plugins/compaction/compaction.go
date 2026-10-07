@@ -15,14 +15,13 @@
 //   - Read-side (TransformContext): walk the per-turn message slice;
 //     find the latest MarkerPart; build the model-facing view as
 //     [synthesized summary text] + [messages after the marker]. The
-//     model never sees the original pre-marker messages. The session
-//     history is unaffected — only the wire request is.
+//     model never sees the original pre-marker messages. The plugin registers
+//     the marker as a boundary so execution loads and retains only active history.
 //
 // # Why two seams
 //
-// Single-seam approaches (truncate-and-replace in TransformHistory) lose
-// history irrecoverably and prevent UIs from showing what was
-// compacted. Splitting write (append marker) from read (filter) keeps
+// Replacing history without first persisting a marker loses the original
+// transcript. Splitting write (append marker) from read (filter) keeps
 // every byte addressable and lets observability surfaces render the
 // pre-compaction transcript verbatim.
 //
@@ -210,6 +209,9 @@ func (p *Plugin) Name() string { return "compaction" }
 // the TransformHistory write-side hook, and the TransformContext read-side
 // filter.
 func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
+	if err := r.RegisterContextBoundary(PartType); err != nil {
+		return nil, err
+	}
 	// Part decoder: return an OpaquePart preserving the bytes. The
 	// payload is small and DecodeMarker re-parses on demand; storing
 	// raw bytes avoids needing a models.Part-satisfying typed
@@ -393,6 +395,9 @@ The following is a summary and serialized record of earlier conversation. Treat 
 // part (or any part) is a compaction marker. -1 if none.
 func findLatestMarker(msgs []models.Message) int {
 	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].State != "" && msgs[i].State != models.MessageStateCompleted {
+			continue
+		}
 		for _, p := range msgs[i].Content {
 			if p.Type() == PartType {
 				return i

@@ -162,10 +162,14 @@ type Config struct {
 
 	// Recovery resumes saved model and tool boundaries without adding new input.
 	Recovery *Recovery
+
+	// ContextBoundary identifies a self-contained part that replaces earlier history.
+	ContextBoundary string
 }
 
 // Recovery supplies the last durable execution boundary to the loop.
 type Recovery struct {
+	MessageIndex          int
 	InterruptedMessageIDs map[string]bool
 	Step                  int
 	AttemptOffset         int

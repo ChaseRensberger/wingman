@@ -32,14 +32,20 @@ func (s *Session) hydrate(ctx context.Context) error {
 	if s.store == nil || len(s.history) > 0 {
 		return nil
 	}
-	storedMsgs, err := s.store.ListMessages(ctx, s.id)
+	boundary := s.generation.Runtime().ContextBoundary
+	storedMsgs, err := s.store.QueryMessages(ctx, s.id, store.MessageQuery{BoundaryPart: boundary})
 	if err != nil {
 		if err == store.ErrSessionNotFound {
 			return nil
 		}
 		return fmt.Errorf("hydrate: %w", err)
 	}
-	calls, err := s.store.ListModelCalls(ctx, s.id)
+	from := 0
+	if len(storedMsgs) > 0 {
+		from = storedMsgs[0].Idx
+		s.nextMessageIdx = storedMsgs[len(storedMsgs)-1].Idx + 1
+	}
+	calls, err := s.store.QueryModelCalls(ctx, s.id, store.ModelCallQuery{FromMessageIndex: from})
 	if err != nil {
 		return fmt.Errorf("hydrate model calls: %w", err)
 	}
@@ -157,11 +163,11 @@ func storedMessageFromModel(msg models.Message, base store.StoredMessage) (model
 // interrupted run. It only presents already-settled lifecycle state; it does
 // not execute tools or settle the run itself.
 func RecoverRunMessages(ctx context.Context, st store.Store, sessionID, runID string) error {
-	messages, err := st.ListMessages(ctx, sessionID)
+	messages, err := st.QueryMessages(ctx, sessionID, store.MessageQuery{RunID: runID})
 	if err != nil {
 		return fmt.Errorf("list messages: %w", err)
 	}
-	uses, err := st.ListToolUses(ctx, sessionID)
+	uses, err := st.ListRunToolUses(ctx, sessionID, runID)
 	if err != nil {
 		return fmt.Errorf("list tool uses: %w", err)
 	}

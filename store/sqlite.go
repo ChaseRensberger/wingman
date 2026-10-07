@@ -1720,6 +1720,11 @@ func listMessagePartsTx(ctx context.Context, tx *immediateTx, messageID string) 
 // Returns ErrSessionNotFound if the session does not exist.
 // Returns an empty slice (not nil) when the session has no messages.
 func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]StoredMessage, error) {
+	return s.QueryMessages(ctx, sessionID, MessageQuery{})
+}
+
+// QueryMessages reads a selected history range without loading excluded parts.
+func (s *SQLiteStore) QueryMessages(ctx context.Context, sessionID string, query MessageQuery) ([]StoredMessage, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
@@ -1733,12 +1738,28 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 		return nil, err
 	}
 
+	from := 0
+	if query.BoundaryPart != "" {
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(m.idx), 0) FROM messages m
+			WHERE m.session_id = ? AND m.state = 'completed'
+			AND EXISTS (SELECT 1 FROM parts p WHERE p.message_id = m.id AND p.kind = ?)`, sessionID, query.BoundaryPart).Scan(&from); err != nil {
+			return nil, err
+		}
+	}
+	where := `session_id = ? AND idx >= ?`
+	args := []any{sessionID, from}
+	for _, filter := range []struct{ column, value string }{{"run_id", query.RunID}, {"id", query.MessageID}, {"role", query.Role}, {"state", query.State}} {
+		if filter.value != "" {
+			where += " AND " + filter.column + " = ?"
+			args = append(args, filter.value)
+		}
+	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, session_id, COALESCE(run_id, ''), idx, role, revision, state, metadata_json, created_at, updated_at
 		FROM messages
-		WHERE session_id = ?
+		WHERE `+where+`
 		ORDER BY idx ASC
-	`, sessionID)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query messages: %w", err)
 	}
@@ -1773,9 +1794,9 @@ func (s *SQLiteStore) ListMessages(ctx context.Context, sessionID string) ([]Sto
 		SELECT p.id, p.message_id, p.idx, p.kind, p.payload_json, p.created_at, p.updated_at
 		FROM parts p
 		JOIN messages m ON p.message_id = m.id
-		WHERE m.session_id = ?
+		WHERE m.id IN (SELECT id FROM messages WHERE `+where+`)
 		ORDER BY p.message_id, p.idx ASC
-	`, sessionID)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query parts: %w", err)
 	}
@@ -1969,15 +1990,30 @@ func (s *SQLiteStore) LatestModelCall(ctx context.Context, sessionID string) (*M
 
 // ListModelCalls returns all model calls for the session in chronological order.
 func (s *SQLiteStore) ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error) {
+	return s.QueryModelCalls(ctx, sessionID, ModelCallQuery{})
+}
+
+// QueryModelCalls reads attempts for a run or an active message range.
+func (s *SQLiteStore) QueryModelCalls(ctx context.Context, sessionID string, query ModelCallQuery) ([]ModelCall, error) {
 	if err := s.sessionExists(ctx, sessionID); err != nil {
 		return nil, err
+	}
+	where := "session_id = ?"
+	args := []any{sessionID}
+	if query.RunID != "" {
+		where += " AND run_id = ?"
+		args = append(args, query.RunID)
+	}
+	if query.FromMessageIndex > 0 {
+		where += " AND assistant_message_id IN (SELECT id FROM messages WHERE session_id = ? AND idx >= ?)"
+		args = append(args, sessionID, query.FromMessageIndex)
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+modelCallColumns+`
 		FROM model_calls
-		WHERE session_id = ?
+		WHERE `+where+`
 		ORDER BY started_at ASC, id ASC
-	`, sessionID)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query model calls: %w", err)
 	}
@@ -2189,10 +2225,25 @@ func appendToolUseAggregateTx(ctx context.Context, tx *immediateTx, use ToolUse)
 
 // ListToolUses returns tool uses in their source order for a session.
 func (s *SQLiteStore) ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error) {
+	return s.listToolUses(ctx, sessionID, "")
+}
+
+// ListRunToolUses reads only tool uses owned by one run.
+func (s *SQLiteStore) ListRunToolUses(ctx context.Context, sessionID, runID string) ([]ToolUse, error) {
+	return s.listToolUses(ctx, sessionID, runID)
+}
+
+func (s *SQLiteStore) listToolUses(ctx context.Context, sessionID, runID string) ([]ToolUse, error) {
 	if err := s.sessionExists(ctx, sessionID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+toolUseColumns+` FROM tool_uses WHERE session_id = ? ORDER BY proposed_at, step, ordinal, id`, sessionID)
+	where := "session_id = ?"
+	args := []any{sessionID}
+	if runID != "" {
+		where += " AND run_id = ?"
+		args = append(args, runID)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+toolUseColumns+` FROM tool_uses WHERE `+where+` ORDER BY proposed_at, step, ordinal, id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query tool uses: %w", err)
 	}

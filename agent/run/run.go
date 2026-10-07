@@ -98,8 +98,15 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 	go func() {
 		defer r.eventWG.Done()
 		for ev := range r.eventCh {
+			var done chan struct{}
+			if delivery, ok := ev.(eventDelivery); ok {
+				ev, done = delivery.Event, delivery.done
+			}
 			if cfg.Sink != nil {
 				cfg.Sink.OnEvent(ev)
+			}
+			if done != nil {
+				close(done)
 			}
 		}
 	}()
@@ -131,6 +138,11 @@ type runner struct {
 	// during parallel tool execution; the drain serializes them.
 	eventCh chan Event
 	eventWG sync.WaitGroup
+}
+
+type eventDelivery struct {
+	Event
+	done chan struct{}
 }
 
 // run is the main loop body.
@@ -293,7 +305,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	if r.cfg.Hooks.TransformHistory != nil {
 		info := TransformHistoryInfo{
 			Step: step, Messages: r.messages, Usage: r.usage, Client: r.cfg.Client,
-			Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo, Request: req, Sink: SinkFunc(r.emit),
+			Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo, Request: req, Sink: SinkFunc(r.emitHistoryEvent),
 		}
 		newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
 		if err != nil {
@@ -308,6 +320,9 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 	}
 
+	if r.cfg.ContextBoundary != "" {
+		r.messages = ActiveHistory(r.messages, r.cfg.ContextBoundary)
+	}
 	msgs := r.messages
 	if r.cfg.Hooks.TransformContext != nil {
 		info := TransformContextInfo{Step: step, Messages: append([]models.Message(nil), msgs...), Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo}
@@ -1520,6 +1535,18 @@ func (r *runner) runAfterToolCallResult(ctx context.Context, call ToolCall, res 
 // determined by channel send order.
 func (r *runner) emit(e Event) {
 	r.eventCh <- e
+}
+
+func (r *runner) emitHistoryEvent(e Event) {
+	if _, ok := e.(MessageEvent); !ok {
+		r.emit(e)
+		return
+	}
+	// A history boundary must receive its durable index before the next
+	// synchronous assistant checkpoint can allocate one.
+	done := make(chan struct{})
+	r.eventCh <- eventDelivery{Event: e, done: done}
+	<-done
 }
 
 // emitError emits an ErrorEvent. Convenience over emit so the call sites

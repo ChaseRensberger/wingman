@@ -1336,6 +1336,11 @@ func (s *Store) applyMessageSnapshotLocked(message store.StoredMessage) {
 }
 
 func (s *Store) ListMessages(ctx context.Context, sessionID string) ([]store.StoredMessage, error) {
+	return s.QueryMessages(ctx, sessionID, store.MessageQuery{})
+}
+
+// QueryMessages reads a selected history range without loading excluded parts.
+func (s *Store) QueryMessages(ctx context.Context, sessionID string, query store.MessageQuery) ([]store.StoredMessage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1343,9 +1348,18 @@ func (s *Store) ListMessages(ctx context.Context, sessionID string) ([]store.Sto
 		return nil, store.ErrSessionNotFound
 	}
 
+	from := 0
+	if query.BoundaryPart != "" {
+		for _, part := range s.parts {
+			msg := s.messages[part.MessageID]
+			if msg != nil && msg.SessionID == sessionID && msg.State == "completed" && part.Kind == query.BoundaryPart && msg.Idx > from {
+				from = msg.Idx
+			}
+		}
+	}
 	var msgs []store.StoredMessage
 	for _, msg := range s.messages {
-		if msg.SessionID == sessionID {
+		if msg.SessionID == sessionID && msg.Idx >= from && (query.RunID == "" || msg.RunID == query.RunID) && (query.MessageID == "" || msg.ID == query.MessageID) && (query.Role == "" || msg.Role == query.Role) && (query.State == "" || msg.State == query.State) {
 			msgs = append(msgs, copyMessage(msg))
 		}
 	}
@@ -1466,6 +1480,11 @@ func (s *Store) LatestModelCall(ctx context.Context, sessionID string) (*store.M
 }
 
 func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.ModelCall, error) {
+	return s.QueryModelCalls(ctx, sessionID, store.ModelCallQuery{})
+}
+
+// QueryModelCalls reads attempts for a run or an active message range.
+func (s *Store) QueryModelCalls(ctx context.Context, sessionID string, query store.ModelCallQuery) ([]store.ModelCall, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1474,7 +1493,13 @@ func (s *Store) ListModelCalls(ctx context.Context, sessionID string) ([]store.M
 	}
 	var out []store.ModelCall
 	for _, call := range s.modelCalls {
-		if call.SessionID == sessionID {
+		if query.FromMessageIndex > 0 {
+			msg := s.messages[call.AssistantMessageID]
+			if msg == nil || msg.SessionID != sessionID || msg.Idx < query.FromMessageIndex {
+				continue
+			}
+		}
+		if call.SessionID == sessionID && (query.RunID == "" || call.RunID == query.RunID) {
 			out = append(out, copyModelCall(call))
 		}
 	}
@@ -1963,6 +1988,15 @@ func (s *Store) appendToolUseAggregateLocked(use store.ToolUse) error {
 }
 
 func (s *Store) ListToolUses(ctx context.Context, sessionID string) ([]store.ToolUse, error) {
+	return s.listToolUses(ctx, sessionID, "")
+}
+
+// ListRunToolUses reads only tool uses owned by one run.
+func (s *Store) ListRunToolUses(ctx context.Context, sessionID, runID string) ([]store.ToolUse, error) {
+	return s.listToolUses(ctx, sessionID, runID)
+}
+
+func (s *Store) listToolUses(ctx context.Context, sessionID, runID string) ([]store.ToolUse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if _, ok := s.sessions[sessionID]; !ok {
@@ -1970,7 +2004,7 @@ func (s *Store) ListToolUses(ctx context.Context, sessionID string) ([]store.Too
 	}
 	out := []store.ToolUse{}
 	for _, use := range s.toolUses {
-		if use.SessionID == sessionID {
+		if use.SessionID == sessionID && (runID == "" || use.RunID == runID) {
 			out = append(out, copyToolUse(use))
 		}
 	}
