@@ -406,10 +406,10 @@ type Hooks struct {
 	// subsequent turns. Request contains the assembled model-facing view
 	// before this transform, so compaction and budget enforcement can
 	// account for system text, tools, schemas, and output limits. Returning
-	// the input slice unchanged is a no-op.
+	// nil leaves history unchanged; a non-nil empty slice clears it.
 	//
-	// If the returned slice's length differs from the input, the loop
-	// emits a ContextTransformedEvent so observers can react.
+	// If the returned history differs from the input, the loop emits a
+	// ContextTransformedEvent, even when the message count is unchanged.
 	//
 	// Errors fail the run.
 	TransformHistory TransformHistoryHook
@@ -818,16 +818,14 @@ type StructuredOutputEvent struct {
 	Parsed  map[string]any // parsed + schema-validated JSON
 }
 
-// ContextTransformedEvent fires when a hook (TransformHistory or
-// TransformContext) replaced the message slice with one of a different
-// length. Phase is "before_step" (mutation persisted into running
-// history by TransformHistory) or "transform_context" (mutation ephemeral, applied only to
-// this turn's request). Head is the first message of the post-hook
-// slice when len > 0, nil otherwise; observers wanting to discriminate
-// between hook kinds inspect Head's part type discriminators (e.g. a
-// part with Type() == "compaction_marker" identifies a compaction-
-// driven mutation). The loop never imports plugin types — it only
-// surfaces the message and lets observers introspect.
+// ContextTransformedEvent fires when TransformHistory changes history or
+// TransformContext changes the message count. Phase is "before_step" for
+// TransformHistory, which updates running history, or "transform_context" for
+// TransformContext, which affects only this turn's request. Head is the first
+// changed message for TransformHistory, falling back to the first remaining
+// message, or the first post-hook message for TransformContext. It is nil for
+// empty history. Observers can inspect Head's part types to identify the
+// transform (e.g. "compaction_marker"). The loop does not import plugin types.
 type ContextTransformedEvent struct {
 	Step          int
 	Phase         string // "before_step" | "transform_context"

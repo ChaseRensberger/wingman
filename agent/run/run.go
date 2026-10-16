@@ -311,12 +311,13 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		if err != nil {
 			return Turn{}, fmt.Errorf("hook TransformHistory: %w", err)
 		}
-		if newMsgs != nil && len(newMsgs) != len(r.messages) {
-			orig := len(r.messages)
-			head := firstChangedMessage(r.messages, newMsgs)
+		if newMsgs != nil {
+			original := r.messages
 			r.messages = newMsgs
-			r.emit(ContextTransformedEvent{Step: step, Phase: "before_step", OriginalCount: orig, NewCount: len(newMsgs), Head: head})
-
+			if !reflect.DeepEqual(original, newMsgs) {
+				head := firstChangedMessage(original, newMsgs)
+				r.emit(ContextTransformedEvent{Step: step, Phase: "before_step", OriginalCount: len(original), NewCount: len(newMsgs), Head: head})
+			}
 		}
 	}
 
