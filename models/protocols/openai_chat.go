@@ -3,6 +3,7 @@ package protocols
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/chaserensberger/wingman/models"
@@ -165,12 +166,21 @@ func (p *chatParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		if choice.Usage != nil && !choice.Usage.usage().Empty() {
 			p.usage = choice.Usage.usage()
 		}
-		p.textDelta("text-0", choice.Delta.Content)
-		p.reasoningDelta("reasoning-0", choice.Delta.Reasoning)
+		if choice.Delta.Reasoning != "" {
+			p.reasoningDelta(p.segment("reasoning"), choice.Delta.Reasoning)
+		}
+		if choice.Delta.Content != "" {
+			p.textDelta(p.segment("text"), choice.Delta.Content)
+		}
 		for _, call := range choice.Delta.ToolCalls {
 			if call.Index == nil || *call.Index < 0 {
 				return p.parts, p.invalid("invalid Chat tool call index", nil)
 			}
+		}
+		sort.SliceStable(choice.Delta.ToolCalls, func(i, j int) bool {
+			return *choice.Delta.ToolCalls[i].Index < *choice.Delta.ToolCalls[j].Index
+		})
+		for _, call := range choice.Delta.ToolCalls {
 			acc := p.calls[*call.Index]
 			if acc == nil {
 				acc = &chatCall{}
@@ -182,16 +192,21 @@ func (p *chatParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 			if call.Function.Name != "" {
 				acc.name = call.Function.Name
 			}
+			if !acc.started && acc.id != "" {
+				p.toolStart(acc.id, acc.name, nil)
+				acc.started = true
+			}
 			if fragment := call.Function.Arguments; fragment != "" {
 				if !acc.started {
-					p.emit(models.ToolInputStartPart{ID: acc.id, ToolName: acc.name})
+					p.toolStart(acc.id, acc.name, nil)
 					acc.started = true
 				}
 				acc.args.WriteString(fragment)
-				p.emit(models.ToolInputDeltaPart{ID: acc.id, Delta: fragment})
+				p.toolDelta(acc.id, fragment)
 			}
 		}
 		if choice.FinishReason != "" {
+			var ordered []*contentBlock
 			for index := 0; len(p.calls) > 0; index++ {
 				acc := p.calls[index]
 				if acc == nil {
@@ -202,7 +217,17 @@ func (p *chatParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 					return p.parts, p.invalid("invalid tool arguments", err)
 				}
 				p.tool(models.ToolCallPart{CallID: acc.id, Name: acc.name, Input: input}, acc.args.String(), acc.started)
+				ordered = append(ordered, p.blockByID["tool:"+acc.id])
 				delete(p.calls, index)
+			}
+			// Tool deltas can arrive out of index order. Keep their native order
+			// without moving the surrounding text and reasoning blocks.
+			next := 0
+			for i, block := range p.blocks {
+				if block.kind == "tool" && next < len(ordered) {
+					p.blocks[i] = ordered[next]
+					next++
+				}
 			}
 			switch choice.FinishReason {
 			case "stop":

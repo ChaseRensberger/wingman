@@ -80,12 +80,19 @@ func anthropicBlocks(content models.Content) []any {
 	for _, part := range content {
 		switch p := part.(type) {
 		case models.TextPart:
+			if strings.TrimSpace(p.Text) == "" {
+				continue
+			}
 			out = append(out, map[string]any{"type": "text", "text": p.Text})
 		case models.ImagePart:
 			if p.Base64 != "" {
 				out = append(out, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": imageMediaType(p), "data": p.Base64}})
 			}
 		case models.ReasoningPart:
+			if metadata, _ := p.ProviderMetadata["anthropic"].(map[string]any); metadata["redacted_data"] != nil {
+				out = append(out, map[string]any{"type": "redacted_thinking", "data": metadata["redacted_data"]})
+				continue
+			}
 			out = append(out, map[string]any{"type": "thinking", "thinking": p.Reasoning, "signature": p.Encrypted})
 		case models.ToolCallPart:
 			out = append(out, map[string]any{"type": "tool_use", "id": p.CallID, "name": p.Name, "input": p.Input})
@@ -125,12 +132,14 @@ type anthropicEvent struct {
 	} `json:"message"`
 	Usage        anthropicUsage `json:"usage"`
 	ContentBlock struct {
-		Type     string         `json:"type"`
-		ID       string         `json:"id"`
-		Name     string         `json:"name"`
-		Input    map[string]any `json:"input"`
-		Text     string         `json:"text"`
-		Thinking string         `json:"thinking"`
+		Type      string         `json:"type"`
+		ID        string         `json:"id"`
+		Name      string         `json:"name"`
+		Input     map[string]any `json:"input"`
+		Text      string         `json:"text"`
+		Thinking  string         `json:"thinking"`
+		Signature string         `json:"signature"`
+		Data      string         `json:"data"`
 	} `json:"content_block"`
 	Delta struct {
 		Type        string `json:"type"`
@@ -179,17 +188,31 @@ func (p *anthropicParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		p.updateUsage(event.Message.Usage)
 	case "content_block_start":
 		block := event.ContentBlock
+		switch block.Type {
+		case "text":
+			p.block("text", fmt.Sprintf("text-%d", event.Index))
+		case "thinking":
+			id := fmt.Sprintf("reasoning-%d", event.Index)
+			p.block("reasoning", id)
+			if block.Signature != "" {
+				p.reasoningState(id, block.Signature, nil)
+			}
+		case "redacted_thinking":
+			p.reasoningState(fmt.Sprintf("reasoning-%d", event.Index), "", models.Meta{"anthropic": map[string]any{"redacted_data": block.Data}})
+		}
 		p.textDelta(fmt.Sprintf("text-%d", event.Index), block.Text)
 		p.reasoningDelta(fmt.Sprintf("reasoning-%d", event.Index), block.Thinking)
 		if block.Type == "tool_use" {
 			p.calls[event.Index] = &anthropicCall{id: block.ID, name: block.Name, input: block.Input}
-			p.emit(models.ToolInputStartPart{ID: block.ID, ToolName: block.Name})
+			p.toolStart(block.ID, block.Name, nil)
 		}
 	case "content_block_delta":
 		p.textDelta(fmt.Sprintf("text-%d", event.Index), event.Delta.Text)
 		p.reasoningDelta(fmt.Sprintf("reasoning-%d", event.Index), event.Delta.Thinking)
 		if event.Delta.Signature != "" {
-			p.encrypted += event.Delta.Signature
+			id := fmt.Sprintf("reasoning-%d", event.Index)
+			block := p.block("reasoning", id)
+			p.reasoningState(id, block.encrypted+event.Delta.Signature, block.metadata)
 		}
 		if event.Delta.Type == "input_json_delta" {
 			acc := p.calls[event.Index]
@@ -197,9 +220,11 @@ func (p *anthropicParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 				return p.parts, p.invalid("tool argument delta without a tool block", nil)
 			}
 			acc.args.WriteString(event.Delta.PartialJSON)
-			p.emit(models.ToolInputDeltaPart{ID: acc.id, Delta: event.Delta.PartialJSON})
+			p.toolDelta(acc.id, event.Delta.PartialJSON)
 		}
 	case "content_block_stop":
+		p.endBlock("text", fmt.Sprintf("text-%d", event.Index))
+		p.endBlock("reasoning", fmt.Sprintf("reasoning-%d", event.Index))
 		if acc := p.calls[event.Index]; acc != nil {
 			input := acc.input
 			if acc.args.Len() > 0 || input == nil {

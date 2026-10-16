@@ -62,12 +62,14 @@ type ReasoningStartPart struct {
 type ReasoningDeltaPart struct {
 	ID               string `json:"id"`
 	Delta            string `json:"delta"`
+	Encrypted        string `json:"encrypted,omitempty"`
 	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 
 // ReasoningEndPart ends a reasoning block.
 type ReasoningEndPart struct {
 	ID               string `json:"id"`
+	Encrypted        string `json:"encrypted,omitempty"`
 	ProviderMetadata Meta   `json:"provider_metadata,omitempty"`
 }
 

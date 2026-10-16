@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -156,6 +157,37 @@ func TestMessageCheckpointRetainsPartialAssistantOnStreamError(t *testing.T) {
 	text, ok := message.Content[0].(models.TextPart)
 	if !ok || text.Text != "partial" || text.ID != "part_1" || message.ID != "message_1" || message.State != models.MessageStateFailed {
 		t.Fatalf("partial assistant = %#v", message)
+	}
+}
+
+func TestStreamBlocksRetainMetadataAndSignatures(t *testing.T) {
+	metadata := models.Meta{"google": map[string]any{"thought_signature": "signature"}}
+	message := models.Message{}
+	indexes := map[string]int{}
+	for _, part := range []models.StreamPart{
+		models.TextStartPart{ID: "text", ProviderMetadata: metadata},
+		models.TextDeltaPart{ID: "text", Delta: "answer"},
+		models.TextEndPart{ID: "text"},
+		models.ReasoningStartPart{ID: "reasoning"},
+		models.ReasoningDeltaPart{ID: "reasoning", Encrypted: "encrypted", ProviderMetadata: metadata},
+		models.ReasoningDeltaPart{ID: "reasoning", Delta: "think"},
+		models.ReasoningEndPart{ID: "reasoning"},
+		models.ReasoningStartPart{ID: "empty"},
+		models.ReasoningEndPart{ID: "empty", Encrypted: "empty-signature", ProviderMetadata: metadata},
+		models.ToolInputStartPart{ID: "call", ToolName: "lookup", ProviderMetadata: metadata},
+		models.ToolInputDeltaPart{ID: "call", Delta: "{}"},
+		models.ToolInputEndPart{ID: "call"},
+	} {
+		applyStreamPart(&message, indexes, part)
+	}
+	want := models.Content{
+		models.TextPart{Text: "answer", ProviderMetadata: metadata},
+		models.ReasoningPart{Reasoning: "think", Encrypted: "encrypted", ProviderMetadata: metadata},
+		models.ReasoningPart{Encrypted: "empty-signature", ProviderMetadata: metadata},
+		models.ToolPart{Name: "lookup", State: models.ToolStatePending, Input: map[string]any{}, InputRaw: "{}", ProviderMetadata: metadata},
+	}
+	if !reflect.DeepEqual(message.Content, want) {
+		t.Fatalf("streamed content = %#v", message.Content)
 	}
 }
 

@@ -29,7 +29,9 @@ func (Gemini) Body(info models.ModelInfo, req models.Request) (map[string]any, e
 		for _, part := range msg.Content {
 			switch p := part.(type) {
 			case models.TextPart:
-				parts = append(parts, map[string]any{"text": p.Text})
+				block := map[string]any{"text": p.Text}
+				addGeminiSignature(block, p.ProviderMetadata)
+				parts = append(parts, block)
 			case models.ImagePart:
 				if p.Base64 != "" {
 					parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": imageMediaType(p), "data": p.Base64}})
@@ -37,7 +39,9 @@ func (Gemini) Body(info models.ModelInfo, req models.Request) (map[string]any, e
 			case models.ReasoningPart:
 				parts = append(parts, map[string]any{"text": p.Reasoning, "thought": true, "thoughtSignature": p.Encrypted})
 			case models.ToolCallPart:
-				parts = append(parts, map[string]any{"functionCall": map[string]any{"name": p.Name, "args": p.Input}})
+				block := map[string]any{"functionCall": map[string]any{"name": p.Name, "args": p.Input}}
+				addGeminiSignature(block, p.ProviderMetadata)
+				parts = append(parts, block)
 			case models.ToolResultPart:
 				name := p.Name
 				if name == "" {
@@ -161,20 +165,43 @@ func (p *geminiParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 	}
 	choice := event.Candidates[0]
 	for _, part := range choice.Content.Parts {
+		var metadata models.Meta
 		if part.Signature != "" {
-			p.encrypted = part.Signature
-			p.reasonMetadata = models.Meta{"google": map[string]any{"thought_signature": part.Signature}}
-		}
-		if part.Thought {
-			p.reasoningDelta("reasoning-0", part.Text)
-		} else {
-			p.textDelta("text-0", part.Text)
+			metadata = models.Meta{"google": map[string]any{"thought_signature": part.Signature}}
 		}
 		if call := part.FunctionCall; call != nil {
 			if call.Args == nil {
 				return p.parts, p.invalid("invalid Gemini function arguments", nil)
 			}
-			p.tool(models.ToolCallPart{CallID: fmt.Sprintf("call_%d", len(p.tools)+1), Name: call.Name, Input: call.Args}, encodeJSON(call.Args), false)
+			p.tool(models.ToolCallPart{CallID: fmt.Sprintf("call_%d", len(p.tools)+1), Name: call.Name, Input: call.Args, ProviderMetadata: metadata}, encodeJSON(call.Args), false)
+		} else if part.Text != "" || part.Signature != "" {
+			kind := "text"
+			if part.Thought {
+				kind = "reasoning"
+			}
+			// Signed parts must be replayed separately from adjacent parts.
+			if part.Signature != "" && len(p.blocks) > 0 {
+				last := p.blocks[len(p.blocks)-1]
+				if last.kind != "tool" {
+					p.endBlock(last.kind, last.id)
+				}
+			}
+			id := p.segment(kind)
+			if part.Thought {
+				p.reasoningDelta(id, part.Text)
+				if metadata != nil {
+					p.reasoningState(id, part.Signature, metadata)
+				}
+			} else {
+				p.textDelta(id, part.Text)
+				if metadata != nil {
+					p.block("text", id).metadata = metadata
+					p.emit(models.TextDeltaPart{ID: id, ProviderMetadata: metadata})
+				}
+			}
+			if part.Signature != "" {
+				p.endBlock(kind, id)
+			}
 		}
 	}
 	if choice.FinishReason != "" {
@@ -197,4 +224,11 @@ func (p *geminiParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		p.complete(reason)
 	}
 	return p.parts, nil
+}
+
+func addGeminiSignature(block map[string]any, metadata models.Meta) {
+	google, _ := metadata["google"].(map[string]any)
+	if signature, _ := google["thought_signature"].(string); signature != "" {
+		block["thoughtSignature"] = signature
+	}
 }

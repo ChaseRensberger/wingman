@@ -10,29 +10,40 @@ import (
 )
 
 type state struct {
-	info           models.ModelInfo
-	text           strings.Builder
-	reason         strings.Builder
-	textID         string
-	reasonID       string
-	encrypted      string
-	reasonMetadata models.Meta
-	tools          []models.ToolCallPart
-	usage          models.Usage
-	finish         models.FinishReason
-	parts          []models.StreamPart
+	info      models.ModelInfo
+	blocks    []*contentBlock
+	blockByID map[string]*contentBlock
+	tools     []models.ToolCallPart
+	usage     models.Usage
+	finish    models.FinishReason
+	parts     []models.StreamPart
+}
+
+type contentBlock struct {
+	id, kind  string
+	text      strings.Builder
+	encrypted string
+	metadata  models.Meta
+	call      models.ToolCallPart
+	raw       strings.Builder
+	closed    bool
 }
 
 func (s *state) Message() *models.Message {
 	content := models.Content{}
-	if s.text.Len() > 0 {
-		content = append(content, models.TextPart{Text: s.text.String()})
-	}
-	if s.reason.Len() > 0 || s.encrypted != "" {
-		content = append(content, models.ReasoningPart{Reasoning: s.reason.String(), Encrypted: s.encrypted, ProviderMetadata: s.reasonMetadata})
-	}
-	for _, call := range s.tools {
-		content = append(content, call)
+	for _, block := range s.blocks {
+		switch block.kind {
+		case "text":
+			content = append(content, models.TextPart{Text: block.text.String(), ProviderMetadata: block.metadata})
+		case "reasoning":
+			content = append(content, models.ReasoningPart{Reasoning: block.text.String(), Encrypted: block.encrypted, ProviderMetadata: block.metadata})
+		case "tool":
+			if block.closed {
+				content = append(content, block.call)
+			} else {
+				content = append(content, models.ToolPart{CallID: block.id, Name: block.call.Name, State: models.ToolStatePending, InputRaw: block.raw.String(), ProviderMetadata: block.metadata})
+			}
+		}
 	}
 	msg := &models.Message{Role: models.RoleAssistant, Content: content, FinishReason: s.finish, Origin: &models.MessageOrigin{Provider: s.info.Provider, API: s.info.API, ModelID: s.info.ID}}
 	if !s.usage.Empty() {
@@ -44,44 +55,110 @@ func (s *state) Message() *models.Message {
 
 func (s *state) End() ([]models.StreamPart, error) { return nil, nil }
 func (s *state) emit(part models.StreamPart)       { s.parts = append(s.parts, part) }
+
+func (s *state) block(kind, id string) *contentBlock {
+	key := kind + ":" + id
+	if block := s.blockByID[key]; block != nil {
+		return block
+	}
+	if s.blockByID == nil {
+		s.blockByID = make(map[string]*contentBlock)
+	}
+	block := &contentBlock{id: id, kind: kind}
+	s.blockByID[key] = block
+	s.blocks = append(s.blocks, block)
+	switch kind {
+	case "text":
+		s.emit(models.TextStartPart{ID: id})
+	case "reasoning":
+		s.emit(models.ReasoningStartPart{ID: id})
+	}
+	return block
+}
+
 func (s *state) textDelta(id, text string) {
 	if text == "" {
 		return
 	}
-	if s.text.Len() == 0 {
-		s.textID = id
-		s.emit(models.TextStartPart{ID: id})
-	}
-	s.text.WriteString(text)
+	s.block("text", id).text.WriteString(text)
 	s.emit(models.TextDeltaPart{ID: id, Delta: text})
 }
 func (s *state) reasoningDelta(id, text string) {
 	if text == "" {
 		return
 	}
-	if s.reason.Len() == 0 {
-		s.reasonID = id
-		s.emit(models.ReasoningStartPart{ID: id})
-	}
-	s.reason.WriteString(text)
+	s.block("reasoning", id).text.WriteString(text)
 	s.emit(models.ReasoningDeltaPart{ID: id, Delta: text})
 }
+
+func (s *state) reasoningState(id, encrypted string, metadata models.Meta) {
+	block := s.block("reasoning", id)
+	block.encrypted, block.metadata = encrypted, metadata
+	s.emit(models.ReasoningDeltaPart{ID: id, Encrypted: encrypted, ProviderMetadata: metadata})
+}
+
+// segment joins consecutive chunks when the protocol has no text block IDs.
+func (s *state) segment(kind string) string {
+	if n := len(s.blocks); n > 0 {
+		last := s.blocks[n-1]
+		if last.kind == kind && !last.closed {
+			return last.id
+		}
+		if last.kind != "tool" {
+			s.endBlock(last.kind, last.id)
+		}
+	}
+	id := fmt.Sprintf("%s-%d", kind, len(s.blocks))
+	s.block(kind, id)
+	return id
+}
+
+func (s *state) toolStart(id, name string, metadata models.Meta) {
+	if s.blockByID["tool:"+id] != nil {
+		return
+	}
+	block := s.block("tool", id)
+	block.call = models.ToolCallPart{CallID: id, Name: name, ProviderMetadata: metadata}
+	block.metadata = metadata
+	s.emit(models.ToolInputStartPart{ID: id, ToolName: name, ProviderMetadata: metadata})
+}
+
+func (s *state) toolDelta(id, raw string) {
+	s.block("tool", id).raw.WriteString(raw)
+	s.emit(models.ToolInputDeltaPart{ID: id, Delta: raw})
+}
+
 func (s *state) tool(call models.ToolCallPart, raw string, started bool) {
 	if !started {
-		s.emit(models.ToolInputStartPart{ID: call.CallID, ToolName: call.Name})
-		s.emit(models.ToolInputDeltaPart{ID: call.CallID, Delta: raw})
+		s.toolStart(call.CallID, call.Name, call.ProviderMetadata)
+		s.toolDelta(call.CallID, raw)
 	}
+	block := s.block("tool", call.CallID)
+	block.call, block.closed = call, true
 	s.tools = append(s.tools, call)
-	s.emit(models.ToolInputEndPart{ID: call.CallID})
-	s.emit(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input})
+	s.emit(models.ToolInputEndPart{ID: call.CallID, ProviderMetadata: call.ProviderMetadata})
+	s.emit(models.ToolCallPart_{ID: call.CallID, ToolName: call.Name, Input: call.Input, ProviderExecuted: call.ProviderExecuted, ProviderMetadata: call.ProviderMetadata})
+}
+
+func (s *state) endBlock(kind, id string) {
+	block := s.blockByID[kind+":"+id]
+	if block == nil || block.closed {
+		return
+	}
+	block.closed = true
+	switch kind {
+	case "text":
+		s.emit(models.TextEndPart{ID: id, ProviderMetadata: block.metadata})
+	case "reasoning":
+		s.emit(models.ReasoningEndPart{ID: id, Encrypted: block.encrypted, ProviderMetadata: block.metadata})
+	}
 }
 func (s *state) complete(reason models.FinishReason) {
 	s.finish = reason
-	if s.reason.Len() > 0 {
-		s.emit(models.ReasoningEndPart{ID: s.reasonID, ProviderMetadata: s.reasonMetadata})
-	}
-	if s.text.Len() > 0 {
-		s.emit(models.TextEndPart{ID: s.textID})
+	for _, block := range s.blocks {
+		if block.kind != "tool" {
+			s.endBlock(block.kind, block.id)
+		}
 	}
 	s.emit(models.FinishPart{Reason: reason, Usage: s.usage, Message: s.Message()})
 }

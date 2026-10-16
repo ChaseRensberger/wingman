@@ -1,6 +1,7 @@
 package protocols
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/chaserensberger/wingman/models"
@@ -41,11 +42,18 @@ func (Responses) Body(info models.ModelInfo, req models.Request) (map[string]any
 			input = append(input, map[string]any{"role": "user", "content": content})
 		case models.RoleAssistant:
 			texts := []any{}
+			flushText := func() {
+				if len(texts) > 0 {
+					input = append(input, map[string]any{"role": "assistant", "content": texts})
+					texts = nil
+				}
+			}
 			for _, part := range msg.Content {
 				switch p := part.(type) {
 				case models.TextPart:
 					texts = append(texts, map[string]any{"type": "output_text", "text": p.Text})
 				case models.ReasoningPart:
+					flushText()
 					metadata, _ := p.ProviderMetadata["openai"].(map[string]any)
 					if id, _ := metadata["item_id"].(string); id == "" || p.Encrypted == "" || metadata["reasoning_encrypted_content"] != p.Encrypted {
 						continue
@@ -55,14 +63,12 @@ func (Responses) Body(info models.ModelInfo, req models.Request) (map[string]any
 						summary = append(summary, map[string]any{"type": "summary_text", "text": p.Reasoning})
 					}
 					input = append(input, map[string]any{"type": "reasoning", "summary": summary, "encrypted_content": p.Encrypted})
+				case models.ToolCallPart:
+					flushText()
+					input = append(input, map[string]any{"type": "function_call", "call_id": p.CallID, "name": p.Name, "arguments": encodeJSON(p.Input)})
 				}
 			}
-			if len(texts) > 0 {
-				input = append(input, map[string]any{"role": "assistant", "content": texts})
-			}
-			for _, call := range toolCalls(msg.Content) {
-				input = append(input, map[string]any{"type": "function_call", "call_id": call.CallID, "name": call.Name, "arguments": encodeJSON(call.Input)})
-			}
+			flushText()
 		case models.RoleTool:
 			for _, result := range toolResults(msg.Content) {
 				input = append(input, map[string]any{"type": "function_call_output", "call_id": result.CallID, "output": toolResultText(result)})
@@ -102,18 +108,24 @@ func (Responses) Body(info models.ModelInfo, req models.Request) (map[string]any
 
 // NewParser creates isolated state for one Responses stream.
 func (Responses) NewParser(info models.ModelInfo) route.Parser {
-	return &responsesParser{state: state{info: info}, arguments: map[string]*strings.Builder{}}
+	return &responsesParser{state: state{info: info}, arguments: map[string]*strings.Builder{}, calls: map[string]string{}}
 }
 
 type responsesParser struct {
 	state
 	arguments map[string]*strings.Builder
+	calls     map[string]string
 }
 type responsesEvent struct {
-	Type   string `json:"type"`
-	Delta  string `json:"delta"`
-	ItemID string `json:"item_id"`
-	Item   struct {
+	Type         string `json:"type"`
+	Delta        string `json:"delta"`
+	ItemID       string `json:"item_id"`
+	ContentIndex int    `json:"content_index"`
+	Part         struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"part"`
+	Item struct {
 		Type             string `json:"type"`
 		ID               string `json:"id"`
 		CallID           string `json:"call_id"`
@@ -151,14 +163,29 @@ func (p *responsesParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 	switch event.Type {
 	case "response.failed", "error":
 		return nil, models.ClassifyProviderFailure(p.info.Provider, 0, frame.Data)
-	case "response.output_text.delta":
-		p.textDelta("text-0", event.Delta)
-	case "response.reasoning_text.delta", "response.reasoning_summary.delta", "response.reasoning_summary_text.delta":
-		id := event.ItemID
-		if id == "" {
-			id = "reasoning-0"
+	case "response.output_item.added":
+		switch item := event.Item; item.Type {
+		case "reasoning":
+			p.block("reasoning", responsesReasoningID(item.ID))
+		case "function_call":
+			p.calls[item.ID] = item.CallID
+			p.arguments[item.ID] = &strings.Builder{}
+			p.toolStart(item.CallID, item.Name, nil)
 		}
-		p.reasoningDelta(id, event.Delta)
+	case "response.content_part.added":
+		if event.Part.Type == "output_text" {
+			id := responsesTextID(event.ItemID, event.ContentIndex)
+			p.block("text", id)
+			p.textDelta(id, event.Part.Text)
+		}
+	case "response.output_text.delta":
+		p.textDelta(responsesTextID(event.ItemID, event.ContentIndex), event.Delta)
+	case "response.content_part.done":
+		if event.Part.Type == "output_text" {
+			p.endBlock("text", responsesTextID(event.ItemID, event.ContentIndex))
+		}
+	case "response.reasoning_text.delta", "response.reasoning_summary.delta", "response.reasoning_summary_text.delta":
+		p.reasoningDelta(responsesReasoningID(event.ItemID), event.Delta)
 	case "response.function_call_arguments.delta":
 		if event.ItemID == "" {
 			break
@@ -167,16 +194,15 @@ func (p *responsesParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 			p.arguments[event.ItemID] = &strings.Builder{}
 		}
 		p.arguments[event.ItemID].WriteString(event.Delta)
+		if callID, ok := p.calls[event.ItemID]; ok {
+			p.toolDelta(callID, event.Delta)
+		}
 	case "response.output_item.done":
 		item := event.Item
 		if item.Type == "reasoning" {
-			if item.ID != "" {
-				p.reasonID = item.ID
-			}
-			if item.EncryptedContent != "" {
-				p.encrypted = item.EncryptedContent
-			}
-			p.reasonMetadata = models.Meta{"openai": map[string]any{"item_id": p.reasonID, "reasoning_encrypted_content": p.encrypted}}
+			id := responsesReasoningID(item.ID)
+			p.reasoningState(id, item.EncryptedContent, models.Meta{"openai": map[string]any{"item_id": item.ID, "reasoning_encrypted_content": item.EncryptedContent}})
+			p.endBlock("reasoning", id)
 		}
 		if item.Type == "function_call" {
 			raw := item.Arguments
@@ -187,8 +213,13 @@ func (p *responsesParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 			if err != nil {
 				return p.parts, p.invalid("invalid tool arguments", err)
 			}
-			p.tool(models.ToolCallPart{CallID: item.CallID, Name: item.Name, Input: input}, raw, false)
+			_, started := p.calls[item.ID]
+			if started && p.arguments[item.ID].Len() == 0 && raw != "" {
+				p.toolDelta(item.CallID, raw)
+			}
+			p.tool(models.ToolCallPart{CallID: item.CallID, Name: item.Name, Input: input}, raw, started)
 			delete(p.arguments, item.ID)
+			delete(p.calls, item.ID)
 		}
 	case "response.completed", "response.incomplete":
 		usage := event.Response.Usage
@@ -212,4 +243,15 @@ func (p *responsesParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 		p.complete(reason)
 	}
 	return p.parts, nil
+}
+
+func responsesTextID(itemID string, index int) string {
+	return fmt.Sprintf("text-%s-%d", itemID, index)
+}
+
+func responsesReasoningID(itemID string) string {
+	if itemID == "" {
+		return "reasoning-0"
+	}
+	return itemID
 }

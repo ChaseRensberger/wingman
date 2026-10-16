@@ -749,12 +749,20 @@ func applyStreamPart(message *models.Message, indexes map[string]int, part model
 		}
 		text := message.Content[i].(models.TextPart)
 		text.Text += p.Delta
-		text.ProviderMetadata = p.ProviderMetadata
+		if p.ProviderMetadata != nil {
+			text.ProviderMetadata = p.ProviderMetadata
+		}
 		message.Content[i] = text
 	case models.TextEndPart:
-		if _, ok := indexes[id]; !ok {
+		i, ok := indexes[id]
+		if !ok {
 			return "", false
 		}
+		text := message.Content[i].(models.TextPart)
+		if p.ProviderMetadata != nil {
+			text.ProviderMetadata = p.ProviderMetadata
+		}
+		message.Content[i] = text
 	case models.ReasoningStartPart:
 		appendPart(models.ReasoningPart{Reasoning: "", ProviderMetadata: p.ProviderMetadata})
 	case models.ReasoningDeltaPart:
@@ -764,12 +772,26 @@ func applyStreamPart(message *models.Message, indexes map[string]int, part model
 		}
 		reasoning := message.Content[i].(models.ReasoningPart)
 		reasoning.Reasoning += p.Delta
-		reasoning.ProviderMetadata = p.ProviderMetadata
+		if p.Encrypted != "" {
+			reasoning.Encrypted = p.Encrypted
+		}
+		if p.ProviderMetadata != nil {
+			reasoning.ProviderMetadata = p.ProviderMetadata
+		}
 		message.Content[i] = reasoning
 	case models.ReasoningEndPart:
-		if _, ok := indexes[id]; !ok {
+		i, ok := indexes[id]
+		if !ok {
 			return "", false
 		}
+		reasoning := message.Content[i].(models.ReasoningPart)
+		if p.Encrypted != "" {
+			reasoning.Encrypted = p.Encrypted
+		}
+		if p.ProviderMetadata != nil {
+			reasoning.ProviderMetadata = p.ProviderMetadata
+		}
+		message.Content[i] = reasoning
 	case models.ToolInputStartPart:
 		appendPart(models.ToolPart{Name: p.ToolName, State: models.ToolStatePending, Input: map[string]any{}, ProviderMetadata: p.ProviderMetadata})
 	case models.ToolInputDeltaPart:
@@ -779,12 +801,20 @@ func applyStreamPart(message *models.Message, indexes map[string]int, part model
 		}
 		toolPart := message.Content[i].(models.ToolPart)
 		toolPart.InputRaw += p.Delta
-		toolPart.ProviderMetadata = p.ProviderMetadata
+		if p.ProviderMetadata != nil {
+			toolPart.ProviderMetadata = p.ProviderMetadata
+		}
 		message.Content[i] = toolPart
 	case models.ToolInputEndPart:
-		if _, ok := indexes[id]; !ok {
+		i, ok := indexes[id]
+		if !ok {
 			return "", false
 		}
+		toolPart := message.Content[i].(models.ToolPart)
+		if p.ProviderMetadata != nil {
+			toolPart.ProviderMetadata = p.ProviderMetadata
+		}
+		message.Content[i] = toolPart
 	case models.ToolCallPart_:
 		i, ok := indexes[id]
 		if !ok {
