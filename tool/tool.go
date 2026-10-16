@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/chaserensberger/wingman/models"
@@ -55,36 +56,60 @@ type Result struct {
 // Progress is the callback a tool may use to stream intermediate output
 // and JSON-serializable metadata updates during execution.
 type Progress struct {
-	report func(delta string, metadata map[string]any)
+	report         func(delta string, metadata map[string]any)
+	mu             sync.Mutex
+	bytes, updates int
+	truncated      bool
 }
 
-// NewProgress returns a Progress that delegates to the supplied callback.
+// NewProgress returns a Progress with a 50 KiB and 256-update budget.
+// Metadata is limited to 4 KiB per update and shares the byte budget.
 // Nil callbacks are no-ops.
 func NewProgress(report func(delta string, metadata map[string]any)) *Progress {
 	return &Progress{report: report}
 }
 
-// Report emits an output delta and/or metadata update. Safe to call from
-// any goroutine; nil receivers are no-ops.
+// Report emits bounded output and metadata updates; excess progress is marked and omitted.
+// It is safe to call from any goroutine; nil receivers are no-ops.
 func (p *Progress) Report(delta string, metadata map[string]any) {
-	if p != nil && p.report != nil {
-		p.report(delta, cloneProgressMetadata(metadata))
+	if p == nil || p.report == nil {
+		return
 	}
-}
-
-func cloneProgressMetadata(metadata map[string]any) map[string]any {
-	if metadata == nil {
-		return nil
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.truncated {
+		return
 	}
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		return nil
+	remaining := MaxOutputBytes - p.bytes
+	clipped := p.updates >= 256 || len(delta) > remaining
+	if p.updates >= 256 {
+		delta = ""
+	} else {
+		if len(delta) > remaining {
+			delta = validPrefix(delta[:remaining])
+		}
+		delta = strings.Clone(delta)
 	}
-	var cloned map[string]any
-	if err := json.Unmarshal(data, &cloned); err != nil {
-		return nil
+	remaining -= len(delta)
+	var snapshot map[string]any
+	if metadata != nil {
+		data, err := json.Marshal(metadata)
+		if err == nil && len(data) <= min(4096, remaining) && p.updates < 256 {
+			_ = json.Unmarshal(data, &snapshot)
+			p.bytes += len(data)
+		} else {
+			clipped = true
+		}
 	}
-	return cloned
+	p.bytes += len(delta)
+	p.updates++
+	if delta != "" || snapshot != nil {
+		p.report(delta, snapshot)
+	}
+	if clipped {
+		p.truncated = true
+		p.report("\n[Progress truncated; see the final tool result.]", map[string]any{"progress_truncated": true})
+	}
 }
 
 // Invocation carries everything a tool needs to execute a single call.

@@ -50,12 +50,6 @@ func (t *GrepTool) Definition() Definition {
 	}
 }
 
-type grepMatch struct {
-	File    string
-	Line    int
-	Content string
-}
-
 func (t *GrepTool) DirectoryScoped() {}
 
 func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
@@ -87,7 +81,16 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		includePattern = include
 	}
 
-	var matches []grepMatch
+	output := &outputCollector{inv: inv}
+	matches := 0
+	search := func(path string) error {
+		rel, _ := filepath.Rel(inv.WorkDir, path)
+		return searchFile(ctx, path, re, func(line int, text string) error {
+			matches++
+			_, err := fmt.Fprintf(output, "%s:%d: %s\n", rel, line, strings.TrimSpace(text))
+			return err
+		})
+	}
 
 	info, err := os.Stat(searchPath)
 	if err != nil {
@@ -95,90 +98,66 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	}
 
 	if info.IsDir() {
-		err = filepath.WalkDir(searchPath, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				if shouldSkipDir(d.Name()) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
+		err = walkFiles(ctx, searchPath, shouldSkipDir, func(path string) error {
 			if includePattern != "" {
-				matched, _ := filepath.Match(includePattern, d.Name())
+				matched, _ := filepath.Match(includePattern, filepath.Base(path))
 				if !matched {
 					return nil
 				}
 			}
 
-			if !isTextFile(d.Name()) {
+			if !isTextFile(filepath.Base(path)) {
 				return nil
 			}
 
-			fileMatches, err := searchFile(path, re)
-			if err != nil {
+			err := search(path)
+			// Tree searches skip unreadable files, but must surface output and cancellation failures.
+			if output.err == nil && ctx.Err() == nil {
 				return nil
 			}
-
-			relPath, _ := filepath.Rel(inv.WorkDir, path)
-			for i := range fileMatches {
-				fileMatches[i].File = relPath
-			}
-			matches = append(matches, fileMatches...)
-			return nil
+			return err
 		})
-		if err != nil {
-			return Result{}, fmt.Errorf("failed to walk directory: %w", err)
-		}
 	} else {
-		fileMatches, err := searchFile(searchPath, re)
-		if err != nil {
-			return Result{}, fmt.Errorf("failed to search file: %w", err)
-		}
-		relPath, _ := filepath.Rel(inv.WorkDir, searchPath)
-		for i := range fileMatches {
-			fileMatches[i].File = relPath
-		}
-		matches = fileMatches
+		err = search(searchPath)
 	}
-
-	if len(matches) == 0 {
+	result, outputErr := output.finish(map[string]any{"matches": matches})
+	if err != nil {
+		return result, err
+	}
+	if outputErr != nil {
+		return result, outputErr
+	}
+	if matches == 0 {
 		return Result{Text: "No matches found for pattern: " + pattern, Metadata: map[string]any{"matches": 0}}, nil
 	}
 
-	var result strings.Builder
-	for _, m := range matches {
-		result.WriteString(fmt.Sprintf("%s:%d: %s\n", m.File, m.Line, strings.TrimSpace(m.Content)))
-	}
-
-	return Result{Text: result.String(), Metadata: map[string]any{"matches": len(matches)}}, nil
+	return result, nil
 }
 
-func searchFile(path string, re *regexp.Regexp) ([]grepMatch, error) {
+func searchFile(ctx context.Context, path string, re *regexp.Regexp, match func(int, string) error) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
-	var matches []grepMatch
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		lineNum++
 		line := scanner.Text()
 		if re.MatchString(line) {
-			matches = append(matches, grepMatch{
-				Line:    lineNum,
-				Content: line,
-			})
+			if err := match(lineNum, line); err != nil {
+				return err
+			}
 		}
 	}
 
-	return matches, scanner.Err()
+	return scanner.Err()
 }
 
 func shouldSkipDir(name string) bool {

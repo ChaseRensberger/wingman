@@ -2,9 +2,9 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 )
@@ -76,31 +76,34 @@ func (t *BashTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	metadata := map[string]any{"work_dir": inv.WorkDir}
 	inv.Progress.Report("", map[string]any{"work_dir": inv.WorkDir})
 	w := newProgressWriter(inv.Progress)
+	w.output.inv = inv
 	cmd.Stdout = w
 	cmd.Stderr = w
 
 	err := cmd.Run()
-	output := w.String()
+	result, outputErr := w.output.finish(metadata)
+	err = errors.Join(err, outputErr)
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			metadata["exit_code"] = exitErr.ExitCode()
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			result.Metadata["exit_code"] = exitErr.ExitCode()
 		}
 		if ctx.Err() == context.DeadlineExceeded {
-			return Result{Text: output, Metadata: metadata}, fmt.Errorf("command timed out after %v", timeout)
+			return result, fmt.Errorf("command timed out after %v: %w", timeout, errors.Join(ctx.Err(), outputErr))
 		}
-		return Result{Text: output, Metadata: metadata}, fmt.Errorf("command failed: %w", err)
+		return result, fmt.Errorf("command failed: %w", err)
 	}
 
-	metadata["exit_code"] = 0
-	return Result{Text: output, Metadata: metadata}, nil
+	result.Metadata["exit_code"] = 0
+	return result, nil
 }
 
 // progressWriter is a concurrency-safe writer that accumulates output and
 // forwards chunks through a tool Progress callback.
 type progressWriter struct {
 	mu       sync.Mutex
-	b        strings.Builder
+	output   outputCollector
 	progress *Progress
 }
 
@@ -111,7 +114,7 @@ func newProgressWriter(p *Progress) *progressWriter {
 func (w *progressWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	n, err = w.b.Write(p)
+	n, err = w.output.Write(p)
 	delta := string(p)
 	if w.progress != nil && delta != "" {
 		w.progress.Report(delta, nil)
@@ -122,5 +125,5 @@ func (w *progressWriter) Write(p []byte) (n int, err error) {
 func (w *progressWriter) String() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.b.String()
+	return w.output.preview.String()
 }

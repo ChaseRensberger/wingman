@@ -1,10 +1,11 @@
 package tool
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
-	"sort"
 	"strings"
 )
 
@@ -25,7 +26,7 @@ func (t *ReadTool) Name() string {
 }
 
 func (t *ReadTool) Description() string {
-	return "Read a file or directory from the local filesystem. File contents are returned with line numbers; directories are returned as sorted entries."
+	return "Read a file, directory, or saved tool-output reference. File contents are returned with line numbers; directories are returned as sorted entries."
 }
 
 func (t *ReadTool) Definition() Definition {
@@ -38,7 +39,7 @@ func (t *ReadTool) Definition() Definition {
 			Properties: map[string]Property{
 				"filePath": {
 					Type:        "string",
-					Description: "The path to the file or directory to read (relative to working directory or absolute)",
+					Description: "A file or directory path, or a tool-output: reference returned by a tool",
 				},
 				"offset": {
 					Type:        "number",
@@ -46,7 +47,7 @@ func (t *ReadTool) Definition() Definition {
 				},
 				"limit": {
 					Type:        "number",
-					Description: "The maximum number of lines or directory entries to read (defaults to 2000)",
+					Description: "The maximum number of lines or directory entries to read (defaults to and capped at 2000)",
 				},
 			},
 			Required: []string{"filePath"},
@@ -66,7 +67,13 @@ func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		return Result{}, fmt.Errorf("workDir is required for read tool")
 	}
 
-	path, _, err := resolveWorkPath(inv.WorkDir, rawPath)
+	var path string
+	var err error
+	if strings.HasPrefix(rawPath, outputPrefix) {
+		path, err = outputPath(inv, rawPath)
+	} else {
+		path, _, err = resolveWorkPath(inv.WorkDir, rawPath)
+	}
 	if err != nil {
 		return Result{}, err
 	}
@@ -78,6 +85,7 @@ func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if limit < 1 {
 		return Result{}, fmt.Errorf("limit must be >= 1")
 	}
+	limit = min(limit, defaultReadLimit)
 
 	select {
 	case <-ctx.Done():
@@ -90,79 +98,130 @@ func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		return Result{}, fmt.Errorf("failed to read path: %w", err)
 	}
 	if info.IsDir() {
-		return readDirectory(path, offset, limit)
+		return readDirectory(ctx, path, offset, limit)
 	}
-	return readFile(path, offset, limit)
+	return readFile(ctx, path, offset, limit)
 }
 
-func readDirectory(path string, offset, limit int) (Result, error) {
-	entries, err := os.ReadDir(path)
+func readDirectory(ctx context.Context, path string, offset, limit int) (Result, error) {
+	sliced, total, err := directoryPage(ctx, path, offset, limit)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to read directory: %w", err)
 	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() {
-			name += "/"
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	start := offset - 1
-	if start > len(names) {
-		return Result{}, fmt.Errorf("offset %d is out of range for this directory (%d entries)", offset, len(names))
+	if start > total {
+		return Result{}, fmt.Errorf("offset %d is out of range for this directory (%d entries)", offset, total)
 	}
-	end := start + limit
-	if end > len(names) {
-		end = len(names)
+	bytes := 0
+	for i, name := range sliced {
+		if bytes+len(name)+1 > MaxOutputBytes-1024 {
+			sliced = sliced[:i]
+			break
+		}
+		bytes += len(name) + 1
 	}
-	sliced := names[start:end]
-	truncated := end < len(names)
+	end := start + len(sliced)
+	truncated := end < total
 	output := fmt.Sprintf("<path>%s</path>\n<type>directory</type>\n<entries>\n%s", path, strings.Join(sliced, "\n"))
 	if truncated {
-		output += fmt.Sprintf("\n(Showing %d of %d entries. Use offset=%d to continue.)", len(sliced), len(names), end+1)
+		output += fmt.Sprintf("\n(Showing %d of %d entries. Use offset=%d to continue.)", len(sliced), total, end+1)
 	} else {
-		output += fmt.Sprintf("\n(%d entries)", len(names))
+		output += fmt.Sprintf("\n(%d entries)", total)
 	}
 	output += "\n</entries>"
 	return Result{Text: output, Metadata: map[string]any{"preview": strings.Join(firstStrings(sliced, maxReadPreviewLines), "\n"), "truncated": truncated}}, nil
 }
 
-func readFile(path string, offset, limit int) (Result, error) {
-	content, err := os.ReadFile(path)
+func readFile(ctx context.Context, path string, offset, limit int) (Result, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to read file: %w", err)
 	}
-	text := string(content)
-	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"), "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
+	defer file.Close()
+	r := bufio.NewReader(file)
 	start := offset - 1
-	if start > len(lines) {
-		return Result{}, fmt.Errorf("offset %d is out of range for this file (%d lines)", offset, len(lines))
-	}
-	end := start + limit
-	if end > len(lines) {
-		end = len(lines)
-	}
 	var rendered []string
-	for i, line := range lines[start:end] {
-		if len(line) > maxReadLineLength {
-			line = line[:maxReadLineLength] + fmt.Sprintf("... (line truncated to %d chars)", maxReadLineLength)
+	var preview []string
+	total, bytes := 0, 0
+	full := false
+	for {
+		lineLimit := maxReadLineLength
+		if total+1 < offset || len(rendered) >= limit || full {
+			lineLimit = 0
 		}
-		rendered = append(rendered, fmt.Sprintf("%d: %s", start+i+1, line))
+		line, clipped, err := readLinePrefix(ctx, r, lineLimit)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return Result{}, err
+		}
+		total++
+		if total < offset || len(rendered) >= limit || full {
+			continue
+		}
+		if clipped {
+			line += fmt.Sprintf("... (line truncated to %d bytes)", maxReadLineLength)
+		}
+		row := fmt.Sprintf("%d: %s", total, line)
+		if bytes+len(row)+1 > MaxOutputBytes-1024 {
+			full = true
+			continue
+		}
+		bytes += len(row) + 1
+		rendered = append(rendered, row)
+		if len(preview) < maxReadPreviewLines {
+			preview = append(preview, line)
+		}
 	}
-	truncated := end < len(lines)
+	if start > total {
+		return Result{}, fmt.Errorf("offset %d is out of range for this file (%d lines)", offset, total)
+	}
+	end := start + len(rendered)
+	truncated := end < total
 	output := fmt.Sprintf("<path>%s</path>\n<type>file</type>\n<content>\n%s", path, strings.Join(rendered, "\n"))
 	if truncated {
-		output += fmt.Sprintf("\n\n(Showing lines %d-%d of %d. Use offset=%d to continue.)", offset, end, len(lines), end+1)
+		output += fmt.Sprintf("\n\n(Showing lines %d-%d of %d. Use offset=%d to continue.)", offset, end, total, end+1)
 	} else {
-		output += fmt.Sprintf("\n\n(End of file - total %d lines)", len(lines))
+		output += fmt.Sprintf("\n\n(End of file - total %d lines)", total)
 	}
 	output += "\n</content>"
-	return Result{Text: output, Metadata: map[string]any{"preview": strings.Join(firstStrings(lines[start:end], maxReadPreviewLines), "\n"), "truncated": truncated}}, nil
+	return Result{Text: output, Metadata: map[string]any{"preview": strings.Join(preview, "\n"), "truncated": truncated}}, nil
+}
+
+func readLinePrefix(ctx context.Context, r *bufio.Reader, limit int) (string, bool, error) {
+	var line strings.Builder
+	clipped, seen := false, false
+	for n := 0; ; n++ {
+		if n%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return "", false, err
+			}
+		}
+		b, err := r.ReadByte()
+		if err == io.EOF && seen {
+			break
+		}
+		if err != nil {
+			return "", false, err
+		}
+		seen = true
+		if b == '\n' {
+			break
+		}
+		if b == '\r' {
+			if next, _ := r.Peek(1); len(next) > 0 && next[0] == '\n' {
+				_, _ = r.ReadByte()
+			}
+			break
+		}
+		if line.Len() < limit {
+			line.WriteByte(b)
+		} else {
+			clipped = true
+		}
+	}
+	return validPrefix(line.String()), clipped, nil
 }
 
 func intParam(value any, fallback int) int {

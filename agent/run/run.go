@@ -1286,13 +1286,17 @@ func (r *runner) executeAuthorized(ctx context.Context, call ToolCall) (ToolResu
 		PartID:      call.PartID,
 		ModelCallID: call.ModelCallID,
 		Progress: tool.NewProgress(func(delta string, metadata map[string]any) {
-			r.emit(ToolExecutionProgressEvent{
+			event := ToolExecutionProgressEvent{
 				CallID:      call.ID,
 				ToolUseID:   call.ToolUseID,
 				Name:        call.Name,
 				OutputDelta: delta,
 				Metadata:    metadata,
-			})
+			}
+			select {
+			case r.eventCh <- event:
+			case <-ctx.Done():
+			}
 		}),
 	}
 	toolResult, execErr := call.Tool.Execute(ctx, inv)
@@ -1348,6 +1352,17 @@ func (r *runner) settleToolUse(ctx context.Context, call ToolCall, res ToolResul
 	updated, afterErr := r.runAfterToolCallResult(ctx, call, res)
 	if afterErr != nil {
 		status, errorType, failure = ToolUseStatusFailed, "after_tool_call", afterErr
+	}
+	bounded, outputErr := tool.BoundResult(tool.Invocation{WorkDir: r.cfg.WorkDir, SessionID: r.cfg.SessionID}, tool.Result{Text: updated.Output, OutputParts: updated.OutputParts, Structured: updated.Structured, Metadata: updated.Metadata})
+	updated.Output, updated.OutputParts, updated.Metadata = bounded.Text, bounded.OutputParts, bounded.Metadata
+	if outputErr != nil {
+		updated.IsError = true
+		if updated.Error != "" {
+			updated.Error += "\n"
+		}
+		updated.Error += outputErr.Error()
+		updated.ErrorType = "output"
+		status, errorType, failure = ToolUseStatusFailed, "output", outputErr
 	}
 	updated.Status = status
 	if r.cfg.ToolUseLifecycle != nil {

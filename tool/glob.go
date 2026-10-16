@@ -3,7 +3,6 @@ package tool
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -65,49 +64,52 @@ func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		baseDir = resolved
 	}
 
-	var matches []string
+	output := &outputCollector{inv: inv}
+	matches := 0
+	emit := func(path string) error {
+		rel, err := filepath.Rel(baseDir, path)
+		if err != nil {
+			return err
+		}
+		if matches > 0 {
+			if _, err := output.Write([]byte("\n")); err != nil {
+				return err
+			}
+		}
+		matches++
+		_, err = output.Write([]byte(rel))
+		return err
+	}
+	var err error
 
 	if strings.Contains(pattern, "**") {
-		err := filepath.WalkDir(baseDir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
-
+		err = walkFiles(ctx, baseDir, nil, func(path string) error {
 			relPath, err := filepath.Rel(baseDir, path)
 			if err != nil {
 				return nil
 			}
 
 			if matchDoubleGlob(pattern, relPath) {
-				matches = append(matches, relPath)
+				return emit(path)
 			}
 			return nil
 		})
-		if err != nil {
-			return Result{}, fmt.Errorf("failed to walk directory: %w", err)
-		}
 	} else {
 		fullPattern := filepath.Join(baseDir, pattern)
-		results, err := filepath.Glob(fullPattern)
-		if err != nil {
-			return Result{}, fmt.Errorf("invalid glob pattern: %w", err)
-		}
-		for _, path := range results {
-			relPath, err := filepath.Rel(baseDir, path)
-			if err == nil {
-				matches = append(matches, relPath)
-			}
-		}
+		err = globFiles(ctx, fullPattern, emit)
 	}
-
-	if len(matches) == 0 {
+	result, outputErr := output.finish(map[string]any{"count": matches})
+	if err != nil {
+		return result, err
+	}
+	if outputErr != nil {
+		return result, outputErr
+	}
+	if matches == 0 {
 		return Result{Text: "No files found matching pattern: " + pattern, Metadata: map[string]any{"count": 0}}, nil
 	}
 
-	return Result{Text: strings.Join(matches, "\n"), Metadata: map[string]any{"count": len(matches)}}, nil
+	return result, nil
 }
 
 func matchDoubleGlob(pattern, path string) bool {
