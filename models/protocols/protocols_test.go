@@ -24,7 +24,7 @@ func streamModel(protocol route.Protocol, body string) *route.Model {
 
 func prepareBody(t *testing.T, protocol route.Protocol, req models.Request) map[string]any {
 	t.Helper()
-	m := &route.Model{Info_: models.ModelInfo{ID: "test", Provider: "test"}, Route: route.Route{Protocol: protocol}}
+	m := replayModel(protocol)
 	prepared, err := m.Prepare(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestChatChoiceAndPriorUsage(t *testing.T) {
 func TestCanonicalToolRequestBodies(t *testing.T) {
 	req := models.Request{Messages: []models.Message{{Role: models.RoleAssistant, Content: models.Content{models.ToolPart{CallID: "call_1", Name: "lookup", State: models.ToolStateCompleted, Input: map[string]any{"query": "weather"}, Output: "sunny", OutputParts: models.Content{models.ImagePart{Base64: "image-data", MediaType: "image/png"}}, Structured: map[string]any{"answer": "42"}}}}}}
 	chat := prepareBody(t, Chat{}, req)["messages"].([]any)
-	if len(chat) != 2 || chat[0].(map[string]any)["role"] != "assistant" || chat[1].(map[string]any)["role"] != "tool" {
+	if len(chat) != 3 || chat[0].(map[string]any)["role"] != "assistant" || chat[1].(map[string]any)["role"] != "tool" || chat[2].(map[string]any)["role"] != "user" {
 		t.Fatalf("messages = %#v", chat)
 	}
 	anthropic := prepareBody(t, Anthropic{}, req)["messages"].([]any)
@@ -195,7 +195,7 @@ func TestThinkingAndReasoningReplay(t *testing.T) {
 		t.Fatalf("body = %#v", body)
 	}
 	for _, summary := range []string{"", "summary"} {
-		parser := (Responses{}).NewParser(models.ModelInfo{})
+		parser := (Responses{}).NewParser(replayModel(Responses{}).Info_)
 		for _, event := range []string{`{"type":"response.reasoning_summary_text.delta","item_id":"rs_1","delta":"` + summary + `"}`, `{"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_1","encrypted_content":"encrypted-state"}}`} {
 			if _, err := parser.Step(route.Frame{Data: event}); err != nil {
 				t.Fatal(err)

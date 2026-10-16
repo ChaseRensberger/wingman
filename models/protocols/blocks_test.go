@@ -11,7 +11,7 @@ import (
 
 func parseBlocks(t *testing.T, protocol route.Protocol, frames ...string) (*models.Message, []models.StreamPart) {
 	t.Helper()
-	parser := protocol.NewParser(models.ModelInfo{})
+	parser := protocol.NewParser(replayModel(protocol).Info_)
 	var events []models.StreamPart
 	for _, frame := range frames {
 		parts, err := parser.Step(route.Frame{Data: frame})
@@ -121,7 +121,7 @@ func TestResponsesPreservesItemsAndReplayOrder(t *testing.T) {
 	if !reflect.DeepEqual(toolStarts, []string{"call_1", "call_2"}) || arguments["call_1"] != `{"x":1}` || arguments["call_2"] != `{}` {
 		t.Fatalf("tool starts = %v, arguments = %v", toolStarts, arguments)
 	}
-	body, err := (Responses{}).Body(models.ModelInfo{}, models.Request{Messages: []models.Message{*message}})
+	body, err := (Responses{}).Body(replayModel(Responses{}).Info_, models.Request{Messages: []models.Message{*message}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestGeminiKeepsSignaturesOnTheirBlocks(t *testing.T) {
 	if p := message.Content[1].(models.TextPart); p.Text != "before" {
 		t.Fatalf("text = %#v", p)
 	}
-	body, err := (Gemini{}).Body(models.ModelInfo{}, models.Request{Messages: []models.Message{*message}})
+	body, err := (Gemini{}).Body(replayModel(Gemini{}).Info_, models.Request{Messages: []models.Message{*message}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestGeminiSignedPartBoundaries(t *testing.T) {
 					}
 					frames = append(frames, `{"candidates":[{"finishReason":"STOP"}]}`)
 					message, events := parseBlocks(t, Gemini{}, frames...)
-					body, err := (Gemini{}).Body(models.ModelInfo{}, models.Request{Messages: []models.Message{*message}})
+					body, err := (Gemini{}).Body(replayModel(Gemini{}).Info_, models.Request{Messages: []models.Message{*message}})
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -21,12 +21,18 @@ func (Anthropic) LoweredOptions(models.Request) models.LoweredOptions { return m
 // Body converts a common request into a Messages request.
 func (Anthropic) Body(info models.ModelInfo, req models.Request) (map[string]any, error) {
 	messages := []any{}
-	for _, msg := range req.Messages {
+	for _, msg := range replayMessages(info, req.Messages) {
 		role := string(msg.Role)
 		content := anthropicBlocks(msg.Content)
 		if msg.Role == models.RoleTool {
 			role, content = "user", []any{}
+			var attachments models.Content
 			for _, result := range toolResults(msg.Content) {
+				if result.IsError {
+					var images models.Content
+					result, images = splitToolImages(result)
+					attachments = append(attachments, images...)
+				}
 				blocks := anthropicBlocks(result.Output)
 				if result.Structured != nil {
 					blocks = append(blocks, map[string]any{"type": "text", "text": encodeJSON(result.Structured)})
@@ -44,6 +50,10 @@ func (Anthropic) Body(info models.ModelInfo, req models.Request) (map[string]any
 				}
 				content = append(content, block)
 			}
+			content = append(content, anthropicBlocks(attachments)...)
+		}
+		if msg.Role == models.RoleAssistant && len(content) == 0 {
+			continue
 		}
 		messages = append(messages, map[string]any{"role": role, "content": content})
 	}
@@ -87,6 +97,8 @@ func anthropicBlocks(content models.Content) []any {
 		case models.ImagePart:
 			if p.Base64 != "" {
 				out = append(out, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": imageMediaType(p), "data": p.Base64}})
+			} else if p.URL != "" {
+				out = append(out, map[string]any{"type": "image", "source": map[string]any{"type": "url", "url": p.URL}})
 			}
 		case models.ReasoningPart:
 			if metadata, _ := p.ProviderMetadata["anthropic"].(map[string]any); metadata["redacted_data"] != nil {

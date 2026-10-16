@@ -3,6 +3,7 @@ package protocols
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/models/route"
@@ -20,12 +21,14 @@ func (Gemini) LoweredOptions(models.Request) models.LoweredOptions { return mode
 // Body converts a common request into a generateContent request.
 func (Gemini) Body(info models.ModelInfo, req models.Request) (map[string]any, error) {
 	contents := []any{}
-	for _, msg := range req.Messages {
+	legacy := legacyGeminiModel.MatchString(info.ID)
+	for _, msg := range replayMessages(info, req.Messages) {
 		role := "user"
 		if msg.Role == models.RoleAssistant {
 			role = "model"
 		}
 		parts := []any{}
+		attachments := []any{}
 		for _, part := range msg.Content {
 			switch p := part.(type) {
 			case models.TextPart:
@@ -33,16 +36,31 @@ func (Gemini) Body(info models.ModelInfo, req models.Request) (map[string]any, e
 				addGeminiSignature(block, p.ProviderMetadata)
 				parts = append(parts, block)
 			case models.ImagePart:
-				if p.Base64 != "" {
-					parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": imageMediaType(p), "data": p.Base64}})
-				}
+				parts = append(parts, geminiImage(p))
 			case models.ReasoningPart:
 				parts = append(parts, map[string]any{"text": p.Reasoning, "thought": true, "thoughtSignature": p.Encrypted})
 			case models.ToolCallPart:
-				block := map[string]any{"functionCall": map[string]any{"name": p.Name, "args": p.Input}}
+				call := map[string]any{"name": p.Name, "args": p.Input}
+				if !legacy {
+					call["id"] = p.CallID
+				}
+				block := map[string]any{"functionCall": call}
 				addGeminiSignature(block, p.ProviderMetadata)
+				if !legacy && !sameReplayModel(info, msg.Origin) {
+					block["thoughtSignature"] = "skip_thought_signature_validator"
+				}
 				parts = append(parts, block)
 			case models.ToolResultPart:
+				result, images := splitToolImages(p)
+				p = result
+				for _, image := range images {
+					switch image := image.(type) {
+					case models.TextPart:
+						attachments = append(attachments, map[string]any{"text": image.Text})
+					case models.ImagePart:
+						attachments = append(attachments, geminiImage(image))
+					}
+				}
 				name := p.Name
 				if name == "" {
 					name = p.CallID
@@ -54,10 +72,17 @@ func (Gemini) Body(info models.ModelInfo, req models.Request) (map[string]any, e
 				if p.IsError {
 					response["error"] = true
 				}
-				parts = append(parts, map[string]any{"functionResponse": map[string]any{"name": name, "response": response}})
+				resultPart := map[string]any{"name": name, "response": response}
+				if !legacy {
+					resultPart["id"] = p.CallID
+				}
+				parts = append(parts, map[string]any{"functionResponse": resultPart})
 			}
 		}
 		contents = append(contents, map[string]any{"role": role, "parts": parts})
+		if len(attachments) > 0 {
+			contents = append(contents, map[string]any{"role": "user", "parts": attachments})
+		}
 	}
 	body := map[string]any{"contents": contents}
 	if req.System != "" {
@@ -131,6 +156,7 @@ type geminiEvent struct {
 				Thought      bool   `json:"thought"`
 				Signature    string `json:"thoughtSignature"`
 				FunctionCall *struct {
+					ID   string         `json:"id"`
 					Name string         `json:"name"`
 					Args map[string]any `json:"args"`
 				} `json:"functionCall"`
@@ -173,7 +199,16 @@ func (p *geminiParser) Step(frame route.Frame) ([]models.StreamPart, error) {
 			if call.Args == nil {
 				return p.parts, p.invalid("invalid Gemini function arguments", nil)
 			}
-			p.tool(models.ToolCallPart{CallID: fmt.Sprintf("call_%d", len(p.tools)+1), Name: call.Name, Input: call.Args, ProviderMetadata: metadata}, encodeJSON(call.Args), false)
+			id := call.ID
+			if id == "" {
+				for n := len(p.tools) + 1; ; n++ {
+					id = fmt.Sprintf("call_%d", n)
+					if p.blockByID["tool:"+id] == nil {
+						break
+					}
+				}
+			}
+			p.tool(models.ToolCallPart{CallID: id, Name: call.Name, Input: call.Args, ProviderMetadata: metadata}, encodeJSON(call.Args), false)
 		} else if part.Text != "" || part.Signature != "" {
 			kind := "text"
 			if part.Thought {
@@ -232,3 +267,13 @@ func addGeminiSignature(block map[string]any, metadata models.Meta) {
 		block["thoughtSignature"] = signature
 	}
 }
+
+func geminiImage(image models.ImagePart) map[string]any {
+	if image.Base64 != "" {
+		return map[string]any{"inlineData": map[string]any{"mimeType": imageMediaType(image), "data": image.Base64}}
+	}
+	return map[string]any{"fileData": map[string]any{"mimeType": imageMediaType(image), "fileUri": image.URL}}
+}
+
+// Gemini 1.x/2.x do not support explicit function-call IDs.
+var legacyGeminiModel = regexp.MustCompile(`(?i)(^|/)gemini(-live)?-[12]([.-]|$)`)

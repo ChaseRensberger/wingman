@@ -25,7 +25,7 @@ func (Chat) Body(info models.ModelInfo, req models.Request) (map[string]any, err
 	if req.System != "" {
 		messages = append(messages, map[string]any{"role": "system", "content": req.System})
 	}
-	for _, msg := range req.Messages {
+	for _, msg := range replayMessages(info, req.Messages) {
 		switch msg.Role {
 		case models.RoleUser:
 			var content any = joinText(msg.Content)
@@ -55,10 +55,33 @@ func (Chat) Body(info models.ModelInfo, req models.Request) (map[string]any, err
 			if len(calls) > 0 {
 				message["tool_calls"] = calls
 			}
+			var reasoning strings.Builder
+			for _, part := range msg.Content {
+				if p, ok := part.(models.ReasoningPart); ok {
+					reasoning.WriteString(p.Reasoning)
+				}
+			}
+			// DeepSeek requires this field on tool-call history, including imported turns.
+			if reasoning.Len() > 0 || (len(calls) > 0 && (info.Provider == "deepseek" || strings.Contains(strings.ToLower(info.ID), "deepseek"))) {
+				message["reasoning_content"] = reasoning.String()
+			}
 			messages = append(messages, message)
 		case models.RoleTool:
+			var attachments []any
 			for _, result := range toolResults(msg.Content) {
+				result, images := splitToolImages(result)
 				messages = append(messages, map[string]any{"role": "tool", "tool_call_id": result.CallID, "content": toolResultText(result)})
+				for _, part := range images {
+					switch p := part.(type) {
+					case models.TextPart:
+						attachments = append(attachments, map[string]any{"type": "text", "text": p.Text})
+					case models.ImagePart:
+						attachments = append(attachments, map[string]any{"type": "image_url", "image_url": map[string]any{"url": imageURL(p)}})
+					}
+				}
+			}
+			if len(attachments) > 0 {
+				messages = append(messages, map[string]any{"role": "user", "content": attachments})
 			}
 		}
 	}

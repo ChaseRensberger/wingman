@@ -25,7 +25,7 @@ func (Responses) Body(info models.ModelInfo, req models.Request) (map[string]any
 	if req.System != "" {
 		input = append(input, map[string]any{"role": "system", "content": req.System})
 	}
-	for _, msg := range req.Messages {
+	for _, msg := range replayMessages(info, req.Messages) {
 		switch msg.Role {
 		case models.RoleUser:
 			content := []any{}
@@ -71,7 +71,27 @@ func (Responses) Body(info models.ModelInfo, req models.Request) (map[string]any
 			flushText()
 		case models.RoleTool:
 			for _, result := range toolResults(msg.Content) {
-				input = append(input, map[string]any{"type": "function_call_output", "call_id": result.CallID, "output": toolResultText(result)})
+				var output any = toolResultText(result)
+				parts := []any{}
+				hasImage := false
+				for _, part := range result.Output {
+					switch p := part.(type) {
+					case models.TextPart:
+						parts = append(parts, map[string]any{"type": "input_text", "text": p.Text})
+					case models.ImagePart:
+						if imageURL(p) != "" {
+							hasImage = true
+							parts = append(parts, map[string]any{"type": "input_image", "image_url": imageURL(p)})
+						}
+					}
+				}
+				if hasImage {
+					if result.Structured != nil {
+						parts = append(parts, map[string]any{"type": "input_text", "text": encodeJSON(result.Structured)})
+					}
+					output = parts
+				}
+				input = append(input, map[string]any{"type": "function_call_output", "call_id": result.CallID, "output": output})
 			}
 		}
 	}
