@@ -246,7 +246,7 @@ func (s *recoveryCrashStore) UpsertModelCall(ctx context.Context, call store.Mod
 	if err := s.Store.UpsertModelCall(ctx, call); err != nil {
 		return err
 	}
-	if s.stage == "model" && call.Status == store.ModelCallStatusCompleted {
+	if (s.stage == "model" || s.stage == "truncated_model") && call.Status == store.ModelCallStatusCompleted {
 		os.Exit(23)
 	}
 	if strings.HasPrefix(s.stage, "retry_") && call.Status == store.ModelCallStatusFailed {
@@ -259,7 +259,7 @@ func (s *recoveryCrashStore) SaveToolUse(ctx context.Context, use store.ToolUse)
 	if err := s.Store.SaveToolUse(ctx, use); err != nil {
 		return err
 	}
-	if use.Status == s.stage {
+	if use.Status == s.stage || (s.stage == "truncated_declined" && use.Status == store.ToolUseStatusDeclined) {
 		os.Exit(23)
 	}
 	if s.stage == "reset" && use.Status == store.ToolUseStatusAuthorized {
@@ -322,6 +322,9 @@ func (c *recoveryClient) Stream(_ context.Context, request models.Request) (*mod
 		return nil, &models.ProviderError{Category: models.ErrorUnavailable, Provider: "test", Retryable: true, Message: "unavailable"}
 	}
 	message := models.Message{Role: models.RoleAssistant, Content: models.Content{models.ToolCallPart{CallID: "call_inspect", Name: "inspect", Input: map[string]any{"value": "kept"}}}}
+	if strings.HasPrefix(c.stage, "truncated_") {
+		message.FinishReason = models.FinishReasonMaxTokens
+	}
 	if c.stage == "batch" {
 		message.Content = append(models.Content{models.ToolCallPart{CallID: "call_write", Name: "write_test", Input: map[string]any{}}}, message.Content...)
 	}
@@ -330,6 +333,10 @@ func (c *recoveryClient) Stream(_ context.Context, request models.Request) (*mod
 			return nil, errors.New("partial answer was sent as completed history")
 		}
 		for _, part := range history.Content {
+			if p, ok := part.(models.ToolPart); ok && p.State == models.ToolStateError && strings.Contains(p.Error, "output token limit") {
+				message.Content = models.Content{models.TextPart{Text: "done"}}
+				message.FinishReason = models.FinishReasonStop
+			}
 			if p, ok := part.(models.ToolPart); ok && p.State == models.ToolStateCompleted && p.Name == "inspect" {
 				if p.Output != "read result" || p.Structured == nil || len(p.OutputParts) != 1 {
 					return nil, errors.New("recovered result changed")

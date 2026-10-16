@@ -623,6 +623,39 @@ func (r *runner) runAssistant(ctx context.Context, turn Turn, assistantMsg model
 		r.messages[len(r.messages)-1] = assistantMsg
 	}
 
+	// Even valid JSON can contain truncated arguments. Reject the entire batch
+	// before pre-call hooks or authorization, including recovered turns.
+	if assistantMsg.FinishReason == models.FinishReasonMaxTokens {
+		results := make([]ToolResult, len(resolved))
+		for i, call := range resolved {
+			if r.cfg.Recovery != nil {
+				if saved, ok := r.cfg.Recovery.Tools[call.PartID]; ok {
+					if saved.Result != nil {
+						results[i] = *saved.Result
+						continue
+					}
+					call.Args, call.ProposedAt, call.AuthorizedAt = saved.Args, saved.ProposedAt, saved.AuthorizedAt
+				}
+			}
+			res := ToolResult{
+				CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args,
+				IsError: true, ErrorType: "output_token_limit",
+				Error: "Tool call was not executed: the response hit the output token limit and its arguments may be truncated. Re-issue the tool call with complete arguments.",
+			}
+			var err error
+			status := ToolUseStatusDeclined
+			if !call.AuthorizedAt.IsZero() {
+				status = ToolUseStatusFailed
+			}
+			results[i], err = r.settleToolUse(ctx, call, res, status, "output_token_limit", nil)
+			if err != nil {
+				return turn, r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateFailed, err)
+			}
+		}
+		err := r.finalizeToolTurn(ctx, &turn, &assistantMsg, results, models.MessageStateCompleted, nil)
+		return turn, err
+	}
+
 	// Decide execution mode for this batch.
 	mode := r.cfg.ToolExecution
 	if mode == ToolExecutionDefault {
