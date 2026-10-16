@@ -1,108 +1,46 @@
 ---
 title: "Storage"
-group: "Core"
-order: 105
+description: "Choose a database and understand what Wingman saves."
 ---
 
 # Storage
 
-Wingman saves agents, sessions, runs, and provider credentials in SQLite by default.
+Wingman saves agents, conversations, runs, and provider credentials in a SQLite database.
+The default path is `~/.local/share/wingman/wingman.db`.
 
-## Default Store
-
-The stock server uses SQLite unless it starts in ephemeral mode.
-
-Default path:
-
-```text
-~/.local/share/wingman/wingman.db
-```
-
-Use `--db` to override this path:
+To use another database, start the server with `--db`:
 
 ```bash
-wingman serve --db ./wingman.db
+wingman serve --db /absolute/path/to/wingman.db
 ```
 
-Use this command to run without persistence:
+Saved runs retain their accepted input and configuration. Later agent edits or session moves do not change queued work.
+Deleting a session permanently removes its history and related execution records.
+See [Sessions](/concepts/sessions) for recovery behavior.
+
+## Run without storage
+
+Ephemeral mode does not save runs or conversations:
 
 ```bash
 wingman serve --ephemeral
 ```
 
-Ephemeral mode does not save runs. Endpoints for stored resources return `501 Not Implemented`.
+In this mode, use `POST /run` with an inline agent. Endpoints for stored resources return `501 Not Implemented`.
+Supply provider keys through the server environment. See [Providers](/configure/providers#environment-variables).
 
-## What Is Stored
+## Conversation history
 
-The database contains:
+Wingman saves messages, model attempts, tool results, permission decisions, and session events.
+Use the session API to read these records. Database tables are not a public API.
 
-| Table                 | Purpose                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| `agents`              | Agent definitions: instructions, tool names, model ref, options, output schema.               |
-| `clients`             | API consumer identities, including the built-in `WingClient` default client.                  |
-| `workspaces`          | Session groups with optional working directories.                                             |
-| `sessions`            | Session metadata: title, working directory, client ID, optional Workspace ID, and timestamps. |
-| `session_runs`        | Queued work, saved input, request ID, and status.                                             |
-| `session_events`      | Public session event history used for SSE replay.                                             |
-| `messages`            | Ordered message rows for each session.                                                        |
-| `model_calls`         | Provider attempts, status, timing, usage, and errors.                                         |
-| `tool_uses`           | Tool calls, input, results, status, and timing.                                               |
-| `permission_requests` | Tool approval requests and decisions.                                                         |
-| `permission_grants`   | Exact action/resource approvals remembered for one session.                                   |
-| `parts`               | Ordered typed content parts for each message.                                                 |
-| `auth`                | Local provider credentials, stored as JSON.                                                   |
-| `schema_migrations`   | Applied migration versions, names, and SQL checksums.                                         |
+The standard server includes conversation compaction, which replaces older model context with a summary.
+Earlier messages remain in the database and session history API. Compaction does not delete them.
 
-Each queued run saves its input and configuration. Later agent edits or session moves do not change queued work.
-Deleting a session permanently removes its associated records.
+## Database upgrades
 
-## Model Calls
+Wingman applies database upgrades when it opens the store. It refuses to start if the recorded migration checksums do not match.
 
-`model_calls` stores each upstream model request:
-
-- Call ID, run ID, step, and attempt number.
-- Provider, API, model ID, and requested model ref.
-- Provider request ID when the upstream response supplies one.
-- Status, finish reason, stop reason, and error fields.
-- Input, output, reasoning, cached-input, cache-write, total, and context token counts.
-- Context window and computed context percentage.
-
-Calls also include timing. Lists use start-time order across runs.
-
-## Tool Uses
-
-`tool_uses` records execution status. Each call has a stable `tlu_` ID and follows this lifecycle:
-
-```text
-proposed -> authorized -> started -> completed | failed | interrupted
-         \-> declined
-```
-
-Wingman saves authorized input and records `started` before execution.
-On restart, unfinished calls become `interrupted`. Recovery reuses saved results and resumes calls that did not start.
-Started calls can run again only when their saved and current tool definitions permit replay.
-See [Tools](/concepts/tools#durable-execution-lifecycle) for validation and approval behavior.
-
-## Message Parts
-
-Messages contain text, images, reasoning, tool calls, and plugin content as JSON parts.
-See [Sessions](/concepts/sessions#message-parts) for message state and client display.
-
-With the compaction plugin installed, execution loads the latest completed compaction marker and the messages after it.
-Earlier messages remain in storage and in the session history API. Compaction does not delete them.
-Model-call metadata loads only for the active range. Run recovery reads its own saved records separately.
-
-## Migrations
-
-Pending schema migrations run when the store opens. If the applied migration history is invalid, Wingman does not start.
-
-The run-recovery update requires a new database. Databases from before this update fail migration checksum validation and cannot open with this version.
-There is no automatic upgrade for those databases.
-To preserve existing data, stop Wingman and keep a backup of the database and any associated `-wal` and `-shm` files.
-Start this version with `--db` set to a new path. The new database contains no previous sessions, agents, or provider credentials.
-
-## Embedding
-
-Embedded Go applications can provide another implementation of `store.Store`.
-Custom stores must support `QueryMessages`, `QueryModelCalls`, and `ListRunToolUses` without loading excluded message content.
-Message queries retain absolute history indexes. A boundary query starts at the latest completed message that contains the requested part type.
+If Wingman reports incompatible migration history, do not change the database records to bypass the error.
+Stop Wingman and back up the database with any associated `-wal` and `-shm` files.
+To start with an empty database, set `--db` to a new path. The new database has no previous sessions, agents, or provider credentials.

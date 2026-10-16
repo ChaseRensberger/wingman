@@ -1,65 +1,56 @@
 ---
 title: "Plugin Capabilities"
-description: "Hooks and tools supported by Go and RPC plugins."
-group: "Reference"
-order: 1004
+description: "Extension methods for Go and external plugins."
 ---
 
 # Plugin Capabilities
 
-Go plugins add tools and session hooks in embedded applications or custom binaries.
-RPC plugins add tools through external programs loaded by `wingman serve`.
+Go plugins add tools, hooks, actions, and custom message parts to embedded sessions.
+A hook is a function called at a session event.
+External RPC plugins support tools, progress, cancellation, and health reports. They do not support session hooks or actions.
 
-## Capability Matrix
+## Go registration methods
 
-| Capability                       | Go plugin | RPC plugin |
-| -------------------------------- | --------: | ---------: |
-| Custom tools                     |       yes |        yes |
-| `BeforeRun`                      |       yes |         no |
-| `AfterRun`                       |       yes |         no |
-| `TransformHistory`               |       yes |         no |
-| `TransformContext`               |       yes |         no |
-| `TransformToolDefs`              |       yes |         no |
-| `TransformParams`                |       yes |         no |
-| `BeforeToolCall`                 |       yes |         no |
-| `AfterToolCall`                  |       yes |         no |
-| Event sink                       |       yes |         no |
-| Custom message-part decoder      |       yes |         no |
-| External process isolation       |        no |        yes |
-| Works with stock `wingman serve` |        no |        yes |
+Register extensions through `plugin.Registry` during `Activate`:
 
-## Go Plugin Hooks
+| Method                                | Purpose                                             |
+| ------------------------------------- | --------------------------------------------------- |
+| `RegisterBeforeRun`                   | Supply initial history before a run.                |
+| `RegisterAfterRun`                    | Observe the run result and failure.                 |
+| `RegisterTransformHistory`            | Replace active history before a model step.         |
+| `RegisterTransformContext`            | Change messages for one model request.              |
+| `RegisterTransformToolDefs`           | Change tool definitions for one model request.      |
+| `RegisterTransformParams`             | Change model request parameters.                    |
+| `RegisterBeforeToolCall`              | Change, deny, or skip a tool call.                  |
+| `RegisterAfterToolCall`               | Observe or change a tool result.                    |
+| `RegisterTool`                        | Add a tool.                                         |
+| `RegisterSink`, `RegisterSinkTimeout` | Observe events with a bounded wait.                 |
+| `RegisterPart`                        | Add a custom message-part decoder.                  |
+| `RegisterContextBoundary`             | Mark a message that replaces earlier model context. |
+| `RegisterAction`                      | Add a named session operation.                      |
 
-Go plugins register hooks with `plugin.Registry`.
+Hooks run in activation order. Each transform receives the previous hook's output.
+`TransformHistory` currently ignores a returned replacement when its message count is unchanged.
+Use `TransformContext` for request-only changes that keep the same count.
 
-| Registry method             | Purpose                                                    |
-| --------------------------- | ---------------------------------------------------------- |
-| `RegisterBeforeRun`         | Observe or prepend messages before a run starts.           |
-| `RegisterAfterRun`          | Observe run completion, including paths with errors.       |
-| `RegisterTransformHistory`  | Rewrite saved history before a turn.                       |
-| `RegisterTransformContext`  | Rewrite the messages sent to the model for one turn.       |
-| `RegisterTransformToolDefs` | Rewrite tool definitions for one turn.                     |
-| `RegisterTransformParams`   | Rewrite request parameters for one turn.                   |
-| `RegisterBeforeToolCall`    | Mutate, deny, or skip a tool call.                         |
-| `RegisterAfterToolCall`     | Observe or rewrite a tool result.                          |
-| `RegisterSink`              | Receive every session event.                               |
-| `RegisterSinkTimeout`       | Receive events with an explicit positive callback timeout. |
-| `RegisterTool`              | Add a tool to the session.                                 |
-| `RegisterPart`              | Register a custom message-part decoder.                    |
-| `RegisterContextBoundary`   | Declare a part that replaces earlier execution context.    |
+## Events and cleanup
 
-Hooks run in activation order. Transform hooks receive the output from the previous hook.
-`Activate` can return cleanup that uses a context. By default, sink dispatch waits one second.
-It drops events while a callback remains blocked.
+An event sink receives session events. The default dispatch wait is one second.
+`RegisterSinkTimeout` accepts another positive timeout. Only one callback per sink runs at a time.
+While a callback remains blocked, that sink drops later events. It is not a reliable event archive.
 
-A context boundary is a saved message that replaces earlier context.
-Register one boundary part type per plugin generation. Its message must contain all context needed to replace the earlier messages.
-The compaction plugin registers its marker as this boundary. Sessions load and retain the active range from the latest completed boundary.
-`Session.History()` and action handlers receive that active range. Use stored history for earlier messages.
-Transform hooks also receive active history. Do not rely on them to read the complete transcript.
+`Activate` can return a cleanup function. `Session.Close` waits for active work, then releases plugin resources.
+If replacement activation fails, the existing plugins remain active.
 
-## RPC Plugin Support
+## History and actions
 
-RPC manifests specify the program and its configuration. The program returns its identity and tools during `plugin.initialize`.
-Protocol version 1 supports tools, cancellation, progress, and health checks, but not session hooks.
-See [RPC Plugin Protocol](/extend/rpc-plugin-protocol) for request and response fields.
+A context boundary marks saved content that replaces earlier model context.
+Register only one boundary type across the active plugin set. Its message must contain all replacement context.
+The compaction plugin uses this mechanism for summaries.
+
+`Session.History`, hooks, and action handlers receive only the active history range.
+Read the store for earlier messages. Context boundaries do not delete the saved transcript.
+
+Action IDs start with the plugin name followed by a dot. Each action needs a handler and a unique command alias.
+Emit action-created messages through `ActionInfo.Sink` so Wingman saves and publishes them.
+Interrupted actions do not resume automatically after a restart.

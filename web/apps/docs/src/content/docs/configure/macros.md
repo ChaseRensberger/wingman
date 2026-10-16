@@ -1,6 +1,6 @@
 ---
 title: "Macros"
-description: "Create project macros for repeated Session instructions."
+description: "Create templates for repeated session messages."
 ---
 
 # Macros
@@ -20,7 +20,7 @@ For example, create `.wingman/macros/review.md`:
 ```md
 ---
 description: Review a change for errors and missing tests.
-agent: reviewer
+agent: agt_reviewer
 model: openai/gpt-5.6-terra
 ---
 
@@ -29,6 +29,8 @@ Review $ARGUMENTS. Report errors first, then missing tests.
 
 The file body is the macro template. The `description`, `agent`, and `model`
 fields are optional.
+If you set `agent`, use an existing agent ID, not its display name.
+Replace `agt_reviewer` with that ID, or omit the field to use the selected agent.
 
 ## Macro IDs
 
@@ -51,7 +53,7 @@ Review $ARGUMENTS for correctness.
 ```
 
 Use `$1`, `$2`, and higher numbers for positional arguments. Single and double
-quotes group text with spaces. The last numbered marker receives its argument
+quotes group text with spaces. The highest numbered marker receives its argument
 and all later arguments.
 
 ```md
@@ -95,9 +97,10 @@ Content-Type: application/json
   "request_id": "request-123",
   "macro_id": "review",
   "arguments": "Check the authentication changes.",
-  "agent_id": "default-agent"
+  "agent_id": "agt_reviewer"
 }
 ```
 
 Retry the same input with the same `request_id` to avoid duplicate runs.
 The macro's agent and model override the request values for that run only.
+Wingman reads and expands the macro again for each request. If you edit the template before a retry, the changed input can return `409 Conflict`.

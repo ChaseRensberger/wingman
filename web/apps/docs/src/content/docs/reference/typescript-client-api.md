@@ -1,225 +1,79 @@
 ---
 title: "TypeScript Client API"
-description: "Reference for the @wingman-actor/client public API."
+description: "Connection, request, and stream methods in the TypeScript client."
 ---
 
 # TypeScript Client API
 
-API reference for `@wingman-actor/client`.
-See the [TypeScript SDK guide](/build-clients/typescript-sdk/) for connection and streaming examples.
+Import `createWingmanClient` from `@wingman-actor/client`.
+Use the [TypeScript SDK guide](/build-clients/typescript-sdk) for examples.
+Match the package version to the server release.
 
-Resource methods return response data or throw `APIError` for HTTP errors.
-The package includes request and response types. See [OpenAPI](/reference/referenceapi/#api) for the HTTP schema.
+## Connection
 
-```ts
-import { createWingmanClient } from "@wingman-actor/client";
+`createWingmanClient(options)` accepts these fields:
 
-const client = createWingmanClient({
-  baseUrl: "http://localhost:2424",
-  username: process.env.WINGMAN_USERNAME,
-  password: process.env.WINGMAN_PASSWORD,
-  clientName: "cli_example",
-});
-```
+| Field              | Purpose                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `baseUrl`          | Required HTTP or HTTPS origin. Do not include a path, query, fragment, or credentials. |
+| `username`         | Basic Auth username. Defaults to `wingman` when a password is supplied.                |
+| `password`         | Basic Auth password.                                                                   |
+| `clientName`       | Client ID for `X-Wingman-Client`, despite the field name.                              |
+| `headers`          | Extra headers for requests.                                                            |
+| `fetch`            | A replacement for the global `fetch` function.                                         |
+| `maxSSEEventBytes` | Maximum size of one event frame. Defaults to 1 MiB.                                    |
 
-## Create a Client
+`client.clients.ensure(id, name)` creates or reuses a client identity.
+It throws an `APIError` with code `conflict` if the saved name differs.
 
-`createWingmanClient(options)` creates a typed client.
+## Resource methods
 
-| Option             | Type           | Description                                                                                      |
-| ------------------ | -------------- | ------------------------------------------------------------------------------------------------ |
-| `baseUrl`          | `string`       | Required HTTP or HTTPS daemon origin. It cannot include a path, query, fragment, or credentials. |
-| `username`         | `string`       | HTTP Basic Auth username. The server defaults it to `wingman`.                                   |
-| `password`         | `string`       | HTTP Basic Auth password for protected routes.                                                   |
-| `clientName`       | `string`       | Default value for the `X-Wingman-Client` header.                                                 |
-| `headers`          | `HeadersInit`  | Extra headers for all requests.                                                                  |
-| `fetch`            | `typeof fetch` | Fetch implementation for this client.                                                            |
-| `maxSSEEventBytes` | `number`       | Maximum size of one SSE event. The default is `1048576`.                                         |
+Methods return response data or throw `APIError` for HTTP failures.
+Use the package's TypeScript declarations for exact arguments and return types.
 
-`clientName` identifies the calling application. It does not authenticate the
-request. See [Client Identity](/build-clients/http-api-basics/#client-identity).
+| Resource                                   | Methods                                                                          |
+| ------------------------------------------ | -------------------------------------------------------------------------------- |
+| `agents`                                   | `list`, `create`, `get`, `update`, `delete`                                      |
+| `clients`                                  | `list`, `create`, `get`, `ensure`                                                |
+| `sessions`                                 | `list`, `create`, `get`, `delete`, `rename`, `move`, `message`, `admit`, `abort` |
+| `sessions.runs`                            | `list`, `get`, `abort`                                                           |
+| `sessions.modelCalls`, `sessions.toolUses` | `list`                                                                           |
+| `sessions.permissionRequests`              | `list`, `reply`                                                                  |
+| `sessions.permissionGrants`                | `list`                                                                           |
+| `sessions.macros`                          | `list`, `admit`                                                                  |
+| `sessions.actions`                         | `admit`                                                                          |
+| `workspaces`                               | `list`, `create`, `get`, `update`, `delete`, `sessions.list`                     |
+| `providers`                                | `list`, `get`, `models.list`, `models.get`                                       |
+| `providers.auth`                           | `get`, `set`, `delete`                                                           |
+| `providers.oauth`                          | `authorize`, `get`, `cancel`                                                     |
+| `mcp`                                      | `list`, `connect`, `disconnect`                                                  |
+| `plugins`                                  | `list`, `reload`                                                                 |
+| `health`                                   | `get`, `ready`                                                                   |
+| `current`                                  | `service`, `client`                                                              |
 
-## Agents
+Other methods include `tools.list`, `actions.list`, `catalog.get`, `filesystem.directories`, `logs.list`, `diagnostics.get`, and `service.restart`.
+`mcp.authorize` and `mcp.logout` exist, but both return a server error with HTTP status `501`.
 
-| Method                              | Description                                                              |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `client.agents.list()`              | List agents.                                                             |
-| `client.agents.create(request)`     | Create an agent from `CreateAgentRequest`.                               |
-| `client.agents.get(id)`             | Get one agent.                                                           |
-| `client.agents.update(id, request)` | Update an agent with `UpdateAgentRequest`. Omitted fields do not change. |
-| `client.agents.delete(id)`          | Delete an agent.                                                         |
+For retry-safe submission, create and save the request with `newMessageAdmission`, `newMacroAdmission`, or `newActionAdmission` before calling `admit`.
+`newRequestID()` creates a UUID for other callers that need a request ID.
 
-```ts
-const agent = await client.agents.create({
-  name: "Assistant",
-  instructions: "Be helpful and concise.",
-  model_ref: "openai/gpt-5.6-terra",
-  tools: ["read", "glob", "grep"],
-});
-```
+## Streams
 
-## Clients
+`client.sessions.streamEvents(id, options)` opens one connection.
+Its optional fields are `after`, `limit`, `lastEventID`, and `signal`.
+`after` takes precedence over `lastEventID`. The method does not reconnect automatically.
 
-| Method                            | Description                                                                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `client.clients.list()`           | List registered client identities.                                                                                                   |
-| `client.clients.create(request)`  | Register a client from `CreateClientRequest`.                                                                                        |
-| `client.clients.get(id)`          | Get a registered client.                                                                                                             |
-| `client.clients.ensure(id, name)` | Create a client or return the existing client with the same ID and name. It throws `APIError` with `conflict` when the names differ. |
+`client.sessions.listEvents(id, query)` reads a finite page. Its query accepts `after` and `limit`.
+`client.run.stream(request, options)` opens a one-shot stream. Its options accept `signal` for cancellation.
 
-```ts
-await client.clients.ensure("cli_example", "Example client");
-```
+Both stream methods return an async iterable of `{ known, event }` values.
+Unknown types have `known: false`. Handle a run's `error` event separately from HTTP or stream errors.
+See [Streaming Events](/build-clients/streaming-events) for replay and cursor rules.
 
-## Sessions
+## Errors and types
 
-| Method                                                             | Description                                                                                            |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `client.sessions.list()`                                           | List sessions for the active client.                                                                   |
-| `client.sessions.create(request)`                                  | Create a session from `CreateSessionRequest`.                                                          |
-| `client.sessions.get(id)`                                          | Get a session and its current state.                                                                   |
-| `client.sessions.delete(id, expectedVersion)`                      | Delete a session if its version matches `expectedVersion`.                                             |
-| `client.sessions.abort(id)`                                        | Abort the active run for a session.                                                                    |
-| `client.sessions.rename(id, request)`                              | Rename a session with `RenameSessionRequest`.                                                          |
-| `client.sessions.move(id, request)`                                | Move a session with `MoveSessionRequest`.                                                              |
-| `client.sessions.message(id, request)`                             | Submit a message. Use `admit` for retry-safe persistent work.                                          |
-| `client.sessions.admit(id, request)`                               | Submit a persistent message with a required `request_id`. An identical retry returns the existing run. |
-| `client.sessions.listEvents(id, query?)`                           | Get a finite page of stored session events. `query` accepts `after` and `limit`.                       |
-| `client.sessions.streamEvents(id, options?)`                       | Open a persistent session SSE stream.                                                                  |
-| `client.sessions.modelCalls.list(id)`                              | List model calls for a session.                                                                        |
-| `client.sessions.permissionGrants.list(id)`                        | List permission grants for a session.                                                                  |
-| `client.sessions.permissionRequests.list(id)`                      | List pending and resolved permission requests.                                                         |
-| `client.sessions.permissionRequests.reply(id, requestID, request)` | Reply to a permission request with `PermissionReplyRequest`.                                           |
-| `client.sessions.runs.list(id)`                                    | List runs for a session.                                                                               |
-| `client.sessions.runs.get(id, runID)`                              | Get one run.                                                                                           |
-| `client.sessions.runs.abort(id, runID)`                            | Abort one run.                                                                                         |
-| `client.sessions.toolUses.list(id)`                                | List tool uses for a session.                                                                          |
-| `client.sessions.macros.list(id)`                                  | List project macros for a session.                                                                     |
-| `client.sessions.macros.admit(id, request)`                        | Admit a project macro with a `request_id`.                                                             |
-| `client.sessions.actions.admit(id, action, request)`               | Admit a named action with a `request_id`.                                                              |
+`APIError` contains `status`, `code`, `message`, `requestId`, `details`, `headers`, and `retryAfterMs`.
+`StreamError.code` is `invalid_stream`, `stream_interrupted`, or `stream_too_large`.
 
-Before the first `admit` request, use `newMessageAdmission`. Save the returned
-request before you send it. If the result is unknown, reuse the saved request.
-
-```ts
-import { newMessageAdmission } from "@wingman-actor/client";
-
-const request = newMessageAdmission({
-  agent_id: "agt_assistant",
-  message: "Summarize this project.",
-});
-await client.sessions.admit("ses_example", request);
-```
-
-`streamEvents(id, options)` returns an async iterable. `options` accepts
-`after`, `limit`, `lastEventID`, and `signal`. Save each durable event cursor.
-See [Streaming Events](/build-clients/streaming-events/) for replay and recovery.
-
-## One-Shot Runs
-
-| Method                                 | Description                                                                                                 |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `client.run.stream(request, options?)` | Start `POST /run` and return an async iterable of one-shot run events. `options.signal` aborts the request. |
-
-The iterable returns parsed events. Unknown types return `{ known: false, event }`. Ignore them.
-`StreamError` indicates a non-SSE response or a stream that ends before `done` or `error`.
-
-```ts
-for await (const result of client.run.stream({
-  model_ref: "openai/gpt-5.6-terra",
-  message: "Summarize this project.",
-})) {
-  if (!result.known) continue;
-  if (result.event.type === "stream_part") console.log(result.event.data);
-}
-```
-
-## Workspaces
-
-| Method                                  | Description                                       |
-| --------------------------------------- | ------------------------------------------------- |
-| `client.workspaces.list()`              | List Workspaces for the active client.            |
-| `client.workspaces.create(request)`     | Create a Workspace with `CreateWorkspaceRequest`. |
-| `client.workspaces.get(id)`             | Get one Workspace.                                |
-| `client.workspaces.update(id, request)` | Update a Workspace with `UpdateWorkspaceRequest`. |
-| `client.workspaces.delete(id)`          | Delete a Workspace.                               |
-| `client.workspaces.sessions.list(id)`   | List sessions in a Workspace.                     |
-
-## Providers and Catalog
-
-| Method                                            | Description                                               |
-| ------------------------------------------------- | --------------------------------------------------------- |
-| `client.providers.list()`                         | List providers.                                           |
-| `client.providers.get(name)`                      | Get provider metadata.                                    |
-| `client.providers.models.list(name)`              | List models for a provider.                               |
-| `client.providers.models.get(name, model)`        | Get model metadata.                                       |
-| `client.providers.auth.get()`                     | Get provider credential status. Secrets are not returned. |
-| `client.providers.auth.set(request)`              | Set provider credentials with `SetProvidersAuthRequest`.  |
-| `client.providers.auth.delete(provider)`          | Delete credentials for one provider.                      |
-| `client.providers.oauth.authorize(name, request)` | Start OAuth authorization with `ProviderOAuthRequest`.    |
-| `client.providers.oauth.get(name, attempt)`       | Get an OAuth authorization attempt.                       |
-| `client.providers.oauth.cancel(name, attempt)`    | Cancel an OAuth authorization attempt.                    |
-| `client.catalog.get()`                            | Get the model catalog.                                    |
-| `client.catalog.logo(id)`                         | Get a catalog lab logo.                                   |
-
-## Server and Operations
-
-| Method                                 | Description                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------------ |
-| `client.current.service()`             | Get service metadata for the current daemon.                                   |
-| `client.current.client()`              | Get the active request client.                                                 |
-| `client.health.get()`                  | Read public process health.                                                    |
-| `client.health.ready(options?)`        | Read authenticated readiness. `options.signal` aborts the request.             |
-| `client.tools.list()`                  | List the effective tool catalog.                                               |
-| `client.plugins.list()`                | List external plugins and load errors.                                         |
-| `client.plugins.reload()`              | Reload external plugins.                                                       |
-| `client.mcp.list()`                    | List configured MCP servers and status.                                        |
-| `client.mcp.authorize(name)`           | Start MCP authorization.                                                       |
-| `client.mcp.logout(name)`              | Remove MCP authorization.                                                      |
-| `client.mcp.connect(name)`             | Connect an MCP server.                                                         |
-| `client.mcp.disconnect(name)`          | Disconnect an MCP server.                                                      |
-| `client.filesystem.directories(path?)` | List immediate subdirectories. Omit `path` for the daemon user home directory. |
-| `client.logs.list()`                   | Read recent server logs from the current process.                              |
-| `client.diagnostics.get()`             | Read current server diagnostics.                                               |
-| `client.actions.list()`                | List available session actions.                                                |
-| `client.service.restart()`             | Restart the managed daemon. The client sends `X-Wingman-Console: 1`.           |
-
-## Errors and Stream Helpers
-
-| Export                              | Description                                                                                                                              |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `APIError`                          | Error for a non-success HTTP response. It includes `status`, `code`, `message`, `requestId`, `details`, `headers`, and `retryAfterMs`.   |
-| `StreamError`                       | Error for an invalid, interrupted, or oversized SSE stream. Its `code` is `invalid_stream`, `stream_interrupted`, or `stream_too_large`. |
-| `newMessageAdmission(request)`      | Return the request unchanged when it has `request_id`. Otherwise, return a copy with a new UUID.                                         |
-| `newMacroAdmission(request)`        | Add a `request_id` to a macro admission if it has none.                                                                                  |
-| `newActionAdmission(request)`       | Add a `request_id` to an action admission if it has none.                                                                                |
-| `readSSE(response, maxEventBytes?)` | Parse raw SSE frames into an async iterable. Use resource stream methods unless you need raw frames.                                     |
-| `parseSessionEvent(value)`          | Parse one session event envelope.                                                                                                        |
-| `parseRunStreamEvent(value)`        | Parse one one-shot run event envelope.                                                                                                   |
-
-```ts
-import { APIError } from "@wingman-actor/client";
-
-try {
-  await client.sessions.get("ses_missing");
-} catch (error) {
-  if (error instanceof APIError) {
-    console.error(error.status, error.code, error.requestId);
-  }
-  throw error;
-}
-```
-
-## Types
-
-The package exports common resource and request types, including `Agent`,
-`Client`, `Session`, `Workspace`, `CreateAgentRequest`,
-`CreateSessionRequest`, `MessageSessionRequest`, `RunRequest`, and
-`SessionEvent`.
-
-For generated types, import `components`, `operations`, or `paths` from the
-package. Use matching daemon and SDK release versions.
-
-```ts
-import type { components, operations, paths } from "@wingman-actor/client";
-```
+The package exports common resource and request types. It also exports the generated `components`, `operations`, and `paths` types.
+For custom stream readers, use `readSSE`, `parseSessionEvent`, and `parseRunStreamEvent`.

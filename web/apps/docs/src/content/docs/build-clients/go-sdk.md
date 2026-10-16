@@ -5,17 +5,17 @@ description: "Use the generated Go client with a Wingman daemon."
 
 # Go SDK
 
-Use the Go SDK to call Wingman's HTTP API and read event streams.
+The Go SDK is a library for calling Wingman's HTTP API. It also reads live event streams.
+Import `github.com/chaserensberger/wingman/client` as `client` in your application.
 
-See the [Go Client API](/reference/go-client-api/) for the complete public
-method index.
+See [Go Client API](/reference/go-client-api/) for connection options and method conventions.
 
 ## Install
 
-Install the SDK version that matches the Wingman daemon:
+Read the server version with `wingman version`. Replace `VERSION` below with the same version, including its leading `v`:
 
 ```bash
-go get github.com/chaserensberger/wingman/client@v0.1.60
+go get github.com/chaserensberger/wingman/client@VERSION
 ```
 
 ## Connect
@@ -89,12 +89,15 @@ if err != nil {
 fmt.Println(ready.JSON200.Version)
 ```
 
-## Admit Messages Safely
+## Submit messages safely
 
 Retrying the same input with the same `request_id` does not create another run.
 `NewMessageAdmission` adds an ID if the request has none.
 
 Save the returned request before you send the first network request:
+
+The examples below use application-defined functions such as `savePendingRequest` and `applyEvent`.
+Implement these functions in your client. Replace example agent and session IDs with existing IDs.
 
 ```go
 request := client.NewMessageAdmission(client.MessageSessionRequest{
@@ -116,13 +119,19 @@ request. Do not create a new request ID for this retry.
 
 ## One-Shot Streams
 
-`Run` executes without saving a conversation. Its stream ends on completion or failure.
+`Run` executes without saving a conversation. Supply an inline agent or an existing `agent_id`.
+Its stream ends on completion or failure. This example needs OpenAI credentials on the server:
+
+Import `github.com/chaserensberger/wingman/api` as `api` for event types.
 
 ```go
 modelRef := "openai/gpt-5.6-terra"
 stream, err := wingman.Run(ctx, client.RunRequest{
-	ModelRef: &modelRef,
-	Message:  "Summarize this project.",
+	Agent: &client.AgentSpec{
+		Name:     "Assistant",
+		ModelRef: &modelRef,
+	},
+	Message: "Explain what an HTTP API does.",
 })
 if err != nil {
 	return err
@@ -131,7 +140,10 @@ defer stream.Close()
 
 for stream.Next() {
 	event := stream.Event()
-	_ = event
+	if failure, ok := event.Data.(*api.RunErrorEventData); ok {
+		return fmt.Errorf("run failed: %s", failure.Message)
+	}
+	fmt.Println(event)
 }
 if err := stream.Err(); err != nil {
 	return err
@@ -140,8 +152,9 @@ if err := stream.Err(); err != nil {
 
 ## Persistent Session Streams
 
-`StreamSessionEvents` reads server-sent events (SSE) for a saved session.
-Your application must save the last event sequence, reload state, and reconnect after a disconnect.
+Server-sent events (SSE) send updates over an open HTTP connection.
+`StreamSessionEvents` reads these updates for a saved session.
+Your application must save the last processed event sequence and reconnect after a disconnect.
 
 Set `LastEventID` to send the saved cursor in the `Last-Event-ID` header. If
 both `After` and `LastEventID` are set, `After` takes precedence.
@@ -158,21 +171,24 @@ defer stream.Close()
 
 for stream.Next() {
 	event := stream.Event()
-	if event.Cursor != nil && event.Cursor.Seq > after {
-		after = event.Cursor.Seq
-		saveLastSequence(sessionID, after)
-	}
 	if event.Type == api.SessionEventEventsResyncRequired {
 		reloadSessionAndRun(sessionID)
 		break
 	}
-	applyEvent(event)
+	if event.Type != api.SessionEventEventsSynchronized {
+		applyEvent(event)
+	}
+	if event.Cursor != nil && event.Cursor.Seq > after {
+		after = event.Cursor.Seq
+		saveLastSequence(sessionID, after)
+	}
 }
 if err := stream.Err(); err != nil {
 	return err
 }
 ```
 
+Save state before its cursor, or save both in one transaction. Otherwise, a crash can skip an event that your application did not apply.
 For raw SSE `id`, `event`, or `data` fields, use `stream.Frame()`. Read
 [Streaming Events](/build-clients/streaming-events) for the event recovery contract.
 
@@ -191,7 +207,3 @@ if errors.As(err, &apiError) {
 
 `APIError` includes response headers, the error payload, the request ID, and
 the parsed `Retry-After` value. Use this data for diagnostics and retry logic.
-
-## Version Compatibility
-
-Use the SDK version that matches the server release.

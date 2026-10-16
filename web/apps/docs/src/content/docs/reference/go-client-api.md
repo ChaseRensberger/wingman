@@ -1,240 +1,73 @@
 ---
 title: "Go Client API"
-description: "Reference for the Wingman Go client public API."
+description: "Connection, request, and stream methods in the Go client."
 ---
 
 # Go Client API
 
-API reference for `github.com/chaserensberger/wingman/client`.
-See the [Go SDK guide](/build-clients/go-sdk/) for connection and streaming examples.
+Import `github.com/chaserensberger/wingman/client` for the HTTP SDK.
+Use the [Go SDK guide](/build-clients/go-sdk) for examples.
+The complete type and method reference is on [pkg.go.dev](https://pkg.go.dev/github.com/chaserensberger/wingman/client).
+Match the SDK version to the server release.
 
-For JSON endpoints, use methods with the `WithResponse` suffix.
-They return typed response fields on success and `*APIError` for HTTP errors.
+## Connection
 
-```go
-wingman, err := client.New(
-	"http://localhost:2424",
-	client.WithBasicAuth("wingman", os.Getenv("WINGMAN_PASSWORD")),
-	client.WithClientID("cli_example"),
-)
-if err != nil {
-	return err
-}
-```
+| Function                                       | Purpose                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `New(baseURL, options...)`                     | Connect to an HTTP or HTTPS origin. Do not include a path, query, fragment, or credentials. |
+| `NewLocal(ctx, options...)`                    | Discover the current user's managed local server and read its credentials.                  |
+| `NewLocalFromState(ctx, stateDir, options...)` | Use an explicit directory for service discovery.                                            |
+| `WithBasicAuth(username, password)`            | Set server credentials.                                                                     |
+| `WithClientID(id)`                             | Set `X-Wingman-Client` unless a request sets it.                                            |
+| `WithTransport(doer)`                          | Supply an HTTP transport.                                                                   |
+| `WithMaxSSEEventBytes(size)`                   | Limit one event frame. The default is 1 MiB.                                                |
 
-The package also generates `WithBodyWithResponse` variants for JSON write
-methods. If the request body is an `io.Reader`, use these variants. For normal
-Go values, use the JSON methods in this reference.
+`EnsureClient(ctx, id, name)` creates or reuses a client identity. It fails if the saved name differs.
+`RegisterClient(ctx, id, name)` creates a new identity.
 
-## Create a Client
+## JSON requests
 
-| Function or option                             | Description                                                                                                                            |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `New(baseURL, options...)`                     | Create an SDK for an HTTP or HTTPS daemon origin. The URL cannot include a path, query, fragment, or credentials.                      |
-| `NewLocal(ctx, options...)`                    | Discover and verify the managed local daemon for the current user. It reads the public registration and private generated credentials. |
-| `NewLocalFromState(ctx, stateDir, options...)` | Discover a managed daemon from an explicit state directory.                                                                            |
-| `WithBasicAuth(username, password)`            | Set HTTP Basic authentication credentials.                                                                                             |
-| `WithClientID(id)`                             | Set `X-Wingman-Client` on requests that do not set it explicitly.                                                                      |
-| `WithTransport(doer)`                          | Set the `HttpRequestDoer` for requests.                                                                                                |
-| `WithMaxSSEEventBytes(size)`                   | Set the maximum accepted SSE frame size. The default is `1048576`.                                                                     |
+Use generated methods with the `WithResponse` suffix. They decode successful responses into typed fields such as `JSON200` and `JSON201`.
+HTTP failures return `*APIError`. Methods with `WithBodyWithResponse` accept an `io.Reader` instead of a typed JSON body.
 
-`WithClientID` identifies the calling application. It does not authenticate the
-request. See [Client Identity](/build-clients/http-api-basics/#client-identity).
+The method name follows the OpenAPI operation ID. For example, `createSession` becomes `CreateSessionWithResponse`.
+Read `GET /openapi.json` for operation IDs and request fields.
 
-## Agents
+| Example method                                  | Purpose                             |
+| ----------------------------------------------- | ----------------------------------- |
+| `GetReadinessWithResponse(ctx, nil)`            | Read server readiness.              |
+| `CreateAgentWithResponse(ctx, nil, body)`       | Create an agent.                    |
+| `CreateSessionWithResponse(ctx, nil, body)`     | Create a session.                   |
+| `GetSessionWithResponse(ctx, id, nil)`          | Read its history and current state. |
+| `ListSessionRunsWithResponse(ctx, id, nil)`     | Read saved runs.                    |
+| `ListSessionToolUsesWithResponse(ctx, id, nil)` | Read tool execution records.        |
 
-| Method                                        | Description                                    |
-| --------------------------------------------- | ---------------------------------------------- |
-| `ListAgentsWithResponse(ctx, nil)`            | List agents.                                   |
-| `CreateAgentWithResponse(ctx, nil, body)`     | Create an agent.                               |
-| `GetAgentWithResponse(ctx, id, nil)`          | Get one agent.                                 |
-| `UpdateAgentWithResponse(ctx, id, nil, body)` | Update an agent. Omitted fields do not change. |
-| `DeleteAgentWithResponse(ctx, id, nil)`       | Delete an agent.                               |
+For retry-safe message submission, use `NewMessageAdmission` and `AdmitMessage` as shown in the guide.
+Save the request before sending it. Reuse it when a network failure leaves the result unknown.
 
-```go
-instructions := "Be helpful and concise."
-modelRef := "openai/gpt-5.6-terra"
-tools := []string{"read", "glob", "grep"}
-response, err := wingman.CreateAgentWithResponse(ctx, nil, client.CreateAgentRequest{
-	Name:         "Assistant",
-	Instructions: &instructions,
-	ModelRef:     &modelRef,
-	Tools:        &tools,
-})
-if err != nil {
-	return err
-}
-agent := response.JSON201
-```
+## Streams
 
-## Client Identities
+Server-sent events (SSE) send updates over an open HTTP connection.
 
-| Method                                     | Description                                                                                                         |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `RegisterClient(ctx, id, name)`            | Create a client identity and return the client.                                                                     |
-| `EnsureClient(ctx, id, name)`              | Create a client or return the existing client with the same ID and name. It returns an error when the names differ. |
-| `ListClientsWithResponse(ctx, nil)`        | List registered client identities.                                                                                  |
-| `CreateClientWithResponse(ctx, nil, body)` | Register a client identity.                                                                                         |
-| `GetClientWithResponse(ctx, id, nil)`      | Get a client identity.                                                                                              |
-| `GetCurrentClientWithResponse(ctx, nil)`   | Get the active request client.                                                                                      |
+| Method                                         | Purpose                                       |
+| ---------------------------------------------- | --------------------------------------------- |
+| `Run(ctx, body)`                               | Open a one-shot run stream.                   |
+| `StreamSessionEvents(ctx, sessionID, options)` | Open one connection for saved session events. |
+| `ListSessionEvents(ctx, sessionID, options)`   | Read one finite page of saved events.         |
 
-```go
-_, err := wingman.EnsureClient(ctx, "cli_example", "Example client")
-if err != nil {
-	return err
-}
-```
+`SessionEventsOptions` accepts `After`, `LastEventID`, and `Limit`.
+For streams, `After` takes precedence over `LastEventID`. The finite-page method uses `After` and `Limit` only.
 
-## Sessions
+Both stream types provide `Next`, `Event`, `Frame`, `Err`, and `Close`.
+`Event` returns the typed event. `Frame` returns raw SSE fields.
+`Err` reports read or decode failures. A run's `error` event remains event data, so handle it separately.
 
-| Method                                                              | Description                                                                                          |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `ListSessionsWithResponse(ctx, nil)`                                | List sessions for the active client.                                                                 |
-| `CreateSessionWithResponse(ctx, nil, body)`                         | Create a session.                                                                                    |
-| `GetSessionWithResponse(ctx, id, nil)`                              | Get a session and its current state.                                                                 |
-| `DeleteSessionWithResponse(ctx, id, params)`                        | Delete a session if `params.ExpectedVersion` matches.                                                |
-| `AbortSessionWithResponse(ctx, id, nil)`                            | Abort the active run for a session.                                                                  |
-| `RenameSessionWithResponse(ctx, id, nil, body)`                     | Rename a session.                                                                                    |
-| `MoveSessionWithResponse(ctx, id, nil, body)`                       | Move a session.                                                                                      |
-| `MessageSessionWithResponse(ctx, id, nil, body)`                    | Submit a message. Use `AdmitMessage` for retry-safe persistent work.                                 |
-| `AdmitMessage(ctx, sessionID, request)`                             | Submit a persistent message with a required request ID. An identical retry returns the existing run. |
-| `ListSessionModelCallsWithResponse(ctx, id, nil)`                   | List model calls for a session.                                                                      |
-| `ListPermissionGrantsWithResponse(ctx, id, nil)`                    | List permission grants for a session.                                                                |
-| `ListPermissionRequestsWithResponse(ctx, id, nil)`                  | List pending and resolved permission requests.                                                       |
-| `ReplyPermissionRequestWithResponse(ctx, id, requestID, nil, body)` | Reply to a permission request.                                                                       |
-| `ListSessionRunsWithResponse(ctx, id, nil)`                         | List runs for a session.                                                                             |
-| `GetSessionRunWithResponse(ctx, id, runID, nil)`                    | Get one run.                                                                                         |
-| `AbortSessionRunWithResponse(ctx, id, runID, nil)`                  | Abort one run.                                                                                       |
-| `ListSessionToolUsesWithResponse(ctx, id, nil)`                     | List tool uses for a session.                                                                        |
-| `ListSessionMacrosWithResponse(ctx, id, nil)`                       | List project macros for a session.                                                                   |
-| `RunSessionMacroWithResponse(ctx, id, nil, body)`                   | Admit a project macro.                                                                               |
-| `RunSessionActionWithResponse(ctx, id, action, nil, body)`          | Admit a named session action.                                                                        |
+Close streams when you stop reading. Session streams do not reconnect automatically.
+See [Streaming Events](/build-clients/streaming-events) for replay and cursor rules.
 
-Before the first `AdmitMessage` request, use `NewMessageAdmission`. Save the
-returned request before you send it. If the result is unknown, reuse the saved
-request.
+## Errors
 
-```go
-request := client.NewMessageAdmission(client.MessageSessionRequest{
-	AgentId: "agt_assistant",
-	Message: "Summarize this project.",
-})
-admission, err := wingman.AdmitMessage(ctx, "ses_example", request)
-if err != nil {
-	return err
-}
-_ = admission
-```
+`APIError` contains `StatusCode`, parsed `Response`, response `Headers`, `RequestID`, and `RetryAfter`.
+Use the error code for program logic. Include the request ID when reporting a failure.
 
-## Session Events
-
-| Method or type                                 | Description                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ListSessionEvents(ctx, sessionID, options)`   | Get one finite page of durable session events.                                                    |
-| `StreamSessionEvents(ctx, sessionID, options)` | Open a persistent session SSE stream.                                                             |
-| `SessionEventsOptions`                         | Set `After`, `LastEventID`, or `Limit`. `After` takes precedence when both cursor fields are set. |
-| `SessionEventStream.Next()`                    | Advance to the next session event.                                                                |
-| `SessionEventStream.Event()`                   | Get the most recent typed event.                                                                  |
-| `SessionEventStream.Frame()`                   | Get the raw SSE frame for the most recent event.                                                  |
-| `SessionEventStream.Err()`                     | Get the terminal stream error.                                                                    |
-| `SessionEventStream.Close()`                   | Close the stream.                                                                                 |
-
-Save each durable event cursor. See [Streaming Events](/build-clients/streaming-events/)
-for replay and recovery.
-
-## One-Shot Runs
-
-| Method or type      | Description                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------- |
-| `Run(ctx, body)`    | Start `POST /run` and return a one-shot SSE stream.                                   |
-| `RunStream.Next()`  | Advance to the next run event. It returns false after a terminal error or stream end. |
-| `RunStream.Event()` | Get the most recent typed run event.                                                  |
-| `RunStream.Frame()` | Get the raw SSE frame for the most recent event.                                      |
-| `RunStream.Err()`   | Get the terminal stream error.                                                        |
-| `RunStream.Close()` | Close the stream before it ends.                                                      |
-| `SSEFrame`          | Raw SSE frame with `ID`, `Event`, and `Data` fields.                                  |
-
-```go
-modelRef := "openai/gpt-5.6-terra"
-stream, err := wingman.Run(ctx, client.RunRequest{
-	ModelRef: &modelRef,
-	Message:  "Summarize this project.",
-})
-if err != nil {
-	return err
-}
-defer stream.Close()
-
-for stream.Next() {
-	event := stream.Event()
-	_ = event
-}
-if err := stream.Err(); err != nil {
-	return err
-}
-```
-
-## Workspaces
-
-| Method                                            | Description                            |
-| ------------------------------------------------- | -------------------------------------- |
-| `ListWorkspacesWithResponse(ctx, nil)`            | List Workspaces for the active client. |
-| `CreateWorkspaceWithResponse(ctx, nil, body)`     | Create a Workspace.                    |
-| `GetWorkspaceWithResponse(ctx, id, nil)`          | Get one Workspace.                     |
-| `UpdateWorkspaceWithResponse(ctx, id, nil, body)` | Update a Workspace.                    |
-| `DeleteWorkspaceWithResponse(ctx, id, nil)`       | Delete a Workspace.                    |
-| `ListWorkspaceSessionsWithResponse(ctx, id, nil)` | List sessions in a Workspace.          |
-
-## Providers and Catalog
-
-| Method                                                            | Description                                               |
-| ----------------------------------------------------------------- | --------------------------------------------------------- |
-| `ListProvidersWithResponse(ctx, nil)`                             | List providers.                                           |
-| `GetProviderWithResponse(ctx, name, nil)`                         | Get provider metadata.                                    |
-| `ListProviderModelsWithResponse(ctx, name, nil)`                  | List models for a provider.                               |
-| `GetProviderModelWithResponse(ctx, name, model, nil)`             | Get model metadata.                                       |
-| `GetProviderAuthWithResponse(ctx, nil)`                           | Get provider credential status. Secrets are not returned. |
-| `SetProviderAuthWithResponse(ctx, nil, body)`                     | Set provider credentials.                                 |
-| `DeleteProviderAuthWithResponse(ctx, provider, nil)`              | Delete credentials for one provider.                      |
-| `AuthorizeProviderOAuthWithResponse(ctx, name, nil, body)`        | Start OAuth authorization.                                |
-| `GetProviderOAuthAttemptWithResponse(ctx, name, attempt, nil)`    | Get an OAuth authorization attempt.                       |
-| `CancelProviderOAuthAttemptWithResponse(ctx, name, attempt, nil)` | Cancel an OAuth authorization attempt.                    |
-| `GetModelCatalogWithResponse(ctx, nil)`                           | Get the model catalog.                                    |
-| `GetCatalogLabLogoWithResponse(ctx, id, nil)`                     | Get a catalog lab logo.                                   |
-
-## Server and Operations
-
-| Method                                            | Description                                                                           |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `GetServiceWithResponse(ctx, nil)`                | Get service metadata for the current daemon.                                          |
-| `GetHealthWithResponse(ctx, nil)`                 | Read public process health.                                                           |
-| `GetReadinessWithResponse(ctx, nil)`              | Read authenticated server readiness.                                                  |
-| `ListToolsWithResponse(ctx, nil)`                 | List the effective tool catalog.                                                      |
-| `ListPluginsWithResponse(ctx, nil)`               | List external plugins and load errors.                                                |
-| `ReloadPluginsWithResponse(ctx, nil)`             | Reload external plugins.                                                              |
-| `ListMCPServersWithResponse(ctx, nil)`            | List configured MCP servers and status.                                               |
-| `AuthorizeMCPServerWithResponse(ctx, name, nil)`  | Start MCP authorization.                                                              |
-| `LogoutMCPServerWithResponse(ctx, name, nil)`     | Remove MCP authorization.                                                             |
-| `ConnectMCPServerWithResponse(ctx, name, nil)`    | Connect an MCP server.                                                                |
-| `DisconnectMCPServerWithResponse(ctx, name, nil)` | Disconnect an MCP server.                                                             |
-| `ListDirectoriesWithResponse(ctx, params)`        | List immediate subdirectories. Omit `params.Path` for the daemon user home directory. |
-| `ListLogsWithResponse(ctx, nil)`                  | Read recent server logs from the current process.                                     |
-| `GetDiagnosticsWithResponse(ctx, nil)`            | Read current server diagnostics.                                                      |
-| `ListActionsWithResponse(ctx, nil)`               | List available session actions.                                                       |
-| `RestartServiceWithResponse(ctx, params)`         | Restart the managed daemon. Set the required `X-Wingman-Console: 1` header parameter. |
-
-## Errors and Types
-
-`APIError` reports a non-success response. It includes `StatusCode`, the parsed
-`Response`, response `Headers`, `RequestID`, and `RetryAfter`.
-
-```go
-var apiError *client.APIError
-if errors.As(err, &apiError) {
-	fmt.Println(apiError.StatusCode, apiError.RequestID)
-}
-```
-
-The `client` package exports generated request, response, and resource types.
-For the complete Go type reference, use [pkg.go.dev](https://pkg.go.dev/github.com/chaserensberger/wingman/client).
-Use matching daemon and SDK release versions.
+MCP authorization and logout methods exist, but the server returns `501 Not Implemented` for both.

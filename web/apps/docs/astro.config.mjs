@@ -42,7 +42,7 @@ export default defineConfig({
             { label: "Run the Server", slug: "use-wingman/run-server" },
             { label: "Run in Docker", slug: "use-wingman/docker" },
             { label: "Use the Console", slug: "use-wingman/web-ui" },
-            { label: "Observability", slug: "use-wingman/observability" },
+            { label: "Logs and Diagnostics", slug: "use-wingman/observability" },
           ],
         },
         {
@@ -60,7 +60,7 @@ export default defineConfig({
         {
           label: "Configure",
           items: [
-            { label: "Global Config", slug: "configure/config" },
+            { label: "Global Configuration", slug: "configure/config" },
             { label: "Project Instructions", slug: "configure/project-instructions" },
             { label: "Skills", slug: "configure/skills" },
             { label: "Macros", slug: "configure/macros" },
@@ -73,6 +73,7 @@ export default defineConfig({
         {
           label: "Extend",
           items: [
+            { label: "WingModels", slug: "extend/wingmodels" },
             { label: "Go Plugin Quickstart", slug: "extend/plugin-quickstart" },
             {
               label: "RPC Plugin Protocol",
@@ -94,10 +95,8 @@ export default defineConfig({
             { label: "Agents", slug: "concepts/agents" },
             { label: "Tools", slug: "concepts/tools" },
             { label: "Plugins", slug: "concepts/plugins" },
-            { label: "WingModels", slug: "concepts/wingmodels" },
             { label: "Authentication", slug: "concepts/authentication" },
             { label: "Storage", slug: "concepts/storage" },
-            { label: "Durable Events", slug: "concepts/durable-events" },
           ],
         },
         {
@@ -107,7 +106,7 @@ export default defineConfig({
             { label: "API", slug: "reference/referenceapi" },
             { label: "Go Client API", slug: "reference/go-client-api" },
             { label: "TypeScript Client API", slug: "reference/typescript-client-api" },
-            { label: "Config Schema", slug: "reference/config-schema" },
+            { label: "Configuration Schema", slug: "reference/config-schema" },
           ],
         },
       ],

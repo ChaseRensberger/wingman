@@ -1,12 +1,11 @@
 ---
 title: "Sessions"
-group: "Core"
-order: 102
 ---
 
 # Sessions
 
-A session stores a conversation and runs its messages. Each message can use a different agent or model.
+A session stores a conversation and runs work for its messages. Each submitted message can use a different agent or model.
+One turn is the response to a message, including model and tool steps. A run is the saved execution record for that turn.
 Saved sessions survive server restarts. Wingman resumes unfinished work when it can do so safely.
 
 A [Workspace](/concepts/workspaces) groups sessions and can supply their initial working directory.
@@ -18,13 +17,13 @@ Create a session before you send a message:
 
 ```bash
 SESSION_ID=$(wingman api createSession \
-  -d "{\"title\":\"Explore repo\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
+  -d "$(jq -n --arg path "$PWD" '{title: "Explore repo", working_directory: $path}')" | jq -r .id)
 ```
 
 Create a session in a Workspace:
 
 ```bash
-WORKSPACE_ID=$(wingman api listWorkspaces | jq -r '.[0].id')
+WORKSPACE_ID=$(wingman api listWorkspaces | jq -er '.[0].id // error("Create a workspace first")')
 
 SESSION_ID=$(wingman api createSession \
   -d "{\"title\":\"Explore repo\",\"workspace_id\":\"${WORKSPACE_ID}\"}" | jq -r .id)
@@ -34,18 +33,25 @@ Send either `working_directory` or `workspace_id`, not both. Wingman copies a Wo
 
 ## Rename And Move
 
-Persisted session responses include a `version`. Use this value to rename a session:
+Saved session responses include a `version`. Read this value immediately before each change:
+
+```bash
+VERSION=$(wingman api getSession --param "id=${SESSION_ID}" | jq -r .version)
+```
+
+Use the value to rename the session:
 
 ```bash
 wingman api renameSession --param "id=${SESSION_ID}" \
-  -d '{"title":"Investigate retries","expected_version":1}'
+  -d "$(jq -n --argjson version "$VERSION" '{title: "Investigate retries", expected_version: $version}')"
 ```
 
-To move a session, send exactly one of `working_directory` or `workspace_id`:
+To move a session, read its version again. Send exactly one of `working_directory` or `workspace_id`:
 
 ```bash
+VERSION=$(wingman api getSession --param "id=${SESSION_ID}" | jq -r .version)
 wingman api moveSession --param "id=${SESSION_ID}" \
-  -d '{"working_directory":"/home/me/other-project","expected_version":2}'
+  -d "$(jq -n --argjson version "$VERSION" '{working_directory: "/home/me/other-project", expected_version: $version}')"
 ```
 
 Changes increment `version`. An unchanged title or location leaves it unchanged.
@@ -53,20 +59,21 @@ If another client changes the session first, Wingman returns `409 Conflict`. Rel
 
 ## Delete
 
-Deleting a session permanently removes its history and associated records. Pass its current version:
+Deleting a session permanently removes its history and associated records. Read its version again before you delete it:
 
 ```bash
+VERSION=$(wingman api getSession --param "id=${SESSION_ID}" | jq -r .version)
 wingman api deleteSession \
   --param "id=${SESSION_ID}" \
-  --param expected_version=2
+  --param "expected_version=${VERSION}"
 ```
 
 Wingman cancels active work and closes event streams before deletion returns success.
 A stale version returns `409 Conflict` without deleting the session or canceling work.
 
-## Admit Work
+## Submit work
 
-Send a message with an optional retry ID:
+Replace `agt_...` with an existing agent ID. Send a message with an optional retry ID:
 
 ```bash
 wingman api messageSession --param "id=${SESSION_ID}" \
@@ -113,9 +120,8 @@ wingman api streamSessionEvents \
   --param after=0
 ```
 
-The response is server-sent events. Each `data:` payload is a Wingman event envelope with `id`, `type`, and `data`. Durable events also include `cursor`.
-
-Each accepted message emits `session.run.queued`. It then emits `session.run.started` when execution starts. Terminal events are `session.run.completed`, `session.run.failed`, and `session.run.aborted`. Each terminal event carries the accepted `run_id`. `POST /sessions/{id}/abort` cancels only the active run. It keeps later queued messages.
+The connection stays open after a run ends. Press Ctrl+C to stop reading without canceling work.
+See [Streaming Events](/build-clients/streaming-events) for event formats and reconnect steps.
 
 ## Run Status And Recovery
 
@@ -139,9 +145,10 @@ After a restart, Wingman resumes queued messages and recovers interrupted messag
 Recovery returns a run to `queued`, then `running`. It does not submit the input again.
 Wingman reuses saved model responses and tool results. It retries eligible interrupted model requests, which can incur another provider charge.
 Partial responses remain in history as `failed`. Wingman excludes these incomplete responses from the recovered model request.
-If a partial response records a tool that the provider executed, its uncertain outcome blocks recovery with `recovery_blocked`.
+If a partial response records a provider-executed tool with an unknown result, recovery stops with `recovery_blocked`.
 
-A replay-safe tool permits repeated execution with the same input. Wingman retries an interrupted tool only when its saved and current definitions permit replay.
+A replay-safe tool permits repeated execution with the same input.
+Wingman retries an interrupted tool only when its saved and current definitions permit replay.
 Calls that did not start can proceed through their remaining authorization and execution steps. Saved authorizations remain valid for the same call and input.
 If a non-replayable tool started without a saved outcome, the run fails with `recovery_blocked`.
 Inspect the tool record and its external effects before you submit another request.
@@ -166,7 +173,9 @@ wingman api runAgent -d '{
   }'
 ```
 
-If the server starts with `--ephemeral`, persisted endpoints such as `/sessions`, `/agents`, `/clients`, `/workspaces`, and `/provider/auth` return `501 Not Implemented`. In this mode, use inline agent specs with `/run`.
+If the server starts with `--ephemeral`, stored resources are unavailable.
+Endpoints such as `/sessions`, `/agents`, `/clients`, `/workspaces`, and `/provider/auth` return `501 Not Implemented`.
+In this mode, include the agent definition in each `/run` request.
 
 ## Working Directory
 

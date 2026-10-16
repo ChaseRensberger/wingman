@@ -1,11 +1,11 @@
 ---
 title: "Models"
-description: "Select models with model refs and custom routes."
+description: "Select a model, choose a variant, or add a custom model."
 ---
 
 # Models
 
-Select a model with its provider and model ID:
+A model reference names a provider and model. Use this format:
 
 ```text
 provider/model
@@ -25,7 +25,7 @@ opencode-go/kimi-k3
 
 ## Model Variants
 
-A variant is a named set of model options. Add `#variant` to select one:
+A variant is a named model configuration. Add `#variant` to select one:
 
 ```text
 openai/gpt-5.6-terra#high
@@ -38,8 +38,8 @@ The catalog supports `none`, `low`, `medium`, `high`, `xhigh`,
 and `max` for the built-in OpenAI GPT-5.6 routes. These names select OpenAI
 reasoning-effort values. They do not specify a fixed token count or latency.
 
-Request provider options and final HTTP values can override a variant. The full
-model reference, including the variant, remains in the model-call record.
+In the Go model library, request provider options and final HTTP values can override a variant.
+The full model reference, including the variant, remains in the model-call record.
 
 ### Select a Variant in the Console
 
@@ -61,13 +61,15 @@ Agents can have a default `model_ref`:
   "name": "Assistant",
   "instructions": "Be concise and helpful.",
   "tools": ["read", "glob", "grep"],
-  "model_ref": "anthropic/claude-sonnet-5",
-  "options": { "max_tokens": 4096 }
+  "model_ref": "anthropic/claude-sonnet-5"
 }
 ```
 
 The model belongs to the agent definition, not the session. A session can use a
 different agent or model on each turn.
+
+The server stores agent `options`, but it does not apply `max_tokens` or `temperature` from that object.
+For direct Go model calls, use the fields on `models.Request`.
 
 ## Per-Message Model Override
 
@@ -91,12 +93,13 @@ See [Providers](/configure/providers#route-a-provider-through-a-gateway) for con
 ## Custom Model Routes
 
 For shared custom models, [define a provider](/configure/providers#add-a-custom-provider) in `wingman.json`.
-For a model outside the catalog on one agent or request, use `model_route`:
+For a model outside the catalog on one agent or request, use `model_route`.
+Replace the example model ID, URL, limits, and capabilities with values from your provider:
 
 ```json
 {
   "name": "custom-openai",
-  "model_ref": "openai/gpt-4.1",
+  "model_ref": "openai/my-custom-model",
   "model_route": {
     "api": "openai_responses",
     "base_url": "https://api.openai.com/v1",
@@ -131,4 +134,4 @@ gemini_generate
 Wingman's embedded catalog provides provider defaults, model metadata, and
 capability flags.
 
-Read [WingModels](/concepts/wingmodels) for supported providers and protocols.
+Read [WingModels](/extend/wingmodels) to call models directly from Go.

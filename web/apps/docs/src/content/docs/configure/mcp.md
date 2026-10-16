@@ -9,7 +9,7 @@ Model Context Protocol (MCP) connects agents to external tools.
 Add servers to `~/.config/wingman/wingman.json`.
 Their tools then become available to Wingman agents. If `XDG_CONFIG_HOME` is set, use `$XDG_CONFIG_HOME/wingman/wingman.json` instead.
 
-Local servers use standard input and output. Remote servers use HTTP.
+Local servers exchange messages through standard input and output, called stdio. Remote servers use HTTP.
 
 ## Add A Local Server
 
@@ -35,6 +35,8 @@ Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths
 
 ## Chrome DevTools example
 
+Install Node.js and make `npx` available to the Wingman process before using this configuration:
+
 ```json
 {
   "mcp": {
@@ -48,7 +50,8 @@ Put each argument in a separate array item. `cwd` supports `~` and `~/...` paths
 
 ## Add A Remote Server
 
-Use `type: "remote"` for a remote MCP endpoint. Put required credentials in `headers`.
+Use `type: "remote"` for a remote MCP URL. Put required credentials in `headers`.
+Wingman does not support MCP OAuth login. The MCP authorization and logout endpoints return `501 Not Implemented`.
 
 ```json
 {
@@ -73,7 +76,7 @@ After changing `wingman.json`, restart Wingman. Connected tools appear on the Co
 Wingman prefixes each MCP tool with its server name. For example, the remote
 `search` tool from `company-tools` becomes `company_tools_search`.
 
-Add that name to an agent `tools` allow-list:
+Add that name to an agent's `tools` list:
 
 ```json
 {

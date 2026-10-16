@@ -5,7 +5,7 @@ description: "Install, create, and control local Agent Skills."
 
 # Skills
 
-Skills are Markdown instructions for specific tasks. The model sees their descriptions and loads matching skills as needed.
+Skills are Markdown instructions for specific tasks. The model sees each skill description and can load its instructions when needed.
 
 ## Install A Skill
 
@@ -58,8 +58,10 @@ description: Write concise release notes from merged changes.
 Read `references/style.md`. Then write the release notes.
 ```
 
-Paths in `SKILL.md` are relative to the skill directory. Wingman captures the
-contents of referenced supporting files when it admits a persistent run.
+Paths in `SKILL.md` are relative to the skill directory.
+Wingman saves up to ten supporting files when it accepts a saved run.
+It selects files by sorted relative path, not by references in the instructions.
+It excludes `.git` and nested skill directories. A supporting file cannot link outside the skill directory.
 
 Wingman also accepts one Markdown file at a skill source root:
 
@@ -96,9 +98,9 @@ Wingman reads these sources in order:
 | Extra global | Each directory in `skills.dirs`       |
 | Project      | `<working-directory>/.wingman/skills` |
 
-A later source with the same ID replaces an earlier source. A session without a
-working directory uses global sources only. Wingman does not search parent or
-nested project directories.
+A later source with the same ID replaces an earlier source.
+A session without a working directory uses the built-in and global sources.
+Wingman does not search other project directories. Within each skill source, it searches nested directories for `SKILL.md`.
 
 The built-in `wingskill` loads Wingman documentation. A global or project skill with the same ID replaces it.
 
@@ -120,12 +122,12 @@ Restart the managed service after you change `wingman.json`:
 wingman service restart
 ```
 
-See [Config Schema](/reference/config-schema#skills) for the field reference.
+See [Configuration Schema](/reference/config-schema#skills) for the field reference.
 
 ## Load A Skill
 
-Wingman adds the native `skill` tool when it finds one or more skills. Do not
-add `skill` to an Agent's `tools` list.
+Wingman adds the `skill` tool when it finds one or more skills. The built-in `wingskill` normally makes this tool available.
+Do not add `skill` to an agent's `tools` list.
 
 The model receives each available skill ID and description. It then loads a
 matching skill. You can request a skill directly:
@@ -134,7 +136,8 @@ matching skill. You can request a skill directly:
 Use the simple-english skill to rewrite this procedure.
 ```
 
-The skill body does not enter the model context until the model loads it.
+The model does not receive the skill body until it loads the skill.
+To load a captured supporting file, the model supplies the skill ID and relative `file` path to the `skill` tool.
 
 ## Permissions
 

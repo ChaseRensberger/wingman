@@ -1,10 +1,9 @@
 ---
-title: "Global Config"
+title: "Global Configuration"
 description: "Set server options, provider routes, and shared tools."
-order: 3
 ---
 
-# Global Config
+# Global Configuration
 
 Wingman reads server configuration from:
 
@@ -17,7 +16,7 @@ To use a different configuration root, set `XDG_CONFIG_HOME`. For example,
 
 ## Configuration Files
 
-| Concern                                                                                                                      | Where it lives                                                       |
+| Setting                                                                                                                      | Location                                                             |
 | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Server bind address, database path, logs, skill and plugin directories, provider routes, custom provider models, MCP servers | `~/.config/wingman/wingman.json` and CLI flags                       |
 | Provider API keys                                                                                                            | SQLite auth store through `PUT /provider/auth`                       |
@@ -26,29 +25,30 @@ To use a different configuration root, set `XDG_CONFIG_HOME`. For example,
 
 Create agents through the HTTP API or Console, not `wingman.json`.
 
-## Config File
+## File format
 
 Use one JSON object without comments or trailing commas. Unknown fields stop startup.
-CLI flags override file values. Restart Wingman after file changes.
-See [Config Schema](/reference/config-schema) for supported fields.
+CLI flags override file values. After file changes, restart a foreground server with its required flags.
+For a managed service, run `wingman service start` again. This updates the saved service flags from the file.
+Include any explicit flags that you still need. See [Configuration Schema](/reference/config-schema) for supported fields.
 
 ## exe.dev Example
 
 The [example configuration](https://github.com/ChaseRensberger/wingman/blob/main/wingman.example.json)
-runs Wingman on an exe.dev box with local access, text logs, and the exe.dev LLM
-Gateway. The gateway addresses work inside an exe.dev box. From the root of a
-Wingman checkout on that box, run:
+uses local access, text logs, and the exe.dev LLM Gateway.
+A gateway forwards model requests to a provider. These gateway addresses work inside an exe.dev box.
+On that box, download the example to a new configuration file:
 
 ```bash
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wingman"
 mkdir -p "$config_dir"
-(set -C; cat wingman.example.json > "$config_dir/wingman.json")
+(set -C; curl -fsSL https://raw.githubusercontent.com/chaserensberger/wingman/main/wingman.example.json > "$config_dir/wingman.json")
 ```
 
 The command refuses to overwrite an existing configuration file. If the file
 already exists, merge the example's `provider` entries into it instead.
 
-Restart Wingman to apply the file. OpenAI and Anthropic requests use the gateway without sending stored provider keys.
+Apply the file as described above. OpenAI and Anthropic requests use the gateway without sending stored provider keys.
 See [Providers](/configure/providers#exedev-gateway-example) for gateway routes.
 
 ## Defaults

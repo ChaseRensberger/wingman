@@ -1,215 +1,83 @@
 ---
 title: "CLI"
-group: "Reference"
-order: 999
-description: "Wingman command-line interface reference."
+description: "Wingman commands and runtime flags."
 ---
 
 # CLI
 
-Use `wingman` to run the server, manage the background service, and install updates.
-
-```bash
-wingman <command> [flags]
-```
+Use `wingman <command> [flags]` to run the server and call its API.
+Run `wingman <command> --help` for command-specific help.
+See [Quick Start](/start-here/quickstart) for installation.
 
 ## Commands
 
-| Command           | Description                                                 |
-| ----------------- | ----------------------------------------------------------- |
-| `api`             | Make an authenticated request to the managed daemon.        |
-| `serve`           | Start the HTTP server in the foreground.                    |
-| `service start`   | Install, enable, and start Wingman as a background service. |
-| `service stop`    | Stop and remove the Wingman background service.             |
-| `service restart` | Restart the Wingman background service.                     |
-| `service status`  | Show the Wingman background service status.                 |
-| `pair`            | Show the managed server URL and credentials with a QR code. |
-| `console`         | Open the managed daemon Console.                            |
-| `clients create`  | Register an API client identity.                            |
-| `skills add`      | Install a skill from an HTTPS Git repository.               |
-| `update`          | Check for or install a verified release update.             |
-| `version`         | Print version information.                                  |
+| Command               | Purpose                                                        |
+| --------------------- | -------------------------------------------------------------- |
+| `serve`               | Run an HTTP server in your terminal.                           |
+| `service start`       | Install and start the current user's background service.       |
+| `service stop`        | Stop and remove the service.                                   |
+| `service restart`     | Restart the installed service with its saved flags.            |
+| `service status`      | Read service status.                                           |
+| `api`                 | Send an authenticated request to the managed local service.    |
+| `pair`                | Display the managed server URL, credentials, and QR code.      |
+| `console [directory]` | Open the managed server's Console, optionally for a directory. |
+| `clients create`      | Register a client identity.                                    |
+| `skills add <url>`    | Install a skill from an HTTPS Git repository.                  |
+| `update`              | Install the latest stable release.                             |
+| `version`             | Print the version, commit, and build date.                     |
 
-## Server Commands
+Service commands require Linux with systemd or macOS with launchd. Run them as your normal user, without `sudo`.
+`pair` starts the managed service if needed. Treat its output as a password.
+See [Authentication](/concepts/authentication) for connection details and remote access.
 
-`wingman serve` starts the server in the foreground:
+## Runtime flags
 
-```bash
-wingman serve
-```
+`serve` and `service start` accept these flags. Configuration-file values replace the defaults shown here.
 
-`wingman service start` installs and starts a background service:
+| Flag           | Default                             | Purpose                                                     |
+| -------------- | ----------------------------------- | ----------------------------------------------------------- |
+| `--host`       | `127.0.0.1`                         | Listen address.                                             |
+| `--port`       | `2424`                              | Listen port.                                                |
+| `--db`         | `~/.local/share/wingman/wingman.db` | Database path.                                              |
+| `--ephemeral`  | `false`                             | Run without saved resources.                                |
+| `--log-format` | `json`                              | `json` or `text`.                                           |
+| `--log-level`  | `info`                              | `debug`, `info`, `warn`, or `error`.                        |
+| `--plugin-dir` | None                                | Extra global plugin directory. Repeat for more directories. |
+| `--no-plugins` | `false`                             | Disable external plugins.                                   |
 
-```bash
-wingman service start
-```
+The managed service saves resolved runtime flags when you run `service start`.
+To change those values, run `service start` again with the required flags or updated file.
+A plain `service restart` keeps the saved flags, which still override file values.
 
-The service runs for the current user without `sudo`. The command waits until it is ready.
-Its URL is in `~/.local/state/wingman/registration.json` and credentials are in the private file `~/.config/wingman/service.env`.
+## API command
 
-`wingman service start` accepts the same runtime flags as `wingman serve`.
-`wingman serve` prints its URL, username, and password when it uses generated
-credentials. To show the managed service connection details later, run:
-
-```bash
-wingman pair
-```
-
-The command starts the managed service when it is absent, then prints its
-connection URLs and HTTP Basic Auth credentials. It displays a QR code with the
-same connection information. A service bound to `0.0.0.0` or `::` advertises
-its non-loopback interface addresses.
-
-## Runtime Flags
-
-| Flag           | Default                             | Description                                          |
-| -------------- | ----------------------------------- | ---------------------------------------------------- |
-| `--host`       | `127.0.0.1`                         | Host to bind to.                                     |
-| `--port`       | `2424`                              | Port to listen on.                                   |
-| `--db`         | `~/.local/share/wingman/wingman.db` | SQLite database path.                                |
-| `--ephemeral`  | `false`                             | Run without persistence.                             |
-| `--log-format` | `json`                              | Log format: `json` or `text`.                        |
-| `--log-level`  | `info`                              | Log level: `debug`, `info`, `warn`, or `error`.      |
-| `--plugin-dir` | none                                | Additional global plugin directory. Can be repeated. |
-| `--no-plugins` | `false`                             | Disable out-of-process plugin loading.               |
-
-Examples:
-
-```bash
-wingman serve --host 127.0.0.1 --port 2424
-wingman serve --db ./wingman.db
-wingman serve --ephemeral
-wingman service start --port 2424
-```
-
-## API Command
-
-`wingman api` connects to the local managed service with its credentials.
-Call an endpoint with an HTTP method and path:
+`wingman api` finds the managed local server and adds its credentials.
+Use an HTTP method and path, or an OpenAPI operation ID:
 
 ```bash
 wingman api get /sessions
-wingman api post /sessions -d '{"title":"Explore repo"}'
+wingman api createSession -d '{"title":"Research"}'
+wingman api streamSessionEvents --param id=ses_example --param after=0
 ```
 
-You can also call an OpenAPI operation ID. The command loads operation IDs from
-the managed daemon's `/openapi.json`. Use `--param name=value` for path and
-query parameters:
+Replace `ses_example` with an existing session ID.
+Use `--param name=value` for path and query parameters.
+The command reads operation IDs from the server's `/openapi.json`.
 
-```bash
-wingman api createSession -d '{"title":"Explore repo"}'
-wingman api getSession --param id=ses_...
-wingman api streamSessionEvents --param id=ses_... --param after=0
-```
+`-d` or `--data` supplies a JSON body. Repeat `-H` or `--header` for extra headers.
+Response bodies stream to standard output. HTTP errors print the response body and exit with an error.
+For a foreground or remote server, use direct HTTP or an SDK instead.
 
-To list the available operation IDs:
+## Other commands
 
-```bash
-wingman api get /openapi.json | jq -r '.. | .operationId? // empty'
-```
+`wingman console .` opens a new session for the current directory.
+It reuses or creates a workspace. The Console saves the session when you send its first message.
+Without a directory, it opens the home page.
 
-Use `-d` or `--data` for a request body. The command uses
-`Content-Type: application/json` unless you set another value. Use repeatable
-`-H` or `--header` flags for other request headers. Response bodies stream to
-standard output. An HTTP error writes the response body and exits with an error.
+`wingman skills add <url> --global` installs a skill for all projects.
+Without `--global`, it installs in the current project. The command requires Git.
+See [Skills](/configure/skills) for repository requirements.
 
-The command supports the managed local daemon only. Use an HTTP client or a
-Wingman SDK to connect to an explicit remote server.
-
-## Skills Command
-
-Install one skill for the current project:
-
-```bash
-wingman skills add https://github.com/aminblg/simpleenglish
-```
-
-Use `--global` to install below `~/.config/wingman/skills`. The command accepts
-HTTPS Git repository URLs and requires Git. See [Skills](/configure/skills) for
-skill files and configuration.
-
-## Console Command
-
-Open the Console for the managed daemon:
-
-```bash
-wingman console
-```
-
-To open a new session for the current directory, pass `.`:
-
-```bash
-wingman console .
-```
-
-You can also pass another directory, such as `wingman console ~/code/my-project`.
-Wingman reuses the workspace for that directory or creates one if needed.
-The new session uses that directory. The Console saves the session when you send its first message.
-Without a directory, the command opens the Console home page.
-
-Enter the service credentials in the browser HTTP Basic Auth prompt.
-
-## Service Commands
-
-Check the generated service:
-
-```bash
-wingman service status
-```
-
-The command reports `ready`, `starting`, `stale`, `incompatible`, or missing.
-If you edit `~/.config/wingman/wingman.json`, restart the service:
-
-```bash
-wingman service restart
-```
-
-To change service flags such as `--host`, `--port`, `--db`, or `--plugin-dir`,
-run `wingman service start` again with the new flags.
-
-Stop and remove the service:
-
-```bash
-wingman service stop
-```
-
-## Version
-
-Print the binary version, commit, and build date:
-
-```bash
-wingman version
-```
-
-Example output:
-
-```text
-wingman dev (commit: none, built: unknown)
-```
-
-## Update
-
-`wingman update` downloads the latest stable release for your Linux or macOS architecture.
-It compares the archive with `checksums.txt`, then replaces the executable:
-
-```bash
-wingman update
-```
-
-The executable directory must be writable, as it is at the default location, `~/.wingman/bin`.
-For installations owned by a package manager or another user, use the original installation method.
-
-If Wingman runs as a managed service, the command restarts it after replacement.
-It does not start an installed service that is stopped.
-
-Check availability without writing files:
-
-```bash
-wingman update --check
-```
-
-Install a particular stable or prerelease version:
-
-```bash
-wingman update --version 0.2.0-beta.1
-```
+`wingman update --check` reads update availability without installing it.
+`wingman update --version VERSION` installs a specific release.
+See [Run the Server](/use-wingman/run-server#update-wingman) for update behavior and installation permissions.

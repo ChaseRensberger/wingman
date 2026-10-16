@@ -1,93 +1,68 @@
 ---
 title: "Go Plugin Quickstart"
-description: "Create an in-process Wingman plugin that observes session events."
-group: "Reference"
-order: 1002
+description: "Create a Go plugin that logs session events."
 ---
 
 # Go Plugin Quickstart
 
-Go plugins are Go packages that implement the Wingman `plugin.Plugin` interface.
-Use this path when you embed Wingman or ship a custom binary.
+Go plugins run in an embedded application or custom binary.
+They implement `plugin.Plugin`. The standard `wingman serve` binary does not load Go packages from disk.
 
-This example logs session events:
+## Create the plugin
 
-## 1. Create A Plugin Package
+This package logs each event type:
 
 ```go
 package traceplugin
 
 import (
-	"context"
-    "fmt"
-    "log/slog"
+	"fmt"
+	"log/slog"
 
-    "github.com/chaserensberger/wingman/agent/plugin"
-    "github.com/chaserensberger/wingman/agent/run"
+	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/agent/run"
 )
 
+// Plugin logs session event types.
 type Plugin struct {
-    logger *slog.Logger
+	logger *slog.Logger
 }
 
+// New creates an event logger.
 func New(logger *slog.Logger) *Plugin {
-    return &Plugin{logger: logger}
+	return &Plugin{logger: logger}
 }
 
-func (p *Plugin) Name() string {
-    return "trace"
-}
+// Name returns the plugin ID.
+func (p *Plugin) Name() string { return "trace" }
 
+// Activate registers the event callback.
 func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
-    if err := r.RegisterSink(run.SinkFunc(p.sink)); err != nil {
-        return nil, err
-    }
-    return nil, nil
-}
-
-func (p *Plugin) sink(event run.Event) {
-    p.logger.Info("wingman event", "type", fmt.Sprintf("%T", event))
+	err := r.RegisterSink(run.SinkFunc(func(event run.Event) {
+		p.logger.Info("wingman event", "type", fmt.Sprintf("%T", event))
+	}))
+	return nil, err
 }
 ```
 
-Keep `Name` stable across versions. Wingman uses it to identify the plugin in errors.
+Keep the plugin name stable and unique within the session.
+Pass a non-nil logger to `New`.
+Return cleanup from `Activate` if your plugin opens resources.
 
-## 2. Install The Plugin
+## Install it in a session
 
-Install the plugin when you construct a session:
+In your application, create a model client and obtain its model reference and metadata.
+Import `context`, `agent/session`, and your `traceplugin` package, then pass the plugin to the session:
 
 ```go
 sess := session.New(
-    session.WithClient(client),
-    session.WithModelRef(modelRef, modelInfo),
-    session.WithPlugin(traceplugin.New(logger)),
+	session.WithClient(client),
+	session.WithModelRef(modelRef, modelInfo),
+	session.WithPlugin(traceplugin.New(logger)),
 )
 defer sess.Close(context.Background())
 ```
 
-Go plugins are linked into the Go process. The stock `wingman serve` binary does not discover Go plugins from disk.
-
-## 3. Add More Capabilities
-
-Register hooks and tools in `Activate`. Return cleanup for resources that the plugin opens:
-
-```go
-func (p *Plugin) Activate(r *plugin.Registry) (plugin.Cleanup, error) {
-    if err := r.RegisterBeforeRun(p.beforeRun); err != nil { return nil, err }
-    if err := r.RegisterTransformContext(p.transformContext); err != nil { return nil, err }
-    if err := r.RegisterBeforeToolCall(p.beforeToolCall); err != nil { return nil, err }
-    if err := r.RegisterAfterToolCall(p.afterToolCall); err != nil { return nil, err }
-    if err := r.RegisterSink(run.SinkFunc(p.sink)); err != nil { return nil, err }
-    if err := r.RegisterTool(p.tool); err != nil { return nil, err }
-    return func(ctx context.Context) error { return p.close(ctx) }, nil
-}
-```
-
-Hooks run in activation order. Transform hooks receive the output from the previous hook.
-Event callbacks have a timeout. If activation fails, existing plugins remain active.
-
-## When To Use Go Plugins
-
-Use Go plugins for session hooks and tools in an embedded application or custom binary.
-See [Plugin Capabilities](/extend/plugin-capabilities) for available hooks.
-Use [RPC plugins](/extend/rpc-plugin-protocol) to add tools to `wingman serve` without rebuilding it.
+Plugins activate before the first run. Event callbacks must return promptly because slow callbacks can lose later events.
+See [Plugin Capabilities](/extend/plugin-capabilities) for hooks, tools, actions, and callback limits.
+To add external tools without building a custom binary, use [RPC plugins](/extend/rpc-plugin-protocol).

@@ -1,27 +1,38 @@
 ---
 title: "Quick Start"
 description: "Run Wingman locally and send your first agent message."
-order: 2
 ---
 
 # Quick Start
 
-This guide uses the managed local service and `wingman api`. For the browser UI,
-read [Use the Console](/use-wingman/web-ui).
+This guide starts a background service and sends a message from your terminal.
+Run the commands on the computer that will run Wingman. Use the same terminal for all steps.
+For browser access, read [Use the Console](/use-wingman/web-ui).
 
 ## Prerequisites
 
-- `curl`
-- `jq`
+- Linux with a user systemd service, or macOS with launchd
+- Bash and `curl`
+- `jq` for reading and creating JSON
 - An Anthropic API key
 
 ## Install
+
+Install Wingman:
 
 ```bash
 curl -fsSL https://wingman.actor/install | bash
 ```
 
-## Enable
+If your shell cannot find `wingman`, open a new terminal or add its default installation directory:
+
+```bash
+export PATH="$HOME/.wingman/bin:$PATH"
+```
+
+## Start the server
+
+Start the service as your normal user:
 
 ```bash
 wingman service start
@@ -29,7 +40,7 @@ wingman service start
 
 `wingman api` connects to the local managed service and adds its credentials automatically.
 
-## Server Status
+## Read the server status
 
 ```bash
 wingman api getHealth
@@ -58,15 +69,15 @@ Wingman saves the key in its database. Auth status responses do not return the s
 
 ## Create an agent
 
-An agent defines instructions, allowed tools, a model, and model options.
+An agent defines instructions, a model, and allowed tools.
+Create an agent that can read and search files:
 
 ```bash
 AGENT_ID=$(wingman api createAgent -d '{
     "name": "Quickstart Assistant",
     "instructions": "You are concise and helpful.",
     "tools": ["read", "glob", "grep"],
-    "model_ref": "anthropic/claude-sonnet-5",
-    "options": {"max_tokens": 1024}
+    "model_ref": "anthropic/claude-sonnet-5"
   }' | jq -r .id)
 
 printf 'agent: %s\n' "$AGENT_ID"
@@ -78,12 +89,12 @@ A session stores a conversation and an optional working directory.
 
 ```bash
 SESSION_ID=$(wingman api createSession \
-  -d "{\"title\":\"Quickstart\",\"working_directory\":\"$(pwd)\"}" | jq -r .id)
+  -d "$(jq -n --arg path "$PWD" '{title: "Quickstart", working_directory: $path}')" | jq -r .id)
 
 printf 'session: %s\n' "$SESSION_ID"
 ```
 
-The working directory must exist. The agent's file tools use this directory.
+The working directory must exist on the Wingman computer. The agent's file tools use this directory.
 
 ## Send a message
 
@@ -92,7 +103,7 @@ wingman api messageSession --param "id=${SESSION_ID}" \
   -d "{\"request_id\":\"quickstart-1\",\"agent_id\":\"${AGENT_ID}\",\"message\":\"What files are in this directory?\"}" | jq
 ```
 
-Wingman queues the message and returns a run ID:
+A run records the work for one submitted message. Wingman saves the request in a queue and returns its run ID:
 
 ```json
 {
@@ -116,6 +127,12 @@ wingman api streamSessionEvents \
 ```
 
 Events include a type and JSON data. Press Ctrl+C to stop reading the stream without canceling the run.
+
+To read the saved conversation afterward, run:
+
+```bash
+wingman api getSession --param "id=${SESSION_ID}" | jq .history
+```
 
 ## Next steps
 

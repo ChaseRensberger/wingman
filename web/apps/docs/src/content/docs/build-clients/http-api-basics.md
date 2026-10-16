@@ -5,7 +5,8 @@ description: "Use Wingman from your own client over HTTP."
 
 # HTTP API Basics
 
-Use Wingman's HTTP API from an application or script.
+Use Wingman's HTTP API from an application or script. The examples use `curl` to send requests and `jq` to read JSON.
+A daemon is a server process that runs in the background.
 
 ## Choose a Client
 
@@ -47,7 +48,8 @@ credential.
 
 ## OpenAPI and SDKs
 
-The server publishes its OpenAPI 3.1 schema at `/openapi.json`, including request, response, error, and event types.
+OpenAPI describes HTTP operations and their data types.
+The server publishes its OpenAPI 3.1 schema at `/openapi.json`. It includes request, response, error, and event types.
 
 Use the [Go SDK](/build-clients/go-sdk) or
 [TypeScript SDK](/build-clients/typescript-sdk) for generated, typed clients.
@@ -74,44 +76,8 @@ curl -sS -X POST "$WINGMAN_URL/sessions" \
   -d '{"title":"Client session"}'
 ```
 
-## Workspaces
-
-Workspaces group sessions for one client and can supply a working directory.
-`GET /workspaces` lists Workspaces for the active client.
-
-Create one when needed:
-
-```bash
-WORKSPACE_ID=$(curl -sS -X POST "$WINGMAN_URL/workspaces" \
-  -u "$WINGMAN_AUTH" \
-  -H "Content-Type: application/json" \
-  -H "X-Wingman-Client: ${CLIENT_ID}" \
-  -d "$(jq -n \
-    --arg name "$(basename "$PWD")" \
-    --arg path "$PWD" \
-    '{name: $name, path: $path}')" | jq -r .id)
-```
-
-Or reuse an existing Workspace:
-
-```bash
-WORKSPACE_ID=$(curl -sS "$WINGMAN_URL/workspaces" \
-  -u "$WINGMAN_AUTH" \
-  -H "X-Wingman-Client: ${CLIENT_ID}" | jq -r '.[0].id')
-```
-
-Create a session in that Workspace:
-
-```bash
-curl -sS -X POST "$WINGMAN_URL/sessions" \
-  -u "$WINGMAN_AUTH" \
-  -H "Content-Type: application/json" \
-  -H "X-Wingman-Client: ${CLIENT_ID}" \
-  -d "{\"title\":\"Client session\",\"workspace_id\":\"${WORKSPACE_ID}\"}"
-```
-
-For ad hoc sessions, use `working_directory` instead of `workspace_id`. Do not
-send both fields.
+For file and shell tools, create the session with `working_directory` or `workspace_id`.
+See [Workspaces](/concepts/workspaces) for grouping sessions by project.
 
 ## Handle Errors
 
@@ -143,7 +109,7 @@ POST /sessions
 POST /sessions/{id}/message
 ```
 
-If you want one in-memory run and no transcript, use an ephemeral session:
+For one run without a saved conversation, use an ephemeral run:
 
 ```text
 POST /run

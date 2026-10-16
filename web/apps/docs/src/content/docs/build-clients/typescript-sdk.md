@@ -5,10 +5,9 @@ description: "Call Wingman and read event streams from TypeScript."
 
 # TypeScript SDK
 
-Use the TypeScript SDK to call Wingman's HTTP API and read event streams.
+The TypeScript SDK is a library for calling Wingman's HTTP API. It also reads live event streams.
 
-See the [TypeScript Client API](/reference/typescript-client-api/) for the
-complete public method index.
+See [TypeScript Client API](/reference/typescript-client-api/) for connection options and resource methods.
 
 ## Install
 
@@ -19,8 +18,9 @@ with the daemon's version number, without the leading `v`:
 npm install @wingman-actor/client@VERSION
 ```
 
-The SDK is ESM-only. It supports Node.js 20 and later, Bun, and browser
-bundlers with `fetch`, `ReadableStream`, and `TextDecoder`.
+The SDK uses JavaScript modules with `import` and `export` (ESM).
+It supports Node.js 20 and later, Bun, and browser bundlers with `fetch`, `ReadableStream`, and `TextDecoder`.
+Request-ID helpers also need the Web Crypto `crypto.getRandomValues` function.
 
 ## Connect
 
@@ -70,8 +70,7 @@ await client.clients.ensure("cli_wingcode", "Wingcode");
 If the name differs, `clients.ensure` throws an `APIError` with the `conflict`
 code.
 
-`clientName` sets the default `X-Wingman-Client` header. A request header
-overrides this value.
+Despite its name, `clientName` takes the client ID. It sets the `X-Wingman-Client` header for this client.
 
 ## REST Requests
 
@@ -82,12 +81,14 @@ Resource methods return response data for successful requests. They throw an
 const sessions = await client.sessions.list();
 ```
 
-## Admit Messages Safely
+## Submit messages safely
 
 Retrying the same input with the same `request_id` does not create another run.
 `newMessageAdmission` adds an ID if the request has none.
 
-Save the returned request before the first network request:
+Save the returned request before the first network request.
+Implement the storage and display functions in these examples, such as `savePendingRequest` and `applyEvent`, in your application.
+Replace example agent and session IDs with existing IDs:
 
 ```ts
 import { newMessageAdmission } from "@wingman-actor/client";
@@ -108,13 +109,17 @@ request. Do not create a new request ID for this retry.
 ## One-Shot Streams
 
 `client.run.stream` sends `POST /run` and reads server-sent events (SSE).
+SSE sends updates over an open HTTP connection. Supply an inline agent or an existing `agent_id`.
 Pass an `AbortSignal` to stop the request.
 It throws `StreamError` if the response is not SSE or ends before `done` or `error`.
 
 ```ts
 const controller = new AbortController();
 for await (const result of client.run.stream(
-  { model_ref: "openai/gpt-5.6-terra", message: "Summarize this project." },
+  {
+    agent: { name: "Assistant", model_ref: "openai/gpt-5.6-terra" },
+    message: "Explain what an HTTP API does.",
+  },
   { signal: controller.signal },
 )) {
   if (!result.known) continue;
@@ -135,23 +140,24 @@ It does not reconnect automatically. Your application must save the last event s
 let lastSequence = loadLastSequence();
 for await (const result of client.sessions.streamEvents(sessionID, {
   after: lastSequence,
-  lastEventID: lastSequence || undefined,
 })) {
   const event = result.event;
-  if (event.cursor) {
-    lastSequence = Math.max(lastSequence, event.cursor.seq);
-    saveLastSequence(lastSequence);
-  }
-  if (event.type === "session.events.synchronized") continue;
   if (event.type === "session.events.resync_required") {
     await reloadSessionAndRun();
     break;
   }
-  if (result.known) applyEvent(event);
+  if (result.known && result.event.type !== "session.events.synchronized") {
+    await applyEvent(result.event);
+  }
+  if (event.cursor) {
+    lastSequence = Math.max(lastSequence, event.cursor.seq);
+    await saveLastSequence(lastSequence);
+  }
 }
 ```
 
-After a disconnect, reload the session and run. Reconnect from the last saved sequence if the run is queued or running.
+Save state before its cursor, or save both in one transaction. Otherwise, a crash can skip an event that your application did not apply.
+After a disconnect, reload the session and run. Reconnect to receive missing events, including the final event of a completed run.
 See [Streaming Events](/build-clients/streaming-events) for recovery steps.
 
 ## Handle Errors
@@ -175,11 +181,6 @@ try {
 
 ## Browser Use
 
-The SDK can run in a browser. The daemon does not enable cross-origin CORS. Use
-it from the daemon origin or a same-origin backend proxy. Do not place an owner
-credential in a remote browser application.
-
-## Version Compatibility
-
-Use the SDK version that matches the server release.
-Each release publishes the server and SDK with the same version number.
+The SDK can run in a browser. Wingman does not enable CORS, which permits browser requests from another origin.
+Use the server origin or a backend proxy on your application's origin.
+Do not include server credentials in JavaScript that you distribute to users.

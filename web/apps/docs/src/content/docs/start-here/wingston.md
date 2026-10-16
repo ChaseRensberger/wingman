@@ -1,7 +1,10 @@
 ---
 title: "Wingston"
 description: "The Wingman mascot"
-order: 3
 ---
+
+# Wingston
+
+Wingston is the Wingman mascot.
 
 ![Wingston](../../../assets/wingston.jpg)

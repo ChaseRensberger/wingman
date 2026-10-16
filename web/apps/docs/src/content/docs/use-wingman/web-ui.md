@@ -5,14 +5,15 @@ description: "Open the local Wingman Console."
 
 # Use the Console
 
-The Console is Wingman's browser interface. It uses the same server address as the API.
+The Console is Wingman's browser interface. Use it to manage agents, select providers, and send session messages.
+It uses the same server address as the API.
 
 ## Local Console
 
 After you start Wingman, open this URL:
 
 ```text
-http://localhost:2424/console
+http://localhost:2424/console/
 ```
 
 Enter the credentials from `~/.config/wingman/service.env` in the browser
@@ -29,7 +30,7 @@ To open a new session in the current directory, run `wingman console .`.
 Wingman reuses the workspace for that directory or creates one if needed.
 The Console saves the session when you send its first message.
 
-After a disconnect, the Console waits for the server and reloads the current page when it returns.
+After a server disconnect, the Console waits for the server and reloads the current page when it returns.
 
 ## Model-call Diagnostics
 

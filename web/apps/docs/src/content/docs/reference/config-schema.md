@@ -1,290 +1,119 @@
 ---
-title: "Config Schema"
-description: "Reference for ~/.config/wingman/wingman.json."
-group: "Reference"
-order: 1001
+title: "Configuration Schema"
+description: "Fields accepted in wingman.json."
 ---
 
-# Config Schema
+# Configuration Schema
 
-Wingman reads global configuration from:
+Wingman reads `~/.config/wingman/wingman.json`, or `$XDG_CONFIG_HOME/wingman/wingman.json` when set.
+Use one JSON object without comments or trailing commas. Unknown configuration fields stop startup.
+File values override defaults. CLI flags override file values.
+See [Global Configuration](/configure/config) for applying changes.
 
-```text
-~/.config/wingman/wingman.json
-```
+## Top-level fields
 
-This configuration applies to all daemon clients.
+| Field               | Type                          | Purpose                           |
+| ------------------- | ----------------------------- | --------------------------------- |
+| `server`            | Object                        | Address, database, and logs       |
+| `provider`          | Object                        | Provider routes and custom models |
+| `mcp`               | Object                        | MCP servers                       |
+| `plugins`           | Object                        | Extra global plugin directories   |
+| `skills`            | Object                        | Extra global skill directories    |
+| `permissions`       | String, object, or rule array | Server-wide tool rules            |
+| `agent_permissions` | Object                        | Rules by agent name or ID         |
 
-Set `XDG_CONFIG_HOME` to change the configuration root. For example, if it is
-`~/settings`, Wingman reads `~/settings/wingman/wingman.json`. The default path
-is the same on Linux and macOS.
-
-## Precedence
-
-Configuration is resolved in this order:
-
-1. Built-in defaults.
-2. `~/.config/wingman/wingman.json`.
-3. CLI flags passed to `wingman serve` or `wingman service start`.
-
-CLI flags always win.
-
-## Format
-
-The file is parsed as strict JSON:
-
-- Comments are not allowed.
-- Trailing commas are not allowed.
-- Unknown keys stop startup. The error identifies the configuration file and key.
-
-## Example
-
-On an exe.dev box, copy
-[wingman.example.json](https://github.com/ChaseRensberger/wingman/blob/main/wingman.example.json)
-to use its LLM Gateway with local server access and text logs. See
-[Global Config](/configure/config) for the copy commands.
-
-## Top-Level Object
-
-| Field               |                          Type | Required | Description                                                          |
-| ------------------- | ----------------------------: | -------: | -------------------------------------------------------------------- |
-| `server`            |                        object |       no | Server defaults used by `wingman serve` and `wingman service start`. |
-| `provider`          |                        object |       no | Provider destinations and custom models.                             |
-| `mcp`               |                        object |       no | Configured Model Context Protocol servers.                           |
-| `plugins`           |                        object |       no | External plugin discovery defaults.                                  |
-| `skills`            |                        object |       no | Additional global Agent Skill directories.                           |
-| `permissions`       | string, object, or rule array |       no | Daemon-wide tool permission rules.                                   |
-| `agent_permissions` |                        object |       no | Server permission overrides keyed by agent ID or name.               |
+All top-level fields are optional.
 
 ## `server`
 
-| Field        |   Type | Default                             | CLI override   | Description                                         |
-| ------------ | -----: | ----------------------------------- | -------------- | --------------------------------------------------- |
-| `host`       | string | `127.0.0.1`                         | `--host`       | Address the HTTP server binds to.                   |
-| `port`       | number | `2424`                              | `--port`       | Port the HTTP server listens on.                    |
-| `db`         | string | `~/.local/share/wingman/wingman.db` | `--db`         | SQLite database path. `~` and `~/...` are expanded. |
-| `log_level`  | string | `info`                              | `--log-level`  | Log level: `debug`, `info`, `warn`, or `error`.     |
-| `log_format` | string | `json`                              | `--log-format` | Log format: `json` or `text`.                       |
+| Field        | Type             | Default                             | CLI flag       |
+| ------------ | ---------------- | ----------------------------------- | -------------- |
+| `host`       | String           | `127.0.0.1`                         | `--host`       |
+| `port`       | Integer, 1–65535 | `2424`                              | `--port`       |
+| `db`         | String           | `~/.local/share/wingman/wingman.db` | `--db`         |
+| `log_level`  | String           | `info`                              | `--log-level`  |
+| `log_format` | String           | `json`                              | `--log-format` |
 
-Example:
-
-```json
-{
-  "server": {
-    "host": "127.0.0.1",
-    "port": 2424,
-    "db": "~/wingman-dev.db",
-    "log_level": "debug",
-    "log_format": "text"
-  }
-}
-```
+Log levels are `debug`, `info`, `warn`, and `error`. Formats are `json` and `text`.
+The database path supports `~` and `~/...`.
+Ephemeral mode is a CLI flag, not a file field.
 
 ## `plugins`
 
-| Field  |         Type | Default | CLI override   | Description                                                                    |
-| ------ | -----------: | ------- | -------------- | ------------------------------------------------------------------------------ |
-| `dirs` | string array | `[]`    | `--plugin-dir` | Extra global plugin directories. Each path supports `~` and `~/...` expansion. |
-
-Wingman includes the default global plugin directory:
-
-```text
-~/.config/wingman/plugins/
-```
-
-`plugins.dirs` adds directories. It does not replace the default directory.
-
-Example:
-
-```json
-{
-  "plugins": {
-    "dirs": ["~/wingman-plugins", "/opt/wingman/plugins"]
-  }
-}
-```
-
-Disable external plugin loading entirely with the CLI flag:
-
-```bash
-wingman serve --no-plugins
-```
-
-There is no configuration-file equivalent for `--no-plugins`.
+`dirs` is an array of extra global directory paths. Paths support `~` and `~/...`.
+The default `~/.config/wingman/plugins/` remains included and does not follow `XDG_CONFIG_HOME`.
+`--plugin-dir` overrides the extra directory list. `--no-plugins` disables external plugins and has no file equivalent.
+See [Plugins](/concepts/plugins) for manifests and project directories.
 
 ## `skills`
 
-| Field  |         Type | Default | Description                                                                   |
-| ------ | -----------: | ------- | ----------------------------------------------------------------------------- |
-| `dirs` | string array | `[]`    | Extra global skill directories. Each path supports `~` and `~/...` expansion. |
-
-Wingman includes the default global skill directory:
-
-```text
-~/.config/wingman/skills/
-```
-
-`skills.dirs` adds directories. It does not replace the default directory. See
-[Skills](/configure/skills) for skill files, project sources, and precedence.
+`dirs` is an array of extra global skill directories. Paths support `~` and `~/...`.
+The default skill directory remains included and follows `XDG_CONFIG_HOME`.
+See [Skills](/configure/skills) for discovery order and file limits.
 
 ## `mcp`
 
-`mcp` maps Model Context Protocol server names to server definitions.
+Map each server name to a definition. See [MCP Servers](/configure/mcp) for examples.
 
-| Field               |         Type | Required | Description                                                                 |
-| ------------------- | -----------: | -------: | --------------------------------------------------------------------------- |
-| `type`              |       string |      yes | `local` for a stdio subprocess or `remote` for an HTTP MCP endpoint.        |
-| `command`           | string array |    local | Executable followed by arguments for a local server.                        |
-| `cwd`               |       string |       no | Working directory for a local server. Supports `~` and `~/...` expansion.   |
-| `environment`       |       object |       no | Environment variables supplied to a local server.                           |
-| `url`               |       string |   remote | Remote MCP endpoint URL. Wingman tries streamable HTTP, then SSE.           |
-| `headers`           |       object |       no | HTTP headers supplied to a remote server.                                   |
-| `enabled`           |      boolean |       no | Whether the server connects at startup. Defaults to `true`.                 |
-| `discovery_timeout` |       number |       no | Connection and tool-discovery timeout in milliseconds. Defaults to `30000`. |
-| `execution_timeout` |       number |       no | Per-tool-call timeout in milliseconds. Defaults to `30000`.                 |
+| Field               | Type         | Purpose                                                                |
+| ------------------- | ------------ | ---------------------------------------------------------------------- |
+| `type`              | String       | Required. `local` or `remote`.                                         |
+| `command`           | String array | Required for local servers. Executable followed by arguments.          |
+| `cwd`               | String       | Local working directory. Supports `~` and `~/...`.                     |
+| `environment`       | String map   | Local process environment variables.                                   |
+| `url`               | String       | Required for remote servers. Absolute HTTP or HTTPS URL.               |
+| `headers`           | String map   | Headers for a remote server.                                           |
+| `enabled`           | Boolean      | Defaults to `true`.                                                    |
+| `discovery_timeout` | Integer      | Connection and discovery timeout in milliseconds. Defaults to `30000`. |
+| `execution_timeout` | Integer      | Tool-call timeout in milliseconds. Defaults to `30000`.                |
 
-Wingman validates MCP definitions at startup.
+Zero timeouts use the defaults. Negative timeouts are invalid.
+Remote connections try streamable HTTP, then SSE. MCP OAuth is not supported.
 
-See [MCP Servers](/configure/mcp) for local and remote examples and status
-checks.
+## `permissions` and `agent_permissions`
 
-## `permissions`
-
-`permissions` sets server-wide tool rules without changing stored agents.
-
-Supported effects are `allow`, `ask`, and `deny`.
-
-Example:
-
-```json
-{
-  "permissions": {
-    "read": "allow",
-    "grep": "allow",
-    "glob": "allow",
-    "edit": "ask",
-    "bash": {
-      "*": "ask",
-      "go test *": "allow",
-      "git push *": "deny"
-    }
-  }
-}
-```
-
-See [Permissions](/configure/permissions) for actions, resources, and
-precedence.
-
-## `agent_permissions`
-
-`agent_permissions` sets server rules for agents matched by ID or name.
-
-Example:
-
-```json
-{
-  "agent_permissions": {
-    "Plan": {
-      "edit": "deny",
-      "bash": "deny"
-    }
-  }
-}
-```
-
-If both match, ID-specific rules apply after name-specific rules.
+Effects are `allow`, `ask`, and `deny`.
+`permissions` applies to every run. `agent_permissions` maps agent names or IDs to rule sets.
+See [Permissions](/configure/permissions) for syntax, matching, and precedence.
 
 ## `provider`
 
-`provider` maps IDs to provider definitions. It can change catalog destinations or add providers and models at startup.
-It does not store credentials.
+Map each provider ID to a definition. It can change a catalog route or add a provider.
+Save credentials through the provider API, not these fields.
+See [Providers](/configure/providers) for examples.
 
-Supported provider fields:
+| Field        | Type         | Purpose                                                                 |
+| ------------ | ------------ | ----------------------------------------------------------------------- |
+| `name`       | String       | Display name. Defaults to the ID for a new provider.                    |
+| `auth_types` | Object array | Advertised authentication methods. Each has `type` and optional `name`. |
+| `options`    | Object       | Route configuration below.                                              |
+| `models`     | Object       | Models keyed by ID. Needed to select models from a new provider.        |
 
-| Field        |         Type | Required | Description                                                                                                     |
-| ------------ | -----------: | -------: | --------------------------------------------------------------------------------------------------------------- |
-| `name`       |       string |       no | Display name for a configuration-defined provider. Defaults to the provider ID for unknown providers.           |
-| `auth_types` | object array |       no | Auth methods exposed through `/provider`. Defaults to one `api_key` auth type for unknown providers.            |
-| `options`    |       object |       no | Runtime route options for this provider.                                                                        |
-| `models`     |       object |       no | Model metadata keyed by model ID. Required if this is a new provider you want to select from the API or web UI. |
+Route `options` accept:
 
-Supported `options` fields:
+| Field        | Type       | Purpose                                                                    |
+| ------------ | ---------- | -------------------------------------------------------------------------- |
+| `baseURL`    | String     | Provider destination. Defaults to the catalog URL.                         |
+| `auth`       | Boolean    | Defaults to `true`. `false` suppresses stored and environment credentials. |
+| `authHeader` | String     | Override the credential header.                                            |
+| `authScheme` | String     | Prefix for a custom credential header, such as `Bearer`.                   |
+| `query`      | String map | Static query parameters.                                                   |
 
-| Field        |    Type | Default          | Description                                                                                                                                                   |
-| ------------ | ------: | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `baseURL`    |  string | catalog default  | Base URL used for model requests for this provider.                                                                                                           |
-| `auth`       | boolean | `true`           | When `false`, Wingman sends no stored or environment credential for this provider route.                                                                      |
-| `authHeader` |  string | protocol default | Header name used to send an API key. Defaults to `x-api-key` for `anthropic_messages`, `x-goog-api-key` for `gemini_generate`, and `Authorization` otherwise. |
-| `authScheme` |  string | none             | Prefix added before an API key when `authHeader` is set, such as `Bearer`.                                                                                    |
-| `query`      |  object | none             | Static query parameters added to model requests.                                                                                                              |
+Default credential headers are `x-api-key` for Anthropic, `x-goog-api-key` for Gemini, and `Authorization: Bearer ...` for other supported protocols.
+Setting `authHeader` uses the raw key unless `authScheme` supplies a prefix.
 
-Example:
+Each model in `models` accepts:
 
-```json
-{
-  "provider": {
-    "openai": {
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      }
-    }
-  }
-}
-```
+| Field                                         | Type         | Purpose                                                                                        |
+| --------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------- |
+| `provider`, `id`                              | String       | Defaults to the enclosing keys. Explicit values must match them.                               |
+| `api`                                         | String       | Required protocol. See [Supported Protocols](/configure/models#supported-protocols).           |
+| `base_url`                                    | String       | Model destination. Otherwise uses the provider destination.                                    |
+| `env`                                         | String array | Variables to read for credentials when authentication is enabled.                              |
+| `context_window`, `max_output`                | Integer      | Model token limits.                                                                            |
+| `capabilities`                                | Object       | Boolean flags: `tools`, `images`, `reasoning`, `structured_output`.                            |
+| `input_cost_per_mtok`, `output_cost_per_mtok` | Number       | Cost per million tokens.                                                                       |
+| `variants`                                    | Object array | Named request configurations. Each has `id`, optional `provider_options`, and optional `http`. |
 
-Omit `auth` for normal providers. Set it to `false` for unauthenticated gateways
-or local endpoints.
-
-Supported model fields under `provider.<id>.models.<model-id>`:
-
-| Field                  |         Type | Required | Description                                                                                                                           |
-| ---------------------- | -----------: | -------: | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `provider`             |       string |       no | Provider ID. Defaults to the enclosing provider key.                                                                                  |
-| `id`                   |       string |       no | Model ID. Defaults to the enclosing model key.                                                                                        |
-| `api`                  |       string |      yes | Wire protocol. One of `openai_responses`, `openai_completions`, `openai_compatible_chat`, `anthropic_messages`, or `gemini_generate`. |
-| `base_url`             |       string |       no | Model-specific base URL. Defaults to `provider.<id>.options.baseURL` when present.                                                    |
-| `env`                  | string array |       no | Environment variables checked for credentials when auth is enabled.                                                                   |
-| `context_window`       |       number |       no | Context window used for UI/API metadata and context usage percentage.                                                                 |
-| `max_output`           |       number |       no | Maximum output tokens used for UI/API metadata.                                                                                       |
-| `capabilities`         |       object |       no | Supported model features used by the runtime and UI.                                                                                  |
-| `input_cost_per_mtok`  |       number |       no | Input cost metadata per million tokens.                                                                                               |
-| `output_cost_per_mtok` |       number |       no | Output cost metadata per million tokens.                                                                                              |
-
-Supported capability flags:
-
-| Field               |    Type | Description                                   |
-| ------------------- | ------: | --------------------------------------------- |
-| `tools`             | boolean | Model can use tools.                          |
-| `images`            | boolean | Model accepts image inputs.                   |
-| `reasoning`         | boolean | Model can emit reasoning parts.               |
-| `structured_output` | boolean | Model supports structured output constraints. |
-
-Custom provider example:
-
-```json
-{
-  "provider": {
-    "exe-openai": {
-      "name": "exe.dev OpenAI Gateway",
-      "options": {
-        "baseURL": "http://169.254.169.254/gateway/llm/openai/v1",
-        "auth": false
-      },
-      "models": {
-        "gpt-5.6-terra": {
-          "api": "openai_responses",
-          "context_window": 1050000,
-          "max_output": 128000,
-          "capabilities": {
-            "tools": true,
-            "images": true,
-            "reasoning": true,
-            "structured_output": true
-          }
-        }
-      }
-    }
-  }
-}
-```
+A custom model needs a destination from `base_url` or its provider.
+Variant `http` accepts `headers`, `query`, and `body`. Use provider-supported values.

@@ -5,7 +5,15 @@ description: "Run Wingman with Docker Compose."
 
 # Run in Docker
 
-Download the [Compose file](https://github.com/chaserensberger/wingman/blob/main/compose.yaml) to a deployment directory.
+Install Docker with the Compose plugin before you begin.
+Download the [Compose file](https://github.com/chaserensberger/wingman/blob/main/compose.yaml) to a directory for Wingman:
+
+```bash
+mkdir -p wingman-docker
+cd wingman-docker
+curl -fsSL https://raw.githubusercontent.com/chaserensberger/wingman/main/compose.yaml -o compose.yaml
+```
+
 Keep `compose.yaml` and a private `.env` file in that directory.
 Put your password in `.env`:
 
@@ -27,7 +35,7 @@ docker compose up -d
 ```
 
 Open `http://127.0.0.1:2424/console/`. Enter the username `wingman` and your password.
-Compose keeps your data in a volume.
+Compose keeps your data in a volume, which stores files outside the container.
 
 The Compose file binds Wingman to localhost. For remote access, use a secure tunnel.
 
@@ -42,12 +50,13 @@ docker compose pull
 docker compose up -d
 ```
 
-To keep a specific version, replace `:latest` in the Compose image with a release tag, such as `:v0.1.64`.
+To keep a specific version, replace `:latest` in the Compose image with its published release tag.
 
 ## Configuration
 
-Keep configuration in `config/wingman.json` beside the Compose file. See [Global Config](/configure/config) for supported options.
+Keep configuration in `config/wingman.json` beside the Compose file. See [Global Configuration](/configure/config) for supported fields.
 The container does not read your host configuration automatically.
+The image starts with `--host 0.0.0.0 --db /data/wingman.db`. These flags override `server.host` and `server.db` in the file.
 
 Create `config/wingman.json` before you start Compose. Make sure that the container user, UID `10001`, can read it.
 Add this read-only mount under the service's `volumes` entry, alongside the data volume:

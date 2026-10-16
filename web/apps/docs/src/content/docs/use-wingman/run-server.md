@@ -5,7 +5,7 @@ description: "Start Wingman as a foreground process or per-user managed service.
 
 # Run the Server
 
-Wingman runs as a local HTTP server. By default, it listens on `127.0.0.1:2424`.
+Wingman runs as an HTTP server. By default, it listens on `127.0.0.1:2424`, which accepts connections from your computer only.
 It stores persistent data in `~/.local/share/wingman/wingman.db`.
 
 ## Foreground Server
@@ -36,10 +36,12 @@ To start Wingman in the background:
 wingman service start
 ```
 
-The managed service runs for the current user without `sudo`.
+The managed service runs in the background for the current user without `sudo`.
+It requires systemd on Linux or launchd on macOS.
 
 The command returns when Wingman is ready.
 Credentials are in the private file `~/.config/wingman/service.env`.
+`XDG_CONFIG_HOME` changes the configuration root.
 
 Read the service status:
 
@@ -53,7 +55,7 @@ To stop and remove the service:
 wingman service stop
 ```
 
-## Updates
+## Update Wingman
 
 To install the latest stable release:
 
@@ -61,7 +63,7 @@ To install the latest stable release:
 wingman update
 ```
 
-Wingman verifies the download, replaces the executable, and restarts a running managed service.
+Wingman compares the download with the release checksum, replaces the executable, and restarts a running managed service.
 The executable directory must be writable.
 If a package manager manages the executable, use that package manager to update it.
 
@@ -71,10 +73,10 @@ To look for updates without installing them:
 wingman update --check
 ```
 
-To install a specific release:
+To install a specific release, replace `VERSION` with its version number:
 
 ```bash
-wingman update --version 0.1.15
+wingman update --version VERSION
 ```
 
 ## Address and Port
@@ -92,7 +94,8 @@ Wingman does not enable cross-origin browser access. The Console and API use the
 The managed service uses credentials from `~/.config/wingman/service.env`.
 Managed native clients find and use these credentials automatically.
 
-Foreground servers use `WINGMAN_USERNAME` and `WINGMAN_PASSWORD`, or generate credentials in `service.env`.
+If `WINGMAN_PASSWORD` is set, a foreground server uses it with `WINGMAN_USERNAME`, which defaults to `wingman`.
+Otherwise, it creates or reuses credentials in `service.env`.
 
 Before using direct HTTP, load the URL and credentials from the [authentication setup](/concepts/authentication#direct-http-requests).
 For remote access, use TLS or an SSH tunnel before sending credentials.
@@ -111,5 +114,7 @@ To run without saving data:
 wingman serve --ephemeral
 ```
 
-In ephemeral mode, use `POST /run` with an inline agent specification.
-Persistent resources are unavailable, including agents, sessions, clients, and provider authentication.
+Ephemeral means that Wingman does not save runs or conversations.
+In this mode, use `POST /run` with an agent definition in the request.
+Saved agents, sessions, clients, workspaces, and provider credentials are unavailable.
+Supply provider API keys through the server environment or use a provider route that does not require credentials.

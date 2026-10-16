@@ -1,18 +1,18 @@
 ---
 title: "Authentication"
-group: "Core"
-order: 102
 description: "Authenticate to the Wingman server."
 ---
 
 # Authentication
 
-Wingman requires HTTP Basic Auth for all routes except `/health`.
+The Wingman CLI server requires HTTP Basic Auth for all routes except `/health`.
+Basic Auth sends a username and password with each request.
 
 ## Managed Service Credentials
 
-The managed service saves its URL in `~/.local/state/wingman/registration.json` and credentials in the private file `~/.config/wingman/service.env`.
-Local clients that support service discovery load both automatically. Do not copy these credentials into client configuration.
+The background service saves its URL in `~/.local/state/wingman/registration.json`.
+It saves credentials in the private file `~/.config/wingman/service.env`.
+`XDG_STATE_HOME` and `XDG_CONFIG_HOME` change these roots. Local clients with service discovery read these files automatically.
 
 Run `wingman pair` to display the managed server URL, username, password, and a
 QR code for another client.
@@ -41,14 +41,14 @@ For more raw HTTP examples, read [HTTP API Basics](/build-clients/http-api-basic
 
 ## Foreground Server Authentication
 
-Foreground servers use configured `WINGMAN_USERNAME` and `WINGMAN_PASSWORD` values, or create or reuse credentials in `service.env`.
+If `WINGMAN_PASSWORD` is non-empty, a foreground server uses it. `WINGMAN_USERNAME` then defaults to `wingman`.
+Otherwise, the server creates or reuses credentials in `service.env`.
 
 For an explicit server, set `WINGMAN_URL` to its URL. Set `WINGMAN_AUTH` from
 that server's credentials.
 
-Basic Auth does not encrypt network traffic. Use a trusted network or a secure
-transport, such as Tailscale, TLS, or an SSH tunnel, for remote access. Basic
-Auth is not a multi-user authorization system.
+For remote access, use an encrypted connection such as TLS, Tailscale, or an SSH tunnel.
+Basic Auth does not encrypt network traffic. All callers with the server credentials have the same access.
 
 ## Console Authentication
 
@@ -58,4 +58,4 @@ Enter the server's credentials in the browser HTTP Basic Auth prompt. The Consol
 
 Any authenticated caller can register a client or select one with `X-Wingman-Client`.
 
-Client identities group sessions and Workspaces. They do not restrict access to providers, tools, logs, plugins, or files.
+Client identities group sessions and workspaces. They do not restrict access to providers, tools, logs, plugins, or files.
