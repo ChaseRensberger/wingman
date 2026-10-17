@@ -19,8 +19,14 @@ import (
 	"github.com/chaserensberger/wingman/models"
 )
 
+func setOutputCacheDir(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("XDG_CACHE_HOME", dir)
+	t.Setenv("HOME", dir)
+}
+
 func TestOutputCollectorSpillsDuringCollection(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	setOutputCacheDir(t, t.TempDir())
 	inv := Invocation{WorkDir: t.TempDir(), SessionID: "session"}
 	w := &outputCollector{inv: inv}
 	chunk := strings.Repeat("line\n", 1000)
@@ -69,20 +75,27 @@ func TestOutputCollectorSpillsDuringCollection(t *testing.T) {
 }
 
 func TestOutputFailureIsExplicitAndBounded(t *testing.T) {
-	dir := t.TempDir()
-	block := filepath.Join(dir, "file")
-	if err := os.WriteFile(block, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("XDG_CACHE_HOME", block)
-	result, err := BoundResult(Invocation{}, Result{Text: strings.Repeat("x", MaxOutputBytes*2)})
-	if err == nil || result.Metadata["output_ref"] != nil || !strings.Contains(result.Text, "saving full output failed") || len(result.Text) > MaxOutputBytes+512 {
-		t.Fatalf("size=%d metadata=%v err=%v", len(result.Text), result.Metadata, err)
+	for _, env := range []string{"XDG_CACHE_HOME", "HOME"} {
+		t.Run(env, func(t *testing.T) {
+			dir := t.TempDir()
+			block := filepath.Join(dir, "file")
+			if err := os.WriteFile(block, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			setOutputCacheDir(t, block)
+			if env == "HOME" {
+				t.Setenv("XDG_CACHE_HOME", "")
+			}
+			result, err := BoundResult(Invocation{}, Result{Text: strings.Repeat("x", MaxOutputBytes*2)})
+			if err == nil || result.Metadata["output_ref"] != nil || !strings.Contains(result.Text, "saving full output failed") || len(result.Text) > MaxOutputBytes+512 {
+				t.Fatalf("size=%d metadata=%v err=%v", len(result.Text), result.Metadata, err)
+			}
+		})
 	}
 }
 
 func TestBoundResultPreservesImagesAndStructuredOutput(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	setOutputCacheDir(t, t.TempDir())
 	inv := Invocation{WorkDir: t.TempDir()}
 	image := models.ImagePart{Base64: "image", MediaType: "image/png"}
 	input := Result{Text: strings.Repeat("€", MaxOutputBytes/3+1), OutputParts: models.Content{image, models.TextPart{Text: "tail"}}, Structured: map[string]any{"ok": true}}
@@ -101,7 +114,7 @@ func TestBoundResultPreservesImagesAndStructuredOutput(t *testing.T) {
 }
 
 func TestOutputExpiryAndReferenceValidation(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	setOutputCacheDir(t, t.TempDir())
 	inv := Invocation{WorkDir: t.TempDir()}
 	w := &outputCollector{inv: inv}
 	_, _ = io.WriteString(w, strings.Repeat("x", MaxOutputBytes+1))
@@ -248,7 +261,7 @@ func TestDirectoryPagesMatchSortedEntries(t *testing.T) {
 }
 
 func TestBashAndGrepRetainFullOutput(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	setOutputCacheDir(t, t.TempDir())
 	dir := t.TempDir()
 	for _, fail := range []bool{false, true} {
 		command := "for ((i=0;i<20000;i++)); do echo line; done"
@@ -278,7 +291,7 @@ func TestBashAndGrepRetainFullOutput(t *testing.T) {
 }
 
 func TestGlobStreamsLargeResultToSavedOutput(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	setOutputCacheDir(t, t.TempDir())
 	dir := t.TempDir()
 	for i := 0; i < 300; i++ {
 		name := fmt.Sprintf("%03d-%s.txt", i, strings.Repeat("x", 210))
