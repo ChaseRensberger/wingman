@@ -54,6 +54,15 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		if call.RunID != s.runID {
 			continue
 		}
+		if len(call.MetadataJSON) > 0 {
+			var trace models.CallTrace
+			if err := json.Unmarshal(call.MetadataJSON, &trace); err != nil {
+				return nil, false, err
+			}
+			if trace.Retry != nil && trace.Retry.Decision == "scheduled" && trace.Retry.Reason == "context_overflow" {
+				recovery.OverflowRecovered = true
+			}
+		}
 		if call.Status == store.ModelCallStatusCompleted {
 			delete(recovery.InterruptedMessageIDs, call.AssistantMessageID)
 		}
@@ -102,6 +111,17 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		retryScheduled := latest.Status == store.ModelCallStatusFailed && trace.Retry != nil && trace.Retry.Decision == "scheduled"
 		if !interrupted && !retryScheduled {
 			return nil, false, fmt.Errorf("%w: model call failed: %s", ErrRecoveryBlocked, latest.ErrorMessage)
+		}
+		if retryScheduled && trace.Retry.Reason == "context_overflow" {
+			recovery.Step, recovery.OverflowRecovered = latest.Step, true
+			// A boundary committed after this rejection already contains the compaction.
+			for _, message := range s.history {
+				if message.ID == assistant.ID {
+					recovery.ContextOverflow = true
+					break
+				}
+			}
+			return recovery, userSaved, nil
 		}
 		for _, part := range assistant.Content {
 			if p, ok := part.(models.ToolPart); ok && p.ProviderExecuted {

@@ -82,6 +82,11 @@ type Config struct {
 	// error). The loop builds the per-turn ToolDef list from this.
 	Tools []tool.Tool
 
+	// MaxParallelTools bounds a parallel tool batch. Non-positive values use four.
+	MaxParallelTools int
+	// ToolLimiter optionally bounds execution across multiple runs.
+	ToolLimiter *ToolLimiter
+
 	// WorkDir is the working directory passed to every tool's Execute.
 	// Tools that don't need it can ignore it. Empty string means the
 	// process working directory at execution time.
@@ -152,6 +157,8 @@ type Config struct {
 
 	// MessageCheckpoint synchronously persists the authoritative assistant
 	// message snapshot as it is assembled. It may assign message and part IDs.
+	// Delta checkpoints are batched for up to 100 ms and saved before their
+	// stream events are delivered. Block boundaries and tool execution flush first.
 	// Unlike Sink, checkpoint failures stop the run.
 	MessageCheckpoint MessageCheckpoint
 
@@ -169,6 +176,10 @@ type Config struct {
 
 // Recovery supplies the last durable execution boundary to the loop.
 type Recovery struct {
+	// ContextOverflow resumes a scheduled compaction before the next model call.
+	ContextOverflow bool
+	// OverflowRecovered prevents a second compaction-assisted retry after restart.
+	OverflowRecovered     bool
 	MessageIndex          int
 	InterruptedMessageIDs map[string]bool
 	Step                  int
@@ -476,14 +487,16 @@ type Hooks struct {
 // MessageEvent for each so observers (storage, UIs) see them on the
 // same channel as loop-produced messages.
 type TransformHistoryInfo struct {
-	Step      int
-	Messages  []models.Message
-	Usage     models.Usage
-	Client    models.Client
-	Model     models.ModelRef
-	ModelInfo models.ModelInfo
-	Request   models.Request
-	Sink      Sink
+	// ContextOverflow requests a smaller history after a provider rejected an empty turn.
+	ContextOverflow bool
+	Step            int
+	Messages        []models.Message
+	Usage           models.Usage
+	Client          models.Client
+	Model           models.ModelRef
+	ModelInfo       models.ModelInfo
+	Request         models.Request
+	Sink            Sink
 }
 
 // TransformHistoryHook is the signature for Hooks.TransformHistory. See its docs.

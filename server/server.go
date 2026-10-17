@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/chaserensberger/wingman/agent/plugin"
+	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/execution"
@@ -75,6 +76,10 @@ type Server struct {
 }
 
 type Config struct {
+	// MaxActiveRuns bounds daemon runs. Non-positive values use four.
+	MaxActiveRuns int
+	// MaxToolExecutions bounds tool executions across daemon runs. Non-positive values use sixteen.
+	MaxToolExecutions int
 	// RootContext owns the server's background work. A nil context uses
 	// context.Background.
 	RootContext      context.Context
@@ -152,6 +157,10 @@ func New(cfg Config) *Server {
 		shutdownCancel:         cancel,
 	}
 	s.runs = newSessionRunManager(s)
+	if cfg.MaxActiveRuns > 0 {
+		s.runs.limit = cfg.MaxActiveRuns
+	}
+	s.runs.tools = run.NewToolLimiter(cfg.MaxToolExecutions)
 	s.permissionRequests = newPermissionRequestManager(s, cfg.PermissionTimeout)
 
 	s.setupMiddleware()

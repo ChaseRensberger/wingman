@@ -46,20 +46,22 @@ import (
 
 // Session is a single conversation. Construct with New.
 type Session struct {
-	id          string
-	workDir     string
-	client      models.Client
-	model       models.ModelRef
-	modelInfo   models.ModelInfo
-	system      string
-	tools       []tool.Tool
-	permissions permission.Ruleset
-	prompter    run.PermissionPrompter
-	retry       run.RetryPolicy
-	logger      *slog.Logger
-	agentID     string
-	runID       string
-	recoverRun  bool
+	id               string
+	workDir          string
+	client           models.Client
+	model            models.ModelRef
+	modelInfo        models.ModelInfo
+	system           string
+	tools            []tool.Tool
+	maxParallelTools int
+	toolLimiter      *run.ToolLimiter
+	permissions      permission.Ruleset
+	prompter         run.PermissionPrompter
+	retry            run.RetryPolicy
+	logger           *slog.Logger
+	agentID          string
+	runID            string
+	recoverRun       bool
 
 	// Plugins installed via WithPlugin. Composed into Built at Run
 	// time so the session sees the model that was set most recently
@@ -217,6 +219,11 @@ func WithSystem(prompt string) Option {
 // system prompt. It is enabled by default.
 func WithCurrentDate(enabled bool) Option {
 	return func(s *Session) { s.appendCurrentDate = enabled }
+}
+
+// WithToolLimits sets the per-run parallel limit and an optional shared execution limit.
+func WithToolLimits(parallel int, shared *run.ToolLimiter) Option {
+	return func(s *Session) { s.maxParallelTools, s.toolLimiter = parallel, shared }
 }
 
 // WithTools registers the tools the model may call.
@@ -917,6 +924,8 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
+		MaxParallelTools:   s.maxParallelTools,
+		ToolLimiter:        s.toolLimiter,
 		ContextBoundary:    built.ContextBoundary,
 		Recovery:           recovery,
 		SessionID:          s.id,

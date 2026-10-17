@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
@@ -254,6 +255,7 @@ func (p *Plugin) transformHistory(ctx context.Context, info run.TransformHistory
 }
 
 func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, force bool) ([]models.Message, error) {
+	force = force || info.ContextOverflow
 	if info.Client == nil || info.Model.Provider == "" || info.Model.ID == "" {
 		return info.Messages, nil
 	}
@@ -291,6 +293,16 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 	}
 
 	plan, ok := p.planContent(info.Messages)
+	if !ok && info.ContextOverflow {
+		if latest := findLatestMarker(info.Messages); latest >= 0 {
+			previous, _ := markerInMessage(info.Messages[latest])
+			if previous.Summary != "" || previous.Recent != "" {
+				// The rejected checkpoint may be the entire active history.
+				plan = contentPlan{context: []string{previous.Summary, previous.Recent}, originalCount: previous.OriginalCount}
+				ok = true
+			}
+		}
+	}
 	if !ok {
 		if force {
 			return nil, fmt.Errorf("compaction: nothing to compact")
@@ -298,7 +310,28 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 		return info.Messages, nil
 	}
 
-	summary, err := summarize(ctx, summaryClient, summaryModel, summaryModelInfo, p.summaryPrompt, plan.previousSummary, plan.context)
+	// Reserve request overhead and summary space before choosing the verbatim tail.
+	inputLimit := checkpointInputLimit(info, p.reserveTokens)
+	if info.ContextOverflow {
+		inputLimit = min(inputLimit, tokens*3/4)
+	}
+	empty := info.Request
+	empty.Messages = []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: checkpointText(MarkerPart{})}}}}
+	available := inputLimit - approxRequestTokens(ctx, info.Client, empty) - 64
+	if available < 1 {
+		return nil, fmt.Errorf("compaction: request overhead leaves no checkpoint budget")
+	}
+	summaryLimit := min(summaryOutputTokens(summaryModelInfo), max(1, available/2))
+	recentBytes := max(0, available-summaryLimit) * 4
+	if len(plan.recent) > recentBytes {
+		split := len(plan.recent) - recentBytes
+		for split < len(plan.recent) && !utf8.RuneStart(plan.recent[split]) {
+			split++
+		}
+		plan.context = append(plan.context, plan.recent[:split])
+		plan.recent = plan.recent[split:]
+	}
+	summary, err := summarizeBounded(ctx, summaryClient, summaryModel, summaryModelInfo, p.summaryPrompt, plan.previousSummary, plan.context, summaryLimit)
 	if err != nil {
 		return nil, fmt.Errorf("summarize: %w", err)
 	}
@@ -306,6 +339,9 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 	reason := "auto"
 	if force {
 		reason = "manual"
+	}
+	if info.ContextOverflow {
+		reason = "overflow"
 	}
 	markerPart, err := newMarkerPart(MarkerPart{
 		Version:       1,
@@ -323,6 +359,11 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 	markerMsg := models.Message{
 		Role:    models.RoleUser,
 		Content: models.Content{markerPart},
+	}
+	check := info.Request
+	check.Messages = modelFacingMessages([]models.Message{markerMsg})
+	if approxRequestTokens(ctx, info.Client, check) > inputLimit {
+		return nil, fmt.Errorf("compaction: resulting checkpoint exceeds the request budget")
 	}
 
 	// The physical marker is the active-context boundary. Durable messages stay
@@ -510,33 +551,81 @@ func estimateTokens(text string) int {
 	return (len(text) + 3) / 4
 }
 
-// summarize runs a single non-tool LLM call to produce a compact
-// summary. Uses models.Run for sync drainage; we only want the
-// final assembled text.
-func summarize(ctx context.Context, client models.Client, model models.ModelRef, modelInfo models.ModelInfo, prompt string, previous string, history []string) (string, error) {
+func summarizeBounded(ctx context.Context, client models.Client, model models.ModelRef, modelInfo models.ModelInfo, prompt string, previous string, history []string, outputLimit int) (string, error) {
 	if prompt == "" {
 		prompt = defaultSummaryPrompt
 	}
-	req := models.Request{
-		Model:           model,
-		Messages:        []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: buildSummaryPrompt(prompt, previous, history)}}}},
-		MaxOutputTokens: summaryOutputTokens(modelInfo),
+	window := modelInfo.ContextWindow
+	if window <= 0 {
+		window = 32768
 	}
-	out, err := client.Generate(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	for _, p := range out.Content {
-		if tp, ok := p.(models.TextPart); ok {
-			b.WriteString(tp.Text)
+	inputLimit := window - outputLimit
+	pending := strings.Join(history, "\n\n")
+	for attempt := 0; attempt < 8; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		request := func(text string) models.Request {
+			return models.Request{Model: model, Messages: []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: buildSummaryPrompt(prompt, previous, []string{text})}}}}, MaxOutputTokens: outputLimit}
+		}
+		base := approxRequestTokens(ctx, client, request(""))
+		if base >= inputLimit {
+			return "", fmt.Errorf("summary instructions and previous summary exceed the input budget")
+		}
+		size := min(len(pending), (inputLimit-base)*4)
+		for size > 0 && size < len(pending) && !utf8.RuneStart(pending[size]) {
+			size--
+		}
+		for approxRequestTokens(ctx, client, request(pending[:size])) > inputLimit {
+			size /= 2
+			for size > 0 && !utf8.RuneStart(pending[size]) {
+				size--
+			}
+			if size == 0 {
+				return "", fmt.Errorf("summary input cannot fit the context window")
+			}
+		}
+		if len(pending) > 0 && size == 0 {
+			return "", fmt.Errorf("summary input cannot fit the context window")
+		}
+		out, err := client.Generate(ctx, request(pending[:size]))
+		if err != nil {
+			return "", err
+		}
+		if out == nil {
+			return "", fmt.Errorf("model returned no summary")
+		}
+		if out.FinishReason == models.FinishReasonMaxTokens {
+			return "", fmt.Errorf("model truncated the summary")
+		}
+		var b strings.Builder
+		for _, part := range out.Content {
+			if text, ok := part.(models.TextPart); ok {
+				b.WriteString(text.Text)
+			}
+		}
+		previous = strings.TrimSpace(b.String())
+		if previous == "" {
+			return "", fmt.Errorf("model returned an empty summary")
+		}
+		pending = pending[size:]
+		if pending == "" {
+			return previous, nil
 		}
 	}
-	s := strings.TrimSpace(b.String())
-	if s == "" {
-		return "", fmt.Errorf("model returned an empty summary")
+	return "", fmt.Errorf("summary exceeded the eight-request budget")
+}
+
+func checkpointInputLimit(info run.TransformHistoryInfo, reserve int) int {
+	window := info.ModelInfo.ContextWindow
+	if window <= 0 {
+		window = 32768
 	}
-	return s, nil
+	if reserve >= window {
+		reserve = 0
+	}
+	reserve = max(reserve, requestedOutputTokens(info.Request, info.ModelInfo))
+	return max(0, window-reserve)
 }
 
 func buildSummaryPrompt(template string, previous string, history []string) string {

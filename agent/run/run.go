@@ -122,12 +122,14 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 // Config's contract immutable from the caller's perspective: hooks see
 // transformed snapshots, never the live runner state.
 type runner struct {
-	cfg      Config
-	messages []models.Message
-	turns    []Turn
-	registry *tool.Registry
-	toolDefs []models.ToolDef
-	usage    models.Usage
+	contextOverflow   error
+	overflowRecovered bool
+	cfg               Config
+	messages          []models.Message
+	turns             []Turn
+	registry          *tool.Registry
+	toolDefs          []models.ToolDef
+	usage             models.Usage
 
 	// structuredOutput is set on the terminal turn when an active schema
 	// produced a valid JSON response.
@@ -149,6 +151,10 @@ type eventDelivery struct {
 func (r *runner) run(ctx context.Context) (*Result, error) {
 	step := 0
 	if recovery := r.cfg.Recovery; recovery != nil {
+		r.overflowRecovered = recovery.OverflowRecovered
+		if recovery.ContextOverflow {
+			r.contextOverflow = errors.New("provider context window exceeded")
+		}
 		step, r.usage = recovery.Step, recovery.Usage
 		if recovery.Turn != nil {
 			turn, err := r.runAssistant(ctx, *recovery.Turn, recovery.Turn.Assistant)
@@ -190,6 +196,11 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		if err != nil {
 			if !turn.StartedAt.IsZero() {
 				r.turns = append(r.turns, turn)
+			}
+			if ctx.Err() == nil && contextOverflowFailure(err) && turn.Trace.Retry != nil &&
+				turn.Trace.Retry.Decision == "scheduled" && turn.Trace.Retry.Reason == "context_overflow" {
+				r.contextOverflow, r.overflowRecovered = err, true
+				continue
 			}
 			r.emitError(err)
 			// Distinguish abort from generic error so callers can decide
@@ -302,14 +313,24 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		req.MaxOutputTokens = *params.MaxOutputTokens
 	}
 
+	if r.contextOverflow != nil && r.cfg.Hooks.TransformHistory == nil {
+		return Turn{}, r.contextOverflow
+	}
 	if r.cfg.Hooks.TransformHistory != nil {
 		info := TransformHistoryInfo{
-			Step: step, Messages: r.messages, Usage: r.usage, Client: r.cfg.Client,
+			ContextOverflow: r.contextOverflow != nil,
+			Step:            step, Messages: r.messages, Usage: r.usage, Client: r.cfg.Client,
 			Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo, Request: req, Sink: SinkFunc(r.emitHistoryEvent),
 		}
 		newMsgs, err := r.cfg.Hooks.TransformHistory(ctx, info)
 		if err != nil {
 			return Turn{}, fmt.Errorf("hook TransformHistory: %w", err)
+		}
+		if r.contextOverflow != nil {
+			if newMsgs == nil || reflect.DeepEqual(r.messages, newMsgs) {
+				return Turn{}, r.contextOverflow
+			}
+			r.contextOverflow = nil
 		}
 		if newMsgs != nil {
 			original := r.messages
@@ -416,6 +437,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 		turn.Assistant, turn.Failure = assistantMsg, failure
+		r.scheduleOverflowRecovery(ctx, &turn, assistantMsg, failure)
 		return turn, r.finishModelCall(ctx, turn, &assistantMsg, models.Usage{}, failure, failure)
 	}
 	defer cancelStream()
@@ -430,7 +452,43 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	timing := &models.CallTiming{}
 	elapsed := func() *int64 { ms := time.Since(turn.StartedAt).Milliseconds(); return &ms }
 	partIndexes := make(map[string]int)
-	for part := range stream.Iter() {
+	batch := checkpointBatch{}
+	defer batch.stop()
+	checkpointFailure := func(err error) (Turn, error) {
+		cancelStream()
+		turn.Trace.Timing = timing
+		go func() {
+			for range stream.Iter() {
+			}
+		}()
+		err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
+		turn.Assistant, turn.Failure = assistantMsg, err
+		turn.CompletedAt, turn.Usage, turn.ProviderRequestID = time.Now(), turnUsage, providerRequestID
+		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, err, err)
+	}
+	for {
+		var part models.StreamPart
+		var open bool
+		select {
+		case <-batch.ready():
+			if err := batch.flush(ctx, r, step, &assistantMsg); err != nil {
+				return checkpointFailure(err)
+			}
+			continue
+		case part, open = <-stream.Iter():
+		}
+		if !open {
+			if err := batch.flush(ctx, r, step, &assistantMsg); err != nil {
+				return checkpointFailure(err)
+			}
+			break
+		}
+		deltaBytes, delta := streamDeltaBytes(part)
+		if !delta {
+			if err := batch.flush(ctx, r, step, &assistantMsg); err != nil {
+				return checkpointFailure(err)
+			}
+		}
 		if _, ok := part.(models.StreamStartPart); ok && timing.FirstResponseMS == nil {
 			timing.FirstResponseMS = elapsed()
 		}
@@ -458,23 +516,29 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		partID, changed := applyStreamPart(&assistantMsg, partIndexes, part)
 		if changed {
 			assistantMsg.Revision++
-			if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
-				cancelStream()
-				turn.Trace.Timing = timing
-				go func() {
-					for range stream.Iter() {
-					}
-				}()
-				err = r.retainFailedAssistant(ctx, step, &assistantMsg, err)
-				turn.Assistant, turn.Failure = assistantMsg, err
-				turn.CompletedAt, turn.Usage, turn.ProviderRequestID = time.Now(), turnUsage, providerRequestID
-				return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, err, err)
+			if !delta {
+				if err := r.checkpoint(ctx, step, &assistantMsg); err != nil {
+					return checkpointFailure(err)
+				}
 			}
 			if partID != "" {
 				partID = models.PartID(assistantMsg.Content[partIndexes[streamPartProviderID(part)]])
 			}
 		}
-		r.emit(StreamPartEvent{Step: step, MessageID: assistantMsg.ID, PartID: partID, Revision: assistantMsg.Revision, Part: part})
+		event := StreamPartEvent{Step: step, MessageID: assistantMsg.ID, PartID: partID, Revision: assistantMsg.Revision, Part: part}
+		if changed && delta && r.cfg.MessageCheckpoint != nil {
+			batch.add(event, deltaBytes)
+			if batch.full() {
+				if err := batch.flush(ctx, r, step, &assistantMsg); err != nil {
+					return checkpointFailure(err)
+				}
+			}
+		} else {
+			if err := batch.flush(ctx, r, step, &assistantMsg); err != nil {
+				return checkpointFailure(err)
+			}
+			r.emit(event)
+		}
 	}
 	finalMsg, err := stream.Final()
 	turn.CompletedAt = time.Now()
@@ -495,6 +559,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		turn.Trace.Retry = &models.CallRetry{Decision: "not_retried", Reason: reason}
 		failure = r.retainFailedAssistant(ctx, step, &assistantMsg, failure)
 		turn.Assistant = assistantMsg
+		r.scheduleOverflowRecovery(ctx, &turn, assistantMsg, failure)
 		return turn, r.finishModelCall(ctx, turn, &assistantMsg, turnUsage, failure, failure)
 	}
 	if finalMsg == nil {
@@ -679,19 +744,29 @@ func (r *runner) runAssistant(ctx context.Context, turn Turn, assistantMsg model
 	case ToolExecutionParallel:
 		var wg sync.WaitGroup
 		errCh := make(chan error, len(resolved))
-		for i := range resolved {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				res, err := r.executeOne(ctx, resolved[i])
-				// Safe: each goroutine writes a unique index, no overlap.
-				results[i] = res
-				if err != nil {
-					errCh <- err
-					return
-				}
-			}(i)
+		limit := r.cfg.MaxParallelTools
+		if limit <= 0 {
+			limit = 4
 		}
+		jobs := make(chan int)
+		for range min(limit, len(resolved)) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range jobs {
+					res, err := r.executeOne(ctx, resolved[i])
+					// Safe: each goroutine writes a unique index, no overlap.
+					results[i] = res
+					if err != nil {
+						errCh <- err
+					}
+				}
+			}()
+		}
+		for i := range resolved {
+			jobs <- i
+		}
+		close(jobs)
 		wg.Wait()
 		close(errCh)
 		// Surface the first hook error. There may be multiple; we
@@ -1260,8 +1335,20 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 }
 
 func (r *runner) executeAuthorized(ctx context.Context, call ToolCall) (ToolResult, error) {
-	if err := ctx.Err(); err != nil {
-		return ToolResult{}, err
+	var admissionErr error
+	if r.cfg.ToolLimiter != nil {
+		admissionErr = r.cfg.ToolLimiter.acquire(ctx)
+		if admissionErr == nil {
+			defer r.cfg.ToolLimiter.release()
+		}
+	}
+	if admissionErr == nil {
+		admissionErr = ctx.Err()
+	}
+	if admissionErr != nil {
+		res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: admissionErr.Error(), IsError: true}
+		settled, err := r.settleToolUse(context.WithoutCancel(ctx), call, res, ToolUseStatusInterrupted, "admission_interrupted", admissionErr)
+		return settled, errors.Join(admissionErr, err)
 	}
 	if r.cfg.ToolUseLifecycle != nil {
 		startInfo := toolUseStartInfo(call, time.Now())

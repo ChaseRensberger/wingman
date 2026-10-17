@@ -13,7 +13,7 @@ import (
 )
 
 func TestTransformHistoryUsesPreparedRequestBudget(t *testing.T) {
-	client := &testClient{summary: "summary", body: map[string]any{"system": strings.Repeat("x", 400)}}
+	client := &testClient{summary: "summary", body: map[string]any{"system": strings.Repeat("x", 20000)}}
 	p := New(WithMinMessages(0), WithKeepTail(1), WithReserveTokens(20))
 	msgs := []models.Message{
 		{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "old"}}},
@@ -21,7 +21,7 @@ func TestTransformHistoryUsesPreparedRequestBudget(t *testing.T) {
 	}
 	out, err := p.transformHistory(context.Background(), run.TransformHistoryInfo{
 		Messages: msgs, Client: client, Model: models.ModelRef{Provider: "test", ID: "model"},
-		ModelInfo: models.ModelInfo{ContextWindow: 100, MaxOutput: 10},
+		ModelInfo: models.ModelInfo{ContextWindow: 4096, MaxOutput: 10},
 		Request:   models.Request{Model: models.ModelRef{Provider: "test", ID: "model"}, Messages: msgs},
 	})
 	if err != nil {
@@ -40,7 +40,7 @@ func TestTransformHistoryUsesPreparedRequestBudget(t *testing.T) {
 }
 
 func TestTransformHistoryRejectsEmptySummary(t *testing.T) {
-	client := &testClient{body: map[string]any{"messages": strings.Repeat("x", 400)}}
+	client := &testClient{body: map[string]any{"messages": strings.Repeat("x", 20000)}}
 	p := New(WithMinMessages(0), WithKeepTail(1), WithReserveTokens(20))
 	msgs := []models.Message{
 		{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "old"}}},
@@ -48,7 +48,7 @@ func TestTransformHistoryRejectsEmptySummary(t *testing.T) {
 	}
 	_, err := p.transformHistory(context.Background(), run.TransformHistoryInfo{
 		Messages: msgs, Client: client, Model: models.ModelRef{Provider: "test", ID: "model"},
-		ModelInfo: models.ModelInfo{ContextWindow: 100},
+		ModelInfo: models.ModelInfo{ContextWindow: 4096},
 		Request:   models.Request{Model: models.ModelRef{Provider: "test", ID: "model"}, Messages: msgs},
 	})
 	if err == nil || !strings.Contains(err.Error(), "empty summary") {
@@ -86,7 +86,7 @@ func TestManualActionSummarizesCompleteShortTurn(t *testing.T) {
 	var emitted models.Message
 	err := p.compactAction(context.Background(), plugin.ActionInfo{
 		History: msgs, Client: client, Model: models.ModelRef{Provider: "test", ID: "model"},
-		ModelInfo: models.ModelInfo{ContextWindow: 100},
+		ModelInfo: models.ModelInfo{ContextWindow: 4096},
 		Sink: run.SinkFunc(func(event run.Event) {
 			if message, ok := event.(run.MessageEvent); ok {
 				emitted = message.Message
@@ -203,7 +203,10 @@ type testClient struct {
 	prompt    string
 }
 
-func (c *testClient) Prepare(context.Context, models.Request) (*models.PreparedRequest, error) {
+func (c *testClient) Prepare(_ context.Context, req models.Request) (*models.PreparedRequest, error) {
+	if req.MaxOutputTokens > 0 || (len(req.Messages) == 1 && strings.Contains(serializeMessage(req.Messages[0]), "<conversation-checkpoint>")) {
+		return &models.PreparedRequest{Body: map[string]any{"messages": req.Messages}}, nil
+	}
 	return &models.PreparedRequest{Body: c.body}, nil
 }
 

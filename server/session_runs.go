@@ -25,6 +25,10 @@ const (
 // workers only claim and drain already admitted runs.
 type sessionRunManager struct {
 	server            *Server
+	limit             int
+	tools             *run.ToolLimiter
+	queue             []string
+	queued            map[string]bool
 	mu                sync.Mutex
 	active            map[string]context.CancelFunc
 	runCancel         map[string]context.CancelFunc
@@ -39,6 +43,8 @@ type sessionRunManager struct {
 
 func newSessionRunManager(server *Server) *sessionRunManager {
 	m := &sessionRunManager{
+		limit:             4,
+		queued:            map[string]bool{},
 		server:            server,
 		active:            map[string]context.CancelFunc{},
 		runCancel:         map[string]context.CancelFunc{},
@@ -73,12 +79,30 @@ func (m *sessionRunManager) wake(sessionID string) {
 		m.mu.Unlock()
 		return
 	}
-	ctx, cancel := context.WithCancel(m.server.ShutdownCtx())
-	m.active[sessionID] = cancel
-	m.done[sessionID] = make(chan struct{})
-	m.wg.Add(1)
+	m.enqueueLocked(sessionID)
+	m.scheduleLocked()
 	m.mu.Unlock()
-	go m.drain(sessionID, ctx)
+}
+
+func (m *sessionRunManager) enqueueLocked(sessionID string) {
+	if !m.queued[sessionID] {
+		m.queued[sessionID] = true
+		m.queue = append(m.queue, sessionID)
+	}
+}
+
+func (m *sessionRunManager) scheduleLocked() {
+	for !m.stopped && m.server.ShutdownCtx().Err() == nil && len(m.active) < m.limit && len(m.queue) > 0 {
+		id := m.queue[0]
+		m.queue[0] = ""
+		m.queue = m.queue[1:]
+		delete(m.queued, id)
+		ctx, cancel := context.WithCancel(m.server.ShutdownCtx())
+		m.active[id] = cancel
+		m.done[id] = make(chan struct{})
+		m.wg.Add(1)
+		go m.drain(id, ctx)
+	}
 }
 
 func (m *sessionRunManager) reconcile() {
@@ -121,10 +145,14 @@ func (m *sessionRunManager) drain(sessionID string, ctx context.Context) {
 			return
 		}
 		m.execute(ctx, &transition.Run)
-		if ctx.Err() != nil {
-			m.finish(sessionID)
-			return
+		m.mu.Lock()
+		// Yield after one run so a busy session cannot monopolize a worker.
+		if ctx.Err() == nil {
+			m.enqueueLocked(sessionID)
 		}
+		m.finishLocked(sessionID)
+		m.mu.Unlock()
+		return
 	}
 }
 
@@ -159,12 +187,14 @@ func (m *sessionRunManager) finishLocked(sessionID string) {
 	if !ok {
 		return
 	}
+	m.active[sessionID]()
 	delete(m.active, sessionID)
 	delete(m.runCancel, sessionID)
 	delete(m.runIDs, sessionID)
 	delete(m.pending, sessionID)
 	delete(m.done, sessionID)
 	close(done)
+	m.scheduleLocked()
 }
 
 func (m *sessionRunManager) activeCount() int {
@@ -328,14 +358,23 @@ func (m *sessionRunManager) abort(ctx context.Context, sessionID, expectedRunID 
 func (m *sessionRunManager) stopAndWait(ctx context.Context, sessionID string) error {
 	// Deletion has already purged the run records; only local work remains.
 	m.mu.Lock()
+	for i, id := range m.queue {
+		if id == sessionID {
+			m.queue = append(m.queue[:i], m.queue[i+1:]...)
+			break
+		}
+	}
+	delete(m.queued, sessionID)
 	cancel := m.active[sessionID]
 	done := m.done[sessionID]
 	delete(m.pending, sessionID)
+	if cancel != nil {
+		cancel()
+	}
 	m.mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
-	cancel()
 	select {
 	case <-done:
 		return nil
@@ -361,6 +400,8 @@ func (m *sessionRunManager) resumeQueued(ctx context.Context) error {
 func (m *sessionRunManager) stop() {
 	m.mu.Lock()
 	m.stopped = true
+	m.queue = nil
+	clear(m.queued)
 	m.mu.Unlock()
 }
 

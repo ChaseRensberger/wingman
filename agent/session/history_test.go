@@ -190,7 +190,7 @@ func TestActiveHistoryAutomaticCompactionOrdersBoundary(t *testing.T) {
 				if _, err := data.ClaimNextSessionRun(t.Context(), admitted.Run.SessionID); err != nil {
 					t.Fatal(err)
 				}
-				sess := New(WithID("ses_history"), WithRunID(admitted.Run.ID), WithStore(data), WithClient(&recoveryCompactionClient{}), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 1}), WithPlugin(compaction.New(compaction.WithMinMessages(0))))
+				sess := New(WithID("ses_history"), WithRunID(admitted.Run.ID), WithStore(data), WithClient(&recoveryCompactionClient{}), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 4096}), WithPlugin(compaction.New(compaction.WithMinMessages(0))))
 				if _, err := sess.runWith(t.Context(), "continue", run.SinkFunc(func(event run.Event) {
 					if _, ok := event.(run.IterationStartEvent); ok {
 						time.Sleep(time.Second)

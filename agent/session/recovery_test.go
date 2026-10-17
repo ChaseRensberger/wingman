@@ -30,6 +30,7 @@ func TestRunRecoveryAcrossProcessCrashes(t *testing.T) {
 		{"checkpoint", true, false, 2, 1},
 		{"dispatch", true, false, 3, 1},
 		{"partial", true, false, 3, 1},
+		{"batched_partial", true, false, 3, 1},
 		{"retry_scheduled", true, false, 3, 1},
 		{"retry_terminal", true, true, 1, 0},
 		{"reset", true, true, 1, 1},
@@ -73,6 +74,16 @@ func TestRunRecoveryAcrossProcessCrashes(t *testing.T) {
 			}
 			defer data.Close()
 			ctx := context.Background()
+			if test.stage == "batched_partial" {
+				messages, err := data.QueryMessages(ctx, "ses_recover", store.MessageQuery{RunID: "run_recover", Role: "assistant"})
+				if err != nil || len(messages) != 1 {
+					t.Fatalf("partial messages=%#v err=%v", messages, err)
+				}
+				message, err := StoredMessageToModel(messages[0])
+				if err != nil || len(message.Content) != 1 || message.Content[0].(models.TextPart).Text != strings.Repeat("partial answer", 64) {
+					t.Fatalf("partial=%#v err=%v", message, err)
+				}
+			}
 			if err := data.InterruptActiveToolUses(ctx); err != nil {
 				t.Fatal(err)
 			}
@@ -236,6 +247,9 @@ func (s *recoveryCrashStore) SaveMessage(ctx context.Context, message store.Stor
 	if s.stage == "partial" && len(message.Parts) > 0 && strings.Contains(string(message.Parts[0].PayloadJSON), "partial answer") {
 		os.Exit(23)
 	}
+	if s.stage == "batched_partial" && len(message.Parts) > 0 && strings.Contains(string(message.Parts[0].PayloadJSON), strings.Repeat("partial answer", 64)) {
+		os.Exit(23)
+	}
 	if s.stage == "final" && message.Role == "assistant" && message.State == "completed" && len(message.Parts) == 1 && message.Parts[0].Kind == "text" {
 		os.Exit(23)
 	}
@@ -346,6 +360,16 @@ func (c *recoveryClient) Stream(_ context.Context, request models.Request) (*mod
 		}
 	}
 	stream := models.NewEventStream[models.StreamPart, *models.Message](2)
+	if c.stage == "batched_partial" {
+		go func() {
+			stream.Push(models.TextStartPart{ID: "text"})
+			for i := 0; i < 64; i++ {
+				stream.Push(models.TextDeltaPart{ID: "text", Delta: "partial answer"})
+			}
+			stream.Close(&message, nil)
+		}()
+		return stream, nil
+	}
 	if c.stage == "partial" {
 		stream.Push(models.TextStartPart{ID: "text"})
 		stream.Push(models.TextDeltaPart{ID: "text", Delta: "partial answer"})
@@ -382,7 +406,7 @@ func TestRunRecoveryExcludesPartialResponseFromCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &recoveryCompactionClient{}
-	sess := New(WithID("ses_recover"), WithRunID("run_recover"), WithStore(data), WithRunRecovery(), WithClient(client), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 1}), WithPlugin(compaction.New(compaction.WithMinMessages(0))))
+	sess := New(WithID("ses_recover"), WithRunID("run_recover"), WithStore(data), WithRunRecovery(), WithClient(client), WithModelRef(models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 4096}), WithPlugin(compaction.New(compaction.WithMinMessages(0))))
 	result, err := sess.Run(ctx, "inspect")
 	if err != nil || result.Response != "done" || client.summaries != 1 {
 		t.Fatalf("compaction recovery = %#v, %v, summaries = %d", result, err, client.summaries)
@@ -412,6 +436,18 @@ func TestRunRecoveryExcludesPartialResponseFromCompaction(t *testing.T) {
 type recoveryCompactionClient struct {
 	requestCaptureClient
 	summaries int
+}
+
+func (c *recoveryCompactionClient) Prepare(_ context.Context, request models.Request) (*models.PreparedRequest, error) {
+	data, err := json.Marshal(request.Messages)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{"messages": request.Messages}
+	if request.MaxOutputTokens == 0 && !(len(request.Messages) == 1 && strings.Contains(string(data), "conversation-checkpoint")) {
+		body["history_padding"] = strings.Repeat("x", 20000)
+	}
+	return &models.PreparedRequest{Body: body}, nil
 }
 
 func (c *recoveryCompactionClient) Generate(_ context.Context, request models.Request) (*models.Message, error) {
