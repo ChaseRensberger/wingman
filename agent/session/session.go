@@ -78,11 +78,14 @@ type Session struct {
 	// Raw hook overrides installed via WithTransformHistory / WithTransformContext.
 	// These run *after* plugin-contributed hooks (last wins for transform
 	// pipelines), so a user-supplied hook always has the final word.
-	transformHistory  run.TransformHistoryHook
-	transformContext  run.TransformContextHook
-	transformToolDefs run.TransformToolDefsHook
-	transformParams   run.TransformParamsHook
-	afterRun          run.AfterRunHook
+	transformHistory    run.TransformHistoryHook
+	transformContext    run.TransformContextHook
+	transformToolDefs   run.TransformToolDefsHook
+	transformParams     run.TransformParamsHook
+	afterRun            run.AfterRunHook
+	beforeComplete      run.BeforeCompleteHook
+	completion          store.CompletionOptions
+	completionEventSink func(store.SessionEvent)
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
 	// (including plugin-injected messages such as compaction markers
@@ -114,6 +117,7 @@ type sessionMessagePersistence struct {
 	session          *Session
 	nextIdx          int
 	assistantIndexes map[int]int
+	feedbackIDs      map[string]bool
 }
 
 func (p *sessionMessagePersistence) Save(ctx context.Context, info run.MessageCheckpointInfo) (models.Message, error) {
@@ -767,6 +771,12 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	rawTransformToolDefs := s.transformToolDefs
 	rawTransformParams := s.transformParams
 	rawAfterRun := s.afterRun
+	rawBeforeComplete := s.beforeComplete
+	completionOptions := s.completion
+	if completionOptions.Remote && (s.store == nil || s.runID == "") {
+		s.mu.Unlock()
+		return nil, errors.New("remote completion requires a stored, admitted run")
+	}
 	if s.generation == nil && len(s.plugins) > 0 {
 		if s.replacingPlugins {
 			s.mu.Unlock()
@@ -809,6 +819,14 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	outputSchema := s.outputSchema
 	agentID := s.agentID
 	runID := s.runID
+	if s.store != nil && runID != "" {
+		admitted, err := s.store.GetSessionRun(ctx, s.id, runID)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		completionOptions = admitted.Completion
+	}
 
 	// Hydrate prior history from the store on first run.
 	if err := s.hydrate(ctx); err != nil {
@@ -845,7 +863,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	}
 	historySnap := append([]models.Message(nil), s.history...)
 	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: s.nextMessageIdx}
-	if recovery != nil && recovery.Turn != nil {
+	if recovery != nil && recovery.Turn != nil && !recovery.CompletionCandidate {
 		for i, message := range historySnap {
 			if message.ID == recovery.Turn.Assistant.ID {
 				messagePersistence.assistantIndexes = map[int]int{recovery.Step: recovery.MessageIndex}
@@ -882,6 +900,10 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	transformToolDefs := composeTransformToolDefs(built.Hooks.TransformToolDefs, rawTransformToolDefs)
 	transformParams := composeTransformParams(built.Hooks.TransformParams, rawTransformParams)
 	afterRun := composeAfterRun(built.Hooks.AfterRun, rawAfterRun)
+	var beforeComplete run.BeforeCompleteHook
+	if built.Hooks.BeforeComplete != nil || rawBeforeComplete != nil {
+		beforeComplete = run.ComposeBeforeComplete(built.Hooks.BeforeComplete, rawBeforeComplete)
+	}
 
 	// Sink fan-out: persist MessageEvents, then forward to the
 	// messageSink, plugin sinks, and extraSink. Tool results are
@@ -900,7 +922,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	internal := run.SinkFunc(func(e run.Event) {
 		logLoopEvent(logger, e)
 		if me, ok := e.(run.MessageEvent); ok {
-			if s.store != nil {
+			if s.store != nil && !messagePersistence.feedbackSaved(me.Message.ID) {
 				idx := messagePersistence.indexForEvent(me)
 				message, err := s.persistMessage(ctx, me.Message, idx)
 				if err != nil && persistErr == nil {
@@ -924,26 +946,28 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 	})
 
 	cfg := run.Config{
-		MaxParallelTools:   s.maxParallelTools,
-		ToolLimiter:        s.toolLimiter,
-		ContextBoundary:    built.ContextBoundary,
-		Recovery:           recovery,
-		SessionID:          s.id,
-		RunID:              runID,
-		AgentID:            agentID,
-		Client:             client,
-		Model:              model,
-		ModelInfo:          modelInfo,
-		Capabilities:       models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
-		System:             system,
-		Tools:              tools,
-		WorkDir:            workDir,
-		Permissions:        permissions,
-		PermissionPrompter: prompter,
-		Retry:              retry,
-		Sink:               internal,
-		OutputSchema:       outputSchema,
+		MaxCompletionContinuations: completionOptions.MaxContinuations,
+		MaxParallelTools:           s.maxParallelTools,
+		ToolLimiter:                s.toolLimiter,
+		ContextBoundary:            built.ContextBoundary,
+		Recovery:                   recovery,
+		SessionID:                  s.id,
+		RunID:                      runID,
+		AgentID:                    agentID,
+		Client:                     client,
+		Model:                      model,
+		ModelInfo:                  modelInfo,
+		Capabilities:               models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
+		System:                     system,
+		Tools:                      tools,
+		WorkDir:                    workDir,
+		Permissions:                permissions,
+		PermissionPrompter:         prompter,
+		Retry:                      retry,
+		Sink:                       internal,
+		OutputSchema:               outputSchema,
 		Hooks: run.Hooks{
+			BeforeComplete:    beforeComplete,
 			BeforeRun:         built.Hooks.BeforeRun,
 			TransformHistory:  transformHistory,
 			TransformContext:  transformContext,
@@ -955,6 +979,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		},
 	}
 	if s.store != nil {
+		if runID != "" && (beforeComplete != nil || completionOptions.Remote || (recovery != nil && recovery.Completion)) {
+			cfg.CompletionLifecycle = &completionRecorder{session: s, messages: messagePersistence, limit: completionOptions.MaxContinuations}
+		}
 		cfg.MessageCheckpoint = messagePersistence
 		cfg.ModelCallLifecycle = &modelCallRecorder{
 			store:     s.store,
@@ -1051,7 +1078,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			"steps", out.Steps,
 			"stop_reason", out.StopReason,
 		}
-		if runErr != nil {
+		if errors.Is(runErr, run.ErrCompletionPending) {
+			logger.Info("session run awaiting completion", attrs...)
+		} else if runErr != nil {
 			logger.Error("session run failed", append(attrs, "error", runErr)...)
 		} else if persistErr != nil {
 			logger.Error("session run persistence failed", append(attrs, "error", persistErr)...)

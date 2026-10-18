@@ -32,6 +32,9 @@ import (
 func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 	if cfg.Hooks.AfterRun != nil {
 		defer func() {
+			if errors.Is(err, ErrCompletionPending) {
+				return
+			}
 			if result == nil {
 				result = &Result{StopReason: StopReasonError}
 			}
@@ -43,6 +46,9 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 
 	if cfg.Client == nil {
 		return nil, errors.New("run.Run: Config.Client is required")
+	}
+	if cfg.MaxCompletionContinuations < 0 {
+		return nil, errors.New("run.Run: MaxCompletionContinuations cannot be negative")
 	}
 	if cfg.Model.Provider == "" || cfg.Model.ID == "" {
 		return nil, errors.New("run.Run: Config.Model is required")
@@ -122,6 +128,7 @@ func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 // Config's contract immutable from the caller's perspective: hooks see
 // transformed snapshots, never the live runner state.
 type runner struct {
+	continuations     int
 	contextOverflow   error
 	overflowRecovered bool
 	cfg               Config
@@ -151,22 +158,30 @@ type eventDelivery struct {
 func (r *runner) run(ctx context.Context) (*Result, error) {
 	step := 0
 	if recovery := r.cfg.Recovery; recovery != nil {
+		r.continuations = recovery.Continuations
 		r.overflowRecovered = recovery.OverflowRecovered
 		if recovery.ContextOverflow {
 			r.contextOverflow = errors.New("provider context window exceeded")
 		}
 		step, r.usage = recovery.Step, recovery.Usage
 		if recovery.Turn != nil {
-			turn, err := r.runAssistant(ctx, *recovery.Turn, recovery.Turn.Assistant)
+			turn := *recovery.Turn
+			var err error
+			if !recovery.CompletionCandidate {
+				turn, err = r.runAssistant(ctx, turn, turn.Assistant)
+			}
 			if err != nil {
 				return r.finalize(step, StopReasonError), err
 			}
 			r.turns = append(r.turns, turn)
 			if len(turn.Results) == 0 {
-				if err := r.handleStructuredOutput(turn); err != nil {
-					return r.finalize(step, StopReasonError), err
+				accepted, err := r.complete(ctx, turn)
+				if err != nil {
+					return r.completionResult(ctx, step, err)
 				}
-				return r.finalize(step, StopReasonEndTurn), nil
+				if accepted {
+					return r.finalize(step, StopReasonEndTurn), nil
+				}
 			}
 		}
 	}
@@ -224,11 +239,13 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		// Termination: the assistant produced no tool calls. The model
 		// considers itself done. We're done.
 		if len(turn.Results) == 0 {
-			if err := r.handleStructuredOutput(turn); err != nil {
-				r.emitError(err)
-				return r.finalize(step, StopReasonError), err
+			accepted, err := r.complete(ctx, turn)
+			if err != nil {
+				return r.completionResult(ctx, step, err)
 			}
-			return r.finalize(step, StopReasonEndTurn), nil
+			if accepted {
+				return r.finalize(step, StopReasonEndTurn), nil
+			}
 		}
 	}
 }
@@ -1721,31 +1738,26 @@ func (r *runner) emitError(err error) {
 	r.emit(ErrorEvent{Err: err})
 }
 
-// handleStructuredOutput parses and validates the assistant's final text
-// when an OutputSchema is active. On success it populates
-// r.structuredOutput and emits a StructuredOutputEvent.
-func (r *runner) handleStructuredOutput(turn Turn) error {
+func (r *runner) parseStructuredOutput(turn Turn) (*StructuredOutputEvent, error) {
 	if r.cfg.OutputSchema == nil {
-		return nil
+		return nil, nil
 	}
 	text := textOf(turn.Assistant)
 	if text == "" {
-		return fmt.Errorf("loop: structured output required but assistant returned empty text")
+		return nil, fmt.Errorf("loop: structured output required but assistant returned empty text")
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
-		return fmt.Errorf("loop: structured output parse error: %w (raw: %s)", err, text)
+		return nil, fmt.Errorf("loop: structured output parse error: %w (raw: %s)", err, text)
 	}
 	if err := validateAgainstSchema(r.cfg.OutputSchema.Schema, parsed); err != nil {
-		return fmt.Errorf("loop: structured output validation error: %w (raw: %s)", err, text)
+		return nil, fmt.Errorf("loop: structured output validation error: %w (raw: %s)", err, text)
 	}
-	r.structuredOutput = parsed
-	r.emit(StructuredOutputEvent{
+	return &StructuredOutputEvent{
 		Schema:  r.cfg.OutputSchema.Name,
 		RawJSON: text,
 		Parsed:  parsed,
-	})
-	return nil
+	}, nil
 }
 
 func validateAgainstSchema(schema map[string]any, value any) error {

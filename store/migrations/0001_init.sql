@@ -87,6 +87,8 @@ CREATE TABLE session_runs (
     request_hash        TEXT NOT NULL DEFAULT '',
     admitted_version    INTEGER NOT NULL,
     recovery_attempts   INTEGER NOT NULL DEFAULT 0,
+	completion_json     TEXT NOT NULL DEFAULT '{}',
+	completions_json    TEXT NOT NULL DEFAULT '[]',
     work_dir            TEXT,
     workspace_id        TEXT,
     client_id           TEXT,
@@ -114,7 +116,7 @@ CREATE INDEX idx_session_runs_session_status_sequence
 ON session_runs(session_id, status, sequence);
 
 CREATE UNIQUE INDEX idx_session_runs_one_running_per_session
-ON session_runs(session_id) WHERE status = 'running';
+ON session_runs(session_id) WHERE status IN ('running', 'awaiting_completion');
 
 CREATE UNIQUE INDEX idx_session_runs_session_request_id
 ON session_runs(session_id, request_id)

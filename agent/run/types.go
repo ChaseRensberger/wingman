@@ -130,6 +130,10 @@ type Config struct {
 	// long-running coding agents. Callers that want safety nets set this
 	// explicitly.
 	MaxSteps int
+	// MaxCompletionContinuations caps validation-driven iterations; zero uses three.
+	MaxCompletionContinuations int
+	// CompletionLifecycle optionally persists completion decisions and feedback.
+	CompletionLifecycle CompletionLifecycle
 
 	// ToolExecution overrides the default per-tool sequential/parallel
 	// decision. Empty string defers to per-tool Sequential() opt-in.
@@ -176,6 +180,12 @@ type Config struct {
 
 // Recovery supplies the last durable execution boundary to the loop.
 type Recovery struct {
+	// Continuations counts committed validation continuations before the recovered turn.
+	Continuations int
+	// Completion preserves recorded decisions even if a validator is no longer installed.
+	Completion bool
+	// CompletionCandidate keeps an already-saved candidate in its original history position.
+	CompletionCandidate bool
 	// ContextOverflow resumes a scheduled compaction before the next model call.
 	ContextOverflow bool
 	// OverflowRecovered prevents a second compaction-assisted retry after restart.
@@ -384,6 +394,8 @@ const (
 //
 // Candidate future seams: AfterRun (final cleanup).
 type Hooks struct {
+	// BeforeComplete validates a candidate answer. It does not run on failures or cancellation.
+	BeforeComplete BeforeCompleteHook
 	// BeforeRun fires exactly once at the start of Run, after Config
 	// validation and before the first iteration. It returns the
 	// initial message history the loop will work with. The canonical
@@ -460,6 +472,7 @@ type Hooks struct {
 	// Err != nil) and the run error, if any. Errors returned from
 	// AfterRun are joined with the existing run error using errors.Join.
 	// If AfterRun returns nil, the existing return value is unchanged.
+	// Suspension for remote completion does not invoke AfterRun.
 	AfterRun AfterRunHook
 
 	// TransformToolDefs rewrites the tool definitions for this turn's
@@ -692,6 +705,8 @@ const (
 	// StopReasonEndTurn: the assistant produced a turn with no tool
 	// calls. The model considers itself done.
 	StopReasonEndTurn StopReason = "end_turn"
+	// StopReasonAwaitingCompletion suspends execution until a remote decision arrives.
+	StopReasonAwaitingCompletion StopReason = "awaiting_completion"
 
 	// StopReasonMaxSteps: the loop hit Config.MaxSteps before the
 	// assistant produced a tool-call-free turn.

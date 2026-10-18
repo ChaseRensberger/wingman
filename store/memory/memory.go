@@ -62,6 +62,9 @@ func NewStore() *Store {
 func (s *Store) Close() error { return nil }
 
 func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (store.SessionRunAdmission, error) {
+	if run.Completion.MaxContinuations < 0 {
+		return store.SessionRunAdmission{}, fmt.Errorf("completion max_continuations cannot be negative")
+	}
 	if run.Kind == "" {
 		run.Kind = store.SessionRunKindMessage
 	}
@@ -187,7 +190,7 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 		return store.SessionRunTransition{}, store.ErrSessionNotFound
 	}
 	for _, run := range s.runs {
-		if run.SessionID == sessionID && run.Status == store.SessionRunStatusRunning {
+		if run.SessionID == sessionID && (run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion) {
 			return store.SessionRunTransition{}, nil
 		}
 	}
@@ -321,12 +324,12 @@ func (s *Store) CountQueuedSessionRuns(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *Store) ListRunningSessionRuns(ctx context.Context) ([]store.SessionRun, error) {
+func (s *Store) ListActiveSessionRuns(ctx context.Context) ([]store.SessionRun, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := []store.SessionRun{}
 	for _, run := range s.runs {
-		if run.Status == store.SessionRunStatusRunning {
+		if run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion {
 			out = append(out, copySessionRun(run))
 		}
 	}
@@ -373,7 +376,7 @@ func (s *Store) ListSessionRunsForRecovery(ctx context.Context) ([]store.Session
 	return out, nil
 }
 func legalSessionRunSettlement(from, to string) bool {
-	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || (from == store.SessionRunStatusQueued && to == store.SessionRunStatusAborted)
+	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || ((from == store.SessionRunStatusQueued || from == store.SessionRunStatusAwaitingCompletion) && to == store.SessionRunStatusAborted)
 }
 func (s *Store) appendRunEventLocked(run *store.SessionRun, typ string, extra map[string]any, now time.Time) (store.SessionEvent, error) {
 	data := make(map[string]any, len(extra)+7)
@@ -438,6 +441,7 @@ func copyAgent(a *store.Agent) *store.Agent {
 
 func copySessionRun(run *store.SessionRun) store.SessionRun {
 	cp := *run
+	cp.Completions = append([]store.Completion(nil), run.Completions...)
 	cp.Agent = *copyAgent(&run.Agent)
 	cp.InstructionSources = append([]store.InstructionSource(nil), run.InstructionSources...)
 	cp.Skills = append([]skill.Skill(nil), run.Skills...)

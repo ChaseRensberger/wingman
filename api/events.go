@@ -23,6 +23,7 @@ const (
 	SessionEventRunCompleted              SessionEventType = "session.run.completed"
 	SessionEventRunFailed                 SessionEventType = "session.run.failed"
 	SessionEventRunAborted                SessionEventType = "session.run.aborted"
+	SessionEventRunCompletion             SessionEventType = "session.run.completion"
 	SessionEventStepStarted               SessionEventType = "session.step.started"
 	SessionEventStepCompleted             SessionEventType = "session.step.completed"
 	SessionEventTextDelta                 SessionEventType = "session.text.delta"
@@ -115,6 +116,12 @@ type SessionEventData interface {
 type sessionEventData struct{}
 
 func (sessionEventData) isSessionEventData() {}
+
+// CompletionEventData describes a saved candidate validation transition.
+type CompletionEventData struct {
+	RunEventData
+	Completion Completion `json:"completion"`
+}
 
 // RunEventData describes admission and run lifecycle events.
 type RunEventData struct {
@@ -260,6 +267,8 @@ func DecodeSessionEventDataForSchemaVersion(schemaVersion int, eventType Session
 	switch eventType {
 	case SessionEventRunQueued, SessionEventRunStarted, SessionEventRunCompleted, SessionEventRunFailed, SessionEventRunAborted:
 		data = &RunEventData{}
+	case SessionEventRunCompletion:
+		data = &CompletionEventData{}
 	case SessionEventStepStarted, SessionEventStepCompleted:
 		data = &StepEventData{}
 	case SessionEventTextDelta, SessionEventReasoningDelta, SessionEventToolInputDelta:

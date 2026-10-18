@@ -23,6 +23,9 @@ export type Session = components["schemas"]["Session"];
 export type SessionDetail = components["schemas"]["SessionDetail"];
 export type SessionEvent = components["schemas"]["SessionEvent"];
 export type SessionRun = components["schemas"]["SessionRun"];
+export type CompletionOptions = components["schemas"]["CompletionOptions"];
+export type CompletionDecision = components["schemas"]["CompletionDecision"];
+export type CompletionReplyRequest = components["schemas"]["CompletionReplyRequest"];
 export type ToolUse = components["schemas"]["ToolUse"];
 export type Workspace = components["schemas"]["Workspace"];
 
@@ -198,6 +201,7 @@ const sessionEventTypes = new Set<SessionEvent["type"]>([
   "session.run.completed",
   "session.run.failed",
   "session.run.aborted",
+  "session.run.completion",
   "session.step.started",
   "session.step.completed",
   "session.text.delta",
@@ -471,6 +475,13 @@ export function createWingmanClient(options: WingmanClientOptions) {
           }),
         ),
       runs: {
+        replyCompletion: (id: string, runID: string, request: CompletionReplyRequest) =>
+          requestData(
+            api.POST("/sessions/{id}/runs/{runID}/completion", {
+              params: { path: { id, runID } },
+              body: request,
+            }),
+          ),
         list: (id: string) =>
           requestData(api.GET("/sessions/{id}/runs", { params: { path: { id } } })),
         get: (id: string, runID: string) =>

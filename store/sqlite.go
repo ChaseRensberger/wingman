@@ -316,7 +316,15 @@ func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projec
 		if _, err := tx.ExecContext(ctx, `INSERT INTO session_runs (id, session_id, request_id, request_hash, admitted_version, work_dir, workspace_id, client_id, sequence, status, kind, message, action, input_json, agent_json, effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`, run.ID, run.SessionID, run.RequestID, run.RequestHash, run.AdmittedVersion, run.WorkDir, run.WorkspaceID, run.ClientID, run.Sequence, run.Status, kind, run.Message, run.Action, nullableJSON(run.InputJSON), string(agent), run.EffectiveInstructions, string(sources), string(skills), nullableBytes(run.OutputSchemaJSON), run.ErrorType, run.ErrorMessage, formatTime(run.CreatedAt), nullableTime(run.StartedAt), nullableTime(run.CompletedAt), formatTime(run.UpdatedAt)); err != nil {
 			return fmt.Errorf("insert session run: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE session_runs SET recovery_attempts = ? WHERE id = ?`, run.RecoveryAttempts, run.ID); err != nil {
+		completion, err := json.Marshal(run.Completion)
+		if err != nil {
+			return err
+		}
+		completions, err := json.Marshal(run.Completions)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE session_runs SET recovery_attempts = ?, completion_json = ?, completions_json = ? WHERE id = ?`, run.RecoveryAttempts, string(completion), string(completions), run.ID); err != nil {
 			return err
 		}
 	}
@@ -2303,6 +2311,9 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	if run.Kind == "" {
 		run.Kind = SessionRunKindMessage
 	}
+	if run.Completion.MaxContinuations < 0 {
+		return SessionRunAdmission{}, fmt.Errorf("completion max_continuations cannot be negative")
+	}
 	tx, err := s.beginImmediate(ctx)
 	if err != nil {
 		return SessionRunAdmission{}, err
@@ -2368,6 +2379,13 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET aggregate_version = ? WHERE id = ?`, run.AdmittedVersion, run.SessionID); err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("update session admission version: %w", err)
+	}
+	completionJSON, err := json.Marshal(run.Completion)
+	if err != nil {
+		return SessionRunAdmission{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE session_runs SET completion_json = ? WHERE id = ?`, string(completionJSON), run.ID); err != nil {
+		return SessionRunAdmission{}, err
 	}
 	queuedData, err := json.Marshal(struct {
 		RunID   string `json:"run_id"`
@@ -2449,7 +2467,7 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 		return SessionRunTransition{}, err
 	}
 	var running int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id = ? AND status = ?`, sessionID, SessionRunStatusRunning).Scan(&running); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id = ? AND status IN (?, ?)`, sessionID, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion).Scan(&running); err != nil {
 		return SessionRunTransition{}, err
 	}
 	if running != 0 {
@@ -2581,8 +2599,8 @@ func (s *SQLiteStore) transitionSessionRun(ctx context.Context, settlement Sessi
 	return SessionRunTransition{Run: run, Event: event, Changed: true}, nil
 }
 
-func (s *SQLiteStore) ListRunningSessionRuns(ctx context.Context) ([]SessionRun, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE status = ? ORDER BY session_id, sequence`, SessionRunStatusRunning)
+func (s *SQLiteStore) ListActiveSessionRuns(ctx context.Context) ([]SessionRun, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE status IN (?, ?) ORDER BY session_id, sequence`, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion)
 	if err != nil {
 		return nil, err
 	}
@@ -2647,7 +2665,7 @@ func isSessionRunTerminal(status string) bool {
 	return status == SessionRunStatusCompleted || status == SessionRunStatusFailed || status == SessionRunStatusAborted
 }
 func legalSessionRunSettlement(from, to string) bool {
-	return (from == SessionRunStatusRunning && isSessionRunTerminal(to)) || (from == SessionRunStatusQueued && to == SessionRunStatusAborted)
+	return (from == SessionRunStatusRunning && isSessionRunTerminal(to)) || ((from == SessionRunStatusQueued || from == SessionRunStatusAwaitingCompletion) && to == SessionRunStatusAborted)
 }
 
 func appendRunEventTx(ctx context.Context, tx *immediateTx, run SessionRun, typ string, extra map[string]any, now time.Time) (SessionEvent, error) {
@@ -2692,8 +2710,18 @@ func scanSessionRun(row rowScanner) (SessionRun, error) {
 	var agentJSON, effectiveInstructions string
 	var workDir, workspaceID, clientID, action, input, instructionSourcesJSON, skillsJSON, schema, errorType, errorMessage, started, completed sql.NullString
 	var created, updated string
-	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Kind, &run.Message, &action, &input, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &skillsJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated, &run.RecoveryAttempts); err != nil {
+	var completionJSON, completionsJSON string
+	if err := row.Scan(&run.ID, &run.SessionID, &run.RequestID, &run.RequestHash, &run.AdmittedVersion, &workDir, &workspaceID, &clientID, &run.Sequence, &run.Status, &run.Kind, &run.Message, &action, &input, &agentJSON, &effectiveInstructions, &instructionSourcesJSON, &skillsJSON, &schema, &errorType, &errorMessage, &created, &started, &completed, &updated, &run.RecoveryAttempts, &completionJSON, &completionsJSON); err != nil {
 		return SessionRun{}, err
+	}
+	if err := json.Unmarshal([]byte(completionJSON), &run.Completion); err != nil {
+		return SessionRun{}, err
+	}
+	if err := json.Unmarshal([]byte(completionsJSON), &run.Completions); err != nil {
+		return SessionRun{}, err
+	}
+	if len(run.Completions) == 0 {
+		run.Completions = nil
 	}
 	if skillsJSON.Valid {
 		if err := json.Unmarshal([]byte(skillsJSON.String), &run.Skills); err != nil {
@@ -2983,7 +3011,7 @@ const toolUseColumns = `
 const sessionRunColumns = `
 	id, session_id, request_id, request_hash, admitted_version,
 	work_dir, workspace_id, client_id, sequence, status, kind, message, action, input_json, agent_json,
-	effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at, recovery_attempts`
+	effective_instructions, instruction_sources_json, skills_json, output_schema_json, error_type, error_message, created_at, started_at, completed_at, updated_at, recovery_attempts, completion_json, completions_json`
 
 // SessionRunRequestHash returns the canonical hash for an admission request.
 func SessionRunRequestHash(run SessionRun) (string, error) {
@@ -3002,16 +3030,17 @@ func SessionRunRequestHash(run SessionRun) (string, error) {
 	agent := run.Agent
 	agent.CreatedAt, agent.UpdatedAt = "", ""
 	payload, err := json.Marshal(struct {
-		Kind         string `json:"kind"`
-		Message      string `json:"message"`
-		Action       string `json:"action"`
-		Input        any    `json:"input"`
-		Agent        Agent  `json:"agent"`
-		OutputSchema any    `json:"output_schema"`
-		ClientID     string `json:"client_id"`
-		WorkDir      string `json:"work_dir"`
-		WorkspaceID  string `json:"workspace_id"`
-	}{run.Kind, run.Message, run.Action, input, agent, schema, run.ClientID, run.WorkDir, run.WorkspaceID})
+		Kind         string            `json:"kind"`
+		Message      string            `json:"message"`
+		Action       string            `json:"action"`
+		Input        any               `json:"input"`
+		Agent        Agent             `json:"agent"`
+		OutputSchema any               `json:"output_schema"`
+		ClientID     string            `json:"client_id"`
+		WorkDir      string            `json:"work_dir"`
+		WorkspaceID  string            `json:"workspace_id"`
+		Completion   CompletionOptions `json:"completion"`
+	}{run.Kind, run.Message, run.Action, input, agent, schema, run.ClientID, run.WorkDir, run.WorkspaceID, run.Completion})
 	if err != nil {
 		return "", fmt.Errorf("marshal run request: %w", err)
 	}

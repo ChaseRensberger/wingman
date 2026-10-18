@@ -133,9 +133,9 @@ wingman api getSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
 A run moves from `queued` to `running`. It then moves to `completed`, `failed`,
-or `aborted`. A queued run can also be aborted before it starts.
+or `aborted`. Remote validation pauses the run in `awaiting_completion`. A queued or paused run can also be aborted.
 
-Abort a specific queued or running run with:
+Abort a specific run with:
 
 ```bash
 wingman api abortSessionRun --param "id=${SESSION_ID}" --param runID=run_...
@@ -156,6 +156,42 @@ Inspect the tool record and its external effects before you submit another reque
 Wingman permits three automatic recovery attempts per run. Further interruptions abort the run with `recovery_exhausted`.
 Explicit cancellation remains terminal across restarts. Interrupted plugin actions remain `aborted` because they do not have a recovery contract.
 Ephemeral runs do not recover. See [Tools](/concepts/tools#durable-execution-lifecycle) for replay rules.
+
+## Completion validation
+
+Your client can inspect each proposed answer before the run completes. Include this field in a message request to enable remote validation:
+
+```json
+{
+  "agent_id": "agt_...",
+  "message": "Implement the change and run its tests.",
+  "completion": { "remote": true, "max_continuations": 3 }
+}
+```
+
+After plugin validators accept an answer, the run enters `awaiting_completion`.
+Read the latest entry in the run's `completions` array or listen for `session.run.completion` events.
+The `candidate_id` identifies the saved assistant message. Use the same client identity for admission and replies.
+
+Send a decision to `POST /sessions/{id}/runs/{runID}/completion`:
+
+```json
+{
+  "candidate_id": "msg_...",
+  "decision": { "action": "continue", "feedback": "Add a regression test for empty input." }
+}
+```
+
+To accept the answer, send `"decision": { "action": "accept" }`.
+Wingman saves continuation feedback as a user-role message with `metadata.source` set to `completion_validator`.
+It continues the same run. Later submitted messages remain queued until that run ends.
+
+A repeated identical reply does not create another iteration. A conflicting reply or an unknown candidate returns `409 Conflict`.
+A disconnect or restart preserves the pending request. Waiting does not occupy an execution slot, and you can still abort the run.
+
+The default limit is three continuations across plugin and remote decisions. Zero selects that default.
+If validation requests more continuations, the run fails with `completion_limit`. Committed decisions do not run again after restart.
+Remote validation requires a saved session. It is unavailable for `POST /run`.
 
 ## Ephemeral Sessions
 

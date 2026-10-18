@@ -70,9 +70,12 @@ type Store interface {
 	ListSessionRuns(ctx context.Context, sessionID string) ([]SessionRun, error)
 	ClaimNextSessionRun(ctx context.Context, sessionID string) (SessionRunTransition, error)
 	SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error)
+	// UpdateSessionRunCompletion atomically saves validation state and its durable event.
+	UpdateSessionRunCompletion(ctx context.Context, update CompletionUpdate) (SessionRunTransition, error)
 	// RequeueSessionRun records a recovery attempt before restarting unfinished work.
 	RequeueSessionRun(ctx context.Context, runID string) (SessionRunTransition, error)
-	ListRunningSessionRuns(ctx context.Context) ([]SessionRun, error)
+	// ListActiveSessionRuns includes running runs and runs awaiting completion validation.
+	ListActiveSessionRuns(ctx context.Context) ([]SessionRun, error)
 	// ListSessionRunsForRecovery includes running runs and aborted runs with unfinished records.
 	ListSessionRunsForRecovery(ctx context.Context) ([]SessionRun, error)
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)

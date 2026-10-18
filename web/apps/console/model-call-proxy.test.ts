@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer } from "vite";
+import { createServer, loadConfigFromFile } from "vite";
 
 import { createWingmanClient } from "@wingman-actor/client";
 import { formatModelCallDiagnostics } from "./src/lib/model-call-diagnostics";
@@ -77,10 +77,25 @@ test("split development proxies session data to the authenticated daemon", async
   process.env.XDG_CONFIG_HOME = dir;
   let vite: Awaited<ReturnType<typeof createServer>> | undefined;
   try {
+    const loaded = await loadConfigFromFile(
+      { command: "serve", mode: "development" },
+      join(import.meta.dir, "vite.config.ts"),
+    );
+    // Proxy requests do not need the app's plugin pipeline or background dependency scanner.
     vite = await createServer({
-      configFile: join(import.meta.dir, "vite.config.ts"),
+      configFile: false,
+      root: dir,
+      cacheDir: join(dir, "vite-cache"),
+      base: loaded!.config.base,
+      optimizeDeps: { noDiscovery: true, include: [] },
       logLevel: "silent",
-      server: { host: "127.0.0.1", port: 0, watch: null },
+      server: {
+        host: "127.0.0.1",
+        port: 0,
+        watch: null,
+        ws: false,
+        proxy: loaded!.config.server?.proxy,
+      },
     });
     await vite.listen();
     const client = createWingmanClient({ baseUrl: new URL(vite.resolvedUrls!.local[0]!).origin });

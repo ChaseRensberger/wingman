@@ -80,6 +80,15 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 	if latest == nil {
 		return recovery, userSaved, nil
 	}
+	recovery.Completion = len(admitted.Completions) > 0
+	for _, completion := range admitted.Completions {
+		if completion.Status == "continue" && completion.Step < latest.Step {
+			recovery.Continuations++
+		}
+		if completion.CandidateID == latest.AssistantMessageID {
+			recovery.CompletionCandidate = true
+		}
+	}
 	if !userSaved {
 		return nil, false, fmt.Errorf("%w: saved input is missing", ErrRecoveryBlocked)
 	}
@@ -162,6 +171,11 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 		}
 		if !active {
 			recovery.Step = latest.Step
+			for _, completion := range admitted.Completions {
+				if completion.Status == "continue" && completion.Step == latest.Step {
+					recovery.Continuations++
+				}
+			}
 			return recovery, userSaved, nil
 		}
 	}

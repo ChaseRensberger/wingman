@@ -42,13 +42,14 @@ type InstructionSource struct {
 }
 
 const (
-	SessionRunKindMessage     = "message"
-	SessionRunKindAction      = "action"
-	SessionRunStatusQueued    = "queued"
-	SessionRunStatusRunning   = "running"
-	SessionRunStatusCompleted = "completed"
-	SessionRunStatusFailed    = "failed"
-	SessionRunStatusAborted   = "aborted"
+	SessionRunKindMessage              = "message"
+	SessionRunKindAction               = "action"
+	SessionRunStatusQueued             = "queued"
+	SessionRunStatusRunning            = "running"
+	SessionRunStatusAwaitingCompletion = "awaiting_completion"
+	SessionRunStatusCompleted          = "completed"
+	SessionRunStatusFailed             = "failed"
+	SessionRunStatusAborted            = "aborted"
 )
 
 const (
@@ -171,6 +172,8 @@ func (u ToolUse) MarshalJSON() ([]byte, error) {
 // SessionRun is a durably admitted prompt and its immutable effective agent
 // configuration. Runs are claimed in sequence order per session.
 type SessionRun struct {
+	Completion            CompletionOptions   `json:"completion,omitempty"`
+	Completions           []Completion        `json:"completions,omitempty"`
 	RecoveryAttempts      int                 `json:"recovery_attempts,omitempty"`
 	ID                    string              `json:"id"`
 	SessionID             string              `json:"session_id"`

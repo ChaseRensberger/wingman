@@ -17,6 +17,24 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for CompletionDecisionAction.
+const (
+	Accept   CompletionDecisionAction = "accept"
+	Continue CompletionDecisionAction = "continue"
+)
+
+// Valid indicates whether the value is a known member of the CompletionDecisionAction enum.
+func (e CompletionDecisionAction) Valid() bool {
+	switch e {
+	case Accept:
+		return true
+	case Continue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ImagePartType.
 const (
 	Image ImagePartType = "image"
@@ -268,6 +286,37 @@ type Client struct {
 	Name      string `json:"name"`
 }
 
+// Completion defines model for Completion.
+type Completion struct {
+	CandidateId string  `json:"candidate_id"`
+	Error       *string `json:"error,omitempty"`
+	Feedback    *string `json:"feedback,omitempty"`
+	FeedbackId  *string `json:"feedback_id,omitempty"`
+	Status      string  `json:"status"`
+	Step        int64   `json:"step"`
+}
+
+// CompletionDecision defines model for CompletionDecision.
+type CompletionDecision struct {
+	Action   CompletionDecisionAction `json:"action"`
+	Feedback *string                  `json:"feedback,omitempty"`
+}
+
+// CompletionDecisionAction defines model for CompletionDecision.Action.
+type CompletionDecisionAction string
+
+// CompletionOptions defines model for CompletionOptions.
+type CompletionOptions struct {
+	MaxContinuations *int64 `json:"max_continuations,omitempty"`
+	Remote           *bool  `json:"remote,omitempty"`
+}
+
+// CompletionReplyRequest defines model for CompletionReplyRequest.
+type CompletionReplyRequest struct {
+	CandidateId string             `json:"candidate_id"`
+	Decision    CompletionDecision `json:"decision"`
+}
+
 // CreateAgentRequest defines model for CreateAgentRequest.
 type CreateAgentRequest struct {
 	Instructions *string                 `json:"instructions,omitempty"`
@@ -459,12 +508,13 @@ type MessageOrigin struct {
 
 // MessageSessionRequest defines model for MessageSessionRequest.
 type MessageSessionRequest struct {
-	AgentId      string        `json:"agent_id"`
-	Message      string        `json:"message"`
-	ModelRef     *string       `json:"model_ref,omitempty"`
-	ModelRoute   *ModelInfo    `json:"model_route,omitempty"`
-	OutputSchema *OutputSchema `json:"output_schema,omitempty"`
-	RequestId    *string       `json:"request_id,omitempty"`
+	AgentId      string             `json:"agent_id"`
+	Completion   *CompletionOptions `json:"completion,omitempty"`
+	Message      string             `json:"message"`
+	ModelRef     *string            `json:"model_ref,omitempty"`
+	ModelRoute   *ModelInfo         `json:"model_route,omitempty"`
+	OutputSchema *OutputSchema      `json:"output_schema,omitempty"`
+	RequestId    *string            `json:"request_id,omitempty"`
 }
 
 // MessageSessionResponse defines model for MessageSessionResponse.
@@ -965,6 +1015,8 @@ type SessionRun struct {
 	Agent                 Agent                `json:"agent"`
 	ClientId              *string              `json:"client_id,omitempty"`
 	CompletedAt           *time.Time           `json:"completed_at,omitempty"`
+	Completion            *CompletionOptions   `json:"completion,omitempty"`
+	Completions           *[]Completion        `json:"completions,omitempty"`
 	CreatedAt             time.Time            `json:"created_at"`
 	EffectiveInstructions string               `json:"effective_instructions"`
 	ErrorMessage          *string              `json:"error_message,omitempty"`
@@ -1501,6 +1553,12 @@ type AbortSessionRunParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// ReplySessionRunCompletionParams defines parameters for ReplySessionRunCompletion.
+type ReplySessionRunCompletionParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // ListSessionToolUsesParams defines parameters for ListSessionToolUses.
 type ListSessionToolUsesParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1587,6 +1645,9 @@ type ReplyPermissionRequestJSONRequestBody = PermissionReplyRequest
 
 // RenameSessionJSONRequestBody defines body for RenameSession for application/json ContentType.
 type RenameSessionJSONRequestBody = RenameSessionRequest
+
+// ReplySessionRunCompletionJSONRequestBody defines body for ReplySessionRunCompletion for application/json ContentType.
+type ReplySessionRunCompletionJSONRequestBody = CompletionReplyRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
@@ -2317,6 +2378,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/runs/{runID}/abort (the `AbortSessionRun` operationId).
 	AbortSessionRun(ctx context.Context, id string, runID string, params *AbortSessionRunParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplySessionRunCompletionWithBody Reply to a completion validation request
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+	ReplySessionRunCompletionWithBody(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplySessionRunCompletion Reply to a completion validation request
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+	ReplySessionRunCompletion(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, body ReplySessionRunCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessionToolUses List session tool uses
 	//
@@ -3439,6 +3514,40 @@ func (c *GeneratedClient) GetSessionRun(ctx context.Context, id string, runID st
 // Corresponds with POST /sessions/{id}/runs/{runID}/abort (the `AbortSessionRun` operationId).
 func (c *GeneratedClient) AbortSessionRun(ctx context.Context, id string, runID string, params *AbortSessionRunParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAbortSessionRunRequest(c.Server, id, runID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplySessionRunCompletionWithBody Reply to a completion validation request
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+func (c *GeneratedClient) ReplySessionRunCompletionWithBody(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplySessionRunCompletionRequestWithBody(c.Server, id, runID, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplySessionRunCompletion Reply to a completion validation request
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+func (c *GeneratedClient) ReplySessionRunCompletion(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, body ReplySessionRunCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplySessionRunCompletionRequest(c.Server, id, runID, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6403,6 +6512,75 @@ func NewAbortSessionRunRequest(server string, id string, runID string, params *A
 	return req, nil
 }
 
+// NewReplySessionRunCompletionRequest calls the generic ReplySessionRunCompletion builder with application/json body
+func NewReplySessionRunCompletionRequest(server string, id string, runID string, params *ReplySessionRunCompletionParams, body ReplySessionRunCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplySessionRunCompletionRequestWithBody(server, id, runID, params, "application/json", bodyReader)
+}
+
+// NewReplySessionRunCompletionRequestWithBody constructs an http.Request for the ReplySessionRunCompletion method, with any body, and a specified content type
+func NewReplySessionRunCompletionRequestWithBody(server string, id string, runID string, params *ReplySessionRunCompletionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "runID", runID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/runs/%s/completion", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListSessionToolUsesRequest constructs an http.Request for the ListSessionToolUses method
 func NewListSessionToolUsesRequest(server string, id string, params *ListSessionToolUsesParams) (*http.Request, error) {
 	var err error
@@ -7319,6 +7497,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/runs/{runID}/abort (the `AbortSessionRun` operationId).
 	AbortSessionRunWithResponse(ctx context.Context, id string, runID string, params *AbortSessionRunParams, reqEditors ...RequestEditorFn) (*AbortSessionRunHTTPResponse, error)
+
+	// ReplySessionRunCompletionWithBodyWithResponse Reply to a completion validation request
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+	ReplySessionRunCompletionWithBodyWithResponse(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplySessionRunCompletionHTTPResponse, error)
+
+	// ReplySessionRunCompletionWithResponse Reply to a completion validation request
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+	ReplySessionRunCompletionWithResponse(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, body ReplySessionRunCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplySessionRunCompletionHTTPResponse, error)
 
 	// ListSessionToolUsesWithResponse List session tool uses
 	//
@@ -10017,6 +10209,54 @@ func (r AbortSessionRunHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ReplySessionRunCompletionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SessionRun
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplySessionRunCompletionHTTPResponse) GetJSON200() *SessionRun {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ReplySessionRunCompletionHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplySessionRunCompletionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplySessionRunCompletionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplySessionRunCompletionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplySessionRunCompletionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSessionToolUsesHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11283,6 +11523,32 @@ func (c *ClientWithResponses) AbortSessionRunWithResponse(ctx context.Context, i
 		return nil, err
 	}
 	return ParseAbortSessionRunHTTPResponse(rsp)
+}
+
+// ReplySessionRunCompletionWithBodyWithResponse Reply to a completion validation request
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+func (c *ClientWithResponses) ReplySessionRunCompletionWithBodyWithResponse(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplySessionRunCompletionHTTPResponse, error) {
+	rsp, err := c.ReplySessionRunCompletionWithBody(ctx, id, runID, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplySessionRunCompletionHTTPResponse(rsp)
+}
+
+// ReplySessionRunCompletionWithResponse Reply to a completion validation request
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/runs/{runID}/completion (the `ReplySessionRunCompletion` operationId).
+func (c *ClientWithResponses) ReplySessionRunCompletionWithResponse(ctx context.Context, id string, runID string, params *ReplySessionRunCompletionParams, body ReplySessionRunCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplySessionRunCompletionHTTPResponse, error) {
+	rsp, err := c.ReplySessionRunCompletion(ctx, id, runID, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplySessionRunCompletionHTTPResponse(rsp)
 }
 
 // ListSessionToolUsesWithResponse List session tool uses
@@ -13203,6 +13469,39 @@ func ParseAbortSessionRunHTTPResponse(rsp *http.Response) (*AbortSessionRunHTTPR
 			return nil, err
 		}
 		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplySessionRunCompletionHTTPResponse parses an HTTP response from a ReplySessionRunCompletionWithResponse call
+func ParseReplySessionRunCompletionHTTPResponse(rsp *http.Response) (*ReplySessionRunCompletionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplySessionRunCompletionHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionRun
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse

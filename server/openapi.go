@@ -214,6 +214,7 @@ type eventVariant struct {
 func sessionEventSchema(registry huma.Registry) *huma.Schema {
 	return discriminatedEventSchema(registry, "Session event", []eventVariant{
 		{[]string{"session.run.queued", "session.run.started", "session.run.completed", "session.run.failed", "session.run.aborted"}, api.RunEventData{}},
+		{[]string{"session.run.completion"}, api.CompletionEventData{}},
 		{[]string{"session.step.started", "session.step.completed"}, api.StepEventData{}},
 		{[]string{"session.text.delta", "session.reasoning.delta", "session.tool.input.delta"}, api.ContentDeltaEventData{}},
 		{[]string{"session.text.completed", "session.reasoning.completed"}, api.ContentCompletedEventData{}},

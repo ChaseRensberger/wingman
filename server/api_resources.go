@@ -119,6 +119,10 @@ func apiModelCalls(values []store.ModelCall) []api.ModelCall {
 }
 
 func apiSessionRun(value store.SessionRun) api.SessionRun {
+	completions := make([]api.Completion, len(value.Completions))
+	for i, c := range value.Completions {
+		completions[i] = api.Completion{CandidateID: c.CandidateID, Step: c.Step, Status: c.Status, Feedback: c.Feedback, FeedbackID: c.FeedbackID, Error: c.Error}
+	}
 	sources := make([]api.InstructionSource, len(value.InstructionSources))
 	for i, source := range value.InstructionSources {
 		sources[i] = api.InstructionSource{
@@ -127,6 +131,7 @@ func apiSessionRun(value store.SessionRun) api.SessionRun {
 		}
 	}
 	return api.SessionRun{
+		Completion: api.CompletionOptions{Remote: value.Completion.Remote, MaxContinuations: value.Completion.MaxContinuations}, Completions: completions,
 		ID: value.ID, SessionID: value.SessionID, RequestID: value.RequestID,
 		AdmittedVersion: value.AdmittedVersion, WorkDir: value.WorkDir, WorkspaceID: value.WorkspaceID,
 		ClientID: value.ClientID, Sequence: value.Sequence, Status: value.Status, Kind: value.Kind, Message: value.Message, Action: value.Action, Input: value.InputJSON,

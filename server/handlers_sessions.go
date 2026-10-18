@@ -87,7 +87,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	running, err := s.store.ListRunningSessionRuns(r.Context())
+	running, err := s.store.ListActiveSessionRuns(r.Context())
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -102,7 +102,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		statuses[id] = store.SessionRunStatusQueued
 	}
 	for _, run := range running {
-		statuses[run.SessionID] = store.SessionRunStatusRunning
+		statuses[run.SessionID] = run.Status
 	}
 	result := apiSessions(sessions)
 	for i := range result {
@@ -566,6 +566,11 @@ func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, ses
 	candidate := store.SessionRun{
 		SessionID: id, RequestID: req.RequestID, Message: req.Message,
 		Agent: *effectiveAgent, OutputSchemaJSON: outputSchemaJSON,
+		Completion: store.CompletionOptions{Remote: req.Completion.Remote, MaxContinuations: req.Completion.MaxContinuations},
+	}
+	if req.Completion.MaxContinuations < 0 {
+		s.writeError(w, http.StatusBadRequest, "completion max_continuations cannot be negative")
+		return
 	}
 	if existing, retryErr := s.findAdmissionRetry(r.Context(), sess, candidate); retryErr != nil {
 		if errors.Is(retryErr, store.ErrSessionRunAdmissionConflict) {
@@ -748,8 +753,8 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch run.Status {
-	case store.SessionRunStatusQueued:
-		transition, err := s.store.SettleSessionRun(r.Context(), store.SessionRunSettlement{ID: run.ID, ExpectedStatus: store.SessionRunStatusQueued, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled", EventData: map[string]any{"error_type": "cancelled", "error_message": "run cancelled"}})
+	case store.SessionRunStatusQueued, store.SessionRunStatusAwaitingCompletion:
+		transition, err := s.store.SettleSessionRun(r.Context(), store.SessionRunSettlement{ID: run.ID, ExpectedStatus: run.Status, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled", EventData: map[string]any{"error_type": "cancelled", "error_message": "run cancelled"}})
 		if errors.Is(err, store.ErrSessionRunTransitionConflict) {
 			s.writeError(w, http.StatusConflict, err.Error())
 			return
@@ -762,6 +767,7 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 			s.events.publish(transition.Event)
 		}
 		writeJSON(w, http.StatusOK, apiSessionRun(transition.Run))
+		s.runs.wake(id)
 	case store.SessionRunStatusRunning:
 		n, err := s.runs.abort(r.Context(), id, runID)
 		if err != nil {
@@ -1130,7 +1136,8 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		if err != nil {
 			return nil, err
 		}
-		if admitted.RecoveryAttempts > 0 {
+		opts = append(opts, session.WithCompletionEventSink(s.events.publish))
+		if admitted.RecoveryAttempts > 0 || len(admitted.Completions) > 0 {
 			opts = append(opts, session.WithRunRecovery())
 		}
 	}

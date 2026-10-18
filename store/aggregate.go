@@ -32,6 +32,7 @@ const (
 	EventSessionPermissionRequested    = "session.permission.requested"
 	EventSessionPermissionResolved     = "session.permission.resolved"
 	EventSessionPermissionGrantCreated = "session.permission_grant.created"
+	EventSessionRunCompletion          = "session.run.completion"
 )
 
 var ErrAggregateVersionConflict = errors.New("aggregate version conflict")
@@ -310,10 +311,26 @@ func ProjectSessionRunTransition(event AggregateEvent) (SessionRun, error) {
 		SessionRunStatusFailed:    EventSessionRunFailed,
 		SessionRunStatusAborted:   EventSessionRunAborted,
 	}[run.Status]
+	if event.Type == EventSessionRunCompletion && (run.Status == SessionRunStatusRunning || run.Status == SessionRunStatusAwaitingCompletion || run.Status == SessionRunStatusQueued) && len(run.Completions) > 0 {
+		return run, nil
+	}
 	if !ok || event.Type != wantType {
 		return SessionRun{}, fmt.Errorf("project session run %s: event %q does not match status %q", run.ID, event.Type, run.Status)
 	}
 	return run, nil
+}
+
+// NewSessionCompletionEvent records a complete validation snapshot.
+func NewSessionCompletionEvent(run SessionRun) (AggregateEvent, error) {
+	snapshot, err := marshalSessionRun(run)
+	if err != nil {
+		return AggregateEvent{}, err
+	}
+	data, err := json.Marshal(sessionRunTransitionData{Run: snapshot})
+	if err != nil {
+		return AggregateEvent{}, err
+	}
+	return AggregateEvent{ID: NewID(PrefixEvent), Aggregate: AggregateRef{Type: AggregateSession, ID: run.SessionID}, Type: EventSessionRunCompletion, SchemaVersion: 1, Time: run.UpdatedAt, Data: data, ClientID: run.ClientID, RunID: run.ID}, nil
 }
 
 // NewSessionMessageSavedEvent records one complete authoritative message revision.
@@ -698,13 +715,17 @@ func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
 				return nil, fmt.Errorf("project session run %s: duplicate admission", run.ID)
 			}
 			runs[run.ID] = run
-		case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+		case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion:
 			run, err = ProjectSessionRunTransition(event)
 			if err != nil {
 				return nil, err
 			}
 			previous, exists := runs[run.ID]
-			if !exists || !legalProjectedRunTransition(previous.Status, run.Status) {
+			legal := legalProjectedRunTransition(previous.Status, run.Status)
+			if event.Type == EventSessionRunCompletion {
+				legal = (previous.Status == SessionRunStatusRunning && (run.Status == SessionRunStatusRunning || run.Status == SessionRunStatusAwaitingCompletion)) || (previous.Status == SessionRunStatusAwaitingCompletion && run.Status == SessionRunStatusQueued)
+			}
+			if !exists || !legal {
 				return nil, fmt.Errorf("project session run %s: illegal transition %q -> %q", run.ID, previous.Status, run.Status)
 			}
 			if run.Sequence != previous.Sequence || run.AdmittedVersion != previous.AdmittedVersion || run.Message != previous.Message {
@@ -1011,6 +1032,7 @@ func legalProjectedToolUseTransition(from, to string) bool {
 
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
+		(from == SessionRunStatusAwaitingCompletion && to == SessionRunStatusAborted) ||
 		(from == SessionRunStatusRunning && (isSessionRunTerminal(to) || to == SessionRunStatusQueued))
 }
 
@@ -1074,7 +1096,7 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 		projected := *session
 		projected.AggregateVersion = event.Version
 		return &projected, nil
-	case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted:
+	case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion:
 		if session == nil {
 			return nil, fmt.Errorf("project session %s: run transition before creation", event.Aggregate.ID)
 		}

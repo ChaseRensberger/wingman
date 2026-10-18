@@ -219,10 +219,14 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 		m.mu.Unlock()
 	}()
 
+	// Register cancellation first so an abort during this check also stops execution.
+	current, err := m.server.store.GetSessionRun(runCtx, queued.SessionID, queued.ID)
+	if err == nil && current.Status != store.SessionRunStatusRunning {
+		return
+	}
 	sess := &store.Session{ID: queued.SessionID, WorkDir: queued.WorkDir, WorkspaceID: queued.WorkspaceID, ClientID: queued.ClientID}
-	var err error
 	var schema *api.OutputSchema
-	if len(queued.OutputSchemaJSON) > 0 {
+	if err == nil && len(queued.OutputSchemaJSON) > 0 {
 		schema = &api.OutputSchema{}
 		err = json.Unmarshal(queued.OutputSchemaJSON, schema)
 	}
@@ -263,6 +267,9 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 						m.server.forwardRunEvent(persistCtx, queued.SessionID, queued.ID, stream.Event())
 					}
 					err = stream.Err()
+					if errors.Is(err, run.ErrCompletionPending) {
+						return
+					}
 					if err == nil {
 						if runCtx.Err() != nil {
 							err = runCtx.Err()
@@ -284,6 +291,9 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 	status, errorType := store.SessionRunStatusFailed, "run_failed"
 	if errors.Is(err, session.ErrRecoveryBlocked) {
 		errorType = "recovery_blocked"
+	}
+	if errors.Is(err, run.ErrCompletionLimit) {
+		errorType = "completion_limit"
 	}
 	if errors.Is(runCtx.Err(), context.Canceled) {
 		status, errorType = store.SessionRunStatusAborted, "cancelled"
@@ -335,13 +345,24 @@ func (m *sessionRunManager) settle(ctx context.Context, settlement store.Session
 func (m *sessionRunManager) abort(ctx context.Context, sessionID, expectedRunID string) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cancel, ok := m.runCancel[sessionID]
-	runID := m.runIDs[sessionID]
-	if !ok || (expectedRunID != "" && expectedRunID != runID) {
+	active, err := m.server.store.ListSessionRuns(ctx, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	var current *store.SessionRun
+	for _, candidate := range active {
+		if (candidate.Status == store.SessionRunStatusRunning || candidate.Status == store.SessionRunStatusAwaitingCompletion) && (expectedRunID == "" || expectedRunID == candidate.ID) {
+			current = &candidate
+			break
+		}
+	}
+	if current == nil {
 		return 0, nil
 	}
+	cancel := m.runCancel[sessionID]
+	runID := current.ID
 	// Persist cancellation before signaling the worker so a crash cannot revive it.
-	transition, err := m.server.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: runID, ExpectedStatus: store.SessionRunStatusRunning, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled"})
+	transition, err := m.server.store.SettleSessionRun(ctx, store.SessionRunSettlement{ID: runID, ExpectedStatus: current.Status, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled"})
 	if errors.Is(err, store.ErrSessionRunTransitionConflict) {
 		return 0, nil
 	}
@@ -351,7 +372,15 @@ func (m *sessionRunManager) abort(ctx context.Context, sessionID, expectedRunID 
 	if transition.Changed {
 		m.server.events.publish(transition.Event)
 	}
-	cancel()
+	if cancel != nil && m.runIDs[sessionID] == runID {
+		cancel()
+	}
+	if _, ok := m.active[sessionID]; ok {
+		m.pending[sessionID] = true
+	} else {
+		m.enqueueLocked(sessionID)
+		m.scheduleLocked()
+	}
 	return 1, nil
 }
 

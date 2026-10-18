@@ -16,6 +16,7 @@ type OutputSchema struct {
 
 // MessageSessionRequest admits one message to a persistent session.
 type MessageSessionRequest struct {
+	Completion   CompletionOptions `json:"completion,omitempty"`
 	RequestID    string            `json:"request_id,omitempty"`
 	AgentID      string            `json:"agent_id"`
 	ModelRef     string            `json:"model_ref,omitempty"`
@@ -74,6 +75,8 @@ type AbortSessionResponse struct {
 
 // SessionRun is one durably admitted session input and its execution state.
 type SessionRun struct {
+	Completion            CompletionOptions   `json:"completion,omitempty"`
+	Completions           []Completion        `json:"completions,omitempty"`
 	ID                    string              `json:"id"`
 	SessionID             string              `json:"session_id"`
 	RequestID             string              `json:"request_id,omitempty"`
@@ -96,6 +99,34 @@ type SessionRun struct {
 	StartedAt             time.Time           `json:"started_at,omitempty"`
 	CompletedAt           time.Time           `json:"completed_at,omitempty"`
 	UpdatedAt             time.Time           `json:"updated_at"`
+}
+
+// CompletionReplyRequest resolves one remote candidate's validation request.
+type CompletionReplyRequest struct {
+	CandidateID string             `json:"candidate_id"`
+	Decision    CompletionDecision `json:"decision"`
+}
+
+// CompletionOptions configures validation for an admitted run.
+type CompletionOptions struct {
+	Remote           bool `json:"remote,omitempty"`
+	MaxContinuations int  `json:"max_continuations,omitempty" minimum:"0"`
+}
+
+// CompletionDecision accepts a candidate or supplies feedback for another iteration.
+type CompletionDecision struct {
+	Action   string `json:"action" enum:"accept,continue"`
+	Feedback string `json:"feedback,omitempty"`
+}
+
+// Completion is a candidate's recorded validation state.
+type Completion struct {
+	CandidateID string `json:"candidate_id"`
+	Step        int    `json:"step"`
+	Status      string `json:"status"`
+	Feedback    string `json:"feedback,omitempty"`
+	FeedbackID  string `json:"feedback_id,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // Action describes a discoverable plugin action.

@@ -17,6 +17,7 @@ Register extensions through `plugin.Registry` during `Activate`:
 | ------------------------------------- | --------------------------------------------------- |
 | `RegisterBeforeRun`                   | Supply initial history before a run.                |
 | `RegisterAfterRun`                    | Observe the run result and failure.                 |
+| `RegisterBeforeComplete`              | Accept an answer or request another iteration.      |
 | `RegisterTransformHistory`            | Replace active history before a model step.         |
 | `RegisterTransformContext`            | Change messages for one model request.              |
 | `RegisterTransformToolDefs`           | Change tool definitions for one model request.      |
@@ -32,6 +33,30 @@ Register extensions through `plugin.Registry` during `Activate`:
 Hooks run in activation order. Each transform receives the previous hook's output.
 `TransformHistory` currently ignores a returned replacement when its message count is unchanged.
 Use `TransformContext` for request-only changes that keep the same count.
+
+## Completion validation
+
+A candidate is an answer that awaits acceptance. Register `BeforeComplete` to accept it or supply feedback for another iteration:
+
+```go
+registry.RegisterBeforeComplete(func(ctx context.Context, info run.CompletionInfo) (run.CompletionDecision, error) {
+    if missingTest(info.Candidate) {
+        return run.CompletionDecision{Action: "continue", Feedback: "Add the missing regression test."}, nil
+    }
+    return run.CompletionDecision{Action: "accept"}, nil
+})
+```
+
+`missingTest` represents your application-specific validation. Return an error if the validator fails to run.
+Validators run in plugin order. The first continuation stops the chain. All validators must accept the candidate before completion.
+`session.WithBeforeComplete` adds an application validator after plugin validators.
+
+The default limit is three continuations. Set `run.Config.MaxCompletionContinuations` for direct runs or `session.WithCompletionOptions` for embedded sessions.
+Stored runs use the completion configuration saved at admission. A continuation beyond the limit fails with `run.ErrCompletionLimit`.
+
+Saved runs retain decisions and feedback across restarts. An interrupted validator can run again before its decision is saved.
+Use `info.Candidate.ID` to prevent duplicate external effects. Treat the candidate and history as read-only values.
+`AfterRun` does not run when execution pauses for a remote decision.
 
 ## Events and cleanup
 

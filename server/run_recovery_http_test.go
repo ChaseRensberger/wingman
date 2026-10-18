@@ -57,8 +57,10 @@ func TestRunCancellationRequestPaths(t *testing.T) {
 				}
 				runCtx, cancel := context.WithCancel(t.Context())
 				defer cancel()
+				server.runs.mu.Lock()
 				server.runs.runCancel[sid] = cancel
 				server.runs.runIDs[sid] = admitted.Run.ID
+				server.runs.mu.Unlock()
 				path := "/sessions/" + sid + "/abort"
 				if specific {
 					path = "/sessions/" + sid + "/runs/" + admitted.Run.ID + "/abort"

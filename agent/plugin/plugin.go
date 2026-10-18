@@ -87,6 +87,7 @@ type Cleanup func(context.Context) error
 //
 // Registry is single-use: Build freezes it and subsequent registrations fail.
 type Registry struct {
+	beforeComplete    []run.BeforeCompleteHook
 	beforeRun         []run.BeforeRunHook
 	transformHistory  []run.TransformHistoryHook
 	transformContext  []run.TransformContextHook
@@ -149,6 +150,17 @@ type sinkRegistration struct {
 
 // NewRegistry returns an empty Registry.
 func NewRegistry() *Registry { return &Registry{} }
+
+// RegisterBeforeComplete adds a validator; the first continuation stops the chain.
+func (r *Registry) RegisterBeforeComplete(h run.BeforeCompleteHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if h != nil {
+		r.beforeComplete = append(r.beforeComplete, h)
+	}
+	return nil
+}
 
 // RegisterBeforeRun adds a BeforeRun hook. Hooks compose in activation
 // order: each receives the accumulated history from prior hooks and
@@ -484,6 +496,9 @@ func (r *Registry) build() (Built, models.PartDecoders, error) {
 		return Built{}, models.PartDecoders{}, err
 	}
 	hooks := run.Hooks{}
+	if len(r.beforeComplete) > 0 {
+		hooks.BeforeComplete = run.ComposeBeforeComplete(r.beforeComplete...)
+	}
 
 	switch len(r.beforeRun) {
 	case 0:

@@ -813,6 +813,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/runs/{runID}/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply to a completion validation request */
+        post: operations["replySessionRunCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/tool-uses": {
         parameters: {
             query?: never;
@@ -1054,6 +1071,43 @@ export interface components {
             id: string;
             name: string;
         };
+        Completion: {
+            candidate_id: string;
+            error?: string;
+            feedback?: string;
+            feedback_id?: string;
+            status: string;
+            /** Format: int64 */
+            step: number;
+        };
+        CompletionDecision: {
+            /** @enum {string} */
+            action: "accept" | "continue";
+            feedback?: string;
+        };
+        CompletionEventData: {
+            completed_at?: string;
+            completion: components["schemas"]["Completion"];
+            error_message?: string;
+            error_type?: string;
+            message?: string;
+            run_id: string;
+            started_at?: string;
+            status?: string;
+            /** Format: int64 */
+            steps?: number;
+            updated_at?: string;
+            usage?: components["schemas"]["Usage"];
+        };
+        CompletionOptions: {
+            /** Format: int64 */
+            max_continuations?: number;
+            remote?: boolean;
+        };
+        CompletionReplyRequest: {
+            candidate_id: string;
+            decision: components["schemas"]["CompletionDecision"];
+        };
         ContentCompletedEventData: {
             message_id?: string;
             part_id?: string;
@@ -1262,6 +1316,7 @@ export interface components {
         };
         MessageSessionRequest: {
             agent_id: string;
+            completion?: components["schemas"]["CompletionOptions"];
             message: string;
             model_ref?: string;
             model_route?: components["schemas"]["ModelInfo"];
@@ -1841,6 +1896,15 @@ export interface components {
             type: "session.run.queued" | "session.run.started" | "session.run.completed" | "session.run.failed" | "session.run.aborted";
         } | {
             cursor?: components["schemas"]["SessionEventCursor"];
+            data: components["schemas"]["CompletionEventData"];
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            time?: string;
+            /** @enum {string} */
+            type: "session.run.completion";
+        } | {
+            cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["StepEventData"];
             id: string;
             /** @constant */
@@ -1938,6 +2002,8 @@ export interface components {
             client_id?: string;
             /** Format: date-time */
             completed_at?: string;
+            completion?: components["schemas"]["CompletionOptions"];
+            completions?: components["schemas"]["Completion"][] | null;
             /** Format: date-time */
             created_at: string;
             effective_instructions: string;
@@ -4156,6 +4222,45 @@ export interface operations {
             };
             /** @description Accepted */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRun"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    replySessionRunCompletion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+                runID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompletionReplyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

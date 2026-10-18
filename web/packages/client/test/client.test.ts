@@ -91,6 +91,38 @@ test("configured clients send Basic authentication and client headers", async ()
   expect(request?.headers.get("X-Trace-ID")).toBe("trace-1");
 });
 
+test("completion replies target the candidate and completion events are typed", async () => {
+  let request: Request | undefined;
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json({ id: "run_1", status: "queued" });
+    },
+  });
+  const reply = {
+    candidate_id: "msg_1",
+    decision: { action: "continue" as const, feedback: "Add a regression test." },
+  };
+  await client.sessions.runs.replyCompletion("ses_1", "run_1", reply);
+  expect(request?.url).toBe("https://wingman.test/sessions/ses_1/runs/run_1/completion");
+  expect(await request?.json()).toEqual(reply);
+  const parsed = parseSessionEvent({
+    id: "evt_1",
+    schema_version: 1,
+    type: "session.run.completion",
+    data: {
+      run_id: "run_1",
+      status: "awaiting_completion",
+      completion: { candidate_id: "msg_1", step: 1, status: "waiting" },
+    },
+  });
+  expect(parsed?.known).toBe(true);
+  if (parsed?.known && parsed.event.type === "session.run.completion") {
+    expect(parsed.event.data.completion.candidate_id).toBe("msg_1");
+  }
+});
+
 test("service restart sends the browser safety header", async () => {
   let request: Request | undefined;
   const client = createWingmanClient({
