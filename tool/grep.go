@@ -67,13 +67,20 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		return Result{}, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	searchPath := inv.WorkDir
+	workDir, _, err := ResolvePath(inv.WorkDir, ".")
+	if err != nil {
+		return Result{}, err
+	}
+	searchPath := workDir
 	if path, ok := inv.Input["path"].(string); ok && path != "" {
-		resolved, _, err := resolveWorkPath(inv.WorkDir, path)
+		resolved, _, err := ResolvePath(workDir, path)
 		if err != nil {
 			return Result{}, err
 		}
-		searchPath = resolved
+		searchPath, err = canonicalPath(resolved)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 
 	includePattern := ""
@@ -84,7 +91,10 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	output := &outputCollector{inv: inv}
 	matches := 0
 	search := func(path string) error {
-		rel, _ := filepath.Rel(inv.WorkDir, path)
+		rel, err := filepath.Rel(workDir, path)
+		if err != nil {
+			rel = path
+		}
 		return searchFile(ctx, path, re, func(line int, text string) error {
 			matches++
 			_, err := fmt.Fprintf(output, "%s:%d: %s\n", rel, line, strings.TrimSpace(text))
@@ -99,6 +109,10 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 
 	if info.IsDir() {
 		err = walkFiles(ctx, searchPath, shouldSkipDir, func(path string) error {
+			info, err := os.Lstat(path)
+			if err != nil || info.Mode()&os.ModeSymlink != 0 {
+				return nil
+			}
 			if includePattern != "" {
 				matched, _ := filepath.Match(includePattern, filepath.Base(path))
 				if !matched {
@@ -110,7 +124,7 @@ func (t *GrepTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 				return nil
 			}
 
-			err := search(path)
+			err = search(path)
 			// Tree searches skip unreadable files, but must surface output and cancellation failures.
 			if output.err == nil && ctx.Err() == nil {
 				return nil

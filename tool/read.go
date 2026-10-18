@@ -72,7 +72,7 @@ func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if strings.HasPrefix(rawPath, outputPrefix) {
 		path, err = outputPath(inv, rawPath)
 	} else {
-		path, _, err = resolveWorkPath(inv.WorkDir, rawPath)
+		path, _, err = ResolvePath(inv.WorkDir, rawPath)
 	}
 	if err != nil {
 		return Result{}, err

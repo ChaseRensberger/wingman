@@ -53,7 +53,7 @@ func (t *WriteTool) Execute(ctx context.Context, inv Invocation) (Result, error)
 		return Result{}, fmt.Errorf("workDir is required for write tool")
 	}
 
-	path, rel, err := resolveWorkPath(inv.WorkDir, filePath)
+	path, rel, err := ResolvePath(inv.WorkDir, filePath)
 	if err != nil {
 		return Result{}, err
 	}

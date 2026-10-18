@@ -147,6 +147,8 @@ type PermissionCheck struct {
 
 // PermissionedTool is an optional interface for tools that can describe their
 // own permission target from validated input parameters.
+// Filesystem resources must be relative inside WorkDir or absolute outside it.
+// The runtime preserves them so tools can authorize link entries separately from targets.
 type PermissionedTool interface {
 	Tool
 	Permission(inv Invocation) (PermissionCheck, error)
@@ -249,6 +251,18 @@ func PermissionFor(t Tool, inv Invocation) (PermissionCheck, bool, error) {
 	}
 	if len(resources) == 0 {
 		resources = []string{"*"}
+	}
+	if (target.Action == "read" || target.Action == "edit") && inv.WorkDir != "" {
+		for i, resource := range resources {
+			if resource == "*" {
+				continue
+			}
+			_, resolved, err := ResolvePath(inv.WorkDir, resource)
+			if err != nil {
+				return PermissionCheck{}, true, err
+			}
+			resources[i] = resolved
+		}
 	}
 	return PermissionCheck{Action: target.Action, Resources: resources}, true, nil
 }

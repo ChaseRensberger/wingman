@@ -31,7 +31,7 @@ func (t *GlobTool) Definition() Definition {
 			Properties: map[string]Property{
 				"pattern": {
 					Type:        "string",
-					Description: "The glob pattern to match (e.g., '**/*.go', 'src/**/*.ts', '*.json')",
+					Description: "A relative glob pattern without .. components (e.g., '**/*.go', 'src/**/*.ts'). Use path to select another directory.",
 				},
 				"path": {
 					Type:        "string",
@@ -50,18 +50,30 @@ func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if !ok || pattern == "" {
 		return Result{}, fmt.Errorf("pattern is required")
 	}
+	if filepath.IsAbs(pattern) {
+		return Result{}, fmt.Errorf("pattern must be relative; use path to select a directory")
+	}
+	for _, part := range strings.Split(filepath.ToSlash(pattern), "/") {
+		if part == ".." {
+			return Result{}, fmt.Errorf("pattern cannot contain ..; use path to select a directory")
+		}
+	}
 
 	if inv.WorkDir == "" {
 		return Result{}, fmt.Errorf("workDir is required for glob tool")
 	}
 
-	baseDir := inv.WorkDir
-	if path, ok := inv.Input["path"].(string); ok && path != "" {
-		resolved, _, err := resolveWorkPath(inv.WorkDir, path)
-		if err != nil {
-			return Result{}, err
-		}
-		baseDir = resolved
+	path, _ := inv.Input["path"].(string)
+	if path == "" {
+		path = "."
+	}
+	baseDir, _, err := ResolvePath(inv.WorkDir, path)
+	if err != nil {
+		return Result{}, err
+	}
+	baseDir, err = canonicalPath(baseDir)
+	if err != nil {
+		return Result{}, err
 	}
 
 	output := &outputCollector{inv: inv}
@@ -80,8 +92,6 @@ func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 		_, err = output.Write([]byte(rel))
 		return err
 	}
-	var err error
-
 	if strings.Contains(pattern, "**") {
 		err = walkFiles(ctx, baseDir, nil, func(path string) error {
 			relPath, err := filepath.Rel(baseDir, path)

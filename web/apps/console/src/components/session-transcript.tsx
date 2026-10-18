@@ -90,8 +90,16 @@ function PermissionRequestCard({
         ))}
       </ul>
       <p className="mt-3 text-xs text-muted-foreground">
-        Always allow is remembered for this session.
+        Allow once permits only this call. Always allow remembers this action for this session,
+        including after a server restart.
       </p>
+      {(request.action === "read" || request.action === "edit") &&
+        request.resources.some((resource) => resource.endsWith("/*")) && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            A directory ending in /* includes its files and subdirectories. Read approval does not
+            permit changes.
+          </p>
+        )}
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <Button
           size="sm"

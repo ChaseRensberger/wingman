@@ -27,8 +27,9 @@ Use `GET /tools` for current schemas and input fields. It also lists global plug
 Agent creation and tool-list updates reject unknown or duplicate names.
 Wingman adds `skill` automatically. Do not add it to an agent's tool list.
 
-Set a session's `working_directory` for file and shell tools. This directory does not restrict file or network access.
-Tools run with Wingman's operating system permissions. Enable `bash` only for trusted work because it can run arbitrary commands.
+Set a session's `working_directory` for file and shell tools. This directory sets the default location, not an isolation boundary.
+File tools request approval for outside access unless a permission rule allows or denies it.
+Tools run with Wingman's operating-system permissions. Enable `bash` only for trusted work because it can run arbitrary commands.
 
 `bash` runs `bash -c`. Its default timeout is two minutes.
 The optional `timeout` is a Go duration such as `30s` or `5m`. Invalid duration strings use the default.

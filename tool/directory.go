@@ -154,8 +154,12 @@ func globFiles(ctx context.Context, pattern string, visit func(string) error) er
 	dir, file := filepath.Split(pattern)
 	dir = filepath.Clean(dir)
 	matchDir := func(path string) error {
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil || !info.IsDir() {
+			return nil
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil || resolved != path {
 			return nil
 		}
 		err = directoryEntries(ctx, path, func(entry os.DirEntry) error {

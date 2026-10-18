@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,15 +51,16 @@ func (p permissionPrompter) Request(ctx context.Context, info run.PermissionRequ
 	if err != nil {
 		return "", err
 	}
-	granted := make(map[string]bool, len(grants))
-	for _, grant := range grants {
-		if grant.Action == info.Action {
-			granted[grant.Resource] = true
-		}
-	}
 	allGranted := true
 	for _, resource := range info.Resources {
-		if !granted[resource] {
+		granted := false
+		for _, grant := range grants {
+			if permissionGrantCovers(grant, info.Action, resource) {
+				granted = true
+				break
+			}
+		}
+		if !granted {
 			allGranted = false
 			break
 		}
@@ -110,6 +113,24 @@ func (p permissionPrompter) Request(ctx context.Context, info run.PermissionRequ
 		}
 		return permissionOutcome(request)
 	}
+}
+
+func permissionGrantCovers(grant store.PermissionGrant, action, resource string) bool {
+	if grant.Action != action {
+		return false
+	}
+	if grant.Resource == resource {
+		return true
+	}
+	if (action != "read" && action != "edit") || !strings.HasSuffix(grant.Resource, "/*") {
+		return false
+	}
+	directory := filepath.FromSlash(strings.TrimSuffix(grant.Resource, "*"))
+	if !filepath.IsAbs(directory) {
+		return false
+	}
+	rel, err := filepath.Rel(directory, filepath.FromSlash(resource))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 func (m *permissionRequestManager) removeWaiter(requestID string) {

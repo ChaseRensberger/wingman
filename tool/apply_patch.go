@@ -74,13 +74,21 @@ func (t *ApplyPatchTool) Permission(inv Invocation) (PermissionCheck, error) {
 	}
 	seen := make(map[string]bool, len(sections)*2)
 	resources := make([]string, 0, len(sections))
-	addResource := func(raw string) error {
+	addResource := func(raw string, directoryEntry bool) error {
 		if raw == "" {
 			return nil
 		}
-		_, rel, err := resolveWorkPath(inv.WorkDir, raw)
+		path, rel, err := ResolvePath(inv.WorkDir, raw)
 		if err != nil {
 			return err
+		}
+		if directoryEntry {
+			// Removing a link changes its parent directory, not its target.
+			_, parent, err := ResolvePath(inv.WorkDir, filepath.Dir(path))
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(filepath.Join(filepath.FromSlash(parent), filepath.Base(path)))
 		}
 		if !seen[rel] {
 			seen[rel] = true
@@ -89,10 +97,15 @@ func (t *ApplyPatchTool) Permission(inv Invocation) (PermissionCheck, error) {
 		return nil
 	}
 	for _, section := range sections {
-		if err := addResource(section.Path); err != nil {
+		if err := addResource(section.Path, false); err != nil {
 			return PermissionCheck{}, err
 		}
-		if err := addResource(section.MovePath); err != nil {
+		if section.Type == "delete" || section.MovePath != "" {
+			if err := addResource(section.Path, true); err != nil {
+				return PermissionCheck{}, err
+			}
+		}
+		if err := addResource(section.MovePath, false); err != nil {
 			return PermissionCheck{}, err
 		}
 	}
@@ -240,7 +253,7 @@ func parsePatchSections(text string) ([]patchSection, error) {
 }
 
 func applyPatchSection(workDir string, section patchSection) (patchChange, error) {
-	path, rel, err := resolveWorkPath(workDir, section.Path)
+	path, rel, err := ResolvePath(workDir, section.Path)
 	if err != nil {
 		return patchChange{}, err
 	}
@@ -249,7 +262,7 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 	moveRel := ""
 	if section.MovePath != "" {
 		changeType = "move"
-		movePath, moveRel, err = resolveWorkPath(workDir, section.MovePath)
+		movePath, moveRel, err = ResolvePath(workDir, section.MovePath)
 		if err != nil {
 			return patchChange{}, err
 		}
@@ -437,21 +450,4 @@ func patchSummaryPrefix(kind string) string {
 	default:
 		return "M"
 	}
-}
-
-func resolveWorkPath(workDir, raw string) (string, string, error) {
-	path := raw
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(workDir, path)
-	}
-	path = filepath.Clean(path)
-	workDir = filepath.Clean(workDir)
-	rel, err := filepath.Rel(workDir, path)
-	if err != nil {
-		return "", "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("path escapes working directory: %s", raw)
-	}
-	return path, filepath.ToSlash(rel), nil
 }

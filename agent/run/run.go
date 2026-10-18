@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -1284,17 +1285,22 @@ func (r *runner) executeOne(ctx context.Context, call ToolCall) (ToolResult, err
 		}
 		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "input_validation", nil)
 	}
-	decision := r.checkPermission(call)
-	if decision.err != nil {
-		res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: decision.err.Error(), IsError: true}
-		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_check", decision.err)
+	decisions := r.checkPermissions(call)
+	for _, decision := range decisions {
+		if decision.err != nil {
+			res := ToolResult{CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, Error: decision.err.Error(), IsError: true}
+			return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_check", decision.err)
+		}
+		if decision.denyResource != "" {
+			res := permissionToolResult(call, permission.EffectDeny, decision.action, decision.denyResource)
+			res.ToolUseID = call.ToolUseID
+			return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_denied", nil)
+		}
 	}
-	if decision.denyResource != "" {
-		res := permissionToolResult(call, permission.EffectDeny, decision.action, decision.denyResource)
-		res.ToolUseID = call.ToolUseID
-		return r.settleToolUse(ctx, call, res, ToolUseStatusDeclined, "permission_denied", nil)
-	}
-	if len(decision.askResources) > 0 {
+	for _, decision := range decisions {
+		if len(decision.askResources) == 0 {
+			continue
+		}
 		if r.cfg.PermissionPrompter == nil {
 			res := permissionToolResult(call, permission.EffectAsk, decision.action, decision.askResources[0])
 			res.ToolUseID = call.ToolUseID
@@ -1529,25 +1535,63 @@ type permissionDecision struct {
 }
 
 func (r *runner) checkPermission(call ToolCall) permissionDecision {
-	if len(r.cfg.Permissions) == 0 {
-		return permissionDecision{}
-	}
 	action, resources, err := permissionTarget(call, r.cfg.WorkDir)
 	if err != nil {
 		return permissionDecision{err: err}
 	}
+	return r.evaluatePermission(action, resources, call.Name == "glob")
+}
+
+func (r *runner) checkPermissions(call ToolCall) []permissionDecision {
+	decisions := []permissionDecision{r.checkPermission(call)}
+	if call.Name != "glob" && call.Name != "grep" {
+		return decisions
+	}
+	_, resource, err := tool.ResolvePath(r.cfg.WorkDir, stringArg(call.Args, "path", "."))
+	if err != nil {
+		return append(decisions, permissionDecision{err: err})
+	}
+	if filepath.IsAbs(filepath.FromSlash(resource)) {
+		decisions = append(decisions, r.evaluatePermission("read", []string{resource}, call.Name == "glob"))
+	}
+	return decisions
+}
+
+func (r *runner) evaluatePermission(action string, resources []string, directory bool) permissionDecision {
 	if len(resources) == 0 {
 		resources = []string{"*"}
 	}
 	decision := permissionDecision{action: action}
+	seen := make(map[string]bool)
 	for _, resource := range resources {
-		evaluated := permission.Evaluate(action, resource, r.cfg.Permissions, permission.EffectAllow)
+		fallback := permission.EffectAllow
+		external := (action == "read" || action == "edit") && filepath.IsAbs(filepath.FromSlash(resource))
+		path := filepath.FromSlash(resource)
+		isDirectory := directory
+		if external {
+			fallback = permission.EffectAsk
+			info, _ := os.Stat(path)
+			isDirectory = isDirectory || (info != nil && info.IsDir())
+			if isDirectory {
+				resource = filepath.ToSlash(filepath.Join(path, "*"))
+			}
+		}
+		evaluated := permission.Evaluate(action, resource, r.cfg.Permissions, fallback)
 		switch evaluated.Effect {
 		case permission.EffectDeny:
 			decision.denyResource = resource
 			return decision
 		case permission.EffectAsk:
-			decision.askResources = append(decision.askResources, resource)
+			if external {
+				if !isDirectory {
+					path = filepath.Dir(path)
+				}
+				resource = filepath.ToSlash(filepath.Join(path, "*"))
+			}
+			if !seen[resource] {
+				decision.askResources = append(decision.askResources, resource)
+				seen[resource] = true
+			}
 		}
 	}
 	return decision
@@ -1586,11 +1630,13 @@ func permissionTarget(call ToolCall, workDir string) (string, []string, error) {
 	}
 	switch call.Name {
 	case "write", "edit":
-		return "edit", pathResources(call, workDir), nil
+		resources, err := pathResources(call, workDir)
+		return "edit", resources, err
 	case "apply_patch":
 		return "edit", []string{"*"}, nil
 	case "read":
-		return "read", pathResources(call, workDir), nil
+		resources, err := pathResources(call, workDir)
+		return "read", resources, err
 	case "bash":
 		return "bash", []string{stringArg(call.Args, "command", "*")}, nil
 	case "glob", "grep":
@@ -1604,37 +1650,22 @@ func permissionTarget(call ToolCall, workDir string) (string, []string, error) {
 	}
 }
 
-func pathResources(call ToolCall, workDir string) []string {
-	if call.Name == "apply_patch" {
-		return []string{"*"}
-	}
+func pathResources(call ToolCall, workDir string) ([]string, error) {
 	path := stringArg(call.Args, "filePath", "")
 	if path == "" {
 		path = stringArg(call.Args, "path", "")
 	}
 	if path == "" {
-		return []string{"*"}
+		return []string{"*"}, nil
+	}
+	if call.Name == "read" && strings.HasPrefix(path, "tool-output:") {
+		return []string{path}, nil
 	}
 	if workDir != "" {
-		if rel := relativeResource(workDir, path); rel != "" {
-			return []string{rel}
-		}
+		_, resource, err := tool.ResolvePath(workDir, path)
+		return []string{resource}, err
 	}
-	return []string{filepath.ToSlash(filepath.Clean(path))}
-}
-
-func relativeResource(workDir, raw string) string {
-	path := raw
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(workDir, path)
-	}
-	path = filepath.Clean(path)
-	workDir = filepath.Clean(workDir)
-	rel, err := filepath.Rel(workDir, path)
-	if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return ""
-	}
-	return filepath.ToSlash(rel)
+	return []string{filepath.ToSlash(filepath.Clean(path))}, nil
 }
 
 func stringArg(args map[string]any, key, fallback string) string {
