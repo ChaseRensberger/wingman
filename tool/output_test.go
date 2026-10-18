@@ -204,7 +204,11 @@ func TestReadBoundsHugeLinesAndPages(t *testing.T) {
 }
 
 func TestDirectoryPagingAndStreamingGlob(t *testing.T) {
-	dir := t.TempDir()
+	// The streaming glob helper expects the canonical root supplied by GlobTool.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 300; i++ {
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%03d.txt", i)), nil, 0600); err != nil {
 			t.Fatal(err)
@@ -233,6 +237,33 @@ func TestDirectoryPagingAndStreamingGlob(t *testing.T) {
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("pattern=%q got=%v want=%v", pattern, got, want)
+		}
+	}
+}
+
+func TestGlobCanonicalizesSearchRoot(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "real", "nested")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(filepath.Join(root, "real"), alias); err != nil {
+		t.Skip(err)
+	}
+	for _, explicit := range []bool{false, true} {
+		input := map[string]any{"pattern": "*.txt"}
+		workDir := filepath.Join(alias, "nested")
+		if explicit {
+			input["path"] = workDir
+			workDir = root
+		}
+		result, err := NewGlobTool().Execute(t.Context(), Invocation{WorkDir: workDir, Input: input})
+		if err != nil || result.Text != "file.txt" || result.Metadata["count"] != 1 {
+			t.Fatalf("explicit=%t result=%#v err=%v", explicit, result, err)
 		}
 	}
 }

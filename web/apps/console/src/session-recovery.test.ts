@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import * as connection from "./lib/connection";
 import * as sessionRuns from "./hooks/use-session-run";
+import { mergeQuestions } from "./lib/questions";
 import { matchingSubmission, type SessionDraft } from "./lib/session-draft";
 
 // Exercise the real private handlers with controlled hooks and network timing.
@@ -217,6 +218,8 @@ test("session resume preserves a pending send and replaces a suspended active st
   let permissionLoads = 0;
   const hook = handler("./hooks/use-session-run.ts", "useSessionRun", {
     ...sessionRuns,
+    mergeQuestions,
+    useCallback: (callback: unknown) => callback,
     useRef: (current: unknown) => ({ current }),
     useState: (initial: unknown) => {
       const index = states.length;
@@ -240,6 +243,7 @@ test("session resume preserves a pending send and replaces a suspended active st
     },
     client: {
       sessions: {
+        questions: { list: async () => [] },
         permissionRequests: {
           list: async () => {
             permissionLoads++;
@@ -274,6 +278,47 @@ test("session resume preserves a pending send and replaces a suspended active st
   expect(permissionLoads).toBeGreaterThan(0);
 });
 
+test("request reload dependencies stay stable until the session changes", () => {
+  const callbacks: Array<{ callback: unknown; dependencies: unknown[] }> = [];
+  let callbackIndex = 0;
+  let dependencies: unknown[][] = [];
+  const hook = handler("./hooks/use-session-run.ts", "useSessionRun", {
+    ...sessionRuns,
+    useRef: (current: unknown) => ({ current }),
+    useState: (initial: unknown) => [typeof initial === "function" ? initial() : initial, () => {}],
+    useEffectEvent: (callback: unknown) => callback,
+    useCallback: (callback: unknown, dependencies: unknown[]) => {
+      const index = callbackIndex++;
+      const previous = callbacks[index];
+      if (
+        !previous ||
+        dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))
+      ) {
+        callbacks[index] = { callback, dependencies };
+      }
+      return callbacks[index].callback;
+    },
+    useEffect: (_effect: unknown, deps: unknown[]) => dependencies.push(deps),
+  });
+  const loadSession = async () => {};
+  function render(sessionId: string) {
+    callbackIndex = 0;
+    dependencies = [];
+    hook({ sessionId, loadSession, setSession: () => {} });
+    return dependencies;
+  }
+  const initial = render("ses_1");
+  expect(initial[2]).toEqual(["ses_1", callbacks[0].callback]);
+  expect(initial[3]).toEqual(["ses_1", loadSession, 0, callbacks[0].callback]);
+  const rerender = render("ses_1");
+  expect(rerender[2]).toEqual(initial[2]);
+  expect(rerender[3]).toEqual(initial[3]);
+  const changed = render("ses_2");
+  expect(changed[2][1]).not.toBe(initial[2][1]);
+  expect(changed[2]).toEqual(["ses_2", callbacks[0].callback]);
+  expect(changed[3]).toEqual(["ses_2", loadSession, 0, callbacks[0].callback]);
+});
+
 test.each(["before cursor", "after snapshot", "pending send"])(
   "session resume covers changes around history reload: %s",
   async (timing) => {
@@ -293,6 +338,8 @@ test.each(["before cursor", "after snapshot", "pending send"])(
     };
     const hook = handler("./hooks/use-session-run.ts", "useSessionRun", {
       ...sessionRuns,
+      mergeQuestions,
+      useCallback: (callback: unknown) => callback,
       useRef: (current: unknown) => refs[refIndex++] ?? (refs[refIndex - 1] = { current }),
       useState: (initial: unknown) => {
         const index = stateIndex++;
@@ -316,6 +363,7 @@ test.each(["before cursor", "after snapshot", "pending send"])(
       },
       client: {
         sessions: {
+          questions: { list: async () => [] },
           permissionRequests: { list: async () => [] },
           runs: { list: async () => [{ id: "run_1", status: "completed", sequence: 1 }] },
           streamEvents: async function* (

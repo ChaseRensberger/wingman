@@ -761,50 +761,57 @@ function SessionDetailPage() {
         onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)}
         scroll={transcriptScroll}
       />
-      <QuestionPanel questions={run.questions} onReply={run.replyQuestion} />
-      <SessionComposer
-        composerRef={composerRef}
-        messageText={messageText}
-        selectedAgent={selectedAgent}
-        selectedAgentName={selectedAgentName}
-        selectedProvider={selectedProvider}
-        selectedModel={selectedModel}
-        selectedVariant={selectedVariant}
-        selectedProviderName={selectedProviderName}
-        agents={availableAgents}
-        providers={selectableProviders}
-        models={models}
-        macros={macros}
-        actions={actions}
-        hasModels={hasModels}
-        isStreaming={run.isStreaming}
-        isNearTranscriptBottom={transcriptScroll.isNearBottom}
-        onMessageChange={changeMessageText}
-        onAgentChange={(agentId) => {
-          setSelectedAgent(agentId);
-          persistLastAgentId(agentId);
-        }}
-        onModelChange={(modelRef, selectedVariant) => {
-          const ref = splitModelRef(modelRef);
-          const variants =
-            models[ref.provider]?.find((model) => model.id === ref.model)?.variants ?? [];
-          const preferredVariant = storedModelVariant(ref.provider, ref.model);
-          const variant =
-            selectedVariant === undefined
-              ? preferredVariant && variants.includes(preferredVariant)
-                ? preferredVariant
-                : null
-              : selectedVariant;
-          setSelectedProvider(ref.provider);
-          setSelectedModel(ref.model);
-          setSelectedVariant(variant);
-          persistModelVariant(ref.provider, ref.model, variant);
-          persistLastModelRef(buildModelRef(ref.provider, ref.model, variant));
-        }}
-        onSubmit={() => void handleSend()}
-        onAbort={handleAbort}
-        onJumpToBottom={transcriptScroll.jumpToBottom}
-      />
+      {run.questions.length > 0 ? (
+        <QuestionPanel
+          questions={run.questions}
+          onReply={run.replyQuestion}
+          onAbort={run.isStreaming ? handleAbort : undefined}
+        />
+      ) : (
+        <SessionComposer
+          composerRef={composerRef}
+          messageText={messageText}
+          selectedAgent={selectedAgent}
+          selectedAgentName={selectedAgentName}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          selectedVariant={selectedVariant}
+          selectedProviderName={selectedProviderName}
+          agents={availableAgents}
+          providers={selectableProviders}
+          models={models}
+          macros={macros}
+          actions={actions}
+          hasModels={hasModels}
+          isStreaming={run.isStreaming}
+          isNearTranscriptBottom={transcriptScroll.isNearBottom}
+          onMessageChange={changeMessageText}
+          onAgentChange={(agentId) => {
+            setSelectedAgent(agentId);
+            persistLastAgentId(agentId);
+          }}
+          onModelChange={(modelRef, selectedVariant) => {
+            const ref = splitModelRef(modelRef);
+            const variants =
+              models[ref.provider]?.find((model) => model.id === ref.model)?.variants ?? [];
+            const preferredVariant = storedModelVariant(ref.provider, ref.model);
+            const variant =
+              selectedVariant === undefined
+                ? preferredVariant && variants.includes(preferredVariant)
+                  ? preferredVariant
+                  : null
+                : selectedVariant;
+            setSelectedProvider(ref.provider);
+            setSelectedModel(ref.model);
+            setSelectedVariant(variant);
+            persistModelVariant(ref.provider, ref.model, variant);
+            persistLastModelRef(buildModelRef(ref.provider, ref.model, variant));
+          }}
+          onSubmit={() => void handleSend()}
+          onAbort={handleAbort}
+          onJumpToBottom={transcriptScroll.jumpToBottom}
+        />
+      )}
       <SessionDialogs
         session={session}
         editing={editingSession}

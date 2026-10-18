@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
   useRef,
@@ -336,17 +337,20 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     };
   }, [sessionId]);
 
-  async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
-    const [requests, questions] = await Promise.all([
-      client.sessions.permissionRequests.list(id) as Promise<PermissionRequest[]>,
-      client.sessions.questions.list(id),
-    ]);
-    if (signal?.aborted || id !== sessionId) return;
-    setQuestionRecords((previous) => mergeQuestions(previous, questions ?? []));
-    setPermissionRequestRecords((previous) =>
-      reducePermissionRequestRecords(previous, { type: "loaded", requests }),
-    );
-  }
+  const reloadPermissionRequests = useCallback(
+    async (id: string, signal?: AbortSignal) => {
+      const [requests, questions] = await Promise.all([
+        client.sessions.permissionRequests.list(id) as Promise<PermissionRequest[]>,
+        client.sessions.questions.list(id),
+      ]);
+      if (signal?.aborted || id !== sessionId) return;
+      setQuestionRecords((previous) => mergeQuestions(previous, questions ?? []));
+      setPermissionRequestRecords((previous) =>
+        reducePermissionRequestRecords(previous, { type: "loaded", requests }),
+      );
+    },
+    [sessionId],
+  );
 
   useEffect(() => {
     if (sessionId === "new") return;
@@ -356,7 +360,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
         console.error("Failed to load permission requests", err);
     });
     return () => controller.abort();
-  }, [sessionId]);
+  }, [sessionId, reloadPermissionRequests]);
 
   useEffect(() => {
     if (sessionId === "new") return;
@@ -433,7 +437,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
     void watch();
     return () => controller.abort();
-  }, [sessionId, load, resumeRevision]);
+  }, [sessionId, load, resumeRevision, reloadPermissionRequests]);
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)
