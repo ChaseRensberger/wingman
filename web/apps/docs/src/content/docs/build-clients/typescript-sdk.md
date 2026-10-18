@@ -160,6 +160,28 @@ Save state before its cursor, or save both in one transaction. Otherwise, a cras
 After a disconnect, reload the session and run. Reconnect to receive missing events, including the final event of a completed run.
 See [Streaming Events](/build-clients/streaming-events) for recovery steps.
 
+## Answer Questions
+
+After a connection or reload, use `sessions.questions.list` to find pending questions.
+Use the session event stream to receive later question changes.
+Supply one array of answers for each prompt, in the same order:
+
+```ts
+const questions = await client.sessions.questions.list(sessionID);
+const pending = questions?.find((question) => question.status === "pending");
+if (pending) {
+  // Replace this example with answers collected by your client.
+  await client.sessions.questions.reply(sessionID, pending.id, {
+    status: "answered",
+    answers: [["Use the existing design"]],
+  });
+}
+```
+
+To dismiss a question, send `{ status: "dismissed" }` without answers.
+The owning client must answer or dismiss tool questions before the model can continue.
+See [Questions](/concepts/sessions#questions) for cancellation and retry behavior.
+
 ## Handle Errors
 
 Non-success responses throw `APIError`. It includes `status`, `code`,

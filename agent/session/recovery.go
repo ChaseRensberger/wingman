@@ -151,7 +151,7 @@ func (s *Session) prepareRecovery(ctx context.Context, tools []tool.Tool) (*run.
 	}
 	// Inspect the whole batch before resetting or executing any interrupted call.
 	for _, use := range uses {
-		if use.RunID != s.runID || use.Status != store.ToolUseStatusInterrupted {
+		if use.RunID != s.runID || (use.Status != store.ToolUseStatusInterrupted && use.Status != store.ToolUseStatusWaiting) {
 			continue
 		}
 		t, lookupErr := registry.Get(use.Name)

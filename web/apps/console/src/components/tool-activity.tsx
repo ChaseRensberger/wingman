@@ -264,12 +264,30 @@ function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
           ? view.metadata.numResults
           : undefined;
   const countLabel =
-    typeof count === "number" ? `${count} ${count === 1 ? "result" : "results"}` : "";
+    typeof count === "number"
+      ? `${count} ${view.call.name === "grep" ? (count === 1 ? "match" : "matches") : count === 1 ? "result" : "results"}`
+      : "";
   const title = countLabel ? `${baseTitle} (${countLabel})` : baseTitle;
   return (
     <div className={compact ? "my-0" : "my-1.5"}>
-      <div className="flex min-h-7 items-center">
-        <ToolHeader view={view} title={title} />
+      <div
+        className={cn(
+          "flex min-h-7 items-start gap-2 text-xs text-muted-foreground",
+          view.status === "error" && "text-destructive",
+        )}
+      >
+        <span className="flex h-7 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
+          {view.status === "pending" || view.status === "running" ? (
+            <CircleNotchIcon className="size-3.5 animate-spin" />
+          ) : view.status === "error" ? (
+            <WarningCircleIcon className="size-3.5" />
+          ) : view.call.name === "read" || view.call.name === "webfetch" ? (
+            "→"
+          ) : (
+            "✱"
+          )}
+        </span>
+        <span className="min-w-0 break-words py-1 [overflow-wrap:anywhere]">{title}</span>
       </div>
       <ToolOutputParts parts={view.outputParts} structured={view.structured} />
       {view.error && <ErrorText error={view.error} />}
@@ -355,7 +373,7 @@ function OutputPreview({ view }: { view: ToolView }) {
   );
 }
 
-function ToolOutputParts({ parts, structured }: { parts: Part[]; structured: unknown }) {
+export function ToolOutputParts({ parts, structured }: { parts: Part[]; structured: unknown }) {
   const images = parts.filter((part): part is ImagePart => part.type === "image");
   const unsupported = parts.filter((part) => part.type !== "text" && part.type !== "image");
   if (images.length === 0 && unsupported.length === 0 && structured === undefined) return null;

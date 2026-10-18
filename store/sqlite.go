@@ -279,7 +279,7 @@ func projectSQLiteSessionAggregate(ctx context.Context, q aggregateEventQueryer,
 
 func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projection SessionAggregateProjection) error {
 	id := projection.Session.ID
-	for _, table := range []string{"permission_requests", "permission_grants", "tool_uses", "model_calls"} {
+	for _, table := range []string{"questions", "permission_requests", "permission_grants", "tool_uses", "model_calls"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE session_id = ?`, id); err != nil {
 			return fmt.Errorf("clear %s: %w", table, err)
 		}
@@ -341,6 +341,15 @@ func replaceSQLiteSessionProjection(ctx context.Context, tx *immediateTx, projec
 	for _, use := range projection.ToolUses {
 		if err := insertToolUse(ctx, tx, use); err != nil {
 			return fmt.Errorf("insert tool use: %w", err)
+		}
+	}
+	for _, q := range projection.Questions {
+		payload, err := json.Marshal(q)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO questions (id, session_id, run_id, tool_use_id, status, payload_json) VALUES (?, ?, ?, ?, ?, ?)`, q.ID, q.SessionID, nullableString(q.RunID), nullableString(q.ToolUseID), q.Status, string(payload)); err != nil {
+			return err
 		}
 	}
 	for _, request := range projection.PermissionRequests {
@@ -2467,7 +2476,7 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 		return SessionRunTransition{}, err
 	}
 	var running int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id = ? AND status IN (?, ?)`, sessionID, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion).Scan(&running); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id = ? AND status IN (?, ?, ?)`, sessionID, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion, SessionRunStatusAwaitingInput).Scan(&running); err != nil {
 		return SessionRunTransition{}, err
 	}
 	if running != 0 {
@@ -2574,6 +2583,11 @@ func (s *SQLiteStore) transitionSessionRun(ctx context.Context, settlement Sessi
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
 	run.Status, run.ErrorType, run.ErrorMessage, run.CompletedAt, run.UpdatedAt = settlement.Status, settlement.ErrorType, settlement.ErrorMessage, completedAt, now
+	if isSessionRunTerminal(run.Status) {
+		if err := cancelRunQuestionsTx(ctx, tx, run.ID); err != nil {
+			return SessionRunTransition{}, err
+		}
+	}
 	session, err := getSessionTx(ctx, tx, run.SessionID)
 	if err != nil {
 		return SessionRunTransition{}, err
@@ -2600,7 +2614,7 @@ func (s *SQLiteStore) transitionSessionRun(ctx context.Context, settlement Sessi
 }
 
 func (s *SQLiteStore) ListActiveSessionRuns(ctx context.Context) ([]SessionRun, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE status IN (?, ?) ORDER BY session_id, sequence`, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE status IN (?, ?, ?) ORDER BY session_id, sequence`, SessionRunStatusRunning, SessionRunStatusAwaitingCompletion, SessionRunStatusAwaitingInput)
 	if err != nil {
 		return nil, err
 	}
@@ -2665,7 +2679,7 @@ func isSessionRunTerminal(status string) bool {
 	return status == SessionRunStatusCompleted || status == SessionRunStatusFailed || status == SessionRunStatusAborted
 }
 func legalSessionRunSettlement(from, to string) bool {
-	return (from == SessionRunStatusRunning && isSessionRunTerminal(to)) || ((from == SessionRunStatusQueued || from == SessionRunStatusAwaitingCompletion) && to == SessionRunStatusAborted)
+	return (from == SessionRunStatusRunning && isSessionRunTerminal(to)) || ((from == SessionRunStatusQueued || from == SessionRunStatusAwaitingCompletion || from == SessionRunStatusAwaitingInput) && to == SessionRunStatusAborted)
 }
 
 func appendRunEventTx(ctx context.Context, tx *immediateTx, run SessionRun, typ string, extra map[string]any, now time.Time) (SessionEvent, error) {
@@ -3225,7 +3239,9 @@ func legalToolUseTransition(from, to string) bool {
 	case ToolUseStatusAuthorized:
 		return to == ToolUseStatusStarted || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted
 	case ToolUseStatusStarted:
-		return to == ToolUseStatusCompleted || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted
+		return to == ToolUseStatusCompleted || to == ToolUseStatusFailed || to == ToolUseStatusInterrupted || to == ToolUseStatusWaiting
+	case ToolUseStatusWaiting:
+		return to == ToolUseStatusStarted || to == ToolUseStatusInterrupted
 	}
 	return false
 }

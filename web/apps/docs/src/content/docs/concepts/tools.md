@@ -22,10 +22,16 @@ A tool is a function that a model can call. An agent's `tools` list selects whic
 | `webfetch`    | Fetch an HTTP or HTTPS URL.                  | No                        |
 | `websearch`   | Search the web.                              | No                        |
 | `skill`       | Load skill instructions or supporting files. | No                        |
+| `question`    | Request information or a decision.           | No                        |
 
 Use `GET /tools` for current schemas and input fields. It also lists global plugin and connected MCP tools.
 Agent creation and tool-list updates reject unknown or duplicate names.
 Wingman adds `skill` automatically. Do not add it to an agent's tool list.
+
+Add `question` to an agent's tool list when its client can answer questions.
+The Console supports choices, multiple selections, custom text, and dismissal.
+The tool uses saved sessions. Wingman omits it from one-shot `/run` requests.
+See [Questions](/concepts/sessions#questions) for the request and reply behavior.
 
 Set a session's `working_directory` for file and shell tools. This directory sets the default location, not an isolation boundary.
 File tools request approval for outside access unless a permission rule allows or denies it.
@@ -70,6 +76,10 @@ proposed -> authorized -> started -> completed | failed | interrupted
 
 Wingman saves `started` before execution. Invalid, denied, and skipped calls become `declined` without running.
 An `ask` permission rule waits for approval before authorization.
+
+A question tool call can move from `started` to `waiting`.
+After the client answers or dismisses the question, the same call resumes and returns the result to the model.
+Wingman retains the question identity and answer across server restarts.
 
 After a restart, Wingman reuses saved results. Calls that did not start can continue.
 It repeats a started call only when both its saved and current definitions permit replay.

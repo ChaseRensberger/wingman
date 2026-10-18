@@ -157,7 +157,7 @@ export interface SessionRun {
   workspace_id?: string;
   client_id?: string;
   sequence: number;
-  status: "queued" | "running" | "completed" | "failed" | "aborted";
+  status: "queued" | "running" | "awaiting_input" | "completed" | "failed" | "aborted";
   kind?: "message" | "action";
   message: string;
   action?: string;

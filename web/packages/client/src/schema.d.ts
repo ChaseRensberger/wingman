@@ -745,6 +745,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List session questions */
+        get: operations["listQuestions"];
+        put?: never;
+        /** Create a question */
+        post: operations["createQuestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{id}/questions/{questionID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a question */
+        get: operations["getQuestion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{id}/questions/{questionID}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer or dismiss a question */
+        post: operations["replyQuestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/rename": {
         parameters: {
             query?: never;
@@ -1066,6 +1118,10 @@ export interface components {
             providers: components["schemas"]["ProviderInfo"][] | null;
             routes: components["schemas"]["RouteInfo"][] | null;
         };
+        Choice: {
+            description: string;
+            label: string;
+        };
         Client: {
             created_at: string;
             id: string;
@@ -1147,6 +1203,10 @@ export interface components {
         };
         CreateClientResponse: {
             client: components["schemas"]["Client"];
+        };
+        CreateQuestionRequest: {
+            id?: string;
+            questions: components["schemas"]["Prompt"][] | null;
         };
         CreateSessionRequest: {
             title?: string;
@@ -1536,6 +1596,12 @@ export interface components {
             errors?: unknown;
             plugins: unknown;
         };
+        Prompt: {
+            header: string;
+            multiple?: boolean;
+            options: components["schemas"]["Choice"][] | null;
+            question: string;
+        };
         ProviderAuthInfo: {
             configured: boolean;
             type: string;
@@ -1573,6 +1639,39 @@ export interface components {
                 [key: string]: components["schemas"]["ProviderAuthInfo"];
             };
             updated_at?: string;
+        };
+        Question: {
+            answers?: (string[] | null)[] | null;
+            client_id: string;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            questions: components["schemas"]["Prompt"][] | null;
+            run_id?: string;
+            session_id: string;
+            status: string;
+            tool_use_id?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        QuestionEventData: {
+            answers?: (string[] | null)[] | null;
+            client_id: string;
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            questions: components["schemas"]["Prompt"][] | null;
+            run_id?: string;
+            session_id: string;
+            status: string;
+            tool_use_id?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        QuestionReplyRequest: {
+            answers?: (string[] | null)[] | null;
+            /** @enum {string} */
+            status: "answered" | "dismissed";
         };
         RateLimitDiagnostic: {
             limit?: {
@@ -1903,6 +2002,24 @@ export interface components {
             time?: string;
             /** @enum {string} */
             type: "session.run.completion";
+        } | {
+            cursor?: components["schemas"]["SessionEventCursor"];
+            data: components["schemas"]["RunEventData"];
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            time?: string;
+            /** @enum {string} */
+            type: "session.run.input";
+        } | {
+            cursor?: components["schemas"]["SessionEventCursor"];
+            data: components["schemas"]["QuestionEventData"];
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            time?: string;
+            /** @enum {string} */
+            type: "session.question.pending" | "session.question.answered" | "session.question.dismissed" | "session.question.cancelled";
         } | {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["StepEventData"];
@@ -4076,6 +4193,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PermissionRequest"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listQuestions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Question"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createQuestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQuestionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Question"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getQuestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+                questionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Question"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    replyQuestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+                questionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionReplyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Question"];
                 };
             };
             /** @description Request failed */

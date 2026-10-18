@@ -493,7 +493,7 @@ func TestSQLiteSeedsAssistAgent(t *testing.T) {
 		if agent.Instructions != assistAgentInstructions {
 			t.Fatal("Assist instructions do not match the default")
 		}
-		if got, want := agent.Tools, []string{"webfetch", "websearch"}; !slices.Equal(got, want) {
+		if got, want := agent.Tools, []string{"webfetch", "websearch", "question"}; !slices.Equal(got, want) {
 			t.Fatalf("Assist tools = %v, want %v", got, want)
 		}
 		return

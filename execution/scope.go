@@ -37,6 +37,7 @@ func BuiltinTools() []tool.Tool {
 		tool.NewApplyPatchTool(), tool.NewBashTool(), tool.NewReadTool(),
 		tool.NewWriteTool(), tool.NewEditTool(), tool.NewGlobTool(),
 		tool.NewGrepTool(), tool.NewWebFetchTool(), tool.NewWebSearchTool(),
+		tool.NewQuestionTool(nil),
 	}
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
 	return tools

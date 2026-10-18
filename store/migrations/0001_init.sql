@@ -116,7 +116,7 @@ CREATE INDEX idx_session_runs_session_status_sequence
 ON session_runs(session_id, status, sequence);
 
 CREATE UNIQUE INDEX idx_session_runs_one_running_per_session
-ON session_runs(session_id) WHERE status IN ('running', 'awaiting_completion');
+ON session_runs(session_id) WHERE status IN ('running', 'awaiting_completion', 'awaiting_input');
 
 CREATE UNIQUE INDEX idx_session_runs_session_request_id
 ON session_runs(session_id, request_id)
@@ -197,6 +197,18 @@ WHERE run_id IS NOT NULL AND run_id <> '';
 CREATE INDEX idx_tool_uses_status ON tool_uses(status);
 CREATE INDEX idx_tool_uses_assistant_message ON tool_uses(assistant_message_id);
 CREATE INDEX idx_tool_uses_part ON tool_uses(part_id);
+
+CREATE TABLE questions (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES session_runs(id) ON DELETE CASCADE,
+    tool_use_id TEXT REFERENCES tool_uses(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'answered', 'dismissed', 'cancelled')),
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX idx_questions_session ON questions(session_id);
+CREATE INDEX idx_questions_run ON questions(run_id, status);
+CREATE UNIQUE INDEX idx_questions_tool ON questions(tool_use_id) WHERE tool_use_id IS NOT NULL;
 
 CREATE TABLE permission_requests (
     id            TEXT PRIMARY KEY,

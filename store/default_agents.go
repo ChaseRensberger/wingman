@@ -8,17 +8,17 @@ func DefaultAgents() []*Agent {
 		{
 			Name:         "Build",
 			Instructions: buildAgentInstructions,
-			Tools:        []string{"read", "grep", "glob", "write", "edit", "bash", "webfetch", "websearch"},
+			Tools:        []string{"read", "grep", "glob", "write", "edit", "bash", "webfetch", "websearch", "question"},
 		},
 		{
 			Name:         "Plan",
 			Instructions: planAgentInstructions,
-			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch"},
+			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch", "question"},
 		},
 		{
 			Name:         "Assist",
 			Instructions: assistAgentInstructions,
-			Tools:        []string{"webfetch", "websearch"},
+			Tools:        []string{"webfetch", "websearch", "question"},
 		},
 	}
 }

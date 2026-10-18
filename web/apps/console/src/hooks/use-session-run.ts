@@ -6,10 +6,11 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
+import { type Question, type SessionEvent, type UnknownSessionEvent } from "@wingman-actor/client";
 
 import { client } from "@/lib/client";
 import { onPageResume } from "@/lib/connection";
+import { mergeQuestions } from "@/lib/questions";
 import { formatSessionError } from "@/lib/session-detail";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
 import type {
@@ -58,8 +59,11 @@ type SessionStreamRecoveryOptions = {
 };
 
 export function latestActiveSessionRun(runs: readonly SessionRun[]): SessionRun | undefined {
+  const waiting = runs.find((run) => run.status === "awaiting_input");
+  if (waiting) return waiting;
   return runs.reduce<SessionRun | undefined>((latest, run) => {
-    if (run.status !== "queued" && run.status !== "running") return latest;
+    if (run.status !== "queued" && run.status !== "running" && run.status !== "awaiting_input")
+      return latest;
     if (!latest || run.sequence > latest.sequence) return run;
     return latest;
   }, undefined);
@@ -123,7 +127,12 @@ export function reconcileSessionEventSeq(
 }
 
 export function terminalSessionRunError(run: SessionRun): string | undefined {
-  if (run.status === "completed" || run.status === "queued" || run.status === "running")
+  if (
+    run.status === "completed" ||
+    run.status === "queued" ||
+    run.status === "running" ||
+    run.status === "awaiting_input"
+  )
     return undefined;
   return run.error_message ?? run.error_type ?? `Run ${run.status}`;
 }
@@ -153,7 +162,12 @@ export async function maintainSessionRunStream(options: SessionStreamRecoveryOpt
       (options.reportFailure ?? console.error)("Failed to reload session run", err);
     }
     if (!options.isCurrent()) return;
-    if (run && run.status !== "queued" && run.status !== "running") {
+    if (
+      run &&
+      run.status !== "queued" &&
+      run.status !== "running" &&
+      run.status !== "awaiting_input"
+    ) {
       await options.finish(terminalSessionRunError(run));
       return;
     }
@@ -268,6 +282,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
   const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
   const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
+  const [questionRecords, setQuestionRecords] = useState<Map<string, Question>>(() => new Map());
   const [permissionRequestRecords, setPermissionRequestRecords] = useState<
     Map<string, PermissionRequest>
   >(() => new Map());
@@ -311,6 +326,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     setFailedRun(null);
     setToolActivities(new Map());
     setPermissionRequestRecords(new Map());
+    setQuestionRecords(new Map());
     permissionRepliesInFlightRef.current = new Set();
     setPermissionRepliesInFlight(new Set());
     reset();
@@ -321,8 +337,12 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   }, [sessionId]);
 
   async function reloadPermissionRequests(id: string, signal?: AbortSignal) {
-    const requests = (await client.sessions.permissionRequests.list(id)) as PermissionRequest[];
-    if (signal?.aborted) return;
+    const [requests, questions] = await Promise.all([
+      client.sessions.permissionRequests.list(id) as Promise<PermissionRequest[]>,
+      client.sessions.questions.list(id),
+    ]);
+    if (signal?.aborted || id !== sessionId) return;
+    setQuestionRecords((previous) => mergeQuestions(previous, questions ?? []));
     setPermissionRequestRecords((previous) =>
       reducePermissionRequestRecords(previous, { type: "loaded", requests }),
     );
@@ -359,6 +379,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
         if (signal.aborted) return;
         // Capture the cursor first so changes during the reload are replayed.
         if (resumeRevision > 0 && !submissionControllerRef.current) await load(sessionId);
+        await reloadPermissionRequests(sessionId, signal);
         if (signal.aborted) return;
         await recover();
       } catch (err) {
@@ -375,16 +396,23 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
             if (parsed.event.type === "session.events.resync_required") {
               after = await latestSessionEventSeq(sessionId);
               await load(sessionId);
+              await reloadPermissionRequests(sessionId, signal);
               await recover();
               break;
             }
             if (typeof parsed.event.cursor?.seq === "number")
               after = Math.max(after, parsed.event.cursor.seq);
             retry = 0;
+            if (parsed.known && parsed.event.type.startsWith("session.question.")) {
+              setQuestionRecords((previous) =>
+                mergeQuestions(previous, [parsed.event.data as Question]),
+              );
+            }
             if (!parsed.known || activeRunRef.current || submissionControllerRef.current) continue;
             if (
               parsed.event.type === "session.run.queued" ||
-              parsed.event.type === "session.run.started"
+              parsed.event.type === "session.run.started" ||
+              parsed.event.type === "session.run.input"
             ) {
               await load(sessionId);
               await recover();
@@ -410,6 +438,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)
       lastEventSeqRef.current = ev.cursor.seq;
+    if (ev.type.startsWith("session.question.")) {
+      setQuestionRecords((previous) => mergeQuestions(previous, [ev.data as Question]));
+      return;
+    }
     if (
       (ev.type === "session.permission.requested" || ev.type === "session.permission.resolved") &&
       isPermissionRequest(ev.data)
@@ -549,7 +581,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     const request = requestRef.current;
     if (request && error) setFailedRun({ ...request, error });
     reset();
-    await load(id);
+    await Promise.all([load(id), reloadPermissionRequests(id)]);
     if (sessionId !== id || submissionControllerRef.current || activeRunRef.current) return;
     const followController = new AbortController();
     followControllerRef.current?.abort();
@@ -698,6 +730,18 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     latestRunUsage,
     failedRun,
     toolActivities,
+    questions: [...questionRecords.values()].filter((q) => q.status === "pending"),
+    replyQuestion: async (
+      questionID: string,
+      status: "answered" | "dismissed",
+      answers?: string[][],
+    ) => {
+      const resolved = await client.sessions.questions.reply(sessionId, questionID, {
+        status,
+        answers,
+      });
+      setQuestionRecords((previous) => mergeQuestions(previous, [resolved]));
+    },
     permissionRequests,
     permissionRepliesInFlight,
     replyPermission,

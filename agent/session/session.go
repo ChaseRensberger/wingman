@@ -40,6 +40,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
 )
@@ -86,6 +87,7 @@ type Session struct {
 	beforeComplete      run.BeforeCompleteHook
 	completion          store.CompletionOptions
 	completionEventSink func(store.SessionEvent)
+	questionEventSink   func(store.SessionEvent)
 
 	// messageSink, if non-nil, is invoked for every loop MessageEvent
 	// (including plugin-injected messages such as compaction markers
@@ -1078,7 +1080,9 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 			"steps", out.Steps,
 			"stop_reason", out.StopReason,
 		}
-		if errors.Is(runErr, run.ErrCompletionPending) {
+		if res != nil && res.StopReason == run.StopReasonAwaitingInput {
+			logger.Info("session run awaiting input", attrs...)
+		} else if errors.Is(runErr, run.ErrCompletionPending) {
 			logger.Info("session run awaiting completion", attrs...)
 		} else if runErr != nil {
 			logger.Error("session run failed", append(attrs, "error", runErr)...)
@@ -1087,6 +1091,18 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		} else {
 			logger.Info("session run completed", attrs...)
 		}
+	}
+	if errors.Is(runErr, question.ErrPending) && persistErr == nil && s.store != nil && runID != "" {
+		transition, err := s.store.SuspendSessionRunForQuestions(context.WithoutCancel(ctx), s.id, runID)
+		if err != nil {
+			return out, err
+		}
+		if s.questionEventSink != nil && transition.Changed {
+			s.questionEventSink(transition.Event)
+		}
+	}
+	if persistErr != nil && errors.Is(runErr, question.ErrPending) {
+		return out, fmt.Errorf("persist: %w", persistErr)
 	}
 	if runErr != nil {
 		return out, fmt.Errorf("loop: %w", runErr)

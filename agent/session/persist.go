@@ -418,6 +418,9 @@ func toolUseRecord(sessionID, runID string, step, ordinal int, callID, name, mes
 }
 
 func storeToolUseStatus(status run.ToolUseStatus) string {
+	if status == run.ToolUseStatusWaiting {
+		return store.ToolUseStatusWaiting
+	}
 	switch status {
 	case run.ToolUseStatusCompleted:
 		return store.ToolUseStatusCompleted

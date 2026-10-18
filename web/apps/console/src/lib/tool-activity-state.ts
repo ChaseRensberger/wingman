@@ -48,6 +48,7 @@ export function normalizeToolStatus(status: unknown): ToolActivity["status"] | u
     case "proposed":
     case "authorized":
     case "pending":
+    case "waiting":
       return "pending";
     case "started":
     case "running":

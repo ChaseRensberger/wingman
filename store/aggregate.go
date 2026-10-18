@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chaserensberger/wingman/question"
 	"slices"
 	"strings"
 	"time"
@@ -312,6 +313,9 @@ func ProjectSessionRunTransition(event AggregateEvent) (SessionRun, error) {
 		SessionRunStatusAborted:   EventSessionRunAborted,
 	}[run.Status]
 	if event.Type == EventSessionRunCompletion && (run.Status == SessionRunStatusRunning || run.Status == SessionRunStatusAwaitingCompletion || run.Status == SessionRunStatusQueued) && len(run.Completions) > 0 {
+		return run, nil
+	}
+	if event.Type == "session.run.input" && (run.Status == SessionRunStatusAwaitingInput || run.Status == SessionRunStatusQueued) {
 		return run, nil
 	}
 	if !ok || event.Type != wantType {
@@ -715,7 +719,7 @@ func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
 				return nil, fmt.Errorf("project session run %s: duplicate admission", run.ID)
 			}
 			runs[run.ID] = run
-		case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion:
+		case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion, "session.run.input":
 			run, err = ProjectSessionRunTransition(event)
 			if err != nil {
 				return nil, err
@@ -724,6 +728,9 @@ func ProjectSessionRuns(events []AggregateEvent) ([]SessionRun, error) {
 			legal := legalProjectedRunTransition(previous.Status, run.Status)
 			if event.Type == EventSessionRunCompletion {
 				legal = (previous.Status == SessionRunStatusRunning && (run.Status == SessionRunStatusRunning || run.Status == SessionRunStatusAwaitingCompletion)) || (previous.Status == SessionRunStatusAwaitingCompletion && run.Status == SessionRunStatusQueued)
+			}
+			if event.Type == "session.run.input" {
+				legal = (previous.Status == SessionRunStatusRunning && (run.Status == SessionRunStatusAwaitingInput || run.Status == SessionRunStatusQueued)) || (previous.Status == SessionRunStatusAwaitingInput && run.Status == SessionRunStatusQueued)
 			}
 			if !exists || !legal {
 				return nil, fmt.Errorf("project session run %s: illegal transition %q -> %q", run.ID, previous.Status, run.Status)
@@ -982,6 +989,7 @@ type SessionAggregateProjection struct {
 	ToolUses           []ToolUse
 	PermissionRequests []PermissionRequest
 	PermissionGrants   []PermissionGrant
+	Questions          []question.Question
 }
 
 // ProjectSessionAggregate rebuilds every Session projection from one ordered
@@ -1016,9 +1024,14 @@ func ProjectSessionAggregate(events []AggregateEvent) (SessionAggregateProjectio
 	if err != nil {
 		return SessionAggregateProjection{}, err
 	}
+	questions, err := ProjectSessionQuestions(events)
+	if err != nil {
+		return SessionAggregateProjection{}, err
+	}
 	return SessionAggregateProjection{
 		Session: session, Runs: runs, Messages: messages, ModelCalls: modelCalls,
 		ToolUses: toolUses, PermissionRequests: permissionRequests, PermissionGrants: permissionGrants,
+		Questions: questions,
 	}, nil
 }
 
@@ -1032,7 +1045,7 @@ func legalProjectedToolUseTransition(from, to string) bool {
 
 func legalProjectedRunTransition(from, to string) bool {
 	return (from == SessionRunStatusQueued && (to == SessionRunStatusRunning || to == SessionRunStatusAborted)) ||
-		(from == SessionRunStatusAwaitingCompletion && to == SessionRunStatusAborted) ||
+		((from == SessionRunStatusAwaitingCompletion || from == SessionRunStatusAwaitingInput) && to == SessionRunStatusAborted) ||
 		(from == SessionRunStatusRunning && (isSessionRunTerminal(to) || to == SessionRunStatusQueued))
 }
 
@@ -1096,7 +1109,7 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 		projected := *session
 		projected.AggregateVersion = event.Version
 		return &projected, nil
-	case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion:
+	case EventSessionRunStarted, EventSessionRunRequeued, EventSessionRunCompleted, EventSessionRunFailed, EventSessionRunAborted, EventSessionRunCompletion, "session.run.input":
 		if session == nil {
 			return nil, fmt.Errorf("project session %s: run transition before creation", event.Aggregate.ID)
 		}
@@ -1131,6 +1144,16 @@ func projectSessionEvent(session *Session, event AggregateEvent) (*Session, erro
 			return nil, fmt.Errorf("project session %s: tool use before creation", event.Aggregate.ID)
 		}
 		if _, err := ProjectSessionToolUseSaved(event); err != nil {
+			return nil, err
+		}
+		projected := *session
+		projected.AggregateVersion = event.Version
+		return &projected, nil
+	case "session.question.pending", "session.question.answered", "session.question.dismissed", "session.question.cancelled":
+		if session == nil {
+			return nil, fmt.Errorf("question before session creation")
+		}
+		if _, err := ProjectSessionQuestion(event); err != nil {
 			return nil, err
 		}
 		projected := *session

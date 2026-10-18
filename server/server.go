@@ -30,6 +30,7 @@ import (
 	"github.com/chaserensberger/wingman/internal/observability"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
 )
@@ -369,6 +370,10 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/sessions/{id}/model-calls", "listSessionModelCalls", "List session model calls", nil, http.StatusOK, []api.ModelCall{}, s.handleListSessionModelCalls)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/tool-uses", "listSessionToolUses", "List session tool uses", nil, http.StatusOK, []api.ToolUse{}, s.handleListSessionToolUses)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/permission-requests", "listPermissionRequests", "List session permission requests", nil, http.StatusOK, []api.PermissionRequest{}, s.handleListPermissionRequests)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/questions", "listQuestions", "List session questions", nil, http.StatusOK, []question.Question{}, s.handleListQuestions)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/questions", "createQuestion", "Create a question", api.CreateQuestionRequest{}, http.StatusOK, question.Question{}, s.handleCreateQuestion)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/questions/{questionID}", "getQuestion", "Get a question", nil, http.StatusOK, question.Question{}, s.handleGetQuestion)
+	s.registerJSON(http.MethodPost, "/sessions/{id}/questions/{questionID}/reply", "replyQuestion", "Answer or dismiss a question", api.QuestionReplyRequest{}, http.StatusOK, question.Question{}, s.handleReplyQuestion)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/permission-grants", "listPermissionGrants", "List session permission grants", nil, http.StatusOK, []api.PermissionGrant{}, s.handleListPermissionGrants)
 	s.registerJSON(http.MethodPost, "/sessions/{id}/permission-requests/{requestID}/reply", "replyPermissionRequest", "Reply to a permission request", api.PermissionReplyRequest{}, http.StatusOK, api.PermissionRequest{}, s.handleReplyPermissionRequest)
 	s.registerJSON(http.MethodPost, "/sessions/{id}/rename", "renameSession", "Rename a session", api.RenameSessionRequest{}, http.StatusOK, api.Session{}, s.handleRenameSession)

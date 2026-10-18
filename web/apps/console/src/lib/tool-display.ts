@@ -69,7 +69,13 @@ function inPath(path: string) {
 
 export function toolSummary(call: ToolCallPart) {
   if (call.name === "bash") return stringInput(call, "command") || "Running command";
-  if (call.name === "read") return `Read ${filename(stringInput(call, "filePath")) || "file"}`;
+  if (call.name === "read") {
+    const path = stringInput(call, "filePath") || "file";
+    const start = typeof call.input.offset === "number" ? call.input.offset : 1;
+    const end = typeof call.input.limit === "number" ? start + call.input.limit - 1 : undefined;
+    const range = end !== undefined ? `:${start}-${end}` : start > 1 ? `:${start}` : "";
+    return `Read ${path}${range}`;
+  }
   if (call.name === "grep")
     return `Grep ${quote(stringInput(call, "pattern"))}${inPath(stringInput(call, "path"))}`;
   if (call.name === "glob")

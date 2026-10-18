@@ -11,6 +11,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/session"
 	"github.com/chaserensberger/wingman/api"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
 )
 
@@ -267,7 +268,7 @@ func (m *sessionRunManager) execute(workerCtx context.Context, queued *store.Ses
 						m.server.forwardRunEvent(persistCtx, queued.SessionID, queued.ID, stream.Event())
 					}
 					err = stream.Err()
-					if errors.Is(err, run.ErrCompletionPending) {
+					if errors.Is(err, run.ErrCompletionPending) || errors.Is(err, question.ErrPending) {
 						return
 					}
 					if err == nil {
@@ -351,7 +352,7 @@ func (m *sessionRunManager) abort(ctx context.Context, sessionID, expectedRunID 
 	}
 	var current *store.SessionRun
 	for _, candidate := range active {
-		if (candidate.Status == store.SessionRunStatusRunning || candidate.Status == store.SessionRunStatusAwaitingCompletion) && (expectedRunID == "" || expectedRunID == candidate.ID) {
+		if (candidate.Status == store.SessionRunStatusRunning || candidate.Status == store.SessionRunStatusAwaitingCompletion || candidate.Status == store.SessionRunStatusAwaitingInput) && (expectedRunID == "" || expectedRunID == candidate.ID) {
 			current = &candidate
 			break
 		}

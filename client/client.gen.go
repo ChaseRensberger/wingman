@@ -50,6 +50,24 @@ func (e ImagePartType) Valid() bool {
 	}
 }
 
+// Defines values for QuestionReplyRequestStatus.
+const (
+	Answered  QuestionReplyRequestStatus = "answered"
+	Dismissed QuestionReplyRequestStatus = "dismissed"
+)
+
+// Valid indicates whether the value is a known member of the QuestionReplyRequestStatus enum.
+func (e QuestionReplyRequestStatus) Valid() bool {
+	switch e {
+	case Answered:
+		return true
+	case Dismissed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReasoningPartType.
 const (
 	Reasoning ReasoningPartType = "reasoning"
@@ -279,6 +297,12 @@ type CatalogDTO struct {
 	Routes    *[]RouteInfo     `json:"routes"`
 }
 
+// Choice defines model for Choice.
+type Choice struct {
+	Description string `json:"description"`
+	Label       string `json:"label"`
+}
+
 // Client defines model for Client.
 type Client struct {
 	CreatedAt string `json:"created_at"`
@@ -338,6 +362,12 @@ type CreateClientRequest struct {
 // CreateClientResponse defines model for CreateClientResponse.
 type CreateClientResponse struct {
 	Client Client `json:"client"`
+}
+
+// CreateQuestionRequest defines model for CreateQuestionRequest.
+type CreateQuestionRequest struct {
+	Id        *string   `json:"id,omitempty"`
+	Questions *[]Prompt `json:"questions"`
 }
 
 // CreateSessionRequest defines model for CreateSessionRequest.
@@ -711,6 +741,14 @@ type PluginsResponse struct {
 	Plugins interface{} `json:"plugins"`
 }
 
+// Prompt defines model for Prompt.
+type Prompt struct {
+	Header   string    `json:"header"`
+	Multiple *bool     `json:"multiple,omitempty"`
+	Options  *[]Choice `json:"options"`
+	Question string    `json:"question"`
+}
+
 // ProviderAuthInfo defines model for ProviderAuthInfo.
 type ProviderAuthInfo struct {
 	Configured bool   `json:"configured"`
@@ -760,6 +798,29 @@ type ProvidersAuthResponse struct {
 	Providers map[string]ProviderAuthInfo `json:"providers"`
 	UpdatedAt *string                     `json:"updated_at,omitempty"`
 }
+
+// Question defines model for Question.
+type Question struct {
+	Answers   *[]*[]string `json:"answers,omitempty"`
+	ClientId  string       `json:"client_id"`
+	CreatedAt time.Time    `json:"created_at"`
+	Id        string       `json:"id"`
+	Questions *[]Prompt    `json:"questions"`
+	RunId     *string      `json:"run_id,omitempty"`
+	SessionId string       `json:"session_id"`
+	Status    string       `json:"status"`
+	ToolUseId *string      `json:"tool_use_id,omitempty"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// QuestionReplyRequest defines model for QuestionReplyRequest.
+type QuestionReplyRequest struct {
+	Answers *[]*[]string               `json:"answers,omitempty"`
+	Status  QuestionReplyRequestStatus `json:"status"`
+}
+
+// QuestionReplyRequestStatus defines model for QuestionReplyRequest.Status.
+type QuestionReplyRequestStatus string
 
 // RateLimitDiagnostic defines model for RateLimitDiagnostic.
 type RateLimitDiagnostic struct {
@@ -1529,6 +1590,30 @@ type ReplyPermissionRequestParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// ListQuestionsParams defines parameters for ListQuestions.
+type ListQuestionsParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// CreateQuestionParams defines parameters for CreateQuestion.
+type CreateQuestionParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// GetQuestionParams defines parameters for GetQuestion.
+type GetQuestionParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ReplyQuestionParams defines parameters for ReplyQuestion.
+type ReplyQuestionParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // RenameSessionParams defines parameters for RenameSession.
 type RenameSessionParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1642,6 +1727,12 @@ type MoveSessionJSONRequestBody = MoveSessionRequest
 
 // ReplyPermissionRequestJSONRequestBody defines body for ReplyPermissionRequest for application/json ContentType.
 type ReplyPermissionRequestJSONRequestBody = PermissionReplyRequest
+
+// CreateQuestionJSONRequestBody defines body for CreateQuestion for application/json ContentType.
+type CreateQuestionJSONRequestBody = CreateQuestionRequest
+
+// ReplyQuestionJSONRequestBody defines body for ReplyQuestion for application/json ContentType.
+type ReplyQuestionJSONRequestBody = QuestionReplyRequest
 
 // RenameSessionJSONRequestBody defines body for RenameSession for application/json ContentType.
 type RenameSessionJSONRequestBody = RenameSessionRequest
@@ -2349,6 +2440,44 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/permission-requests/{requestID}/reply (the `ReplyPermissionRequest` operationId).
 	ReplyPermissionRequest(ctx context.Context, id string, requestID string, params *ReplyPermissionRequestParams, body ReplyPermissionRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListQuestions List session questions
+	//
+	// Corresponds with GET /sessions/{id}/questions (the `ListQuestions` operationId).
+	ListQuestions(ctx context.Context, id string, params *ListQuestionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateQuestionWithBody Create a question
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+	CreateQuestionWithBody(ctx context.Context, id string, params *CreateQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateQuestion Create a question
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+	CreateQuestion(ctx context.Context, id string, params *CreateQuestionParams, body CreateQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetQuestion Get a question
+	//
+	// Corresponds with GET /sessions/{id}/questions/{questionID} (the `GetQuestion` operationId).
+	GetQuestion(ctx context.Context, id string, questionID string, params *GetQuestionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplyQuestionWithBody Answer or dismiss a question
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+	ReplyQuestionWithBody(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplyQuestion Answer or dismiss a question
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+	ReplyQuestion(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, body ReplyQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameSessionWithBody Rename a session
 	//
@@ -3435,6 +3564,104 @@ func (c *GeneratedClient) ReplyPermissionRequestWithBody(ctx context.Context, id
 // Corresponds with POST /sessions/{id}/permission-requests/{requestID}/reply (the `ReplyPermissionRequest` operationId).
 func (c *GeneratedClient) ReplyPermissionRequest(ctx context.Context, id string, requestID string, params *ReplyPermissionRequestParams, body ReplyPermissionRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReplyPermissionRequestRequest(c.Server, id, requestID, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListQuestions List session questions
+//
+// Corresponds with GET /sessions/{id}/questions (the `ListQuestions` operationId).
+func (c *GeneratedClient) ListQuestions(ctx context.Context, id string, params *ListQuestionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListQuestionsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateQuestionWithBody Create a question
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+func (c *GeneratedClient) CreateQuestionWithBody(ctx context.Context, id string, params *CreateQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateQuestionRequestWithBody(c.Server, id, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateQuestion Create a question
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+func (c *GeneratedClient) CreateQuestion(ctx context.Context, id string, params *CreateQuestionParams, body CreateQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateQuestionRequest(c.Server, id, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetQuestion Get a question
+//
+// Corresponds with GET /sessions/{id}/questions/{questionID} (the `GetQuestion` operationId).
+func (c *GeneratedClient) GetQuestion(ctx context.Context, id string, questionID string, params *GetQuestionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetQuestionRequest(c.Server, id, questionID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplyQuestionWithBody Answer or dismiss a question
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+func (c *GeneratedClient) ReplyQuestionWithBody(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplyQuestionRequestWithBody(c.Server, id, questionID, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplyQuestion Answer or dismiss a question
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+func (c *GeneratedClient) ReplyQuestion(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, body ReplyQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplyQuestionRequest(c.Server, id, questionID, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6289,6 +6516,242 @@ func NewReplyPermissionRequestRequestWithBody(server string, id string, requestI
 	return req, nil
 }
 
+// NewListQuestionsRequest constructs an http.Request for the ListQuestions method
+func NewListQuestionsRequest(server string, id string, params *ListQuestionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/questions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateQuestionRequest calls the generic CreateQuestion builder with application/json body
+func NewCreateQuestionRequest(server string, id string, params *CreateQuestionParams, body CreateQuestionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateQuestionRequestWithBody(server, id, params, "application/json", bodyReader)
+}
+
+// NewCreateQuestionRequestWithBody constructs an http.Request for the CreateQuestion method, with any body, and a specified content type
+func NewCreateQuestionRequestWithBody(server string, id string, params *CreateQuestionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/questions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewGetQuestionRequest constructs an http.Request for the GetQuestion method
+func NewGetQuestionRequest(server string, id string, questionID string, params *GetQuestionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "questionID", questionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/questions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewReplyQuestionRequest calls the generic ReplyQuestion builder with application/json body
+func NewReplyQuestionRequest(server string, id string, questionID string, params *ReplyQuestionParams, body ReplyQuestionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplyQuestionRequestWithBody(server, id, questionID, params, "application/json", bodyReader)
+}
+
+// NewReplyQuestionRequestWithBody constructs an http.Request for the ReplyQuestion method, with any body, and a specified content type
+func NewReplyQuestionRequestWithBody(server string, id string, questionID string, params *ReplyQuestionParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "questionID", questionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/questions/%s/reply", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewRenameSessionRequest calls the generic RenameSession builder with application/json body
 func NewRenameSessionRequest(server string, id string, params *RenameSessionParams, body RenameSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -7462,6 +7925,48 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sessions/{id}/permission-requests/{requestID}/reply (the `ReplyPermissionRequest` operationId).
 	ReplyPermissionRequestWithResponse(ctx context.Context, id string, requestID string, params *ReplyPermissionRequestParams, body ReplyPermissionRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplyPermissionRequestHTTPResponse, error)
+
+	// ListQuestionsWithResponse List session questions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{id}/questions (the `ListQuestions` operationId).
+	ListQuestionsWithResponse(ctx context.Context, id string, params *ListQuestionsParams, reqEditors ...RequestEditorFn) (*ListQuestionsHTTPResponse, error)
+
+	// CreateQuestionWithBodyWithResponse Create a question
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+	CreateQuestionWithBodyWithResponse(ctx context.Context, id string, params *CreateQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateQuestionHTTPResponse, error)
+
+	// CreateQuestionWithResponse Create a question
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+	CreateQuestionWithResponse(ctx context.Context, id string, params *CreateQuestionParams, body CreateQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateQuestionHTTPResponse, error)
+
+	// GetQuestionWithResponse Get a question
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{id}/questions/{questionID} (the `GetQuestion` operationId).
+	GetQuestionWithResponse(ctx context.Context, id string, questionID string, params *GetQuestionParams, reqEditors ...RequestEditorFn) (*GetQuestionHTTPResponse, error)
+
+	// ReplyQuestionWithBodyWithResponse Answer or dismiss a question
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+	ReplyQuestionWithBodyWithResponse(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplyQuestionHTTPResponse, error)
+
+	// ReplyQuestionWithResponse Answer or dismiss a question
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+	ReplyQuestionWithResponse(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, body ReplyQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplyQuestionHTTPResponse, error)
 
 	// RenameSessionWithBodyWithResponse Rename a session
 	//
@@ -10010,6 +10515,198 @@ func (r ReplyPermissionRequestHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListQuestionsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Question
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListQuestionsHTTPResponse) GetJSON200() *[]Question {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListQuestionsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListQuestionsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListQuestionsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListQuestionsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListQuestionsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateQuestionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Question
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateQuestionHTTPResponse) GetJSON200() *Question {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CreateQuestionHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateQuestionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateQuestionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateQuestionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateQuestionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetQuestionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Question
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetQuestionHTTPResponse) GetJSON200() *Question {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetQuestionHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetQuestionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetQuestionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetQuestionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetQuestionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReplyQuestionHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Question
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplyQuestionHTTPResponse) GetJSON200() *Question {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ReplyQuestionHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplyQuestionHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplyQuestionHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplyQuestionHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplyQuestionHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RenameSessionHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11458,6 +12155,84 @@ func (c *ClientWithResponses) ReplyPermissionRequestWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseReplyPermissionRequestHTTPResponse(rsp)
+}
+
+// ListQuestionsWithResponse List session questions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{id}/questions (the `ListQuestions` operationId).
+func (c *ClientWithResponses) ListQuestionsWithResponse(ctx context.Context, id string, params *ListQuestionsParams, reqEditors ...RequestEditorFn) (*ListQuestionsHTTPResponse, error) {
+	rsp, err := c.ListQuestions(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListQuestionsHTTPResponse(rsp)
+}
+
+// CreateQuestionWithBodyWithResponse Create a question
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+func (c *ClientWithResponses) CreateQuestionWithBodyWithResponse(ctx context.Context, id string, params *CreateQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateQuestionHTTPResponse, error) {
+	rsp, err := c.CreateQuestionWithBody(ctx, id, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateQuestionHTTPResponse(rsp)
+}
+
+// CreateQuestionWithResponse Create a question
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/questions (the `CreateQuestion` operationId).
+func (c *ClientWithResponses) CreateQuestionWithResponse(ctx context.Context, id string, params *CreateQuestionParams, body CreateQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateQuestionHTTPResponse, error) {
+	rsp, err := c.CreateQuestion(ctx, id, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateQuestionHTTPResponse(rsp)
+}
+
+// GetQuestionWithResponse Get a question
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{id}/questions/{questionID} (the `GetQuestion` operationId).
+func (c *ClientWithResponses) GetQuestionWithResponse(ctx context.Context, id string, questionID string, params *GetQuestionParams, reqEditors ...RequestEditorFn) (*GetQuestionHTTPResponse, error) {
+	rsp, err := c.GetQuestion(ctx, id, questionID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetQuestionHTTPResponse(rsp)
+}
+
+// ReplyQuestionWithBodyWithResponse Answer or dismiss a question
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+func (c *ClientWithResponses) ReplyQuestionWithBodyWithResponse(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplyQuestionHTTPResponse, error) {
+	rsp, err := c.ReplyQuestionWithBody(ctx, id, questionID, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplyQuestionHTTPResponse(rsp)
+}
+
+// ReplyQuestionWithResponse Answer or dismiss a question
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{id}/questions/{questionID}/reply (the `ReplyQuestion` operationId).
+func (c *ClientWithResponses) ReplyQuestionWithResponse(ctx context.Context, id string, questionID string, params *ReplyQuestionParams, body ReplyQuestionJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplyQuestionHTTPResponse, error) {
+	rsp, err := c.ReplyQuestion(ctx, id, questionID, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplyQuestionHTTPResponse(rsp)
 }
 
 // RenameSessionWithBodyWithResponse Rename a session
@@ -13326,6 +14101,138 @@ func ParseReplyPermissionRequestHTTPResponse(rsp *http.Response) (*ReplyPermissi
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest PermissionRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListQuestionsHTTPResponse parses an HTTP response from a ListQuestionsWithResponse call
+func ParseListQuestionsHTTPResponse(rsp *http.Response) (*ListQuestionsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListQuestionsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Question
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateQuestionHTTPResponse parses an HTTP response from a CreateQuestionWithResponse call
+func ParseCreateQuestionHTTPResponse(rsp *http.Response) (*CreateQuestionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateQuestionHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Question
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetQuestionHTTPResponse parses an HTTP response from a GetQuestionWithResponse call
+func ParseGetQuestionHTTPResponse(rsp *http.Response) (*GetQuestionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetQuestionHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Question
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplyQuestionHTTPResponse parses an HTTP response from a ReplyQuestionWithResponse call
+func ParseReplyQuestionHTTPResponse(rsp *http.Response) (*ReplyQuestionHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplyQuestionHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Question
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -251,6 +251,7 @@ const (
 	ToolUseStatusCompleted   ToolUseStatus = "completed"
 	ToolUseStatusFailed      ToolUseStatus = "failed"
 	ToolUseStatusInterrupted ToolUseStatus = "interrupted"
+	ToolUseStatusWaiting     ToolUseStatus = "waiting"
 	ToolUseStatusDeclined    ToolUseStatus = "declined"
 )
 
@@ -707,6 +708,8 @@ const (
 	StopReasonEndTurn StopReason = "end_turn"
 	// StopReasonAwaitingCompletion suspends execution until a remote decision arrives.
 	StopReasonAwaitingCompletion StopReason = "awaiting_completion"
+	// StopReasonAwaitingInput suspends execution until questions are resolved.
+	StopReasonAwaitingInput StopReason = "awaiting_input"
 
 	// StopReasonMaxSteps: the loop hit Config.MaxSteps before the
 	// assistant produced a tool-call-free turn.

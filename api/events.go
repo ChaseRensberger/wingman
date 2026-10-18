@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/question"
 )
 
 // SessionEventType identifies one persistent-session event payload.
@@ -24,6 +25,11 @@ const (
 	SessionEventRunFailed                 SessionEventType = "session.run.failed"
 	SessionEventRunAborted                SessionEventType = "session.run.aborted"
 	SessionEventRunCompletion             SessionEventType = "session.run.completion"
+	SessionEventRunInput                  SessionEventType = "session.run.input"
+	SessionEventQuestionPending           SessionEventType = "session.question.pending"
+	SessionEventQuestionAnswered          SessionEventType = "session.question.answered"
+	SessionEventQuestionDismissed         SessionEventType = "session.question.dismissed"
+	SessionEventQuestionCancelled         SessionEventType = "session.question.cancelled"
 	SessionEventStepStarted               SessionEventType = "session.step.started"
 	SessionEventStepCompleted             SessionEventType = "session.step.completed"
 	SessionEventTextDelta                 SessionEventType = "session.text.delta"
@@ -114,6 +120,12 @@ type SessionEventData interface {
 }
 
 type sessionEventData struct{}
+
+// QuestionEventData carries a complete question snapshot.
+type QuestionEventData struct {
+	sessionEventData
+	question.Question
+}
 
 func (sessionEventData) isSessionEventData() {}
 
@@ -265,8 +277,10 @@ func DecodeSessionEventDataForSchemaVersion(schemaVersion int, eventType Session
 	}
 	var data SessionEventData
 	switch eventType {
-	case SessionEventRunQueued, SessionEventRunStarted, SessionEventRunCompleted, SessionEventRunFailed, SessionEventRunAborted:
+	case SessionEventRunQueued, SessionEventRunStarted, SessionEventRunCompleted, SessionEventRunFailed, SessionEventRunAborted, SessionEventRunInput:
 		data = &RunEventData{}
+	case SessionEventQuestionPending, SessionEventQuestionAnswered, SessionEventQuestionDismissed, SessionEventQuestionCancelled:
+		data = &QuestionEventData{}
 	case SessionEventRunCompletion:
 		data = &CompletionEventData{}
 	case SessionEventStepStarted, SessionEventStepCompleted:

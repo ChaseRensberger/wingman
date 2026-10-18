@@ -47,6 +47,7 @@ const (
 	SessionRunStatusQueued             = "queued"
 	SessionRunStatusRunning            = "running"
 	SessionRunStatusAwaitingCompletion = "awaiting_completion"
+	SessionRunStatusAwaitingInput      = "awaiting_input"
 	SessionRunStatusCompleted          = "completed"
 	SessionRunStatusFailed             = "failed"
 	SessionRunStatusAborted            = "aborted"
@@ -59,6 +60,7 @@ const (
 	ToolUseStatusCompleted   = "completed"
 	ToolUseStatusFailed      = "failed"
 	ToolUseStatusInterrupted = "interrupted"
+	ToolUseStatusWaiting     = "waiting"
 	ToolUseStatusDeclined    = "declined"
 )
 

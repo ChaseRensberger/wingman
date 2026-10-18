@@ -1,8 +1,43 @@
 import { describe, expect, test } from "bun:test";
 
-import { collapseOutput, parseUnifiedDiff, patchFiles, stripAnsi } from "./tool-display";
+import {
+  collapseOutput,
+  parseUnifiedDiff,
+  patchFiles,
+  stripAnsi,
+  toolSummary,
+} from "./tool-display";
 
 describe("tool output display", () => {
+  test("read titles include the path and requested line range", () => {
+    expect(
+      toolSummary({
+        type: "tool_call",
+        call_id: "1",
+        name: "read",
+        input: { filePath: "web/apps/console/src/index.tsx", offset: 20, limit: 40 },
+      }),
+    ).toBe("Read web/apps/console/src/index.tsx:20-59");
+    expect(
+      toolSummary({
+        type: "tool_call",
+        call_id: "1",
+        name: "read",
+        input: { filePath: "src/index.ts", limit: 150 },
+      }),
+    ).toBe("Read src/index.ts:1-150");
+    expect(
+      toolSummary({
+        type: "tool_call",
+        call_id: "1",
+        name: "read",
+        input: { filePath: "src/index.ts", offset: 20 },
+      }),
+    ).toBe("Read src/index.ts:20");
+    expect(
+      toolSummary({ type: "tool_call", call_id: "1", name: "read", input: { filePath: "src" } }),
+    ).toBe("Read src");
+  });
   test("collapses long output without hiding short output", () => {
     expect(collapseOutput("one\ntwo", 3, 100)).toEqual({ output: "one\ntwo", overflow: false });
     expect(collapseOutput("one\ntwo\nthree\nfour", 3, 100)).toEqual({

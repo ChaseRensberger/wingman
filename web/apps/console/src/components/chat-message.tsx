@@ -13,6 +13,7 @@ import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { lookupToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { formatDuration } from "@/lib/tool-display";
+import { toolPartProps } from "@/lib/transcript";
 import { Button } from "@wingman/core/components/core/button";
 
 const Markdown = lazy(async () => {
@@ -82,6 +83,8 @@ export function ChatMessage({
   agentName,
   compactTop = false,
   compactBottom = false,
+  showMeta = true,
+  sourceMessage = message,
 }: {
   message: Message;
   isStreaming?: boolean;
@@ -92,6 +95,8 @@ export function ChatMessage({
   agentName?: string;
   compactTop?: boolean;
   compactBottom?: boolean;
+  showMeta?: boolean;
+  sourceMessage?: Message;
 }) {
   if (message.role === "tool") return null;
   if (message.content.length === 0) return null;
@@ -177,7 +182,11 @@ export function ChatMessage({
           if (part.type === "reasoning") {
             const reasoningPart = part as { id?: string; reasoning: string };
             return (
-              <ReasoningPart key={reasoningPart.id ?? idx} reasoning={reasoningPart.reasoning} />
+              <ReasoningPart
+                key={reasoningPart.id ?? idx}
+                reasoning={reasoningPart.reasoning}
+                isStreaming={isStreaming}
+              />
             );
           }
           if (part.type === "tool_call") {
@@ -198,48 +207,12 @@ export function ChatMessage({
           }
           if (part.type === "tool") {
             const tool = part as ToolPart;
-            const call = {
-              type: "tool_call" as const,
-              tool_use_id: tool.tool_use_id,
-              call_id: tool.call_id,
-              name: tool.name,
-              input: tool.input,
-            };
-            const result =
-              tool.state === "completed" || tool.state === "error"
-                ? {
-                    type: "tool_result" as const,
-                    tool_use_id: tool.tool_use_id,
-                    call_id: tool.call_id,
-                    name: tool.name,
-                    output:
-                      tool.output_parts ??
-                      (tool.output ? [{ type: "text" as const, text: tool.output }] : []),
-                    structured: tool.structured,
-                    is_error: tool.state === "error",
-                    metadata: tool.metadata,
-                  }
-                : undefined;
             return (
               <div
                 key={tool.id ?? tool.tool_use_id ?? tool.call_id}
                 className={compactBottom ? "mt-0" : "mt-1"}
               >
-                <ToolActivityItem
-                  call={call}
-                  result={result}
-                  activity={{
-                    tool_use_id: tool.tool_use_id,
-                    call_id: tool.call_id,
-                    tool: tool.name,
-                    status: tool.state,
-                    input: tool.input,
-                    output: tool.output,
-                    metadata: tool.metadata,
-                    error: tool.error,
-                  }}
-                  compact={compactBottom}
-                />
+                <ToolActivityItem {...toolPartProps(tool)} compact={compactBottom} />
               </div>
             );
           }
@@ -272,7 +245,9 @@ export function ChatMessage({
             </div>
           );
         })}
-        {isAssistant && <AssistantMeta message={message} call={modelCall} agentName={agentName} />}
+        {isAssistant && showMeta && (
+          <AssistantMeta message={sourceMessage} call={modelCall} agentName={agentName} />
+        )}
       </div>
     </div>
   );

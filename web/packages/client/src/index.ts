@@ -16,6 +16,9 @@ export type MessageSessionRequest = components["schemas"]["MessageSessionRequest
 export type Macro = components["schemas"]["Macro"];
 export type MacroSessionRequest = components["schemas"]["MacroSessionRequest"];
 export type PermissionReplyRequest = components["schemas"]["PermissionReplyRequest"];
+export type Question = components["schemas"]["Question"];
+export type CreateQuestionRequest = components["schemas"]["CreateQuestionRequest"];
+export type QuestionReplyRequest = components["schemas"]["QuestionReplyRequest"];
 export type MessageSessionResponse = components["schemas"]["MessageSessionResponse"];
 export type RunRequest = components["schemas"]["RunRequest"];
 export type RunStreamEvent = components["schemas"]["RunStreamEvent"];
@@ -202,6 +205,11 @@ const sessionEventTypes = new Set<SessionEvent["type"]>([
   "session.run.failed",
   "session.run.aborted",
   "session.run.completion",
+  "session.run.input",
+  "session.question.pending",
+  "session.question.answered",
+  "session.question.dismissed",
+  "session.question.cancelled",
   "session.step.started",
   "session.step.completed",
   "session.text.delta",
@@ -464,6 +472,25 @@ export function createWingmanClient(options: WingmanClientOptions) {
             api.POST("/sessions/{id}/permission-requests/{requestID}/reply", {
               params: { path: { id, requestID } },
               body: request,
+            }),
+          ),
+      },
+      questions: {
+        list: (id: string) =>
+          requestData(api.GET("/sessions/{id}/questions", { params: { path: { id } } })),
+        get: (id: string, questionID: string) =>
+          requestData(
+            api.GET("/sessions/{id}/questions/{questionID}", {
+              params: { path: { id, questionID } },
+            }),
+          ),
+        create: (id: string, body: CreateQuestionRequest) =>
+          requestData(api.POST("/sessions/{id}/questions", { params: { path: { id } }, body })),
+        reply: (id: string, questionID: string, body: QuestionReplyRequest) =>
+          requestData(
+            api.POST("/sessions/{id}/questions/{questionID}/reply", {
+              params: { path: { id, questionID } },
+              body,
             }),
           ),
       },

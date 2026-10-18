@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -31,6 +32,7 @@ type Store struct {
 	modelCalls         map[string]*store.ModelCall
 	toolUses           map[string]*store.ToolUse
 	permissionRequests map[string]*store.PermissionRequest
+	questions          map[string]question.Question
 	permissionGrants   map[string]*store.PermissionGrant
 	events             map[string]*store.SessionEvent
 	aggregates         map[store.AggregateRef][]store.AggregateEvent
@@ -51,6 +53,7 @@ func NewStore() *Store {
 		modelCalls:         make(map[string]*store.ModelCall),
 		toolUses:           make(map[string]*store.ToolUse),
 		permissionRequests: make(map[string]*store.PermissionRequest),
+		questions:          make(map[string]question.Question),
 		permissionGrants:   make(map[string]*store.PermissionGrant),
 		events:             make(map[string]*store.SessionEvent),
 		aggregates:         make(map[store.AggregateRef][]store.AggregateEvent),
@@ -190,7 +193,7 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 		return store.SessionRunTransition{}, store.ErrSessionNotFound
 	}
 	for _, run := range s.runs {
-		if run.SessionID == sessionID && (run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion) {
+		if run.SessionID == sessionID && (run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion || run.Status == store.SessionRunStatusAwaitingInput) {
 			return store.SessionRunTransition{}, nil
 		}
 	}
@@ -270,6 +273,30 @@ func (s *Store) transitionSessionRun(ctx context.Context, settlement store.Sessi
 		candidate.CompletedAt = time.Time{}
 		candidate.RecoveryAttempts++
 	}
+	if sessionRunTerminal(candidate.Status) {
+		for _, q := range s.questions {
+			if q.RunID == candidate.ID && q.Status == "pending" {
+				q, _, err := question.Resolve(q, question.Reply{Status: "cancelled"})
+				if err != nil {
+					return store.SessionRunTransition{}, err
+				}
+				if _, err := s.saveQuestionLocked(q); err != nil {
+					return store.SessionRunTransition{}, err
+				}
+			}
+		}
+		for id, use := range s.toolUses {
+			if use.RunID == candidate.ID && use.Status == store.ToolUseStatusWaiting {
+				updated := *use
+				updated.Status, updated.ErrorType, updated.ErrorMessage = store.ToolUseStatusInterrupted, "run_ended", "run ended while waiting for an answer"
+				updated.CompletedAt, updated.UpdatedAt = now, now
+				if err := s.appendToolUseAggregateLocked(updated); err != nil {
+					return store.SessionRunTransition{}, err
+				}
+				s.toolUses[id] = &updated
+			}
+		}
+	}
 	session, ok := s.sessions[candidate.SessionID]
 	if !ok {
 		return store.SessionRunTransition{}, store.ErrSessionNotFound
@@ -329,7 +356,7 @@ func (s *Store) ListActiveSessionRuns(ctx context.Context) ([]store.SessionRun, 
 	defer s.mu.RUnlock()
 	out := []store.SessionRun{}
 	for _, run := range s.runs {
-		if run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion {
+		if run.Status == store.SessionRunStatusRunning || run.Status == store.SessionRunStatusAwaitingCompletion || run.Status == store.SessionRunStatusAwaitingInput {
 			out = append(out, copySessionRun(run))
 		}
 	}
@@ -376,7 +403,7 @@ func (s *Store) ListSessionRunsForRecovery(ctx context.Context) ([]store.Session
 	return out, nil
 }
 func legalSessionRunSettlement(from, to string) bool {
-	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || ((from == store.SessionRunStatusQueued || from == store.SessionRunStatusAwaitingCompletion) && to == store.SessionRunStatusAborted)
+	return (from == store.SessionRunStatusRunning && sessionRunTerminal(to)) || ((from == store.SessionRunStatusQueued || from == store.SessionRunStatusAwaitingCompletion || from == store.SessionRunStatusAwaitingInput) && to == store.SessionRunStatusAborted)
 }
 func (s *Store) appendRunEventLocked(run *store.SessionRun, typ string, extra map[string]any, now time.Time) (store.SessionEvent, error) {
 	data := make(map[string]any, len(extra)+7)
@@ -961,6 +988,14 @@ func (s *Store) replaceSessionProjectionLocked(projection store.SessionAggregate
 		}
 	}
 	s.sessions[id] = copySession(projection.Session)
+	for key, value := range s.questions {
+		if value.SessionID == id {
+			delete(s.questions, key)
+		}
+	}
+	for _, q := range projection.Questions {
+		s.questions[q.ID] = cloneQuestion(q)
+	}
 	for _, run := range projection.Runs {
 		cp := copySessionRun(&run)
 		s.runs[run.ID] = &cp
@@ -1149,6 +1184,11 @@ func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64
 	for requestID, request := range s.permissionRequests {
 		if request.SessionID == id {
 			delete(s.permissionRequests, requestID)
+		}
+	}
+	for questionID, q := range s.questions {
+		if q.SessionID == id {
+			delete(s.questions, questionID)
 		}
 	}
 	for grantID, grant := range s.permissionGrants {
@@ -2066,7 +2106,9 @@ func legalToolUseTransitionMemory(from, to string) bool {
 	case store.ToolUseStatusAuthorized:
 		return to == store.ToolUseStatusStarted || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted
 	case store.ToolUseStatusStarted:
-		return to == store.ToolUseStatusCompleted || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted
+		return to == store.ToolUseStatusCompleted || to == store.ToolUseStatusFailed || to == store.ToolUseStatusInterrupted || to == store.ToolUseStatusWaiting
+	case store.ToolUseStatusWaiting:
+		return to == store.ToolUseStatusStarted || to == store.ToolUseStatusInterrupted
 	}
 	return false
 }

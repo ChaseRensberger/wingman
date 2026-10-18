@@ -49,6 +49,12 @@ function permission(id: string, createdAt: string, runID = "run-1"): PermissionR
 }
 
 describe("session run recovery", () => {
+  test("follows the waiting run ahead of messages queued behind it", () => {
+    expect(
+      latestActiveSessionRun([run("waiting", 1, "awaiting_input"), run("queued", 2, "queued")])?.id,
+    ).toBe("waiting");
+    expect(terminalSessionRunError(run("waiting", 1, "awaiting_input"))).toBeUndefined();
+  });
   test("selects the latest queued or running run", () => {
     expect(
       latestActiveSessionRun([

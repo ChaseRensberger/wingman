@@ -516,6 +516,22 @@
         ],
         "type": "object"
       },
+      "Choice": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "description"
+        ],
+        "type": "object"
+      },
       "Client": {
         "additionalProperties": false,
         "properties": {
@@ -790,6 +806,27 @@
         },
         "required": [
           "client"
+        ],
+        "type": "object"
+      },
+      "CreateQuestionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "questions"
         ],
         "type": "object"
       },
@@ -2072,6 +2109,35 @@
         ],
         "type": "object"
       },
+      "Prompt": {
+        "additionalProperties": false,
+        "properties": {
+          "header": {
+            "type": "string"
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "header",
+          "options"
+        ],
+        "type": "object"
+      },
       "ProviderAuthInfo": {
         "additionalProperties": false,
         "properties": {
@@ -2221,6 +2287,167 @@
         },
         "required": [
           "providers"
+        ],
+        "type": "object"
+      },
+      "Question": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "client_id",
+          "questions",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "QuestionEventData": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "client_id",
+          "questions",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "QuestionReplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "answered",
+              "dismissed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
         ],
         "type": "object"
       },
@@ -3373,6 +3600,75 @@
               "type": {
                 "enum": [
                   "session.run.completion"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data",
+              "id",
+              "schema_version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cursor": {
+                "$ref": "#/components/schemas/SessionEventCursor"
+              },
+              "data": {
+                "$ref": "#/components/schemas/RunEventData"
+              },
+              "id": {
+                "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "session.run.input"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data",
+              "id",
+              "schema_version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cursor": {
+                "$ref": "#/components/schemas/SessionEventCursor"
+              },
+              "data": {
+                "$ref": "#/components/schemas/QuestionEventData"
+              },
+              "id": {
+                "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "session.question.pending",
+                  "session.question.answered",
+                  "session.question.dismissed",
+                  "session.question.cancelled"
                 ],
                 "type": "string"
               }
@@ -7294,6 +7590,250 @@
           }
         ],
         "summary": "Reply to a permission request"
+      }
+    },
+    "/sessions/{id}/questions": {
+      "get": {
+        "operationId": "listQuestions",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Question"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "List session questions"
+      },
+      "post": {
+        "operationId": "createQuestion",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Create a question"
+      }
+    },
+    "/sessions/{id}/questions/{questionID}": {
+      "get": {
+        "operationId": "getQuestion",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "questionID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Get a question"
+      }
+    },
+    "/sessions/{id}/questions/{questionID}/reply": {
+      "post": {
+        "operationId": "replyQuestion",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "questionID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionReplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Answer or dismiss a question"
       }
     },
     "/sessions/{id}/rename": {

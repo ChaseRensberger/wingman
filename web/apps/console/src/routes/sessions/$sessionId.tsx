@@ -54,6 +54,7 @@ import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
 import { SessionTranscript } from "@/components/session-transcript";
+import { QuestionPanel } from "@/components/question-panel";
 import { useSessionRun, type FailedRun } from "@/hooks/use-session-run";
 import { useStreamReveal } from "@/hooks/use-stream-reveal";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
@@ -760,6 +761,7 @@ function SessionDetailPage() {
         onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)}
         scroll={transcriptScroll}
       />
+      <QuestionPanel questions={run.questions} onReply={run.replyQuestion} />
       <SessionComposer
         composerRef={composerRef}
         messageText={messageText}

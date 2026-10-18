@@ -753,7 +753,7 @@ func (s *Server) handleAbortSessionRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch run.Status {
-	case store.SessionRunStatusQueued, store.SessionRunStatusAwaitingCompletion:
+	case store.SessionRunStatusQueued, store.SessionRunStatusAwaitingCompletion, store.SessionRunStatusAwaitingInput:
 		transition, err := s.store.SettleSessionRun(r.Context(), store.SessionRunSettlement{ID: run.ID, ExpectedStatus: run.Status, Status: store.SessionRunStatusAborted, ErrorType: "cancelled", ErrorMessage: "run cancelled", EventData: map[string]any{"error_type": "cancelled", "error_message": "run cancelled"}})
 		if errors.Is(err, store.ErrSessionRunTransitionConflict) {
 			s.writeError(w, http.StatusConflict, err.Error())
@@ -1137,13 +1137,36 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 			return nil, err
 		}
 		opts = append(opts, session.WithCompletionEventSink(s.events.publish))
-		if admitted.RecoveryAttempts > 0 || len(admitted.Completions) > 0 {
+		opts = append(opts, session.WithQuestionEventSink(s.events.publish))
+		questions, err := st.ListQuestions(ctx, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		hasQuestions := false
+		for _, q := range questions {
+			if q.RunID == runID {
+				hasQuestions = true
+				break
+			}
+		}
+		if admitted.RecoveryAttempts > 0 || len(admitted.Completions) > 0 || hasQuestions {
 			opts = append(opts, session.WithRunRecovery())
 		}
 	}
 	tools, err := s.resolveTools(executionScope, stored.Tools)
 	if err != nil {
 		return nil, err
+	}
+	for i := 0; i < len(tools); i++ {
+		if tools[i].Name() != "question" {
+			continue
+		}
+		if st == nil || runID == "" {
+			tools = append(tools[:i], tools[i+1:]...)
+			i--
+		} else {
+			tools[i] = session.QuestionTool(st, s.events.publish)
+		}
 	}
 	if len(skills) > 0 {
 		tools = append(tools, skill.Tool(skills))

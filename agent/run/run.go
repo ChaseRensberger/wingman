@@ -14,6 +14,7 @@ import (
 
 	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/tool"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -33,7 +34,7 @@ import (
 func Run(ctx context.Context, cfg Config) (result *Result, err error) {
 	if cfg.Hooks.AfterRun != nil {
 		defer func() {
-			if errors.Is(err, ErrCompletionPending) {
+			if errors.Is(err, ErrCompletionPending) || errors.Is(err, question.ErrPending) {
 				return
 			}
 			if result == nil {
@@ -172,6 +173,10 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 				turn, err = r.runAssistant(ctx, turn, turn.Assistant)
 			}
 			if err != nil {
+				if errors.Is(err, question.ErrPending) {
+					r.turns = append(r.turns, turn)
+					return r.finalize(step, StopReasonAwaitingInput), err
+				}
 				return r.finalize(step, StopReasonError), err
 			}
 			r.turns = append(r.turns, turn)
@@ -212,6 +217,9 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		if err != nil {
 			if !turn.StartedAt.IsZero() {
 				r.turns = append(r.turns, turn)
+			}
+			if errors.Is(err, question.ErrPending) {
+				return r.finalize(step, StopReasonAwaitingInput), err
 			}
 			if ctx.Err() == nil && contextOverflowFailure(err) && turn.Trace.Retry != nil &&
 				turn.Trace.Retry.Decision == "scheduled" && turn.Trace.Retry.Reason == "context_overflow" {
@@ -792,7 +800,7 @@ func (r *runner) runAssistant(ctx context.Context, turn Turn, assistantMsg model
 		// semantics.
 		var firstErr error
 		for e := range errCh {
-			if firstErr == nil || (errors.Is(e, context.Canceled) && !errors.Is(firstErr, context.Canceled)) {
+			if firstErr == nil || errors.Is(firstErr, question.ErrPending) || (errors.Is(e, context.Canceled) && !errors.Is(firstErr, context.Canceled)) {
 				firstErr = e
 			}
 		}
@@ -1131,6 +1139,9 @@ func waitRetry(ctx context.Context, delay time.Duration) error {
 }
 
 func (r *runner) finalizeToolTurn(ctx context.Context, turn *Turn, assistantMsg *models.Message, results []ToolResult, state models.MessageState, runErr error) error {
+	if errors.Is(runErr, question.ErrPending) {
+		state = models.MessageStateInProgress
+	}
 	turn.Results = completedToolResults(results)
 	assistantMsg.Content = toolPartsFromResults(assistantMsg.Content, turn.Results)
 	assistantMsg.State = state
@@ -1138,11 +1149,14 @@ func (r *runner) finalizeToolTurn(ctx context.Context, turn *Turn, assistantMsg 
 	if err := r.checkpoint(context.WithoutCancel(ctx), turn.Step, assistantMsg); err != nil {
 		r.messages[len(r.messages)-1] = *assistantMsg
 		turn.Assistant = *assistantMsg
+		if errors.Is(runErr, question.ErrPending) {
+			return err
+		}
 		return errors.Join(runErr, err)
 	}
 	turn.Assistant = *assistantMsg
 	r.messages[len(r.messages)-1] = *assistantMsg
-	if state == models.MessageStateCompleted {
+	if state == models.MessageStateCompleted || errors.Is(runErr, question.ErrPending) {
 		r.emit(MessageEvent{Step: turn.Step, Message: *assistantMsg})
 	}
 	return runErr
@@ -1411,6 +1425,15 @@ func (r *runner) executeAuthorized(ctx context.Context, call ToolCall) (ToolResu
 	}
 	toolResult, execErr := call.Tool.Execute(ctx, inv)
 	duration := time.Since(start)
+	if errors.Is(execErr, question.ErrPending) {
+		if r.cfg.ToolUseLifecycle != nil {
+			err := r.cfg.ToolUseLifecycle.Finish(context.WithoutCancel(ctx), ToolUseFinishInfo{Step: call.Step, Ordinal: call.Ordinal, CallID: call.ID, ToolUseID: call.ToolUseID, Name: call.Name, Args: call.Args, MessageID: call.MessageID, PartID: call.PartID, ModelCallID: call.ModelCallID, ProposedAt: call.ProposedAt, AuthorizedAt: call.AuthorizedAt, StartedAt: call.StartedAt, Status: ToolUseStatusWaiting})
+			if err != nil {
+				return ToolResult{}, err
+			}
+		}
+		return ToolResult{}, question.ErrPending
+	}
 
 	res := ToolResult{
 		CallID: call.ID, ToolUseID: call.ToolUseID,

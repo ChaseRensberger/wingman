@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"github.com/chaserensberger/wingman/question"
 )
 
 var ErrSessionNotFound = errors.New("session not found")
@@ -80,6 +81,11 @@ type Store interface {
 	ListSessionRunsForRecovery(ctx context.Context) ([]SessionRun, error)
 	ListQueuedSessionRunSessions(ctx context.Context) ([]string, error)
 	CountQueuedSessionRuns(ctx context.Context) (int, error)
+	CreateQuestion(context.Context, question.Question) (QuestionTransition, error)
+	GetQuestion(ctx context.Context, sessionID, id string) (question.Question, error)
+	ListQuestions(ctx context.Context, sessionID string) ([]question.Question, error)
+	ResolveQuestion(ctx context.Context, sessionID, id string, reply question.Reply) (QuestionTransition, error)
+	SuspendSessionRunForQuestions(ctx context.Context, sessionID, runID string) (SessionRunTransition, error)
 	CreatePermissionRequest(ctx context.Context, request PermissionRequest) (PermissionRequestTransition, error)
 	GetPermissionRequest(ctx context.Context, sessionID, requestID string) (*PermissionRequest, error)
 	ListPermissionRequests(ctx context.Context, sessionID string) ([]PermissionRequest, error)

@@ -2,12 +2,12 @@ import { ArrowClockwiseIcon, CheckIcon, CopyIcon, WarningCircleIcon } from "@pho
 
 import WingmanIcon from "@/assets/icon-128.png";
 import { ChatMessage } from "@/components/chat-message";
+import { ExplorationGroup } from "@/components/exploration-group";
 import { RawMessages } from "@/components/raw-messages";
-import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
 import { shouldShowThinking } from "@/lib/session-detail";
-import { sameToolActivity } from "@/lib/tool-activity-state";
+import { projectTranscript } from "@/lib/transcript";
 import type {
   Message,
   ModelCall,
@@ -154,15 +154,14 @@ export function SessionTranscript({
   onRetry,
   scroll,
 }: Props) {
-  const renderedToolCalls = messages.flatMap(
-    (message) =>
-      message.content.filter(
-        (part) => part.type === "tool_call" || part.type === "tool",
-      ) as ToolCallPart[],
-  );
-  const pendingToolActivities = [...toolActivitiesById.values()].filter(
-    (activity) => !renderedToolCalls.some((call) => sameToolActivity(call, activity)),
-  );
+  const rows = projectTranscript({
+    messages,
+    toolCallsById,
+    toolResultsById,
+    toolActivitiesById,
+    streamingReasoning,
+    streamingText,
+  });
   const hasActiveTool = [...toolActivitiesById.values()].some(
     (activity) => activity.status === "pending" || activity.status === "running",
   );
@@ -208,7 +207,28 @@ export function SessionTranscript({
             </div>
           ) : (
             <div>
-              {messages.map((message, index) => {
+              {rows.map((row, index) => {
+                if (row.type === "exploration") {
+                  return (
+                    <ExplorationGroup
+                      key={row.key}
+                      tools={row.tools}
+                      permissionRequests={permissionRequests}
+                    />
+                  );
+                }
+                if (row.type === "tool") {
+                  return (
+                    <div key={row.key} className="px-4">
+                      <ToolActivityItem
+                        call={row.tool.call}
+                        result={row.tool.result}
+                        activity={row.tool.activity}
+                      />
+                    </div>
+                  );
+                }
+                const message = row.message;
                 const call = modelCallsByMessageId.get(message.id ?? "");
                 const hasTool =
                   message.role === "assistant" &&
@@ -216,20 +236,27 @@ export function SessionTranscript({
                 const hasText =
                   message.role === "assistant" &&
                   message.content.some((part) => part.type === "text");
+                const previous = rows[index - 1];
+                const next = rows[index + 1];
                 const previousHasTool =
-                  index > 0 &&
-                  messages[index - 1].role === "assistant" &&
-                  messages[index - 1].content.some(
-                    (part) => part.type === "tool" || part.type === "tool_call",
-                  );
+                  previous?.type === "exploration" ||
+                  previous?.type === "tool" ||
+                  (previous?.type === "message" &&
+                    previous.message.role === "assistant" &&
+                    previous.message.content.some(
+                      (part) => part.type === "tool" || part.type === "tool_call",
+                    ));
                 const nextHasText =
-                  index < messages.length - 1 &&
-                  messages[index + 1].role === "assistant" &&
-                  messages[index + 1].content.some((part) => part.type === "text");
+                  next?.type === "message" &&
+                  next.message.role === "assistant" &&
+                  next.message.content.some((part) => part.type === "text");
                 return (
                   <ChatMessage
-                    key={message.id ?? index}
+                    key={row.key}
                     message={message}
+                    sourceMessage={row.sourceMessage}
+                    showMeta={row.showMeta}
+                    isStreaming={row.isStreaming}
                     toolCallsById={toolCallsById}
                     toolResultsById={toolResultsById}
                     toolActivitiesById={toolActivitiesById}
@@ -240,11 +267,6 @@ export function SessionTranscript({
                   />
                 );
               })}
-              {streamingReasoning && (
-                <div className="px-4">
-                  <ReasoningPart reasoning={streamingReasoning} isStreaming />
-                </div>
-              )}
               {permissionRequests.map((request) => (
                 <PermissionRequestCard
                   key={request.id}
@@ -253,29 +275,6 @@ export function SessionTranscript({
                   onReply={onReplyPermission}
                 />
               ))}
-              {pendingToolActivities.map((activity) => (
-                <div
-                  key={activity.tool_use_id ?? `${activity.run_id ?? "legacy"}:${activity.call_id}`}
-                  className="px-4"
-                >
-                  <ToolActivityItem
-                    call={{
-                      type: "tool_call",
-                      tool_use_id: activity.tool_use_id,
-                      call_id: activity.call_id,
-                      name: activity.tool,
-                      input: activity.input ?? {},
-                    }}
-                    activity={activity}
-                  />
-                </div>
-              ))}
-              {streamingText && (
-                <ChatMessage
-                  message={{ role: "assistant", content: [{ type: "text", text: streamingText }] }}
-                  isStreaming
-                />
-              )}
               {showThinking && <ThinkingIndicator />}
               {failedRun && (
                 <div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6">

@@ -123,6 +123,39 @@ wingman api streamSessionEvents \
 The connection stays open after a run ends. Press Ctrl+C to stop reading without canceling work.
 See [Streaming Events](/build-clients/streaming-events) for event formats and reconnect steps.
 
+## Questions
+
+A question is a request for information or a decision.
+A session can ask its owning client through the `question` tool.
+Applications can also create questions through `POST /sessions/{id}/questions` without a tool call.
+These application-created questions do not suspend a run.
+
+The tool accepts one or more prompts with suggested choices.
+Each prompt accepts custom text. A prompt with `multiple: true` accepts more than one answer.
+The Console displays pending questions above the message composer.
+
+While a tool question waits, the run enters `awaiting_input` and releases its execution capacity.
+Later messages in that session remain queued. Other sessions can continue.
+The client can disconnect, and the server can restart, without losing the question or its answer.
+
+Use these endpoints to manage questions:
+
+| Method | Path                                          | Purpose                         |
+| ------ | --------------------------------------------- | ------------------------------- |
+| `GET`  | `/sessions/{id}/questions`                    | List saved questions.           |
+| `POST` | `/sessions/{id}/questions`                    | Create an application question. |
+| `GET`  | `/sessions/{id}/questions/{questionID}`       | Read one question.              |
+| `POST` | `/sessions/{id}/questions/{questionID}/reply` | Answer or dismiss a question.   |
+
+A reply with `status: "answered"` supplies `answers`, an array of string arrays in prompt order.
+A reply with `status: "dismissed"` supplies no answers. The model receives the dismissal and can continue.
+Canceling the run cancels its pending questions. A late answer cannot restart a canceled run.
+An identical reply is safe to retry. A conflicting reply returns `409 Conflict`.
+
+Question events use `session.question.pending`, `session.question.answered`, `session.question.dismissed`, and `session.question.cancelled`.
+Each event contains the full question record. The `session.run.input` event reports the wait or resumption status.
+See the [TypeScript example](/build-clients/typescript-sdk#answer-questions) for client calls.
+
 ## Run Status And Recovery
 
 After a reload or disconnect, read the saved run status:
