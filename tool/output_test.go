@@ -203,8 +203,7 @@ func TestReadBoundsHugeLinesAndPages(t *testing.T) {
 	}
 }
 
-func TestDirectoryPagingAndStreamingGlob(t *testing.T) {
-	// The streaming glob helper expects the canonical root supplied by GlobTool.
+func TestDirectoryPaging(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -223,21 +222,6 @@ func TestDirectoryPagingAndStreamingGlob(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "nested", "file.txt"), nil, 0600); err != nil {
 		t.Fatal(err)
-	}
-	for _, pattern := range []string{"*.txt", "??0.txt", "[12]*", "missing/*", `\150.txt`, "*/*.txt", "nested/*"} {
-		full := filepath.Join(dir, pattern)
-		want, err := filepath.Glob(full)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var got []string
-		if err := globFiles(t.Context(), full, func(path string) error { got = append(got, path); return nil }); err != nil {
-			t.Fatal(err)
-		}
-		sort.Strings(got)
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("pattern=%q got=%v want=%v", pattern, got, want)
-		}
 	}
 }
 
@@ -311,7 +295,7 @@ func TestBashAndGrepRetainFullOutput(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(strings.Repeat("match\n", 20000)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := NewGrepTool().Execute(t.Context(), Invocation{WorkDir: dir, Input: map[string]any{"pattern": "match"}})
+	result, err := NewGrepTool().Execute(t.Context(), Invocation{WorkDir: dir, Input: map[string]any{"pattern": "match", "limit": 20000}})
 	if err != nil || len(result.Text) > MaxOutputBytes+512 || result.Metadata["matches"] != 20000 {
 		t.Fatalf("size=%d metadata=%v err=%v", len(result.Text), result.Metadata, err)
 	}
@@ -331,7 +315,7 @@ func TestGlobStreamsLargeResultToSavedOutput(t *testing.T) {
 		}
 	}
 	for _, pattern := range []string{"*.txt", "**/*.txt"} {
-		result, err := NewGlobTool().Execute(t.Context(), Invocation{WorkDir: dir, Input: map[string]any{"pattern": pattern}})
+		result, err := NewGlobTool().Execute(t.Context(), Invocation{WorkDir: dir, Input: map[string]any{"pattern": pattern, "limit": 10000}})
 		if err != nil || len(result.Text) > MaxOutputBytes || result.Metadata["count"] != 300 {
 			t.Fatalf("size=%d metadata=%v err=%v", len(result.Text), result.Metadata, err)
 		}

@@ -155,6 +155,34 @@ func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, apiModelCalls(calls))
 }
 
+func (s *Server) handleGetSessionModelCallInput(w http.ResponseWriter, r *http.Request) {
+	if s.Ephemeral() {
+		s.ephemeralNotImplemented(w)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if _, ok := s.authorizeSessionForRequest(w, r, id); !ok {
+		return
+	}
+	input, err := s.store.GetModelCallInput(r.Context(), id, chi.URLParam(r, "callID"))
+	if errors.Is(err, store.ErrModelCallNotFound) {
+		s.writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response := api.ModelCallInputResponse{}
+	if input != nil {
+		response.Input = &api.RecordedModelInput{System: input.System, Messages: input.Messages, Tools: input.Tools, ToolChoice: input.ToolChoice, OutputSchema: (*api.RecordedOutputSchema)(input.OutputSchema)}
+		for _, source := range input.Instructions {
+			response.Input.Instructions = append(response.Input.Instructions, api.RecordedInstructionSource(source))
+		}
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (s *Server) handleListSessionToolUses(w http.ResponseWriter, r *http.Request) {
 	if s.Ephemeral() {
 		s.ephemeralNotImplemented(w)
@@ -484,7 +512,6 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 		instructions += "\n\n" + catalog
 	}
 	runtimeAgent := *effective
-	runtimeAgent.Instructions = instructions
 	validation, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
@@ -616,7 +643,6 @@ func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, ses
 		effectiveInstructions += "\n\n" + skillCatalog
 	}
 	runtimeAgent := *effectiveAgent
-	runtimeAgent.Instructions = effectiveInstructions
 	validationSession, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
@@ -841,20 +867,16 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		Title:   "ephemeral",
 		WorkDir: workDir,
 	}
-	effectiveInstructions, _, err := s.resolveInstructions(storedAgent, workDir)
+	_, _, err = s.resolveInstructions(storedAgent, workDir)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	skills, skillCatalog, err := s.resolveSkills(storedAgent, workDir)
+	skills, _, err := s.resolveSkills(storedAgent, workDir)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if skillCatalog != "" {
-		effectiveInstructions += "\n\n" + skillCatalog
-	}
-	storedAgent.Instructions = effectiveInstructions
 
 	runSession, err := s.buildEphemeralSessionWithSkills(r.Context(), storedAgent, sess, skills)
 	if err != nil {
@@ -1118,6 +1140,11 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		session.WithLogger(logger),
 		session.WithAgentID(stored.ID),
 	}
+	resolveInstructions, err := s.instructionResolver(ctx, st, sess, stored, skills)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, session.WithInstructionResolver(resolveInstructions))
 	plugins := make([]plugin.Plugin, 0, len(s.pluginFactories))
 	for _, factory := range s.pluginFactories {
 		if factory != nil {

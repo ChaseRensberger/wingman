@@ -98,8 +98,9 @@ type Session struct {
 	// outputSchema, if non-nil, constrains the assistant's reply on every
 	// loop turn to a JSON document conforming to the schema. See
 	// WithOutputSchema for details.
-	outputSchema      *models.OutputSchema
-	appendCurrentDate bool
+	outputSchema        *models.OutputSchema
+	appendCurrentDate   bool
+	resolveInstructions run.InstructionResolver
 
 	// store, if non-nil, provides message-level persistence. Hydration
 	// happens on the first Run when history is empty; upserts happen
@@ -192,6 +193,11 @@ func New(opts ...Option) *Session {
 // WithWorkDir sets the working directory tools will see.
 func WithWorkDir(dir string) Option {
 	return func(s *Session) { s.workDir = dir }
+}
+
+// WithInstructionResolver installs built-in or application-provided instruction discovery.
+func WithInstructionResolver(resolve run.InstructionResolver) Option {
+	return func(s *Session) { s.resolveInstructions = resolve }
 }
 
 // WithClient sets the model client used for inference.
@@ -981,6 +987,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		ModelInfo:                  modelInfo,
 		Capabilities:               models.Capabilities{Thinking: modelInfo.Capabilities.Reasoning},
 		System:                     system,
+		ResolveInstructions:        s.resolveInstructions,
 		Tools:                      tools,
 		WorkDir:                    workDir,
 		Permissions:                permissions,

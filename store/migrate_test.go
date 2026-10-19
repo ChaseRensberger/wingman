@@ -17,8 +17,8 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 1 || migrations[0].version != 1 || migrations[0].name != "init" {
-		t.Fatalf("migrations = %#v, want 0001_init", migrations)
+	if len(migrations) != 2 || migrations[0].name != "init" || migrations[1].name != "model_input" {
+		t.Fatalf("unexpected migrations: %d", len(migrations))
 	}
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 1 AND name = 'init' AND checksum <> ''`).Scan(&count); err != nil {
@@ -33,6 +33,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		"messages":            {"run_id"},
 		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type", "effective_instructions", "instruction_sources_json", "skills_json", "kind", "action", "input_json", "recovery_attempts"},
 		"model_calls":         {"run_id", "provider_request_id"},
+		"model_input_blobs":   {"session_id", "hash", "content"},
 		"tool_uses":           {"run_id", "model_call_id", "assistant_message_id", "part_id", "ordinal", "call_id", "structured_json", "proposed_at", "replay_safe", "output_parts_json"},
 		"permission_requests": {"session_id", "run_id", "tool_use_id", "resources_json", "resolved_at"},
 		"permission_grants":   {"session_id", "action", "resource"},

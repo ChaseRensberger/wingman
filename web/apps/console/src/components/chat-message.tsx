@@ -28,10 +28,12 @@ function AssistantMeta({
   message,
   call,
   agentName,
+  onInspectCall,
 }: {
   message: Message;
   call?: ModelCall;
   agentName?: string;
+  onInspectCall?: (id: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const text = message.content
@@ -58,7 +60,7 @@ function AssistantMeta({
 
   if (!text && !call) return null;
   return (
-    <div className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+    <div className="flex min-h-7 flex-wrap items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
       {text && (
         <Button
           type="button"
@@ -72,6 +74,11 @@ function AssistantMeta({
         </Button>
       )}
       {details.length > 0 && <span>{details.join(" · ")}</span>}
+      {call && onInspectCall && (
+        <Button type="button" variant="ghost" size="sm" onClick={() => onInspectCall(call.id)}>
+          Inspect model input
+        </Button>
+      )}
     </div>
   );
 }
@@ -86,6 +93,7 @@ export function ChatMessage({
   agentName,
   showMeta = true,
   sourceMessage = message,
+  onInspectCall,
 }: {
   message: Message;
   isStreaming?: boolean;
@@ -96,6 +104,7 @@ export function ChatMessage({
   agentName?: string;
   showMeta?: boolean;
   sourceMessage?: Message;
+  onInspectCall?: (id: string) => void;
 }) {
   if (message.role === "tool") return null;
   if (message.content.length === 0) return null;
@@ -135,6 +144,11 @@ export function ChatMessage({
               {separator}
             </summary>
             <div className="pt-2 text-sm leading-6 text-foreground">
+              <p className="mb-2 text-xs text-muted-foreground">
+                {message.state === "completed" || !message.state
+                  ? "Earlier context was summarized. The stored conversation remains available; inspect a later model call to see the summary and recent context used for that call."
+                  : "This is a session operation. Inspect a model call to see the context it actually used."}
+              </p>
               <Suspense
                 fallback={<div className="whitespace-pre-wrap text-sm">{compaction.summary}</div>}
               >
@@ -248,7 +262,12 @@ export function ChatMessage({
           );
         })}
         {isAssistant && showMeta && (
-          <AssistantMeta message={sourceMessage} call={modelCall} agentName={agentName} />
+          <AssistantMeta
+            message={sourceMessage}
+            call={modelCall}
+            agentName={agentName}
+            onInspectCall={onInspectCall}
+          />
         )}
       </div>
     </div>

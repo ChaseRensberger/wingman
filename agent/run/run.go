@@ -288,6 +288,14 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	// Build the per-turn request. TransformSystem and TransformContext
 	// produce per-turn snapshots; r.messages is unchanged.
 	system := r.cfg.System
+	var instructionSources []models.InstructionSnapshot
+	if r.cfg.ResolveInstructions != nil {
+		var err error
+		system, instructionSources, err = r.cfg.ResolveInstructions(ctx, system, r.messages)
+		if err != nil {
+			return Turn{}, fmt.Errorf("resolve instructions: %w", err)
+		}
+	}
 	if r.cfg.Hooks.TransformSystem != nil {
 		s, err := r.cfg.Hooks.TransformSystem(ctx, system)
 		if err != nil {
@@ -327,6 +335,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 	}
 
 	req := models.Request{
+		Instructions: instructionSources,
 		Model:        r.cfg.Model,
 		System:       system,
 		Messages:     r.messages,
@@ -400,6 +409,18 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, err)
 	}
 	trace := models.NewCallTrace(req, models.LoweredOptions{})
+	for _, source := range instructionSources {
+		source.Content = ""
+		trace.Instructions = append(trace.Instructions, source)
+	}
+	var inputBlobs map[string]json.RawMessage
+	if r.cfg.ModelCallLifecycle != nil {
+		var err error
+		trace.InputHash, inputBlobs, err = models.SnapshotCallInput(req)
+		if err != nil {
+			return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, fmt.Errorf("snapshot model input: %w", err))
+		}
+	}
 	if lop, ok := r.cfg.Client.(interface {
 		LoweredOptions(context.Context, models.Request) models.LoweredOptions
 	}); ok {
@@ -418,7 +439,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		if r.cfg.ModelCallLifecycle != nil {
 			callID, err := r.cfg.ModelCallLifecycle.Start(ctx, ModelCallStartInfo{
 				Step: turn.Step, Attempt: turn.Attempt, MessageID: assistantMsg.ID,
-				StartedAt: turn.StartedAt, Trace: turn.Trace,
+				StartedAt: turn.StartedAt, Trace: turn.Trace, InputBlobs: inputBlobs,
 			})
 			if err != nil {
 				return Turn{}, r.retainFailedAssistant(ctx, step, &assistantMsg, fmt.Errorf("model call start: %w", err))

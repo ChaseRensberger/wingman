@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -100,7 +101,16 @@ func (t *ReadTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if info.IsDir() {
 		return readDirectory(ctx, path, offset, limit)
 	}
-	return readFile(ctx, path, offset, limit)
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return Result{}, err
+	}
+	result, err := readFile(ctx, resolved, offset, limit)
+	if err == nil && !strings.HasPrefix(rawPath, outputPrefix) {
+		result.Metadata["requested_path"] = rawPath
+		result.Metadata["resolved_path"] = resolved
+	}
+	return result, err
 }
 
 func readDirectory(ctx context.Context, path string, offset, limit int) (Result, error) {

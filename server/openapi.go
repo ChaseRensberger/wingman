@@ -50,6 +50,12 @@ func (s *Server) setupOpenAPI() {
 	registry.Schema(reflect.TypeFor[api.RunStreamEvent](), true, "RunStreamEvent")
 	registry.Map()["RunStreamEvent"] = runStreamEventSchema(registry)
 	customizeMessageSchemas(registry)
+	registry.Schema(reflect.TypeFor[api.ModelCallInputResponse](), true, "ModelCallInputResponse")
+	response := registry.Map()["ModelCallInputResponse"]
+	response.Properties["input"] = &huma.Schema{AnyOf: []*huma.Schema{
+		response.Properties["input"],
+		{Type: "null"},
+	}}
 }
 
 func (s *Server) registerJSON(method, path, operationID, summary string, request any, status int, response any, handler http.HandlerFunc) {

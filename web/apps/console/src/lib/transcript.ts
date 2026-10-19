@@ -1,6 +1,8 @@
 import { lookupToolActivity, sameToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
+import { modelCallChanges } from "@/lib/model-input";
 import type {
   Message,
+  ModelCall,
   Part,
   ToolActivity,
   ToolCallPart,
@@ -16,6 +18,7 @@ export type TranscriptTool = {
 };
 
 export type TranscriptRow =
+  | { type: "model-call"; key: string; call: ModelCall; notices: string[] }
   | {
       type: "message";
       key: string;
@@ -98,6 +101,7 @@ export function projectTranscript({
   isReasoningStreaming = false,
   streamingText = "",
   isStreaming = false,
+  modelCalls = [],
 }: {
   messages: Message[];
   toolCallsById: Map<string, ToolCallPart>;
@@ -107,8 +111,19 @@ export function projectTranscript({
   isReasoningStreaming?: boolean;
   streamingText?: string;
   isStreaming?: boolean;
+  modelCalls?: ModelCall[];
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+  const noticesByMessage = new Map<string, Array<{ call: ModelCall; notices: string[] }>>();
+  modelCalls.forEach((call, index) => {
+    if (!call.assistant_message_id) return;
+    const notices = modelCallChanges(call, modelCalls[index - 1]);
+    if (call.status === "aborted") notices.push("Model call interrupted");
+    if (notices.length === 0) return;
+    const entries = noticesByMessage.get(call.assistant_message_id) ?? [];
+    entries.push({ call, notices });
+    noticesByMessage.set(call.assistant_message_id, entries);
+  });
   const renderedCalls: ToolCallPart[] = [];
   const appendTool = (tool: TranscriptTool) => {
     if (!explorationTools.has(tool.call.name)) {
@@ -123,6 +138,9 @@ export function projectTranscript({
   messages.forEach((message, messageIndex) => {
     if (message.role === "tool") return;
     const messageKey = message.id ?? messageIndex;
+    for (const { call, notices } of noticesByMessage.get(message.id ?? "") ?? []) {
+      rows.push({ type: "model-call", key: `model-call:${call.id}`, call, notices });
+    }
     if (
       message.role !== "assistant" ||
       message.content.some((part) => part.type === "compaction_marker")

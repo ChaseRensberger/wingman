@@ -303,7 +303,9 @@ export interface ModelCall {
 }
 
 export interface CallTrace {
+  instructions?: RecordedInstructionSource[];
   version: string;
+  input_hash?: string;
   model: { provider?: string; id?: string; variant?: string; api?: string };
   api?: string;
   provider?: string;
@@ -317,6 +319,26 @@ export interface CallTrace {
   failure?: CallDiagnostic;
   retry?: { decision: string; reason: string; delay_ms?: number };
   timing?: { first_response_ms?: number; first_activity_ms?: number; first_answer_ms?: number };
+}
+
+export interface ModelCallInput {
+  instructions?: RecordedInstructionSource[];
+  system: string;
+  messages: Message[];
+  tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+  tool_choice?: string;
+  output_schema?: { name?: string; schema?: Record<string, unknown>; strict?: boolean };
+}
+
+export interface RecordedInstructionSource {
+  kind: string;
+  path: string;
+  sha256: string;
+  content?: string;
+  requested_path?: string;
+  resolved_path?: string;
+  tool_use_id?: string;
+  call_id?: string;
 }
 
 export interface CallDiagnostic {

@@ -1,16 +1,17 @@
 package server
 
 import (
-	"crypto/sha256"
-	"errors"
+	"context"
+	"encoding/json"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/chaserensberger/wingman/agent/run"
+	"github.com/chaserensberger/wingman/instruction"
+	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
@@ -19,46 +20,19 @@ import (
 const agentsFileName = "AGENTS.md"
 
 func (s *Server) resolveInstructions(agent *store.Agent, workDir string) (string, []store.InstructionSource, error) {
-	paths := []struct {
-		kind string
-		path string
-	}{
-		{kind: "global", path: s.globalInstructionsPath},
+	resolved, err := instruction.Discover(context.Background(), s.globalInstructionsPath, workDir, nil)
+	if err != nil {
+		return "", nil, err
 	}
-	if workDir != "" {
-		paths = append(paths, struct {
-			kind string
-			path string
-		}{kind: "project", path: filepath.Join(workDir, agentsFileName)})
-	}
-
-	var sections []string
 	var sources []store.InstructionSource
-	for _, candidate := range paths {
-		if candidate.path == "" {
-			continue
-		}
-		content, canonicalPath, found, err := readInstructionFile(candidate.path)
-		if err != nil {
-			return "", nil, fmt.Errorf("read %s instructions %q: %w", candidate.kind, candidate.path, err)
-		}
-		if !found {
-			continue
-		}
-		sum := sha256.Sum256(content)
+	for _, source := range resolved {
 		sources = append(sources, store.InstructionSource{
-			Kind: candidate.kind, Path: canonicalPath, SHA256: fmt.Sprintf("%x", sum),
+			Kind: source.Kind, Path: source.Path, SHA256: source.SHA256,
 			ResolvedAt: time.Now().UTC(), Order: len(sources) + 1,
 		})
-		sections = append(sections, fmt.Sprintf("## Wingman instructions: %s\nSource: %s\n\n%s", candidate.kind, canonicalPath, content))
 	}
-	parts := []string{}
-	if agent.Instructions != "" {
-		parts = append(parts, agent.Instructions)
-	}
-	parts = append(parts, "Current date: "+time.Now().Format(time.DateOnly)+".")
-	parts = append(parts, sections...)
-	return strings.Join(parts, "\n\n"), sources, nil
+	base := agent.Instructions + "\n\nCurrent date: " + time.Now().Format(time.DateOnly) + "."
+	return instruction.Render(base, resolved), sources, nil
 }
 
 func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skill, string, error) {
@@ -99,21 +73,64 @@ func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skil
 	return skills, "## Available skills\nUse the skill tool with an ID to load its instructions.\n" + strings.Join(lines, "\n"), nil
 }
 
-func readInstructionFile(path string) ([]byte, string, bool, error) {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return nil, "", false, err
+func (s *Server) instructionResolver(ctx context.Context, data store.Store, sess *store.Session, agent *store.Agent, skills []skill.Skill) (run.InstructionResolver, error) {
+	var reads []instruction.Read
+	seen := make(map[string]bool)
+	remember := func(metadata map[string]any, toolUseID, callID string) {
+		resolved, _ := metadata["resolved_path"].(string)
+		if resolved == "" || seen[resolved] {
+			return
+		}
+		requested, _ := metadata["requested_path"].(string)
+		reads = append(reads, instruction.Read{RequestedPath: requested, ResolvedPath: resolved, ToolUseID: toolUseID, CallID: callID})
+		seen[resolved] = true
 	}
-	content, err := os.ReadFile(absolute)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, "", false, nil
+	if data != nil {
+		uses, err := data.ListToolUses(ctx, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, use := range uses {
+			if use.Name != "read" || use.Status != store.ToolUseStatusCompleted {
+				continue
+			}
+			var metadata map[string]any
+			if err := json.Unmarshal(use.MetadataJSON, &metadata); err != nil && len(use.MetadataJSON) > 0 {
+				return nil, err
+			}
+			remember(metadata, use.ID, use.CallID)
+		}
 	}
-	if err != nil {
-		return nil, "", false, err
+	var catalog []string
+	for _, entry := range skills {
+		if entry.Description != "" && permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect != permission.EffectDeny {
+			catalog = append(catalog, "- "+entry.ID+": "+entry.Description)
+		}
 	}
-	canonical, err := filepath.EvalSymlinks(absolute)
-	if err != nil {
-		return nil, "", false, err
-	}
-	return content, canonical, true, nil
+	return func(ctx context.Context, system string, history []models.Message) (string, []models.InstructionSnapshot, error) {
+		for _, message := range history {
+			for _, part := range message.Content {
+				switch value := part.(type) {
+				case models.ToolPart:
+					if value.Name == "read" && value.State == models.ToolStateCompleted {
+						remember(value.Metadata, value.ToolUseID, value.CallID)
+					}
+				case models.ToolResultPart:
+					if value.Name == "read" && !value.IsError {
+						remember(value.Metadata, value.ToolUseID, value.CallID)
+					}
+				}
+			}
+		}
+		sources, err := instruction.Discover(ctx, s.globalInstructionsPath, sess.WorkDir, reads)
+		if err != nil {
+			return "", nil, err
+		}
+		base := system + "\n\nCurrent date: " + time.Now().Format(time.DateOnly) + "."
+		result := instruction.Render(base, sources)
+		if len(catalog) > 0 {
+			result += "\n\n## Available skills\nUse the skill tool with an ID to load its instructions.\n" + strings.Join(catalog, "\n")
+		}
+		return result, sources, nil
+	}, nil
 }

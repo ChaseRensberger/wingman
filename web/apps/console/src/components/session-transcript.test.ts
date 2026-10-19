@@ -27,6 +27,8 @@ function Transcript({
     toolResultsById: new Map(),
     toolActivitiesById: new Map(),
     modelCallsByMessageId: new Map(),
+    modelCalls: [],
+    onInspectCall: () => {},
     agentNames: new Map(),
     failedRun: null,
     permissionRequests: request ? [request] : [],
@@ -44,6 +46,37 @@ test("transcript groups saved and live exploration without hiding approval cards
   const markup = renderToStaticMarkup(
     createElement(Transcript, {
       props: {
+        modelCalls: [
+          {
+            id: "mcl_after_read",
+            session_id: "session-1",
+            step: 2,
+            attempt: 1,
+            status: "completed",
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            context_tokens: 0,
+            trace: {
+              version: "1",
+              model: {},
+              capabilities: {},
+              runtime: { current_date: false },
+              system: { sha256: "system", bytes: 10 },
+              messages: { count: 2, by_role: {}, part_kinds: {} },
+              instructions: [
+                {
+                  kind: "directory",
+                  path: "/project/src/AGENTS.md",
+                  sha256: "guide",
+                  tool_use_id: "read-1",
+                  requested_path: "src/index.ts",
+                  resolved_path: "/project/src/index.ts",
+                },
+              ],
+            },
+          },
+        ],
         messages: [
           {
             id: "message-1",
@@ -91,6 +124,9 @@ test("transcript groups saved and live exploration without hiding approval cards
   expect(markup).toContain("Grep &quot;test&quot;");
   expect(markup).toContain("Permission requested");
   expect(markup).toContain("Allow once</button>");
+  expect(markup).toContain("Directory instructions discovered");
+  expect(markup).toContain("/project/src/AGENTS.md");
+  expect(markup).toContain("View instructions in first affected call");
 });
 
 test.each(["read", "bash", "apply_patch", "custom"])(

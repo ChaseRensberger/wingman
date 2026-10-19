@@ -57,6 +57,9 @@ func (t *EditTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if !ok {
 		return Result{}, fmt.Errorf("oldString is required")
 	}
+	if oldString == "" {
+		return Result{}, fmt.Errorf("oldString must not be empty; use write to replace the file")
+	}
 	newString, ok := inv.Input["newString"].(string)
 	if !ok {
 		return Result{}, fmt.Errorf("newString is required")
@@ -72,18 +75,23 @@ func (t *EditTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if err != nil {
 		return Result{}, err
 	}
-	select {
-	case <-ctx.Done():
-		return Result{}, ctx.Err()
-	default:
+	unlock, err := lockMutation(ctx, path)
+	if err != nil {
+		return Result{}, err
 	}
+	defer unlock()
 
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to read file: %w", err)
 	}
 	oldContent := string(content)
-	count := strings.Count(oldContent, oldString)
+	text := normalizedText(oldContent)
+	oldString, newString = normalizedText(oldString), normalizedText(newString)
+	if oldString == "" {
+		return Result{}, fmt.Errorf("oldString must contain text")
+	}
+	count := strings.Count(text, oldString)
 	if count == 0 {
 		return Result{}, fmt.Errorf("oldString not found in file")
 	}
@@ -95,7 +103,7 @@ func (t *EditTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 	if replaceAll {
 		replacements = -1
 	}
-	newContent := strings.Replace(oldContent, oldString, newString, replacements)
+	newContent := replaceNormalizedText(oldContent, oldString, newString, replacements)
 	if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
 		return Result{}, fmt.Errorf("failed to write file: %w", err)
 	}

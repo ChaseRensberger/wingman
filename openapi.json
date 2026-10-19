@@ -410,6 +410,18 @@
           "failure": {
             "$ref": "#/components/schemas/CallDiagnostic"
           },
+          "input_hash": {
+            "type": "string"
+          },
+          "instructions": {
+            "items": {
+              "$ref": "#/components/schemas/InstructionSnapshot"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "lowered": {
             "$ref": "#/components/schemas/LoweredOptions"
           },
@@ -1143,6 +1155,41 @@
         ],
         "type": "object"
       },
+      "InstructionSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "requested_path": {
+            "type": "string"
+          },
+          "resolved_path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "InstructionSource": {
         "additionalProperties": false,
         "properties": {
@@ -1571,6 +1618,25 @@
           "total_tokens",
           "context_tokens",
           "started_at"
+        ],
+        "type": "object"
+      },
+      "ModelCallInputResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordedModelInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "input"
         ],
         "type": "object"
       },
@@ -2538,6 +2604,107 @@
         "required": [
           "reasoning",
           "type"
+        ],
+        "type": "object"
+      },
+      "RecordedInstructionSource": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "requested_path": {
+            "type": "string"
+          },
+          "resolved_path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "RecordedModelInput": {
+        "additionalProperties": false,
+        "properties": {
+          "instructions": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedInstructionSource"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "output_schema": {
+            "$ref": "#/components/schemas/RecordedOutputSchema"
+          },
+          "system": {
+            "type": "string"
+          },
+          "tool_choice": {
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolDef"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "system",
+          "messages",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "RecordedOutputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "strict": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "schema"
         ],
         "type": "object"
       },
@@ -4350,6 +4517,27 @@
         },
         "required": [
           "tools"
+        ],
+        "type": "object"
+      },
+      "ToolDef": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "input_schema"
         ],
         "type": "object"
       },
@@ -7346,6 +7534,65 @@
           }
         ],
         "summary": "List session model calls"
+      }
+    },
+    "/sessions/{id}/model-calls/{callID}/input": {
+      "get": {
+        "operationId": "getSessionModelCallInput",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "callID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCallInputResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Get recorded model input"
       }
     },
     "/sessions/{id}/move": {

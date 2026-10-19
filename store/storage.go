@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"github.com/chaserensberger/wingman/models"
 	"github.com/chaserensberger/wingman/question"
 )
 
@@ -14,6 +15,7 @@ var ErrSessionRunAdmissionConflict = errors.New("session run admission conflict"
 var ErrSessionRunNotFound = errors.New("session run not found")
 var ErrSessionRunTransitionConflict = errors.New("session run transition conflict")
 var ErrModelCallAttemptConflict = errors.New("model call attempt conflict")
+var ErrModelCallNotFound = errors.New("model call not found")
 var ErrToolUseIdentityConflict = errors.New("tool use identity conflict")
 var ErrToolUseInvalidTransition = errors.New("tool use invalid transition")
 var ErrMessageRevisionStale = errors.New("message revision stale")
@@ -110,6 +112,8 @@ type Store interface {
 	ListModelCalls(ctx context.Context, sessionID string) ([]ModelCall, error)
 	// QueryModelCalls reads attempts for a run or an active message range.
 	QueryModelCalls(ctx context.Context, sessionID string, query ModelCallQuery) ([]ModelCall, error)
+	// GetModelCallInput returns frozen effective input, or nil for a call without a snapshot.
+	GetModelCallInput(ctx context.Context, sessionID, callID string) (*models.CallInput, error)
 	InterruptActiveModelCalls(ctx context.Context, runID, errorType, errorMessage string) error
 	SaveToolUse(ctx context.Context, use ToolUse) error
 	ListToolUses(ctx context.Context, sessionID string) ([]ToolUse, error)

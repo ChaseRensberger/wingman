@@ -368,6 +368,7 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/sessions", "listSessions", "List sessions", nil, http.StatusOK, []api.Session{}, s.handleListSessions)
 	s.registerJSON(http.MethodGet, "/sessions/{id}", "getSession", "Get a session", nil, http.StatusOK, api.SessionDetail{}, s.handleGetSession)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/model-calls", "listSessionModelCalls", "List session model calls", nil, http.StatusOK, []api.ModelCall{}, s.handleListSessionModelCalls)
+	s.registerJSON(http.MethodGet, "/sessions/{id}/model-calls/{callID}/input", "getSessionModelCallInput", "Get recorded model input", nil, http.StatusOK, api.ModelCallInputResponse{}, s.handleGetSessionModelCallInput)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/tool-uses", "listSessionToolUses", "List session tool uses", nil, http.StatusOK, []api.ToolUse{}, s.handleListSessionToolUses)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/permission-requests", "listPermissionRequests", "List session permission requests", nil, http.StatusOK, []api.PermissionRequest{}, s.handleListPermissionRequests)
 	s.registerJSON(http.MethodGet, "/sessions/{id}/questions", "listQuestions", "List session questions", nil, http.StatusOK, []question.Question{}, s.handleListQuestions)

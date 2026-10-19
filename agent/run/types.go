@@ -76,6 +76,8 @@ type Config struct {
 	// System is the system prompt sent to the model. Empty string is
 	// treated as "no system prompt".
 	System string
+	// ResolveInstructions refreshes guidance before system and context transforms.
+	ResolveInstructions InstructionResolver
 
 	// Tools is the tool registry the model may call. nil means no tools
 	// (the model gets an empty tool list and any tool calls are an
@@ -330,6 +332,8 @@ type ModelCallStartInfo struct {
 	MessageID string
 	StartedAt time.Time
 	Trace     models.CallTrace
+	// InputBlobs contains immutable content referenced by Trace.InputHash.
+	InputBlobs map[string]json.RawMessage
 }
 
 // ModelCallFinishInfo records the terminal state of a physical model request.
@@ -515,6 +519,9 @@ type TransformHistoryInfo struct {
 
 // TransformHistoryHook is the signature for Hooks.TransformHistory. See its docs.
 type TransformHistoryHook func(ctx context.Context, info TransformHistoryInfo) ([]models.Message, error)
+
+// InstructionResolver prepares a system prompt and its sources from durable history.
+type InstructionResolver func(ctx context.Context, system string, history []models.Message) (string, []models.InstructionSnapshot, error)
 
 // BeforeRunHook is the signature for Hooks.BeforeRun. It returns the
 // initial message history for the run. Composed across plugins by the

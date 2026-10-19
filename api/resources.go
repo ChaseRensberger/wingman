@@ -168,6 +168,27 @@ type ModelCall struct {
 	CompletedAt        time.Time       `json:"completed_at,omitempty"`
 }
 
+// ModelCallInputResponse contains the recorded effective input, or null if it was not recorded.
+type ModelCallInputResponse struct {
+	Input *RecordedModelInput `json:"input"`
+}
+
+// RecordedModelInput is immutable content prepared for one model-call attempt.
+type RecordedModelInput struct {
+	Instructions []RecordedInstructionSource `json:"instructions,omitempty"`
+	System       string                      `json:"system"`
+	Messages     []models.Message            `json:"messages"`
+	Tools        []models.ToolDef            `json:"tools"`
+	ToolChoice   models.ToolChoice           `json:"tool_choice,omitempty"`
+	OutputSchema *RecordedOutputSchema       `json:"output_schema,omitempty"`
+}
+
+// RecordedOutputSchema is the exact structured-output constraint offered to a model.
+type RecordedOutputSchema models.OutputSchema
+
+// RecordedInstructionSource describes guidance retained with a model call.
+type RecordedInstructionSource models.InstructionSnapshot
+
 // StatusResponse reports a completed command without a resource body.
 type StatusResponse struct {
 	Status string `json:"status"`

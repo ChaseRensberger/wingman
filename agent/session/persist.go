@@ -448,6 +448,7 @@ func (r *modelCallRecorder) Start(ctx context.Context, info run.ModelCallStartIn
 		Trace:       info.Trace,
 	})
 	call.Status = store.ModelCallStatusStarted
+	call.InputBlobs = info.InputBlobs
 	call.AssistantMessageID = info.MessageID
 	if err := r.store.UpsertModelCall(ctx, call); err != nil {
 		return "", err

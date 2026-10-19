@@ -44,6 +44,26 @@ It streams combined standard output and standard error. Wingman imposes no separ
 `webfetch` sends `GET` requests and accepts only `200 OK` responses up to 5 MiB.
 Its default timeout is 30 seconds, with a maximum of 120 seconds. Output defaults to Markdown. HTML conversion is basic.
 
+## Code search and file changes
+
+The `grep` and `glob` tools require ripgrep, a file-search program, on the computer that runs Wingman.
+Install ripgrep and make sure that `rg` is on the Wingman process's `PATH`. The Wingman container includes it.
+Wingman reports a tool error if `rg` is missing.
+
+Both tools use ripgrep's ignore-file rules. Explicit inclusion patterns can override those rules.
+Hidden files are excluded unless `hidden` is `true`. Both tools exclude the `.git` directory.
+Searches stop after 30 seconds. The default `limit` is 100 results, and a result-limit notice tells the model to narrow its search.
+
+`grep` accepts ripgrep regular expressions and skips binary files. Use `literal: true` for exact text or `caseSensitive: false` for case-insensitive matches.
+Its `include` field accepts patterns such as `src/**/*.{ts,tsx}`. The `glob` tool accepts the same pattern syntax in `pattern`.
+
+New Build agents include `apply_patch`, `edit`, and `write`. Existing agents keep their configured tool lists.
+Wingman serializes its file changes to the same resolved paths. External programs can still change those files at the same time.
+Text changes preserve an existing UTF-8 byte-order mark and a consistent CRLF line-ending style.
+
+`apply_patch` validates all file sections before it changes any files. Context within each patch section must match consecutive lines.
+A move cannot overwrite an existing destination. A write failure can still leave partial changes, which the tool reports.
+
 ## Web search configuration
 
 Set these variables in the server process environment, not the browser:

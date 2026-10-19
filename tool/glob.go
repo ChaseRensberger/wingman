@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -9,45 +10,25 @@ import (
 
 type GlobTool struct{}
 
-func NewGlobTool() *GlobTool {
-	return &GlobTool{}
-}
-
-func (t *GlobTool) Name() string {
-	return "glob"
-}
-
+func NewGlobTool() *GlobTool     { return &GlobTool{} }
+func (t *GlobTool) Name() string { return "glob" }
 func (t *GlobTool) Description() string {
-	return "Find files matching a glob pattern. Returns a list of matching file paths relative to the working directory."
+	return "Find files with ripgrep ignore and glob rules. Returns paths relative to the search directory. Requires rg."
 }
-
 func (t *GlobTool) Definition() Definition {
-	return Definition{
-		ReplaySafe:  true,
-		Name:        t.Name(),
-		Description: t.Description(),
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]Property{
-				"pattern": {
-					Type:        "string",
-					Description: "A relative glob pattern without .. components (e.g., '**/*.go', 'src/**/*.ts'). Use path to select another directory.",
-				},
-				"path": {
-					Type:        "string",
-					Description: "Base directory to search in (optional, defaults to working directory)",
-				},
-			},
-			Required: []string{"pattern"},
-		},
-	}
+	return Definition{ReplaySafe: true, Name: t.Name(), Description: t.Description(), InputSchema: InputSchema{
+		Type: "object", Properties: map[string]Property{
+			"pattern": {Type: "string", Description: "Relative glob without .. components, such as src/**/*.{ts,tsx}"},
+			"path":    {Type: "string", Description: "Directory to search; defaults to the working directory"},
+			"hidden":  {Type: "boolean", Description: "Include hidden files and directories (default: false)"},
+			"limit":   {Type: "integer", Description: "Maximum files to return (default: 100)"},
+		}, Required: []string{"pattern"},
+	}}
 }
-
 func (t *GlobTool) DirectoryScoped() {}
-
 func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) {
-	pattern, ok := inv.Input["pattern"].(string)
-	if !ok || pattern == "" {
+	pattern, _ := inv.Input["pattern"].(string)
+	if pattern == "" {
 		return Result{}, fmt.Errorf("pattern is required")
 	}
 	if filepath.IsAbs(pattern) {
@@ -58,96 +39,34 @@ func (t *GlobTool) Execute(ctx context.Context, inv Invocation) (Result, error) 
 			return Result{}, fmt.Errorf("pattern cannot contain ..; use path to select a directory")
 		}
 	}
-
-	if inv.WorkDir == "" {
-		return Result{}, fmt.Errorf("workDir is required for glob tool")
-	}
-
-	path, _ := inv.Input["path"].(string)
-	if path == "" {
-		path = "."
-	}
-	baseDir, _, err := ResolvePath(inv.WorkDir, path)
+	path, limit, err := searchOptions(inv)
 	if err != nil {
 		return Result{}, err
 	}
-	baseDir, err = canonicalPath(baseDir)
-	if err != nil {
-		return Result{}, err
-	}
-
+	args := append([]string{"--files", "--null", "--glob=" + pattern}, searchVisibility(inv)...)
+	args = append(args, ".")
 	output := &outputCollector{inv: inv}
-	matches := 0
-	emit := func(path string) error {
-		rel, err := filepath.Rel(baseDir, path)
-		if err != nil {
-			return err
+	count := 0
+	err = runRipgrep(ctx, path, args, func(data []byte, atEOF bool) (int, []byte, error) {
+		if i := bytes.IndexByte(data, 0); i >= 0 {
+			return i + 1, data[:i], nil
 		}
-		if matches > 0 {
-			if _, err := output.Write([]byte("\n")); err != nil {
+		if atEOF && len(data) > 0 {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	}, func(path []byte) error {
+		if count == limit {
+			return errSearchLimit
+		}
+		if count > 0 {
+			if _, err := output.WriteString("\n"); err != nil {
 				return err
 			}
 		}
-		matches++
-		_, err = output.Write([]byte(rel))
+		count++
+		_, err := output.WriteString(strings.TrimPrefix(filepath.ToSlash(string(path)), "./"))
 		return err
-	}
-	if strings.Contains(pattern, "**") {
-		err = walkFiles(ctx, baseDir, nil, func(path string) error {
-			relPath, err := filepath.Rel(baseDir, path)
-			if err != nil {
-				return nil
-			}
-
-			if matchDoubleGlob(pattern, relPath) {
-				return emit(path)
-			}
-			return nil
-		})
-	} else {
-		fullPattern := filepath.Join(baseDir, pattern)
-		err = globFiles(ctx, fullPattern, emit)
-	}
-	result, outputErr := output.finish(map[string]any{"count": matches})
-	if err != nil {
-		return result, err
-	}
-	if outputErr != nil {
-		return result, outputErr
-	}
-	if matches == 0 {
-		return Result{Text: "No files found matching pattern: " + pattern, Metadata: map[string]any{"count": 0}}, nil
-	}
-
-	return result, nil
-}
-
-func matchDoubleGlob(pattern, path string) bool {
-	parts := strings.Split(pattern, "**")
-	if len(parts) != 2 {
-		matched, _ := filepath.Match(pattern, path)
-		return matched
-	}
-
-	prefix := parts[0]
-	suffix := parts[1]
-
-	if prefix != "" {
-		prefix = strings.TrimSuffix(prefix, "/")
-		if !strings.HasPrefix(path, prefix) && prefix != "" {
-			return false
-		}
-	}
-
-	if suffix != "" {
-		suffix = strings.TrimPrefix(suffix, "/")
-		matched, _ := filepath.Match(suffix, filepath.Base(path))
-		if !matched {
-			dirMatched, _ := filepath.Match("*"+suffix, path)
-			return dirMatched
-		}
-		return matched
-	}
-
-	return true
+	})
+	return finishSearch(output, err, "count", count, "No files found matching pattern: "+pattern)
 }

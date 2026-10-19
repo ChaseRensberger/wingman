@@ -1849,6 +1849,9 @@ func (s *SQLiteStore) QueryMessages(ctx context.Context, sessionID string, query
 
 // UpsertModelCall inserts or updates one upstream model-call record.
 func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error {
+	if len(call.Trace) > 0 {
+		call.MetadataJSON = call.Trace
+	}
 	if call.ID == "" {
 		call.ID = NewID(PrefixModelCall)
 	}
@@ -1910,6 +1913,14 @@ func (s *SQLiteStore) UpsertModelCall(ctx context.Context, call ModelCall) error
 	session, err := getSessionTx(ctx, tx, call.SessionID)
 	if err != nil {
 		return err
+	}
+	if err := ValidateModelCallInput(call, existing); err != nil {
+		return err
+	}
+	for hash, content := range call.InputBlobs {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_input_blobs (session_id, hash, content) VALUES (?, ?, ?)`, call.SessionID, hash, []byte(content)); err != nil {
+			return fmt.Errorf("save model input blob: %w", err)
+		}
 	}
 
 	_, err = tx.ExecContext(ctx, `

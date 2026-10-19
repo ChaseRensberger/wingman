@@ -316,6 +316,9 @@ const (
 // the durable source of model provenance, finish state, token usage, and
 // context-window fullness for assistant turns.
 type ModelCall struct {
+	// InputBlobs is written atomically with the call; trace hashes identify the retained content.
+	InputBlobs map[string]json.RawMessage `json:"-"`
+
 	ID                   string          `json:"id"`
 	SessionID            string          `json:"session_id"`
 	RunID                string          `json:"run_id,omitempty"`

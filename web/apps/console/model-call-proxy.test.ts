@@ -41,6 +41,21 @@ test("split development proxies session data to the authenticated daemon", async
     },
   };
   const requests: string[] = [];
+  const input = {
+    system: "Historical instructions",
+    messages: [{ role: "user", content: [{ type: "text", text: "transformed context" }] }],
+    tools: [],
+    instructions: [
+      {
+        kind: "directory",
+        path: "/project/AGENTS.md",
+        sha256: "recorded",
+        content: "Historical guidance",
+        tool_use_id: "tlu_read",
+        resolved_path: "/project/file.go",
+      },
+    ],
+  };
   const upstream = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -49,6 +64,9 @@ test("split development proxies session data to the authenticated daemon", async
       if (request.headers.get("Authorization") !== `Basic ${btoa("diagnostic:test-password")}`) {
         return new Response("unauthorized", { status: 401 });
       }
+      if (new URL(request.url).pathname.endsWith("/mcl_old/input"))
+        return Response.json({ input: null });
+      if (new URL(request.url).pathname.endsWith("/input")) return Response.json({ input });
       if (new URL(request.url).pathname === "/sessions")
         return Response.json([
           {
@@ -109,6 +127,12 @@ test("split development proxies session data to the authenticated daemon", async
     const sessions = (await client.sessions.list()) as Array<{ run_status?: string }>;
     expect(requests).toEqual(["/sessions/ses_proxy/model-calls", "/sessions"]);
     expect(sessions[0]?.run_status).toBe("running");
+    const recorded = await client.sessions.modelCalls.input("ses_proxy", "mcl_proxy");
+    expect(recorded.input).toEqual(input);
+    expect(requests.at(-1)).toBe("/sessions/ses_proxy/model-calls/mcl_proxy/input");
+    const older = await client.sessions.modelCalls.input("ses_proxy", "mcl_old");
+    expect(older.input).toBeNull();
+    expect(requests.at(-1)).toBe("/sessions/ses_proxy/model-calls/mcl_old/input");
   } finally {
     await vite?.close();
     upstream.stop(true);

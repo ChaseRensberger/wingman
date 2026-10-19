@@ -5,6 +5,7 @@ import type { CallTrace, ModelCall, Session } from "@/lib/types";
 import { formatTokenCount, modelCallAnswerSpeed } from "@/lib/utils";
 import { formatModelCallDiagnostics } from "@/lib/model-call-diagnostics";
 import { showErrorToast } from "@/lib/toast";
+import { ModelCallInputView } from "@/components/model-call-input";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import {
@@ -118,8 +119,21 @@ function CopyDiagnostics({ call }: { call: ModelCall }) {
   );
 }
 
-export function SessionContextSheet({ session, calls }: { session: Session; calls: ModelCall[] }) {
-  const [open, setOpen] = useState(false);
+export type InspectorSelection = { callId?: string } | null;
+
+export function SessionContextSheet({
+  session,
+  calls,
+  selection,
+  onSelect,
+}: {
+  session: Session;
+  calls: ModelCall[];
+  selection: InspectorSelection;
+  onSelect: (value: InspectorSelection) => void;
+}) {
+  const selectedIndex = calls.findIndex((call) => call.id === selection?.callId);
+  const selected = calls[selectedIndex];
   const latest = session.latest_model_call ?? calls.at(-1);
   const contextPercent = latest?.context_percent ?? 0;
   const contextTokens = latest?.context_tokens ?? 0;
@@ -135,7 +149,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
   const totalCached = calls.reduce((total, call) => total + (call.cached_input_tokens ?? 0), 0);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={selection !== null} onOpenChange={(open) => onSelect(open ? {} : null)}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -144,7 +158,7 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
               variant="ghost"
               size="icon-sm"
               aria-label="View session context and usage"
-              onClick={() => setOpen(true)}
+              onClick={() => onSelect({})}
             />
           }
         >
@@ -166,119 +180,159 @@ export function SessionContextSheet({ session, calls }: { session: Session; call
           <SheetTitle>Inspector</SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-          <div className="grid grid-cols-2 gap-2">
-            <Stat
-              label="Context"
-              value={
-                hasUsage
-                  ? contextWindow
-                    ? `${formatTokenCount(contextTokens)} / ${formatTokenCount(contextWindow)}`
-                    : formatTokenCount(contextTokens)
-                  : "Not reported"
-              }
-            />
-            <Stat
-              label="Context usage"
-              value={hasUsage ? `${Math.round(contextPercent)}%` : "Not reported"}
-            />
-            <Stat label="Estimated cost" value={hasCost ? formatCost(totalCost) : "Not reported"} />
-            <Stat label="Model calls" value={String(calls.length)} />
-            <Stat
-              label="Input tokens"
-              value={hasUsage ? formatTokenCount(totalInput) : "Not reported"}
-            />
-            <Stat
-              label="Output tokens"
-              value={hasUsage ? formatTokenCount(totalOutput) : "Not reported"}
-            />
-            <Stat
-              label="Reasoning tokens"
-              value={hasUsage ? formatTokenCount(totalReasoning) : "Not reported"}
-            />
-            <Stat
-              label="Cached tokens"
-              value={hasUsage ? formatTokenCount(totalCached) : "Not reported"}
-            />
-          </div>
-          <section className="mt-6">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <StackIcon className="size-4" />
-              Model calls
-            </div>
-            {calls.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No persisted model calls yet.</p>
-            ) : (
-              <div className="overflow-hidden rounded-lg border">
-                {calls.map((call) => (
-                  <div key={call.id} className="border-b px-3 py-3 last:border-b-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {call.model_ref || call.model_id || "Unknown model"}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {call.run_id ? `${call.run_id} · ` : ""}Step {call.step} · attempt{" "}
-                          {call.attempt} · {call.status}
-                          {call.finish_reason ? ` · ${call.finish_reason}` : ""}
-                        </div>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {call.cost === undefined ? "Not reported" : formatCost(call.cost)}
-                      </span>
-                    </div>
-                    {call.total_tokens > 0 || call.input_tokens > 0 || call.output_tokens > 0 ? (
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                        <span>In {formatTokenCount(call.input_tokens)}</span>
-                        <span>Out {formatTokenCount(call.output_tokens)}</span>
-                        <span>{Math.round(call.context_percent ?? 0)}% context</span>
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        Usage not reported by provider.
-                      </div>
-                    )}
-                    {call.error_message && (
-                      <div className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
-                        {call.error_message}
-                      </div>
-                    )}
-                    {call.trace?.failure && (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {call.trace.failure.category}
-                        {call.trace.failure.code ? ` · ${call.trace.failure.code}` : ""}
-                        {call.trace.retry
-                          ? ` · ${call.trace.retry.decision === "scheduled" ? `Retry scheduled${call.trace.retry.delay_ms !== undefined ? ` in ${call.trace.retry.delay_ms} ms` : ""}` : `No retry (${call.trace.retry.reason.replaceAll("_", " ")})`}`
-                          : ""}
-                      </div>
-                    )}
-                    {call.trace?.timing && (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {call.trace.timing.first_response_ms !== undefined
-                          ? `First response ${call.trace.timing.first_response_ms} ms · `
-                          : ""}
-                        {call.trace.timing.first_activity_ms !== undefined
-                          ? `First activity ${call.trace.timing.first_activity_ms} ms`
-                          : "No activity reported"}
-                        {call.trace.timing.first_answer_ms !== undefined
-                          ? ` · first answer ${call.trace.timing.first_answer_ms} ms`
-                          : ""}
-                        {modelCallAnswerSpeed(call)
-                          ? ` · ${modelCallAnswerSpeed(call)} answer tokens/s`
-                          : ""}
-                      </div>
-                    )}
-                    {call.provider_request_id && (
-                      <div className="mt-2 truncate font-mono text-xs text-muted-foreground">
-                        Provider request {call.provider_request_id}
-                      </div>
-                    )}
-                    <RequestManifest trace={call.trace} />
-                    <CopyDiagnostics call={call} />
-                  </div>
-                ))}
+          {selected ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mb-3"
+                onClick={() => onSelect({})}
+              >
+                All model calls
+              </Button>
+              <ModelCallInputView
+                key={selected.id}
+                call={selected}
+                previous={calls[selectedIndex - 1]}
+                onInspect={(callId) => onSelect({ callId })}
+              />
+            </>
+          ) : (
+            <>
+              <p className="mb-4 text-sm text-muted-foreground">
+                The conversation shows session activity. Inspect a model call to see its recorded
+                input.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Stat
+                  label="Context"
+                  value={
+                    hasUsage
+                      ? contextWindow
+                        ? `${formatTokenCount(contextTokens)} / ${formatTokenCount(contextWindow)}`
+                        : formatTokenCount(contextTokens)
+                      : "Not reported"
+                  }
+                />
+                <Stat
+                  label="Context usage"
+                  value={hasUsage ? `${Math.round(contextPercent)}%` : "Not reported"}
+                />
+                <Stat
+                  label="Estimated cost"
+                  value={hasCost ? formatCost(totalCost) : "Not reported"}
+                />
+                <Stat label="Model calls" value={String(calls.length)} />
+                <Stat
+                  label="Input tokens"
+                  value={hasUsage ? formatTokenCount(totalInput) : "Not reported"}
+                />
+                <Stat
+                  label="Output tokens"
+                  value={hasUsage ? formatTokenCount(totalOutput) : "Not reported"}
+                />
+                <Stat
+                  label="Reasoning tokens"
+                  value={hasUsage ? formatTokenCount(totalReasoning) : "Not reported"}
+                />
+                <Stat
+                  label="Cached tokens"
+                  value={hasUsage ? formatTokenCount(totalCached) : "Not reported"}
+                />
               </div>
-            )}
-          </section>
+              <section className="mt-6">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <StackIcon className="size-4" />
+                  Model calls
+                </div>
+                {calls.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No persisted model calls yet.</p>
+                ) : (
+                  <div className="overflow-hidden rounded-lg border">
+                    {calls.map((call) => (
+                      <div key={call.id} className="border-b px-3 py-3 last:border-b-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">
+                              {call.model_ref || call.model_id || "Unknown model"}
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {call.run_id ? `${call.run_id} · ` : ""}Step {call.step} · attempt{" "}
+                              {call.attempt} · {call.status}
+                              {call.finish_reason ? ` · ${call.finish_reason}` : ""}
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {call.cost === undefined ? "Not reported" : formatCost(call.cost)}
+                          </span>
+                        </div>
+                        {call.total_tokens > 0 ||
+                        call.input_tokens > 0 ||
+                        call.output_tokens > 0 ? (
+                          <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                            <span>In {formatTokenCount(call.input_tokens)}</span>
+                            <span>Out {formatTokenCount(call.output_tokens)}</span>
+                            <span>{Math.round(call.context_percent ?? 0)}% context</span>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            Usage not reported by provider.
+                          </div>
+                        )}
+                        {call.error_message && (
+                          <div className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                            {call.error_message}
+                          </div>
+                        )}
+                        {call.trace?.failure && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {call.trace.failure.category}
+                            {call.trace.failure.code ? ` · ${call.trace.failure.code}` : ""}
+                            {call.trace.retry
+                              ? ` · ${call.trace.retry.decision === "scheduled" ? `Retry scheduled${call.trace.retry.delay_ms !== undefined ? ` in ${call.trace.retry.delay_ms} ms` : ""}` : `No retry (${call.trace.retry.reason.replaceAll("_", " ")})`}`
+                              : ""}
+                          </div>
+                        )}
+                        {call.trace?.timing && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {call.trace.timing.first_response_ms !== undefined
+                              ? `First response ${call.trace.timing.first_response_ms} ms · `
+                              : ""}
+                            {call.trace.timing.first_activity_ms !== undefined
+                              ? `First activity ${call.trace.timing.first_activity_ms} ms`
+                              : "No activity reported"}
+                            {call.trace.timing.first_answer_ms !== undefined
+                              ? ` · first answer ${call.trace.timing.first_answer_ms} ms`
+                              : ""}
+                            {modelCallAnswerSpeed(call)
+                              ? ` · ${modelCallAnswerSpeed(call)} answer tokens/s`
+                              : ""}
+                          </div>
+                        )}
+                        {call.provider_request_id && (
+                          <div className="mt-2 truncate font-mono text-xs text-muted-foreground">
+                            Provider request {call.provider_request_id}
+                          </div>
+                        )}
+                        <RequestManifest trace={call.trace} />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 mr-2"
+                          onClick={() => onSelect({ callId: call.id })}
+                        >
+                          Inspect model input
+                        </Button>
+                        <CopyDiagnostics call={call} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>

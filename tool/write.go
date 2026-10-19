@@ -57,17 +57,20 @@ func (t *WriteTool) Execute(ctx context.Context, inv Invocation) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
-	select {
-	case <-ctx.Done():
-		return Result{}, ctx.Err()
-	default:
+	unlock, err := lockMutation(ctx, path)
+	if err != nil {
+		return Result{}, err
 	}
+	defer unlock()
 
 	oldBytes, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return Result{}, fmt.Errorf("failed to read existing file: %w", err)
 	}
 	oldContent := string(oldBytes)
+	if oldBytes != nil {
+		content = retainTextFormat(oldContent, content)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return Result{}, fmt.Errorf("failed to create directory: %w", err)
 	}

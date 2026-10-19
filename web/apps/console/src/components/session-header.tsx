@@ -12,7 +12,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 
-import { SessionContextSheet } from "@/components/session-context-sheet";
+import { SessionContextSheet, type InspectorSelection } from "@/components/session-context-sheet";
 import type { ModelCall, Session, Workspace } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
 import {
@@ -29,6 +29,8 @@ type Props = {
   session: Session;
   workspace: Workspace | null;
   calls: ModelCall[];
+  inspection: InspectorSelection;
+  onInspect: (value: InspectorSelection) => void;
   isDraft: boolean;
   title: string | undefined;
   contextLabel: string;
@@ -68,7 +70,12 @@ export function SessionHeader(props: Props) {
           </span>
         )}
       </div>
-      <SessionContextSheet session={props.session} calls={props.calls} />
+      <SessionContextSheet
+        session={props.session}
+        calls={props.calls}
+        selection={props.inspection}
+        onSelect={props.onInspect}
+      />
       <Button
         type="button"
         variant={props.jsonMode ? "secondary" : "ghost"}

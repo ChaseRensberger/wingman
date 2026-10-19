@@ -30,6 +30,7 @@ type Store struct {
 	messages           map[string]*store.StoredMessage
 	parts              map[string]*store.StoredPart
 	modelCalls         map[string]*store.ModelCall
+	modelInputBlobs    map[string]map[string]json.RawMessage
 	toolUses           map[string]*store.ToolUse
 	permissionRequests map[string]*store.PermissionRequest
 	questions          map[string]question.Question
@@ -51,6 +52,7 @@ func NewStore() *Store {
 		messages:           make(map[string]*store.StoredMessage),
 		parts:              make(map[string]*store.StoredPart),
 		modelCalls:         make(map[string]*store.ModelCall),
+		modelInputBlobs:    make(map[string]map[string]json.RawMessage),
 		toolUses:           make(map[string]*store.ToolUse),
 		permissionRequests: make(map[string]*store.PermissionRequest),
 		questions:          make(map[string]question.Question),
@@ -528,7 +530,9 @@ func copyPart(p *store.StoredPart) store.StoredPart {
 }
 
 func copyModelCall(c *store.ModelCall) store.ModelCall {
+	// Input content lives in the session's blob store, not the call list or events.
 	cp := *c
+	cp.InputBlobs = nil
 	if c.StructuredOutputJSON != nil {
 		cp.StructuredOutputJSON = make([]byte, len(c.StructuredOutputJSON))
 		copy(cp.StructuredOutputJSON, c.StructuredOutputJSON)
@@ -1176,6 +1180,7 @@ func (s *Store) PurgeSession(_ context.Context, id string, expectedVersion int64
 			delete(s.modelCalls, callID)
 		}
 	}
+	delete(s.modelInputBlobs, id)
 	for useID, use := range s.toolUses {
 		if use.SessionID == id {
 			delete(s.toolUses, useID)
@@ -1438,6 +1443,9 @@ func (s *Store) QueryMessages(ctx context.Context, sessionID string, query store
 func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(call.Trace) > 0 {
+		call.MetadataJSON = call.Trace
+	}
 
 	if call.ID == "" {
 		call.ID = store.NewID(store.PrefixModelCall)
@@ -1481,6 +1489,13 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 			}
 		}
 	}
+	var previous store.ModelCall
+	if existing != nil {
+		previous = *existing
+	}
+	if err := store.ValidateModelCallInput(call, previous); err != nil {
+		return err
+	}
 	event, err := store.NewSessionModelCallSavedEvent(call)
 	if err != nil {
 		return err
@@ -1491,6 +1506,17 @@ func (s *Store) UpsertModelCall(ctx context.Context, call store.ModelCall) error
 	if err != nil {
 		return err
 	}
+	if len(call.InputBlobs) > 0 {
+		if s.modelInputBlobs[call.SessionID] == nil {
+			s.modelInputBlobs[call.SessionID] = make(map[string]json.RawMessage)
+		}
+		for hash, content := range call.InputBlobs {
+			if _, exists := s.modelInputBlobs[call.SessionID][hash]; !exists {
+				s.modelInputBlobs[call.SessionID][hash] = append(json.RawMessage(nil), content...)
+			}
+		}
+	}
+	call.InputBlobs = nil
 	cp := copyModelCall(&call)
 	s.modelCalls[call.ID] = &cp
 	s.globalSeq++

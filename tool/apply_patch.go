@@ -129,18 +129,107 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, inv Invocation) (Result, e
 		return Result{}, err
 	}
 
+	var paths []string
+	for _, section := range sections {
+		for _, raw := range []string{section.Path, section.MovePath} {
+			if raw == "" {
+				continue
+			}
+			path, _, err := ResolvePath(inv.WorkDir, raw)
+			if err != nil {
+				return Result{}, err
+			}
+			paths = append(paths, path)
+		}
+	}
+	unlock, err := lockMutation(ctx, paths...)
+	if err != nil {
+		return Result{}, err
+	}
+	defer unlock()
+	seen := make(map[string]string)
+	aliases := make(map[string]string)
+	changes := make([]patchChange, 0, len(sections))
+	for _, section := range sections {
+		path, _, err := ResolvePath(inv.WorkDir, section.Path)
+		if err != nil {
+			return Result{}, err
+		}
+		recreate := section.Type == "add" && seen[path] == "delete"
+		for _, raw := range []string{section.Path, section.MovePath} {
+			if raw == "" {
+				continue
+			}
+			target, _, err := ResolvePath(inv.WorkDir, raw)
+			if err != nil {
+				return Result{}, err
+			}
+			canonical, err := canonicalPath(target)
+			if err != nil {
+				return Result{}, err
+			}
+			if previous := aliases[canonical]; previous != "" && previous != target {
+				return Result{}, fmt.Errorf("apply_patch verification failed: %s and %s address the same file", previous, target)
+			}
+			aliases[canonical] = target
+			if seen[target] != "" && !(recreate && target == path) {
+				return Result{}, fmt.Errorf("apply_patch verification failed: repeated target %s; combine its changes into one section", target)
+			}
+			seen[target] = section.Type
+		}
+		change, err := preparePatchSection(inv.WorkDir, section, recreate)
+		if err != nil {
+			return Result{}, err
+		}
+		changes = append(changes, change)
+	}
+	writes := make(map[string]bool)
+	for _, section := range sections {
+		if section.Type == "delete" {
+			continue
+		}
+		raw := section.Path
+		if section.MovePath != "" {
+			raw = section.MovePath
+		}
+		path, _, err := ResolvePath(inv.WorkDir, raw)
+		if err != nil {
+			return Result{}, err
+		}
+		path, err = canonicalPath(path)
+		if err != nil {
+			return Result{}, err
+		}
+		writes[path] = true
+	}
+	for path := range writes {
+		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+			if writes[dir] {
+				return Result{}, fmt.Errorf("apply_patch verification failed: file target %s is also a parent directory", dir)
+			}
+			info, err := os.Stat(dir)
+			if err == nil && !info.IsDir() {
+				return Result{}, fmt.Errorf("apply_patch verification failed: parent %s is not a directory", dir)
+			}
+			if err != nil && !os.IsNotExist(err) {
+				return Result{}, err
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
 	var files []map[string]any
 	var summaries []string
-	for _, section := range sections {
+	for _, change := range changes {
 		select {
 		case <-ctx.Done():
-			return Result{}, ctx.Err()
+			return Result{Text: "Applied before cancellation:\n" + strings.Join(summaries, "\n"), Metadata: map[string]any{"files": files}}, ctx.Err()
 		default:
 		}
 
-		change, err := applyPatchSection(inv.WorkDir, section)
-		if err != nil {
-			return Result{}, err
+		if err := change.commit(); err != nil {
+			return Result{Text: "Applied before failure:\n" + strings.Join(summaries, "\n"), Metadata: map[string]any{"files": files}}, fmt.Errorf("apply_patch failed at %s: %w", change.RelativePath, err)
 		}
 		files = append(files, map[string]any{
 			"filePath":     change.Path,
@@ -183,6 +272,7 @@ type patchSection struct {
 }
 
 type patchChange struct {
+	commit       func() error
 	Path         string
 	RelativePath string
 	MovePath     string
@@ -252,7 +342,7 @@ func parsePatchSections(text string) ([]patchSection, error) {
 	return sections, nil
 }
 
-func applyPatchSection(workDir string, section patchSection) (patchChange, error) {
+func preparePatchSection(workDir string, section patchSection, recreate bool) (patchChange, error) {
 	path, rel, err := ResolvePath(workDir, section.Path)
 	if err != nil {
 		return patchChange{}, err
@@ -266,13 +356,20 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 		if err != nil {
 			return patchChange{}, err
 		}
+		if _, err := os.Lstat(movePath); err == nil {
+			return patchChange{}, fmt.Errorf("apply_patch verification failed: move target already exists: %s", section.MovePath)
+		} else if !os.IsNotExist(err) {
+			return patchChange{}, err
+		}
 	}
 
 	var oldContent, newContent string
 	switch section.Type {
 	case "add":
-		if _, err := os.Stat(path); err == nil {
+		if _, err := os.Lstat(path); err == nil && !recreate {
 			return patchChange{}, fmt.Errorf("apply_patch verification failed: file already exists: %s", section.Path)
+		} else if err != nil && !os.IsNotExist(err) {
+			return patchChange{}, err
 		}
 		for _, line := range section.Lines {
 			if !strings.HasPrefix(line, "+") {
@@ -281,6 +378,11 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 			newContent += strings.TrimPrefix(line, "+") + "\n"
 		}
 	case "delete":
+		for _, line := range section.Lines {
+			if strings.TrimSpace(line) != "" {
+				return patchChange{}, fmt.Errorf("apply_patch verification failed: delete sections cannot contain patch lines")
+			}
+		}
 		bytes, err := os.ReadFile(path)
 		if err != nil {
 			return patchChange{}, fmt.Errorf("apply_patch verification failed: failed to read file to delete: %w", err)
@@ -301,78 +403,138 @@ func applyPatchSection(workDir string, section patchSection) (patchChange, error
 	}
 
 	patch, additions, deletions := unifiedPatch(rel, oldContent, newContent)
-	switch section.Type {
-	case "add", "update":
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return patchChange{}, fmt.Errorf("apply_patch failed: create parent directories: %w", err)
+	mode := os.FileMode(0644)
+	if section.Type != "add" {
+		info, err := os.Stat(path)
+		if err != nil {
+			return patchChange{}, err
 		}
-		if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
-			return patchChange{}, fmt.Errorf("apply_patch failed: write file: %w", err)
-		}
-		if movePath != "" {
-			if err := os.MkdirAll(filepath.Dir(movePath), 0755); err != nil {
-				return patchChange{}, fmt.Errorf("apply_patch failed: create move parent directories: %w", err)
-			}
-			if err := os.WriteFile(movePath, []byte(newContent), 0644); err != nil {
-				return patchChange{}, fmt.Errorf("apply_patch failed: write moved file: %w", err)
-			}
-			if err := os.Remove(path); err != nil {
-				return patchChange{}, fmt.Errorf("apply_patch failed: remove original file: %w", err)
-			}
-		}
-	case "delete":
-		if err := os.Remove(path); err != nil {
-			return patchChange{}, fmt.Errorf("apply_patch failed: delete file: %w", err)
-		}
+		mode = info.Mode().Perm()
 	}
+	commit := func() error {
+		switch section.Type {
+		case "add", "update":
+			target := path
+			if movePath != "" {
+				target = movePath
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(target, []byte(newContent), mode); err != nil {
+				return err
+			}
+			if movePath != "" {
+				if err := os.Remove(path); err != nil {
+					return fmt.Errorf("wrote destination but could not remove source: %w", err)
+				}
+			}
+		case "delete":
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+		}
 
-	return patchChange{Path: path, RelativePath: rel, MovePath: moveRel, Type: changeType, Patch: patch, Additions: additions, Deletions: deletions}, nil
+		return nil
+	}
+	return patchChange{commit: commit, Path: path, RelativePath: rel, MovePath: moveRel, Type: changeType, Patch: patch, Additions: additions, Deletions: deletions}, nil
 }
 
 func applyUpdateLines(oldContent string, patchLines []string) (string, error) {
-	oldLines := splitLinesKeepEnd(oldContent)
+	oldLines := splitLinesKeepEnd(strings.TrimPrefix(oldContent, utf8BOM))
+	ending := textLineEnding(oldContent)
 	var out []string
+	lastAdded := false
 	pos := 0
 	for i := 0; i < len(patchLines); {
-		line := patchLines[i]
-		if strings.HasPrefix(line, "@@") {
-			anchor := strings.TrimSpace(strings.TrimPrefix(line, "@@"))
+		if strings.HasPrefix(patchLines[i], "@@") {
+			anchor := strings.TrimSpace(strings.TrimPrefix(patchLines[i], "@@"))
 			if anchor != "" {
 				idx := findLine(oldLines, pos, anchor)
 				if idx < 0 {
 					return "", fmt.Errorf("apply_patch verification failed: context not found: %s", anchor)
 				}
 				out = append(out, oldLines[pos:idx+1]...)
+				lastAdded = false
 				pos = idx + 1
 			}
 			i++
-			continue
 		}
-
-		if strings.HasPrefix(line, "+") {
-			out = append(out, strings.TrimPrefix(line, "+")+"\n")
+		start := i
+		var expected []string
+		atEnd := false
+		for i < len(patchLines) && !strings.HasPrefix(patchLines[i], "@@") {
+			line := patchLines[i]
+			if line == "*** End of File" {
+				atEnd = true
+				i++
+				break
+			}
+			if len(line) == 0 || !strings.ContainsRune(" +-", rune(line[0])) {
+				return "", fmt.Errorf("apply_patch verification failed: invalid hunk line %q", line)
+			}
+			if line[0] != '+' {
+				expected = append(expected, line[1:])
+			}
 			i++
-			continue
 		}
-
-		if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, " ") {
-			return "", fmt.Errorf("apply_patch verification failed: update lines must start with +, -, space, or @@")
+		if i == start {
+			return "", fmt.Errorf("apply_patch verification failed: empty hunk")
 		}
-
-		expected := line[1:]
-		idx := findLine(oldLines, pos, expected)
-		if idx < 0 {
-			return "", fmt.Errorf("apply_patch verification failed: context not found: %s", expected)
+		match := -1
+		for index := pos; index+len(expected) <= len(oldLines); index++ {
+			if atEnd && index+len(expected) != len(oldLines) {
+				continue
+			}
+			found := true
+			for j, text := range expected {
+				if strings.TrimSuffix(strings.TrimSuffix(oldLines[index+j], "\r\n"), "\n") != text {
+					found = false
+					break
+				}
+			}
+			if found {
+				match = index
+				break
+			}
 		}
-		out = append(out, oldLines[pos:idx]...)
-		if strings.HasPrefix(line, " ") {
-			out = append(out, oldLines[idx])
+		if match < 0 {
+			return "", fmt.Errorf("apply_patch verification failed: contiguous context not found: %s", strings.Join(expected, "\n"))
 		}
-		pos = idx + 1
-		i++
+		out = append(out, oldLines[pos:match]...)
+		if match > pos {
+			lastAdded = false
+		}
+		pos = match
+		for _, line := range patchLines[start:i] {
+			if line == "*** End of File" {
+				continue
+			}
+			switch line[0] {
+			case ' ':
+				out = append(out, oldLines[pos])
+				lastAdded = false
+				pos++
+			case '-':
+				pos++
+			case '+':
+				if len(out) > 0 && !strings.HasSuffix(out[len(out)-1], "\n") {
+					out[len(out)-1] += ending
+				}
+				out = append(out, line[1:]+ending)
+				lastAdded = true
+			}
+		}
 	}
 	out = append(out, oldLines[pos:]...)
-	return strings.Join(out, ""), nil
+	next := strings.Join(out, "")
+	if lastAdded && pos == len(oldLines) && oldContent != "" && !strings.HasSuffix(oldContent, "\n") {
+		next = strings.TrimSuffix(next, ending)
+	}
+	if strings.HasPrefix(oldContent, utf8BOM) {
+		next = utf8BOM + next
+	}
+	return next, nil
 }
 
 func splitLinesKeepEnd(text string) []string {
@@ -388,7 +550,7 @@ func splitLinesKeepEnd(text string) []string {
 
 func findLine(lines []string, start int, expected string) int {
 	for i := start; i < len(lines); i++ {
-		if strings.TrimSuffix(lines[i], "\n") == expected {
+		if strings.TrimSuffix(strings.TrimSuffix(lines[i], "\r\n"), "\n") == expected {
 			return i
 		}
 	}

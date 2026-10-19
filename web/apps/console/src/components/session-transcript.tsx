@@ -1,4 +1,5 @@
 import { ArrowClockwiseIcon, CheckIcon, CopyIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { useMemo } from "react";
 
 import WingmanIcon from "@/assets/icon-128.png";
 import { ChatMessage } from "@/components/chat-message";
@@ -6,6 +7,7 @@ import { ExplorationGroup } from "@/components/exploration-group";
 import { RawMessages } from "@/components/raw-messages";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
+import { indexInstructionDiscoveries, type InstructionDiscovery } from "@/lib/model-input";
 import { shouldShowThinking } from "@/lib/session-detail";
 import { projectTranscript } from "@/lib/transcript";
 import type {
@@ -40,6 +42,8 @@ type Props = {
   toolResultsById: Map<string, ToolResultPart>;
   toolActivitiesById: Map<string, ToolActivity>;
   modelCallsByMessageId: Map<string, ModelCall>;
+  modelCalls: ModelCall[];
+  onInspectCall: (id: string) => void;
   agentNames: Map<string, string>;
   failedRun: FailedRun | null;
   permissionRequests: PermissionRequest[];
@@ -146,6 +150,8 @@ export function SessionTranscript({
   toolResultsById,
   toolActivitiesById,
   modelCallsByMessageId,
+  modelCalls,
+  onInspectCall,
   agentNames,
   failedRun,
   permissionRequests,
@@ -156,7 +162,12 @@ export function SessionTranscript({
   onRetry,
   scroll,
 }: Props) {
+  const instructionDiscoveries = useMemo(
+    () => indexInstructionDiscoveries(modelCalls),
+    [modelCalls],
+  );
   const rows = projectTranscript({
+    modelCalls,
     messages,
     toolCallsById,
     toolResultsById,
@@ -203,6 +214,10 @@ export function SessionTranscript({
         <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
           {jsonMode ? (
             <div className="px-4 pb-6 sm:px-6">
+              <p className="mb-3 text-sm text-muted-foreground">
+                Stored conversation records. These are not the input of any single model call. Use
+                the Inspector to view recorded model input.
+              </p>
               <RawMessages messages={rawMessages} />
               {permissionRequests.map((request) => (
                 <PermissionRequestCard
@@ -232,13 +247,58 @@ export function SessionTranscript({
                   row.type === "message"
                     ? modelCallsByMessageId.get(row.message.id ?? "")
                     : undefined;
+                const rowTools =
+                  row.type === "exploration" ? row.tools : row.type === "tool" ? [row.tool] : [];
+                const discovered = new Map<string, InstructionDiscovery>();
+                for (const tool of rowTools) {
+                  const sources = [
+                    ...(instructionDiscoveries.get(`tool:${tool.call.tool_use_id}`)?.values() ??
+                      []),
+                    ...(instructionDiscoveries.get(`call:${tool.call.call_id}`)?.values() ?? []),
+                  ].sort((a, b) => a.order - b.order);
+                  for (const source of sources) {
+                    if (!discovered.has(source.path)) discovered.set(source.path, source);
+                  }
+                }
                 return (
                   <div
                     key={row.key}
                     className={turnBoundary ? "min-w-0 mt-4" : "min-w-0"}
                     data-slot="transcript-row"
                   >
-                    {row.type === "exploration" ? (
+                    {row.type === "model-call" ? (
+                      <details className="mx-4 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">{row.notices.join(" · ")}</summary>
+                        <p className="mt-2">
+                          Step {row.call.step} · attempt {row.call.attempt} · {row.call.status}.
+                          Settings changes compare recorded calls; this entry is not a conversation
+                          message.
+                        </p>
+                        {row.call.status === "aborted" && (
+                          <p className="mt-1">
+                            Execution stopped. This does not mean an interruption message was
+                            included in a later model request.
+                          </p>
+                        )}
+                        {row.call.trace?.instructions
+                          ?.filter((source) => source.resolved_path)
+                          .map((source) => (
+                            <p key={source.path} className="mt-1 break-all">
+                              Guidance: {source.path} · discovered by reading{" "}
+                              {source.requested_path} → {source.resolved_path}
+                            </p>
+                          ))}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1"
+                          onClick={() => onInspectCall(row.call.id)}
+                        >
+                          Inspect model input
+                        </Button>
+                      </details>
+                    ) : row.type === "exploration" ? (
                       <ExplorationGroup tools={row.tools} permissionRequests={permissionRequests} />
                     ) : row.type === "tool" ? (
                       <div className="px-4">
@@ -259,8 +319,30 @@ export function SessionTranscript({
                         toolActivitiesById={toolActivitiesById}
                         modelCall={call}
                         agentName={agentNames.get(call?.agent_id ?? "")}
+                        onInspectCall={onInspectCall}
                       />
                     )}
+                    {[...discovered.values()].map((source) => (
+                      <details
+                        key={source.path}
+                        className="mx-4 mt-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+                      >
+                        <summary className="cursor-pointer">
+                          Directory instructions discovered · {source.path}
+                        </summary>
+                        <p className="mt-2 break-all">
+                          Read {source.requested} → {source.resolved}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onInspectCall(source.id)}
+                        >
+                          View instructions in first affected call
+                        </Button>
+                      </details>
+                    ))}
                   </div>
                 );
               })}

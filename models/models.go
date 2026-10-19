@@ -654,6 +654,9 @@ func (d PartDecoders) UnmarshalPart(data []byte) (Part, error) {
 // ------------------------------------------------------------------
 
 type Request struct {
+	// Instructions records source provenance before optional system-prompt transforms.
+	Instructions []InstructionSnapshot `json:"-"`
+
 	Model           ModelRef       `json:"model,omitempty"`
 	System          string         `json:"system,omitempty"`
 	Messages        []Message      `json:"messages"`
@@ -879,7 +882,10 @@ type OutputSchema struct {
 // CallTrace is a versioned snapshot of request structure and bounded failure evidence.
 // Failure evidence redacts known credentials but can contain quoted input or output.
 type CallTrace struct {
+	Instructions []InstructionSnapshot `json:"instructions,omitempty"`
+
 	Version      string          `json:"version"`
+	InputHash    string          `json:"input_hash,omitempty"`
 	Model        ModelRef        `json:"model"`
 	API          API             `json:"api"`
 	Provider     string          `json:"provider"`

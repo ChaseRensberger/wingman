@@ -442,6 +442,12 @@ export function createWingmanClient(options: WingmanClientOptions) {
         },
       },
       modelCalls: {
+        input: (id: string, callID: string) =>
+          requestData(
+            api.GET("/sessions/{id}/model-calls/{callID}/input", {
+              params: { path: { id, callID } },
+            }),
+          ),
         list: (id: string) =>
           requestData(api.GET("/sessions/{id}/model-calls", { params: { path: { id } } })),
       },

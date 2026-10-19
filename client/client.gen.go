@@ -268,20 +268,22 @@ type CallTiming struct {
 
 // CallTrace defines model for CallTrace.
 type CallTrace struct {
-	Api          string          `json:"api"`
-	Build        *BuildTrace     `json:"build,omitempty"`
-	Capabilities Capabilities    `json:"capabilities"`
-	Failure      *CallDiagnostic `json:"failure,omitempty"`
-	Lowered      *LoweredOptions `json:"lowered,omitempty"`
-	Messages     MessageTrace    `json:"messages"`
-	Model        ModelRef        `json:"model"`
-	Provider     string          `json:"provider"`
-	Retry        *CallRetry      `json:"retry,omitempty"`
-	Runtime      RuntimeTrace    `json:"runtime"`
-	System       SystemTrace     `json:"system"`
-	Timing       *CallTiming     `json:"timing,omitempty"`
-	Tools        *[]ToolTrace    `json:"tools,omitempty"`
-	Version      string          `json:"version"`
+	Api          string                 `json:"api"`
+	Build        *BuildTrace            `json:"build,omitempty"`
+	Capabilities Capabilities           `json:"capabilities"`
+	Failure      *CallDiagnostic        `json:"failure,omitempty"`
+	InputHash    *string                `json:"input_hash,omitempty"`
+	Instructions *[]InstructionSnapshot `json:"instructions,omitempty"`
+	Lowered      *LoweredOptions        `json:"lowered,omitempty"`
+	Messages     MessageTrace           `json:"messages"`
+	Model        ModelRef               `json:"model"`
+	Provider     string                 `json:"provider"`
+	Retry        *CallRetry             `json:"retry,omitempty"`
+	Runtime      RuntimeTrace           `json:"runtime"`
+	System       SystemTrace            `json:"system"`
+	Timing       *CallTiming            `json:"timing,omitempty"`
+	Tools        *[]ToolTrace           `json:"tools,omitempty"`
+	Version      string                 `json:"version"`
 }
 
 // Capabilities defines model for Capabilities.
@@ -460,6 +462,18 @@ type ImagePart struct {
 // ImagePartType defines model for ImagePart.Type.
 type ImagePartType string
 
+// InstructionSnapshot defines model for InstructionSnapshot.
+type InstructionSnapshot struct {
+	CallId        *string `json:"call_id,omitempty"`
+	Content       *string `json:"content,omitempty"`
+	Kind          string  `json:"kind"`
+	Path          string  `json:"path"`
+	RequestedPath *string `json:"requested_path,omitempty"`
+	ResolvedPath  *string `json:"resolved_path,omitempty"`
+	Sha256        string  `json:"sha256"`
+	ToolUseId     *string `json:"tool_use_id,omitempty"`
+}
+
 // InstructionSource defines model for InstructionSource.
 type InstructionSource struct {
 	Kind       string    `json:"kind"`
@@ -593,6 +607,11 @@ type ModelCall struct {
 	StopReason         *string     `json:"stop_reason,omitempty"`
 	TotalTokens        int64       `json:"total_tokens"`
 	Trace              interface{} `json:"trace,omitempty"`
+}
+
+// ModelCallInputResponse defines model for ModelCallInputResponse.
+type ModelCallInputResponse struct {
+	Input *RecordedModelInput `json:"input"`
 }
 
 // ModelCapabilities defines model for ModelCapabilities.
@@ -854,6 +873,35 @@ type ReasoningPart struct {
 
 // ReasoningPartType defines model for ReasoningPart.Type.
 type ReasoningPartType string
+
+// RecordedInstructionSource defines model for RecordedInstructionSource.
+type RecordedInstructionSource struct {
+	CallId        *string `json:"call_id,omitempty"`
+	Content       *string `json:"content,omitempty"`
+	Kind          string  `json:"kind"`
+	Path          string  `json:"path"`
+	RequestedPath *string `json:"requested_path,omitempty"`
+	ResolvedPath  *string `json:"resolved_path,omitempty"`
+	Sha256        string  `json:"sha256"`
+	ToolUseId     *string `json:"tool_use_id,omitempty"`
+}
+
+// RecordedModelInput defines model for RecordedModelInput.
+type RecordedModelInput struct {
+	Instructions *[]RecordedInstructionSource `json:"instructions,omitempty"`
+	Messages     *[]Message                   `json:"messages"`
+	OutputSchema *RecordedOutputSchema        `json:"output_schema,omitempty"`
+	System       string                       `json:"system"`
+	ToolChoice   *string                      `json:"tool_choice,omitempty"`
+	Tools        *[]ToolDef                   `json:"tools"`
+}
+
+// RecordedOutputSchema defines model for RecordedOutputSchema.
+type RecordedOutputSchema struct {
+	Name   *string                `json:"name,omitempty"`
+	Schema map[string]interface{} `json:"schema"`
+	Strict *bool                  `json:"strict,omitempty"`
+}
 
 // RenameSessionRequest defines model for RenameSessionRequest.
 type RenameSessionRequest struct {
@@ -1158,6 +1206,13 @@ type ToolCatalogItem struct {
 // ToolCatalogResponse defines model for ToolCatalogResponse.
 type ToolCatalogResponse struct {
 	Tools *[]ToolCatalogItem `json:"tools"`
+}
+
+// ToolDef defines model for ToolDef.
+type ToolDef struct {
+	Description string                 `json:"description"`
+	InputSchema map[string]interface{} `json:"input_schema"`
+	Name        string                 `json:"name"`
 }
 
 // ToolPart defines model for ToolPart.
@@ -1562,6 +1617,12 @@ type MessageSessionParams struct {
 
 // ListSessionModelCallsParams defines parameters for ListSessionModelCalls.
 type ListSessionModelCallsParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// GetSessionModelCallInputParams defines parameters for GetSessionModelCallInput.
+type GetSessionModelCallInputParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -2402,6 +2463,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /sessions/{id}/model-calls (the `ListSessionModelCalls` operationId).
 	ListSessionModelCalls(ctx context.Context, id string, params *ListSessionModelCallsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSessionModelCallInput Get recorded model input
+	//
+	// Corresponds with GET /sessions/{id}/model-calls/{callID}/input (the `GetSessionModelCallInput` operationId).
+	GetSessionModelCallInput(ctx context.Context, id string, callID string, params *GetSessionModelCallInputParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// MoveSessionWithBody Move a session
 	//
@@ -3466,6 +3532,21 @@ func (c *GeneratedClient) MessageSession(ctx context.Context, id string, params 
 // Corresponds with GET /sessions/{id}/model-calls (the `ListSessionModelCalls` operationId).
 func (c *GeneratedClient) ListSessionModelCalls(ctx context.Context, id string, params *ListSessionModelCallsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListSessionModelCallsRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSessionModelCallInput Get recorded model input
+//
+// Corresponds with GET /sessions/{id}/model-calls/{callID}/input (the `GetSessionModelCallInput` operationId).
+func (c *GeneratedClient) GetSessionModelCallInput(ctx context.Context, id string, callID string, params *GetSessionModelCallInputParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionModelCallInputRequest(c.Server, id, callID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6287,6 +6368,62 @@ func NewListSessionModelCallsRequest(server string, id string, params *ListSessi
 	return req, nil
 }
 
+// NewGetSessionModelCallInputRequest constructs an http.Request for the GetSessionModelCallInput method
+func NewGetSessionModelCallInputRequest(server string, id string, callID string, params *GetSessionModelCallInputParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "callID", callID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/model-calls/%s/input", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewMoveSessionRequest calls the generic MoveSession builder with application/json body
 func NewMoveSessionRequest(server string, id string, params *MoveSessionParams, body MoveSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -7883,6 +8020,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /sessions/{id}/model-calls (the `ListSessionModelCalls` operationId).
 	ListSessionModelCallsWithResponse(ctx context.Context, id string, params *ListSessionModelCallsParams, reqEditors ...RequestEditorFn) (*ListSessionModelCallsHTTPResponse, error)
+
+	// GetSessionModelCallInputWithResponse Get recorded model input
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{id}/model-calls/{callID}/input (the `GetSessionModelCallInput` operationId).
+	GetSessionModelCallInputWithResponse(ctx context.Context, id string, callID string, params *GetSessionModelCallInputParams, reqEditors ...RequestEditorFn) (*GetSessionModelCallInputHTTPResponse, error)
 
 	// MoveSessionWithBodyWithResponse Move a session
 	//
@@ -10323,6 +10467,54 @@ func (r ListSessionModelCallsHTTPResponse) ContentType() string {
 	return ""
 }
 
+type GetSessionModelCallInputHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelCallInputResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSessionModelCallInputHTTPResponse) GetJSON200() *ModelCallInputResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r GetSessionModelCallInputHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSessionModelCallInputHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSessionModelCallInputHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSessionModelCallInputHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSessionModelCallInputHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type MoveSessionHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12077,6 +12269,19 @@ func (c *ClientWithResponses) ListSessionModelCallsWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseListSessionModelCallsHTTPResponse(rsp)
+}
+
+// GetSessionModelCallInputWithResponse Get recorded model input
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{id}/model-calls/{callID}/input (the `GetSessionModelCallInput` operationId).
+func (c *ClientWithResponses) GetSessionModelCallInputWithResponse(ctx context.Context, id string, callID string, params *GetSessionModelCallInputParams, reqEditors ...RequestEditorFn) (*GetSessionModelCallInputHTTPResponse, error) {
+	rsp, err := c.GetSessionModelCallInput(ctx, id, callID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSessionModelCallInputHTTPResponse(rsp)
 }
 
 // MoveSessionWithBodyWithResponse Move a session
@@ -13969,6 +14174,39 @@ func ParseListSessionModelCallsHTTPResponse(rsp *http.Response) (*ListSessionMod
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []ModelCall
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSessionModelCallInputHTTPResponse parses an HTTP response from a GetSessionModelCallInputWithResponse call
+func ParseGetSessionModelCallInputHTTPResponse(rsp *http.Response) (*GetSessionModelCallInputHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSessionModelCallInputHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelCallInputResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

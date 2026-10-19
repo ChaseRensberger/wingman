@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -104,85 +103,4 @@ func directoryEntries(ctx context.Context, path string, visit func(os.DirEntry) 
 			return err
 		}
 	}
-}
-
-func walkFiles(ctx context.Context, path string, skip func(string) bool, visit func(string) error) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		entries, readErr := f.ReadDir(128)
-		for _, entry := range entries {
-			next := filepath.Join(path, entry.Name())
-			if entry.IsDir() {
-				if skip != nil && skip(entry.Name()) {
-					continue
-				}
-				err = walkFiles(ctx, next, skip, visit)
-			} else {
-				err = visit(next)
-			}
-			if err != nil {
-				return err
-			}
-		}
-		// Like filesystem search tools, skip directories that cannot be read.
-		if readErr != nil {
-			return nil
-		}
-	}
-}
-
-func globFiles(ctx context.Context, pattern string, visit func(string) error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if _, err := filepath.Match(pattern, ""); err != nil {
-		return err
-	}
-	if !globHasMeta(pattern) {
-		if _, err := os.Lstat(pattern); err == nil {
-			return visit(pattern)
-		}
-		return nil
-	}
-	dir, file := filepath.Split(pattern)
-	dir = filepath.Clean(dir)
-	matchDir := func(path string) error {
-		info, err := os.Lstat(path)
-		if err != nil || !info.IsDir() {
-			return nil
-		}
-		resolved, err := filepath.EvalSymlinks(path)
-		if err != nil || resolved != path {
-			return nil
-		}
-		err = directoryEntries(ctx, path, func(entry os.DirEntry) error {
-			match, err := filepath.Match(file, entry.Name())
-			if err != nil {
-				return err
-			}
-			if match {
-				return visit(filepath.Join(path, entry.Name()))
-			}
-			return nil
-		})
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if globHasMeta(dir) {
-		return globFiles(ctx, dir, matchDir)
-	}
-	return matchDir(dir)
-}
-
-func globHasMeta(pattern string) bool {
-	return strings.ContainsAny(pattern, "*?[") || (filepath.Separator != '\\' && strings.Contains(pattern, `\`))
 }

@@ -53,6 +53,7 @@ import { Spinner } from "@wingman/core/components/core/spinner";
 import { SessionComposer } from "@/components/session-composer";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
+import type { InspectorSelection } from "@/components/session-context-sheet";
 import { SessionTranscript } from "@/components/session-transcript";
 import { QuestionPanel } from "@/components/question-panel";
 import { useSessionRun, type FailedRun } from "@/hooks/use-session-run";
@@ -94,6 +95,7 @@ function SessionDetailPage() {
   const [macros, setMacros] = useState<Macro[]>([]);
   const [actions, setActions] = useState<PluginAction[]>([]);
   const [modelCalls, setModelCalls] = useState<ModelCall[]>([]);
+  const [inspection, setInspection] = useState<InspectorSelection>(null);
   const [selectedAgentId, setSelectedAgent] = useState("");
   const availableAgents = sessionAgents(
     agents,
@@ -137,6 +139,7 @@ function SessionDetailPage() {
     activeSessionIdRef.current = sessionId;
     setPendingTitle((previous) => (previous?.id === sessionId ? previous : null));
     setJSONMode(false);
+    setInspection(null);
     if (titleSessionIdRef.current !== sessionId) {
       setStreamingTitle("");
       setIsTitleStreaming(false);
@@ -729,6 +732,8 @@ function SessionDetailPage() {
         session={session}
         workspace={workspace}
         calls={modelCalls}
+        inspection={inspection}
+        onInspect={setInspection}
         isDraft={isDraft}
         title={sessionTitle}
         contextLabel={contextLabel}
@@ -752,6 +757,8 @@ function SessionDetailPage() {
         toolResultsById={toolResultsById}
         toolActivitiesById={run.toolActivities}
         modelCallsByMessageId={modelCallsByMessageId}
+        modelCalls={modelCalls}
+        onInspectCall={(callId) => setInspection({ callId })}
         agentNames={agentNames}
         failedRun={run.failedRun}
         permissionRequests={run.permissionRequests}

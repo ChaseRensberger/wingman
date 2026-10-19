@@ -677,6 +677,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{id}/model-calls/{callID}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get recorded model input */
+        get: operations["getSessionModelCallInput"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{id}/move": {
         parameters: {
             query?: never;
@@ -1098,6 +1115,8 @@ export interface components {
             build?: components["schemas"]["BuildTrace"];
             capabilities: components["schemas"]["Capabilities"];
             failure?: components["schemas"]["CallDiagnostic"];
+            input_hash?: string;
+            instructions?: components["schemas"]["InstructionSnapshot"][] | null;
             lowered?: components["schemas"]["LoweredOptions"];
             messages: components["schemas"]["MessageTrace"];
             model: components["schemas"]["ModelRef"];
@@ -1305,6 +1324,16 @@ export interface components {
             type: "image";
             url?: string;
         };
+        InstructionSnapshot: {
+            call_id?: string;
+            content?: string;
+            kind: string;
+            path: string;
+            requested_path?: string;
+            resolved_path?: string;
+            sha256: string;
+            tool_use_id?: string;
+        };
         InstructionSource: {
             kind: string;
             /** Format: int64 */
@@ -1444,6 +1473,9 @@ export interface components {
             /** Format: int64 */
             total_tokens: number;
             trace?: unknown;
+        };
+        ModelCallInputResponse: {
+            input: components["schemas"]["RecordedModelInput"] | null;
         };
         ModelCapabilities: {
             images: boolean;
@@ -1703,6 +1735,31 @@ export interface components {
             reasoning: string;
             /** @constant */
             type: "reasoning";
+        };
+        RecordedInstructionSource: {
+            call_id?: string;
+            content?: string;
+            kind: string;
+            path: string;
+            requested_path?: string;
+            resolved_path?: string;
+            sha256: string;
+            tool_use_id?: string;
+        };
+        RecordedModelInput: {
+            instructions?: components["schemas"]["RecordedInstructionSource"][] | null;
+            messages: components["schemas"]["Message"][] | null;
+            output_schema?: components["schemas"]["RecordedOutputSchema"];
+            system: string;
+            tool_choice?: string;
+            tools: components["schemas"]["ToolDef"][] | null;
+        };
+        RecordedOutputSchema: {
+            name?: string;
+            schema: {
+                [key: string]: unknown;
+            };
+            strict?: boolean;
         };
         RenameSessionRequest: {
             /** Format: int64 */
@@ -2214,6 +2271,13 @@ export interface components {
         };
         ToolCatalogResponse: {
             tools: components["schemas"]["ToolCatalogItem"][] | null;
+        };
+        ToolDef: {
+            description: string;
+            input_schema: {
+                [key: string]: unknown;
+            };
+            name: string;
         };
         ToolEventData: {
             authorized_at?: string;
@@ -4048,6 +4112,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelCall"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSessionModelCallInput: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path: {
+                id: string;
+                callID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCallInputResponse"];
                 };
             };
             /** @description Request failed */
