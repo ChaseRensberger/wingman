@@ -25,8 +25,6 @@ const GITHUB_URL = "https://github.com/chaserensberger/wingman";
 const DOCS_URL = "https://docs.wingman.actor";
 // const ISSUE_URL = "https://github.com/chaserensberger/wingman/issues/new";
 // const DISCORD_URL = "https://discord.gg/Mw4KURek3Q";
-const COMPACTION_PLUGIN_URL =
-  "https://github.com/ChaseRensberger/wingman/blob/main/plugins/compaction/compaction.go";
 const WINGMAN_API_EXAMPLE = `\`\`\`bash
 wingman api createSession -d '{"title":"Research"}'
 \`\`\``;
@@ -37,7 +35,7 @@ curl -sS -X POST "$WINGMAN_URL/sessions" \\
   -d '{"title":"Research"}'
 \`\`\``;
 const TYPESCRIPT_SDK_EXAMPLE = `\`\`\`bash
-npm install @wingman-actor/client
+npm install @wingman-actor/client@VERSION
 \`\`\`
 
 \`\`\`typescript
@@ -45,13 +43,14 @@ import { createWingmanClient } from "@wingman-actor/client";
 
 const client = createWingmanClient({
   baseUrl: process.env.WINGMAN_URL!,
+  username: process.env.WINGMAN_USERNAME,
   password: process.env.WINGMAN_PASSWORD,
 });
 
 const session = await client.sessions.create({ title: "Research" });
 \`\`\``;
 const GO_SDK_EXAMPLE = `\`\`\`bash
-go get github.com/chaserensberger/wingman/client
+go get github.com/chaserensberger/wingman/client@VERSION
 \`\`\`
 
 \`\`\`go
@@ -117,13 +116,13 @@ const FEATURES = [
       "Durable, versioned events replay before live delivery so clients can recover their view of a session.",
   },
   {
-    title: "Plugins",
-    description:
-      "Add tools and session behavior with in-process Go modules or out-of-process JSON-RPC plugins.",
-  },
-  {
     title: "Provider-agnostic",
     description: "Wingman ships its own provider-agnostic model SDK (WingModels).",
+  },
+  {
+    title: "Recorded model input",
+    description:
+      "Inspect the system prompt, messages, and tool definitions prepared for a model call, even after the run ends.",
   },
 ];
 
@@ -205,33 +204,6 @@ function SectionHeader({
   );
 }
 
-function LinkCard({
-  title,
-  description,
-  href,
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="block">
-      <Card
-        size="sm"
-        className="h-full px-3 transition-[color,border-color] duration-150 hover:border-primary hover:text-primary"
-      >
-        <div className="flex items-start gap-2">
-          <span className="text-primary">[*]</span>
-          <div className="space-y-1">
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-        </div>
-      </Card>
-    </a>
-  );
-}
-
 function WhatIsWingmanSection() {
   return (
     <section className="px-6 py-8 border-b space-y-4 sm:px-12">
@@ -254,17 +226,7 @@ function WhatIsWingmanSection() {
         </li>
         <li className="flex items-start gap-2 text-sm text-muted-foreground">
           <span className="text-primary">[*]</span>
-          <span>
-            Independent of external dependencies, making it ideal for running in secure or airgapped
-            environments.
-          </span>
-        </li>
-        <li className="flex items-start gap-2 text-sm text-muted-foreground">
-          <span className="text-primary">[*]</span>
-          <span>
-            Highly extensible - plugin support via in-process Go modules or out-of-process JSON-RPC.
-            Can register tools, attach to lifecycle events, rewrite history, etc...
-          </span>
+          <span>Distributed as one binary with the Console included.</span>
         </li>
       </ul>
       <a href={DOCS_URL}>
@@ -300,8 +262,8 @@ function ReliableExecutionSection() {
     <section className="px-6 py-8 border-b space-y-4 sm:px-12">
       <SectionHeader title="Reliable execution" markerId="03" />
       <p className="max-w-3xl text-sm text-muted-foreground">
-        Each prompt gets a durable run. Wingman records its state as it runs. After a restart,
-        queued runs continue.
+        Saved sessions keep work running after a client disconnects. After a server restart, queued
+        runs continue and interrupted runs recover when Wingman can safely resume them.
       </p>
       <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
         <Card size="sm" className="gap-0 overflow-hidden p-0 text-xs">
@@ -338,11 +300,13 @@ function ReliableExecutionSection() {
             </li>
             <li className="flex gap-2">
               <span className="text-primary">[*]</span>
-              <span>Started provider calls and tool uses become interrupted.</span>
+              <span>Saved results are reused. Eligible interrupted calls can run again.</span>
             </li>
             <li className="flex gap-2">
               <span className="text-primary">[*]</span>
-              <span>Clients reload session state after an event resync.</span>
+              <span>
+                If a tool's effects are unknown and it cannot safely repeat, recovery stops.
+              </span>
             </li>
           </ul>
         </Card>
@@ -377,19 +341,56 @@ function ExecutionRow({
   );
 }
 
+function LinkCard({
+  title,
+  description,
+  href,
+}: {
+  title: string;
+  description: string;
+  href: string;
+}) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="block">
+      <Card
+        size="sm"
+        className="h-full px-3 transition-[color,border-color] duration-150 hover:border-primary hover:text-primary"
+      >
+        <div className="flex items-start gap-2">
+          <span className="text-primary">[*]</span>
+          <div className="space-y-1">
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+        </div>
+      </Card>
+    </a>
+  );
+}
+
 function PluginsSection() {
   return (
     <section className="px-6 py-8 border-b space-y-4 sm:px-12">
       <div>
         <SectionHeader title="Plugins" markerId="06" />
         <p className="text-sm text-muted-foreground">
-          Extend Wingman with in-process Go modules or out-of-process JSON-RPC plugins.
+          Plugins included with Wingman. Follow a link to read the source.
         </p>
       </div>
       <LinkCard
         title="Compaction"
-        description="Save context by compacting older messages when close to a session overflow."
-        href={COMPACTION_PLUGIN_URL}
+        description="Summarize older model context while keeping the saved conversation."
+        href={`${GITHUB_URL}/blob/main/plugins/compaction/compaction.go`}
+      />
+      <LinkCard
+        title="wingcode"
+        description="Give agents coding guidance and Git repository context."
+        href={`${GITHUB_URL}/blob/main/plugins/wingcode/wingcode.go`}
+      />
+      <LinkCard
+        title="Orientation"
+        description="Give agents context about their environment, model, and available references."
+        href={`${GITHUB_URL}/blob/main/plugins/orientation/orientation.go`}
       />
     </section>
   );
@@ -452,6 +453,10 @@ function ConnectSection() {
   return (
     <section className="px-6 py-8 border-b space-y-4 sm:px-12">
       <SectionHeader title="Connect to Wingman" markerId="05" />
+      <p className="text-sm text-muted-foreground">
+        Start Wingman before running these examples. The CLI and Go examples connect to the local
+        managed service and read its credentials automatically.
+      </p>
       <Tabs defaultValue="wingman-cli">
         <TabsList>
           <TabsTrigger value="wingman-cli">Wingman CLI</TabsTrigger>
@@ -472,6 +477,19 @@ function ConnectSection() {
         </TabsContent>
         <TabsContent value="http">
           <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Set <code>WINGMAN_URL</code> to your server address and <code>WINGMAN_AUTH</code> to{" "}
+              <code>username:password</code>. For the local managed service, read the address from{" "}
+              <code>wingman service status</code> and the credentials from{" "}
+              <code>~/.config/wingman/service.env</code>. See the{" "}
+              <a
+                href={`${DOCS_URL}/concepts/authentication#direct-http-requests`}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                authentication guide
+              </a>{" "}
+              for custom paths and remote connections.
+            </p>
             <Markdown>{HTTP_API_EXAMPLE}</Markdown>
             <a
               href={`${DOCS_URL}/build-clients/http-api-basics`}
@@ -483,6 +501,18 @@ function ConnectSection() {
         </TabsContent>
         <TabsContent value="typescript">
           <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Replace <code>VERSION</code> with your server version, without the leading{" "}
+              <code>v</code>. Set <code>WINGMAN_URL</code>, <code>WINGMAN_USERNAME</code>, and{" "}
+              <code>WINGMAN_PASSWORD</code> in your Node.js or Bun environment. The{" "}
+              <a
+                href={`${DOCS_URL}/build-clients/typescript-sdk#connect`}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                SDK connection guide
+              </a>{" "}
+              shows how to load them from the local managed service.
+            </p>
             <Markdown>{TYPESCRIPT_SDK_EXAMPLE}</Markdown>
             <a
               href={`https://www.npmjs.com/package/@wingman-actor/client`}
@@ -501,6 +531,10 @@ function ConnectSection() {
         </TabsContent>
         <TabsContent value="go">
           <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Replace <code>VERSION</code> with your server version, including the leading{" "}
+              <code>v</code>. Run <code>wingman version</code> to read it.
+            </p>
             <Markdown>{GO_SDK_EXAMPLE}</Markdown>
 
             <a
@@ -539,6 +573,10 @@ function ClientsSection() {
           <CardTitle>Console - Ships with the Wingman binary</CardTitle>
         </div>
         <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Open Inspector to read the input recorded for a model call. Run{" "}
+            <code>wingman console</code> to open the local Console.
+          </p>
           <img
             className="w-full rounded-sm border bg-background"
             src="/wingman-console.png"
@@ -561,7 +599,7 @@ function ClientsSection() {
 				<div className="border-b px-4 py-3 text-muted-foreground">OPERATOR SURFACES</div>
 				<div className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
 					<ObservabilityItem endpoint="/diagnostics" question="Is the daemon under pressure?" detail="Queued and active runs, execution scopes, event subscriber backlog, and aggregate plugin health." />
-					<ObservabilityItem endpoint="/plugins" question="Which plugin failed?" detail="Plugin status, process details, and recent diagnostics for each external plugin." />
+					<ObservabilityItem endpoint="/rpc-plugins" question="Which plugin failed?" detail="Plugin status, process details, and recent diagnostics for each external plugin." />
 					<ObservabilityItem endpoint="/logs" question="What happened recently?" detail="A bounded buffer of recent daemon log entries for local diagnosis." />
 				</div>
 			</div>
