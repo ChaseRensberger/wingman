@@ -20,6 +20,7 @@ Register extensions through `plugin.Registry` during `Activate`:
 | `RegisterBeforeComplete`              | Accept an answer or request another iteration.      |
 | `RegisterTransformHistory`            | Replace active history before a model step.         |
 | `RegisterTransformContext`            | Change messages for one model request.              |
+| `RegisterTransformSystem`             | Change instructions for one model request.          |
 | `RegisterTransformToolDefs`           | Change tool definitions for one model request.      |
 | `RegisterTransformParams`             | Change model request parameters.                    |
 | `RegisterBeforeToolCall`              | Change, deny, or skip a tool call.                  |
@@ -33,6 +34,27 @@ Register extensions through `plugin.Registry` during `Activate`:
 Hooks run in activation order. Each transform receives the previous hook's output.
 `TransformHistory` currently ignores a returned replacement when its message count is unchanged.
 Use `TransformContext` for request-only changes that keep the same count.
+
+## System instructions
+
+`RegisterTransformSystem` receives `run.TransformSystemInfo` before each model call.
+Its `System` field contains the current instructions. The other fields provide the current model, directory, tools, and permissions.
+Return the complete replacement instruction text. Treat the supplied model, tools, and permission data as read-only values.
+Direct users of `run.Hooks.TransformSystem` use the same input type.
+
+The `plugins/orientation` package supplies general environment, model, reference, and MCP context.
+The `plugins/wingcode` package supplies coding guidance and Git context.
+For embedded sessions, pass their plugins to `session.WithPlugin`:
+
+```go
+session.WithPlugin(
+    orientation.New(orientation.Config{}),
+    wingcode.New(),
+)
+```
+
+The server includes orientation automatically. Agent definitions select `wingcode` through their `plugins` list.
+Server applications can supply other named factories through `server.Config.AgentPluginFactories`.
 
 ## Completion validation
 

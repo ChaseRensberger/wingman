@@ -74,8 +74,9 @@ type connection interface {
 type connector func(context.Context, string, ServerConfig) (connection, []*mcpsdk.Tool, error)
 
 type connectionGeneration struct {
-	connection connection
-	tools      []*mcpsdk.Tool
+	connection   connection
+	tools        []*mcpsdk.Tool
+	instructions string
 
 	mu               sync.Mutex
 	accepting        bool
@@ -286,6 +287,13 @@ func (m *Manager) Connect(ctx context.Context, name string) error {
 	}
 
 	newGeneration := &connectionGeneration{connection: conn, tools: tools, executionTimeout: executionTimeout(state.cfg), accepting: true}
+	if initialized, ok := conn.(interface {
+		InitializeResult() *mcpsdk.InitializeResult
+	}); ok {
+		if result := initialized.InitializeResult(); result != nil {
+			newGeneration.instructions = result.Instructions
+		}
+	}
 	oldGeneration := state.generation
 	if oldGeneration != nil {
 		retireLocked(oldGeneration)

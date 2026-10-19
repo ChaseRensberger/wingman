@@ -17,7 +17,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 2 || migrations[0].name != "init" || migrations[1].name != "model_input" {
+	if len(migrations) != 3 || migrations[0].name != "init" || migrations[1].name != "model_input" || migrations[2].name != "agent_plugins" {
 		t.Fatalf("unexpected migrations: %d", len(migrations))
 	}
 	var count int
@@ -28,7 +28,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		t.Fatalf("recorded initial migration = %d, want 1", count)
 	}
 	for table, columns := range map[string][]string{
-		"agents":              {"permissions_json"},
+		"agents":              {"permissions_json", "plugins_json"},
 		"sessions":            {"aggregate_version"},
 		"messages":            {"run_id"},
 		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type", "effective_instructions", "instruction_sources_json", "skills_json", "kind", "action", "input_json", "recovery_attempts"},

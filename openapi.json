@@ -113,6 +113,15 @@
               "null"
             ]
           },
+          "plugins": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "tools": {
             "items": {
               "type": "string"
@@ -160,6 +169,15 @@
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "plugins": {
+            "items": {
+              "type": "string"
             },
             "type": [
               "array",
@@ -772,6 +790,15 @@
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "plugins": {
+            "items": {
+              "type": "string"
             },
             "type": [
               "array",
@@ -4903,6 +4930,15 @@
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/Rule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "plugins": {
+            "items": {
+              "type": "string"
             },
             "type": [
               "array",

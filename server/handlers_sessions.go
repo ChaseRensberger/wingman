@@ -21,6 +21,7 @@ import (
 	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/plugins/orientation"
 	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
@@ -420,12 +421,18 @@ func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.ActionsResponse{Actions: actions})
 }
 
-func (s *Server) pluginActions() ([]plugin.Action, error) {
-	plugins := make([]plugin.Plugin, 0, len(s.pluginFactories))
+func (s *Server) pluginActions(names ...string) ([]plugin.Action, error) {
+	if err := s.validateAgentPlugins(names); err != nil {
+		return nil, err
+	}
+	plugins := make([]plugin.Plugin, 0, len(s.pluginFactories)+len(names))
 	for _, factory := range s.pluginFactories {
 		if factory != nil {
 			plugins = append(plugins, factory())
 		}
+	}
+	for _, name := range names {
+		plugins = append(plugins, s.agentPluginFactories[name]())
 	}
 	if len(plugins) == 0 {
 		return []plugin.Action{}, nil
@@ -471,7 +478,7 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	effective := s.agentWithRequestModel(stored, req.ModelRef, req.ModelRoute)
-	availableActions, err := s.pluginActions()
+	availableActions, err := s.pluginActions(effective.Plugins...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1140,7 +1147,9 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		session.WithLogger(logger),
 		session.WithAgentID(stored.ID),
 	}
-	resolveInstructions, err := s.instructionResolver(ctx, st, sess, stored, skills)
+	instructionSession := *sess
+	instructionSession.WorkDir = workDir
+	resolveInstructions, err := s.instructionResolver(ctx, st, &instructionSession, stored, skills)
 	if err != nil {
 		return nil, err
 	}
@@ -1151,8 +1160,11 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 			plugins = append(plugins, factory())
 		}
 	}
-	if len(plugins) > 0 {
-		opts = append(opts, session.WithPlugin(plugins...))
+	if err := s.validateAgentPlugins(stored.Plugins); err != nil {
+		return nil, err
+	}
+	for _, name := range stored.Plugins {
+		plugins = append(plugins, s.agentPluginFactories[name]())
 	}
 	if st != nil {
 		opts = append(opts, session.WithStore(st))
@@ -1206,6 +1218,8 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	if len(tools) > 0 {
 		opts = append(opts, session.WithTools(tools...))
 	}
+	plugins = append(plugins, orientation.New(orientation.Config{References: s.references}))
+	opts = append(opts, session.WithPlugin(plugins...))
 	if len(stored.OutputSchema) > 0 {
 		opts = append(opts, session.WithOutputSchema(&models.OutputSchema{
 			Name:   stored.ID,

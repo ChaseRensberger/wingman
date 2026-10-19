@@ -446,7 +446,7 @@ type Hooks struct {
 	// returned string replaces Config.System for the LLM call only;
 	// subsequent turns see the original Config.System unless transformed
 	// again. Useful for time-of-day injection, project context, etc.
-	TransformSystem func(ctx context.Context, system string) (string, error)
+	TransformSystem TransformSystemHook
 
 	// TransformContext may rewrite the message history for this turn
 	// only. The returned slice is sent to the model in place of the

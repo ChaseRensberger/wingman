@@ -50,6 +50,23 @@ func Evaluate(action, resource string, rules Ruleset, defaultEffect Effect) Deci
 	return decision
 }
 
+// WhollyDenied reports whether rules deny every resource for an action.
+func WhollyDenied(action string, rules Ruleset) bool {
+	for i := len(rules) - 1; i >= 0; i-- {
+		rule := rules[i]
+		if !match(rule.Action, action) {
+			continue
+		}
+		if rule.Resource == "" || rule.Resource == "*" {
+			return rule.Effect == EffectDeny
+		}
+		if rule.Effect != EffectDeny {
+			return false
+		}
+	}
+	return false
+}
+
 // Merge concatenates rulesets, preserving order.
 func Merge(sets ...Ruleset) Ruleset {
 	var total int

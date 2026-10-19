@@ -16,6 +16,7 @@ func apiAgent(value *store.Agent) api.Agent {
 	return api.Agent{
 		ID: value.ID, Name: value.Name, Instructions: value.Instructions,
 		Tools: slices.Clone(value.Tools), Permissions: slices.Clone(value.Permissions),
+		Plugins:  slices.Clone(value.Plugins),
 		ModelRef: value.ModelRef, Options: maps.Clone(value.Options), OutputSchema: maps.Clone(value.OutputSchema),
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
@@ -25,6 +26,7 @@ func storeAgent(value *api.AgentSpec) *store.Agent {
 	return &store.Agent{
 		ID: value.ID, Name: value.Name, Instructions: value.Instructions,
 		Tools: slices.Clone(value.Tools), Permissions: slices.Clone(value.Permissions),
+		Plugins:  slices.Clone(value.Plugins),
 		ModelRef: value.ModelRef, Options: maps.Clone(value.Options), OutputSchema: maps.Clone(value.OutputSchema),
 	}
 }

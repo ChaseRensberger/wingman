@@ -65,12 +65,12 @@ func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skil
 		if entry.Description == "" || permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect == permission.EffectDeny {
 			continue
 		}
-		lines = append(lines, "- "+entry.ID+": "+entry.Description)
+		lines = append(lines, skillSummary(entry))
 	}
 	if len(lines) == 0 {
 		return skills, "", nil
 	}
-	return skills, "## Available skills\nUse the skill tool with an ID to load its instructions.\n" + strings.Join(lines, "\n"), nil
+	return skills, skillCatalogHeader + strings.Join(lines, "\n"), nil
 }
 
 func (s *Server) instructionResolver(ctx context.Context, data store.Store, sess *store.Session, agent *store.Agent, skills []skill.Skill) (run.InstructionResolver, error) {
@@ -104,7 +104,7 @@ func (s *Server) instructionResolver(ctx context.Context, data store.Store, sess
 	var catalog []string
 	for _, entry := range skills {
 		if entry.Description != "" && permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect != permission.EffectDeny {
-			catalog = append(catalog, "- "+entry.ID+": "+entry.Description)
+			catalog = append(catalog, skillSummary(entry))
 		}
 	}
 	return func(ctx context.Context, system string, history []models.Message) (string, []models.InstructionSnapshot, error) {
@@ -129,8 +129,14 @@ func (s *Server) instructionResolver(ctx context.Context, data store.Store, sess
 		base := system + "\n\nCurrent date: " + time.Now().Format(time.DateOnly) + "."
 		result := instruction.Render(base, sources)
 		if len(catalog) > 0 {
-			result += "\n\n## Available skills\nUse the skill tool with an ID to load its instructions.\n" + strings.Join(catalog, "\n")
+			result += "\n\n" + skillCatalogHeader + strings.Join(catalog, "\n")
 		}
 		return result, sources, nil
 	}, nil
+}
+
+const skillCatalogHeader = "## Available skills\nUse the skill tool with an ID to load instructions when the task matches the description. Do not load a skill based only on keywords or availability. Avoid reloading instructions already in context.\n"
+
+func skillSummary(entry skill.Skill) string {
+	return fmt.Sprintf("- %s (%s): %s", entry.ID, entry.Name, entry.Description)
 }

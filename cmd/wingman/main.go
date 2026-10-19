@@ -272,6 +272,7 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel, LogWriter: logWriter,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			GlobalSkillDirs: effective.Skills.Dirs,
+			References:      effective.References,
 			MCP:             effective.MCP, Providers: effective.Provider,
 			Permissions: effective.Permissions, AgentPermissions: effective.AgentPermissions,
 			Password: password, Username: username, InstanceID: instanceID, Version: version,

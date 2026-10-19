@@ -94,7 +94,7 @@ func TestResolveSkillsProjectOverridesAndHonorsPermission(t *testing.T) {
 	}
 	server := New(Config{GlobalSkillDirs: []string{global}, Permissions: permission.Ruleset{{Action: "skill", Resource: "review", Effect: permission.EffectDeny}}})
 	skills, catalog, err := server.resolveSkills(&store.Agent{}, workDir)
-	if err != nil || len(skills) != 2 || skills[0].Content != "project" || !strings.Contains(catalog, "- wingskill:") || strings.Contains(catalog, "- review:") {
+	if err != nil || len(skills) != 2 || skills[0].Content != "project" || !strings.Contains(catalog, "- wingskill (") || strings.Contains(catalog, "- review (") {
 		t.Fatalf("skills=%#v catalog=%q err=%v", skills, catalog, err)
 	}
 }

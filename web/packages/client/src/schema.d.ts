@@ -1025,6 +1025,7 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
+            plugins?: string[] | null;
             tools?: string[] | null;
             updated_at: string;
         };
@@ -1040,6 +1041,7 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
+            plugins?: string[] | null;
             tools?: string[] | null;
         };
         AuthCredential: {
@@ -1214,6 +1216,7 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
+            plugins?: string[] | null;
             tools?: string[] | null;
         };
         CreateClientRequest: {
@@ -2416,6 +2419,7 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
+            plugins?: string[] | null;
             tools?: string[] | null;
         };
         UpdateWorkspaceRequest: {

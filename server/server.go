@@ -30,6 +30,8 @@ import (
 	"github.com/chaserensberger/wingman/internal/observability"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/plugins/orientation"
+	"github.com/chaserensberger/wingman/plugins/wingcode"
 	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
@@ -57,6 +59,8 @@ type Server struct {
 	globalInstructionsPath string
 	globalSkillDirs        []string
 	pluginFactories        []func() plugin.Plugin
+	agentPluginFactories   map[string]func() plugin.Plugin
+	references             []orientation.Reference
 	requestRestart         func()
 	ready                  atomic.Bool
 
@@ -103,6 +107,10 @@ type Config struct {
 	// GlobalSkillDirs selects daemon-wide skill directories.
 	GlobalSkillDirs []string
 	PluginFactories []func() plugin.Plugin
+	// AgentPluginFactories supplies plugins selected explicitly by each agent.
+	AgentPluginFactories map[string]func() plugin.Plugin
+	// References advertises additional directories without granting permissions.
+	References []orientation.Reference
 	// RequestRestart asks the process owner to replace this daemon. A nil
 	// callback means that this is not a managed service.
 	RequestRestart func()
@@ -156,6 +164,13 @@ func New(cfg Config) *Server {
 		requestRestart:         cfg.RequestRestart,
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
+	}
+	s.references = append([]orientation.Reference(nil), cfg.References...)
+	s.agentPluginFactories = map[string]func() plugin.Plugin{
+		"wingcode": func() plugin.Plugin { return wingcode.New() },
+	}
+	for name, factory := range cfg.AgentPluginFactories {
+		s.agentPluginFactories[name] = factory
 	}
 	s.runs = newSessionRunManager(s)
 	if cfg.MaxActiveRuns > 0 {

@@ -16,6 +16,7 @@ snapshot.json
 wingmodels_snapshot.json
 _archive/
 wingcode/
+!plugins/wingcode/
 spec.md
 AGENTS.md
 checklist.md

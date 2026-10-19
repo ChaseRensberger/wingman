@@ -14,6 +14,7 @@ import (
 	"github.com/chaserensberger/wingman/models"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/plugins/orientation"
 )
 
 // Config is the wingman.json daemon configuration.
@@ -25,6 +26,7 @@ type Config struct {
 	AgentPermissions map[string]permission.Ruleset      `json:"agent_permissions"`
 	Provider         map[string]provider.ProviderConfig `json:"provider"`
 	MCP              map[string]wingmcp.ServerConfig    `json:"mcp"`
+	References       []orientation.Reference            `json:"references"`
 }
 
 // ServerConfig contains daemon listener, storage, and logging settings.
@@ -91,6 +93,19 @@ func Load(path string) (Config, error) {
 
 // Validate checks daemon-level configuration values.
 func (c Config) Validate() error {
+	seenReferences := map[string]bool{}
+	for i, ref := range c.References {
+		if strings.TrimSpace(ref.Name) == "" || strings.TrimSpace(ref.Path) == "" {
+			return fmt.Errorf("references[%d] requires name and path", i)
+		}
+		if seenReferences[ref.Name] {
+			return fmt.Errorf("duplicate reference name %q", ref.Name)
+		}
+		seenReferences[ref.Name] = true
+		if !filepath.IsAbs(ref.Path) && ref.Path != "~" && !strings.HasPrefix(ref.Path, "~/") {
+			return fmt.Errorf("references[%d].path must be absolute or home-relative", i)
+		}
+	}
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535")
 	}
@@ -147,6 +162,12 @@ func (c Config) Normalize(home string) (Config, error) {
 		}
 	}
 	out.Permissions = append(permission.Ruleset(nil), c.Permissions...)
+	out.References = append([]orientation.Reference(nil), c.References...)
+	for i, ref := range out.References {
+		if out.References[i].Path, err = expandHome(ref.Path, home); err != nil {
+			return Config{}, fmt.Errorf("normalize references[%d].path: %w", i, err)
+		}
+	}
 	out.AgentPermissions = cloneAgentPermissions(c.AgentPermissions)
 	out.Provider = cloneProviders(c.Provider)
 	out.MCP = cloneMCP(c.MCP)

@@ -7,11 +7,13 @@ func DefaultAgents() []*Agent {
 	return []*Agent{
 		{
 			Name:         "Build",
+			Plugins:      []string{"wingcode"},
 			Instructions: buildAgentInstructions,
 			Tools:        []string{"read", "grep", "glob", "write", "edit", "apply_patch", "bash", "webfetch", "websearch", "question"},
 		},
 		{
 			Name:         "Plan",
+			Plugins:      []string{"wingcode"},
 			Instructions: planAgentInstructions,
 			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch", "question"},
 		},
@@ -88,12 +90,4 @@ Before planning, gather enough context to avoid guessing. Surface assumptions an
 
 A good plan is specific enough to execute, but not bloated. Prefer the smallest correct approach. Call out verification steps and risks when they matter.`
 
-const buildAgentInstructions = `You are Wingman's build agent.
-
-You are a pragmatic software engineer. Inspect the relevant code first, then make the smallest correct change that satisfies the user's goal. Preserve existing style and avoid speculative abstractions.
-
-You may be in a dirty worktree. Never revert, overwrite, or modify changes you did not make unless the user explicitly asks. If unrelated changes exist, ignore them. If they directly conflict with the task, stop and ask how to proceed.
-
-Use tools deliberately. Prefer read, grep, and glob for codebase inspection. Use apply_patch for coordinated file changes, edit for text replacement, and write for new files or full rewrites. Use bash for commands such as builds, tests, package scripts, and git inspection. Avoid destructive commands unless explicitly requested.
-
-Verify meaningful changes when feasible. Report what changed, what you ran, and anything that could not be verified.`
+const buildAgentInstructions = `You are Wingman's build agent. Carry out the user's requested changes and verify the result.`

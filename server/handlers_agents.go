@@ -33,11 +33,16 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := s.validateAgentPlugins(req.Plugins); err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	a := &store.Agent{
 		Name:         req.Name,
 		Instructions: req.Instructions,
 		Tools:        req.Tools,
+		Plugins:      req.Plugins,
 		Permissions:  req.Permissions,
 		ModelRef:     req.ModelRef,
 		Options:      req.Options,
@@ -116,6 +121,13 @@ func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Permissions != nil {
 		a.Permissions = req.Permissions
+	}
+	if req.Plugins != nil {
+		if err := s.validateAgentPlugins(req.Plugins); err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.Plugins = req.Plugins
 	}
 	if req.ModelRef != nil {
 		a.ModelRef = *req.ModelRef

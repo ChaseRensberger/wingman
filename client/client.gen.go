@@ -181,6 +181,7 @@ type Agent struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
+	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 	UpdatedAt    string                  `json:"updated_at"`
 }
@@ -194,6 +195,7 @@ type AgentSpec struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
+	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
@@ -352,6 +354,7 @@ type CreateAgentRequest struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
+	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
@@ -1310,6 +1313,7 @@ type UpdateAgentRequest struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
+	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 

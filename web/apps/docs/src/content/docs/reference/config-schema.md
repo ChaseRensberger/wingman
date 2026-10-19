@@ -12,15 +12,16 @@ See [Global Configuration](/configure/config) for applying changes.
 
 ## Top-level fields
 
-| Field               | Type                          | Purpose                           |
-| ------------------- | ----------------------------- | --------------------------------- |
-| `server`            | Object                        | Address, database, and logs       |
-| `provider`          | Object                        | Provider routes and custom models |
-| `mcp`               | Object                        | MCP servers                       |
-| `plugins`           | Object                        | Extra global plugin directories   |
-| `skills`            | Object                        | Extra global skill directories    |
-| `permissions`       | String, object, or rule array | Server-wide tool rules            |
-| `agent_permissions` | Object                        | Rules by agent name or ID         |
+| Field               | Type                          | Purpose                                  |
+| ------------------- | ----------------------------- | ---------------------------------------- |
+| `server`            | Object                        | Address, database, and logs              |
+| `provider`          | Object                        | Provider routes and custom models        |
+| `mcp`               | Object                        | MCP servers                              |
+| `plugins`           | Object                        | Extra global plugin directories          |
+| `skills`            | Object                        | Extra global skill directories           |
+| `references`        | Object array                  | Named directories for additional context |
+| `permissions`       | String, object, or rule array | Server-wide tool rules                   |
+| `agent_permissions` | Object                        | Rules by agent name or ID                |
 
 All top-level fields are optional.
 
@@ -50,6 +51,24 @@ See [Plugins](/concepts/plugins) for manifests and project directories.
 `dirs` is an array of extra global skill directories. Paths support `~` and `~/...`.
 The default skill directory remains included and follows `XDG_CONFIG_HOME`.
 See [Skills](/configure/skills) for discovery order and file limits.
+
+## `references`
+
+Each entry requires a unique `name` and a `path`. The path must be absolute or start with `~/`.
+An optional `description` tells the agent when to use the directory.
+References add directory information to the model input without loading file contents or granting file access.
+
+```json
+{
+  "references": [
+    {
+      "name": "manuals",
+      "path": "~/Documents/manuals",
+      "description": "Product manuals and operating procedures"
+    }
+  ]
+}
+```
 
 ## `mcp`
 

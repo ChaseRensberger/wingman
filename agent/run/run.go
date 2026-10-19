@@ -297,14 +297,18 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 	}
 	if r.cfg.Hooks.TransformSystem != nil {
-		s, err := r.cfg.Hooks.TransformSystem(ctx, system)
+		s, err := r.cfg.Hooks.TransformSystem(ctx, TransformSystemInfo{
+			System: system, Model: r.cfg.Model, ModelInfo: r.cfg.ModelInfo,
+			WorkDir: r.cfg.WorkDir, Tools: append([]tool.Tool(nil), r.cfg.Tools...),
+			Permissions: append(permission.Ruleset(nil), r.cfg.Permissions...),
+		})
 		if err != nil {
 			return Turn{}, fmt.Errorf("hook TransformSystem: %w", err)
 		}
 		system = s
 	}
 
-	toolDefs := r.toolDefs
+	toolDefs := r.visibleToolDefs(r.toolDefs)
 	if r.cfg.Hooks.TransformToolDefs != nil {
 		info := TransformToolDefsInfo{
 			Step:      step,
@@ -318,6 +322,7 @@ func (r *runner) runTurn(ctx context.Context, step int) (Turn, error) {
 		}
 		toolDefs = out
 	}
+	toolDefs = r.visibleToolDefs(toolDefs)
 
 	params := SamplingParams{}
 	if r.cfg.Hooks.TransformParams != nil {

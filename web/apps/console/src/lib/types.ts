@@ -3,6 +3,7 @@ export interface Agent {
   name: string;
   instructions?: string;
   tools?: string[];
+  plugins?: string[];
   permissions?: Array<{
     action: string;
     resource: string;
@@ -20,6 +21,7 @@ export interface AgentSpec {
   name: string;
   instructions?: string;
   tools?: string[];
+  plugins?: string[];
   permissions?: Agent["permissions"];
   model_ref?: string;
   options?: Record<string, unknown>;

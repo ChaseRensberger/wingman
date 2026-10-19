@@ -30,6 +30,7 @@ import (
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/plugins/compaction"
+	"github.com/chaserensberger/wingman/plugins/orientation"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -48,6 +49,7 @@ type Config struct {
 	PluginDirs        []string
 	DefaultPluginDir  string
 	GlobalSkillDirs   []string
+	References        []orientation.Reference
 	DisablePlugins    bool
 	MCP               map[string]wingmcp.ServerConfig
 	Providers         map[string]provider.ProviderConfig
@@ -201,6 +203,7 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		Password: cfg.Password, Username: cfg.Username, InstanceID: cfg.InstanceID, Version: cfg.Version,
 		GlobalInstructionsPath: globalInstructionsPath,
 		GlobalSkillDirs:        skillDirs,
+		References:             cfg.References,
 		PluginFactories:        []func() plugin.Plugin{func() plugin.Plugin { return compaction.New() }},
 		RequestRestart:         cfg.RequestRestart,
 	})

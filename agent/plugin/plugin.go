@@ -91,6 +91,7 @@ type Registry struct {
 	beforeRun         []run.BeforeRunHook
 	transformHistory  []run.TransformHistoryHook
 	transformContext  []run.TransformContextHook
+	transformSystem   []run.TransformSystemHook
 	beforeToolCall    []run.BeforeToolCallFunc
 	afterToolCall     []run.AfterToolCallFunc
 	afterRun          []run.AfterRunHook
@@ -199,6 +200,17 @@ func (r *Registry) RegisterTransformContext(h run.TransformContextHook) error {
 	}
 	if h != nil {
 		r.transformContext = append(r.transformContext, h)
+	}
+	return nil
+}
+
+// RegisterTransformSystem adds a system prompt transform in activation order.
+func (r *Registry) RegisterTransformSystem(h run.TransformSystemHook) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if h != nil {
+		r.transformSystem = append(r.transformSystem, h)
 	}
 	return nil
 }
@@ -496,6 +508,19 @@ func (r *Registry) build() (Built, models.PartDecoders, error) {
 		return Built{}, models.PartDecoders{}, err
 	}
 	hooks := run.Hooks{}
+	if len(r.transformSystem) > 0 {
+		transforms := append([]run.TransformSystemHook(nil), r.transformSystem...)
+		hooks.TransformSystem = func(ctx context.Context, info run.TransformSystemInfo) (string, error) {
+			for i, transform := range transforms {
+				var err error
+				info.System, err = transform(ctx, info)
+				if err != nil {
+					return "", fmt.Errorf("transform_system[%d]: %w", i, err)
+				}
+			}
+			return info.System, nil
+		}
+	}
 	if len(r.beforeComplete) > 0 {
 		hooks.BeforeComplete = run.ComposeBeforeComplete(r.beforeComplete...)
 	}

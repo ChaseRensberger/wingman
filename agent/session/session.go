@@ -996,6 +996,7 @@ func (s *Session) runWith(ctx context.Context, message string, extraSink run.Sin
 		Sink:                       internal,
 		OutputSchema:               outputSchema,
 		Hooks: run.Hooks{
+			TransformSystem:   built.Hooks.TransformSystem,
 			BeforeComplete:    beforeComplete,
 			BeforeRun:         built.Hooks.BeforeRun,
 			TransformHistory:  transformHistory,
