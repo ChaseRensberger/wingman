@@ -26,7 +26,7 @@ func (c *budgetClient) Generate(_ context.Context, req models.Request) (*models.
 	if text == "" {
 		text = "summary"
 	}
-	result := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: text}}}
+	result := &models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: text}}, Usage: c.usage}
 	if c.truncated {
 		result.FinishReason = models.FinishReasonMaxTokens
 	}
@@ -35,12 +35,12 @@ func (c *budgetClient) Generate(_ context.Context, req models.Request) (*models.
 
 func TestSummaryRequestBudgetAndCallLimit(t *testing.T) {
 	for _, tooLarge := range []bool{false, true} {
-		client := &budgetClient{}
+		client := &budgetClient{testClient: testClient{usage: &models.Usage{InputTokens: 100, OutputTokens: 10, TotalTokens: 110, ReasoningTokens: 2, CachedInputTokens: 30, CacheWriteTokens: 10}}}
 		text := strings.Repeat("界", 8000)
 		if tooLarge {
 			text = strings.Repeat(text, 30)
 		}
-		_, err := summarizeBounded(t.Context(), client, models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 2048}, "Summarize.", "", []string{text}, 128)
+		_, usage, err := summarizeBounded(t.Context(), client, models.ModelRef{Provider: "test", ID: "model"}, models.ModelInfo{ContextWindow: 2048}, "Summarize.", "", []string{text}, 128)
 		if (err != nil) != tooLarge {
 			t.Fatalf("tooLarge=%v err=%v", tooLarge, err)
 		}
@@ -65,6 +65,13 @@ func TestSummaryRequestBudgetAndCallLimit(t *testing.T) {
 		if !tooLarge && consumed.String() != text {
 			t.Fatal("summary input lost or duplicated")
 		}
+		if !tooLarge {
+			calls := len(client.requests)
+			want := models.Usage{InputTokens: 100 * calls, OutputTokens: 10 * calls, TotalTokens: 110 * calls, ReasoningTokens: 2 * calls, CachedInputTokens: 30 * calls, CacheWriteTokens: 10 * calls}
+			if usage == nil || *usage != want {
+				t.Fatalf("usage = %#v, want %#v", usage, want)
+			}
+		}
 	}
 }
 
@@ -84,7 +91,11 @@ func TestCompactionRejectsUnusableBudgets(t *testing.T) {
 				client.truncated = true
 			}
 			emitted := false
-			info.Sink = run.SinkFunc(func(run.Event) { emitted = true })
+			info.Sink = run.SinkFunc(func(event run.Event) {
+				if message, ok := event.(run.MessageEvent); ok && message.Message.State == models.MessageStateCompleted {
+					emitted = true
+				}
+			})
 			_, err := New(WithKeepTail(1)).compact(t.Context(), info, true)
 			if err == nil || emitted {
 				t.Fatalf("err=%v emitted=%v", err, emitted)

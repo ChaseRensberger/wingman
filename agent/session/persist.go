@@ -75,6 +75,10 @@ func (s *Session) persistMessage(ctx context.Context, msg models.Message, idx in
 	if s.store == nil {
 		return msg, nil
 	}
+	// Cancellation must not leave a terminal failure snapshot looking active.
+	if msg.State == models.MessageStateFailed {
+		ctx = context.WithoutCancel(ctx)
+	}
 	if msg.ID == "" {
 		msg.ID = store.NewID(store.PrefixMessage)
 	}

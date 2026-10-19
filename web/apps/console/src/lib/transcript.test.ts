@@ -126,6 +126,39 @@ describe("exploration transcript", () => {
     expect(messages[1].sourceMessage).toBe(message);
   });
 
+  test("shows response metadata only after the final text in a turn", () => {
+    const rows = project([
+      assistant("thought", [{ type: "reasoning", reasoning: "Considering the request" }]),
+      assistant("tool-step", [tool("grep", "1")]),
+      assistant("answer", [{ type: "text", text: "Here is the answer" }]),
+      { role: "user", content: [{ type: "text", text: "Next" }] },
+      assistant("next-answer", [{ type: "text", text: "Another answer" }]),
+    ]);
+    expect(
+      rows
+        .filter((row) => row.type === "message" && row.message.role === "assistant")
+        .map((row) => [row.message.id, row.showMeta]),
+    ).toEqual([
+      ["thought", false],
+      ["answer", true],
+      ["next-answer", true],
+    ]);
+  });
+
+  test("defers current response metadata while streaming or tools are active", () => {
+    const messages = [assistant("answer", [{ type: "text", text: "Still working" }])];
+    for (const rows of [
+      project(messages, { isStreaming: true }),
+      project(messages, {
+        toolActivitiesById: new Map([
+          ["tool", { call_id: "tool", tool: "grep", status: "running" }],
+        ]),
+      }),
+    ]) {
+      expect(rows.find((row) => row.type === "message")?.showMeta).toBe(false);
+    }
+  });
+
   test("joins live activities to history and keeps the group key after persistence", () => {
     const activity: ToolActivity = {
       tool_use_id: "2",
@@ -208,6 +241,7 @@ describe("exploration transcript", () => {
   test("live reasoning and text remain boundaries around live tool activity", () => {
     const rows = project([assistant("one", [tool("read", "1")])], {
       streamingReasoning: "Thinking",
+      isReasoningStreaming: true,
       streamingText: "Answer",
       toolActivitiesById: new Map([
         ["2", { tool_use_id: "2", call_id: "call-2", tool: "grep", status: "running" }],
@@ -222,6 +256,23 @@ describe("exploration transcript", () => {
     expect(
       rows.filter((row) => row.type === "message").every((row) => row.isStreaming && !row.showMeta),
     ).toBe(true);
+  });
+
+  test("retained reasoning stops spinning when tool execution begins", () => {
+    const rows = project([], {
+      isStreaming: true,
+      streamingReasoning: "I should search the source",
+      isReasoningStreaming: false,
+      toolActivitiesById: new Map([["1", { call_id: "1", tool: "grep", status: "running" }]]),
+    });
+    const reasoning = rows.find((row) => row.type === "message");
+    expect(reasoning?.message.content).toEqual([
+      { type: "reasoning", reasoning: "I should search the source" },
+    ]);
+    expect(reasoning?.isStreaming).toBe(false);
+    expect(rows[1].type).toBe("exploration");
+    if (rows[1].type !== "exploration") throw new Error("Expected exploration");
+    expect(transcriptToolStatus(rows[1].tools[0])).toBe("running");
   });
 
   test("commands and unknown live tools stay outside exploration", () => {

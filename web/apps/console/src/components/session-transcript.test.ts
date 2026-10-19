@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { SessionTranscript } from "@/components/session-transcript";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
-import type { PermissionRequest } from "@/lib/types";
+import type { Message, PermissionRequest } from "@/lib/types";
 
 function Transcript({
   request,
@@ -21,6 +21,7 @@ function Transcript({
     greeting: "",
     streamingText: "",
     streamingReasoning: "",
+    isReasoningStreaming: false,
     isStreaming: true,
     toolCallsById: new Map(),
     toolResultsById: new Map(),
@@ -90,6 +91,89 @@ test("transcript groups saved and live exploration without hiding approval cards
   expect(markup).toContain("Grep &quot;test&quot;");
   expect(markup).toContain("Permission requested");
   expect(markup).toContain("Allow once</button>");
+});
+
+test.each(["read", "bash", "apply_patch", "custom"])(
+  "transcript owns consistent gaps around thoughts and %s tools",
+  (name) => {
+    const messages: Message[] = [
+      { id: "user", role: "user", content: [{ type: "text", text: "Start" }] },
+      { id: "thought", role: "assistant", content: [{ type: "reasoning", reasoning: "Checking" }] },
+      {
+        id: "tool",
+        role: "assistant",
+        content: [{ type: "tool", call_id: "call", name, state: "completed", input: {} }],
+      },
+      { id: "answer", role: "assistant", content: [{ type: "text", text: "Answer" }] },
+      { id: "next-user", role: "user", content: [{ type: "text", text: "Continue" }] },
+      {
+        id: "next-thought",
+        role: "assistant",
+        content: [{ type: "reasoning", reasoning: "Next" }],
+      },
+    ];
+    const markup = renderToStaticMarkup(
+      createElement(Transcript, { props: { messages, isStreaming: false } }),
+    );
+    const rowClasses = [
+      ...markup.matchAll(/<div class="([^"]*)" data-slot="transcript-row">/g),
+    ].map((match) => match[1]);
+    expect(markup).toContain('class="flex flex-col gap-2 pb-5" data-slot="transcript-rows"');
+    expect(rowClasses).toHaveLength(6);
+    expect(rowClasses.map((classes) => classes.includes("mt-4"))).toEqual([
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+    ]);
+    expect(markup).not.toMatch(/class="relative[^"]*p[bt]-5/);
+    expect(markup).not.toMatch(/class="[^"]*\bmy-(?:1\.5|2)\b/);
+  },
+);
+
+test("mixed thought, tool, and text parts use the same internal gap", () => {
+  const markup = renderToStaticMarkup(
+    createElement(Transcript, {
+      props: {
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "reasoning", reasoning: "Checking" },
+              { type: "tool", call_id: "call", name: "bash", state: "completed", input: {} },
+              { type: "text", text: "Answer" },
+            ],
+          },
+        ],
+        isStreaming: false,
+      },
+    }),
+  );
+  expect(markup).toContain("group/message flex min-w-0 flex-col gap-2");
+  expect(markup.match(/data-slot="transcript-row"/g)).toHaveLength(1);
+  expect(markup).not.toMatch(/class="[^"]*\bmy-2\b/);
+});
+
+test("running compaction replaces the generic responding indicator", () => {
+  const markup = renderToStaticMarkup(
+    createElement(Transcript, {
+      props: {
+        messages: [
+          {
+            id: "compaction",
+            role: "user",
+            state: "in_progress",
+            content: [{ type: "compaction_marker" }],
+          },
+        ],
+      },
+    }),
+  );
+  expect(markup).toContain('aria-label="Compaction running"');
+  expect(markup).not.toContain('aria-label="Responding"');
+  expect(markup.match(/data-hexwave=""/g)).toHaveLength(1);
 });
 
 test("directory approval shows its action, scope, and session lifetime", () => {

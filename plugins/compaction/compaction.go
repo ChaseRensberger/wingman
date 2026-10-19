@@ -53,6 +53,7 @@ import (
 	"github.com/chaserensberger/wingman/agent/plugin"
 	"github.com/chaserensberger/wingman/agent/run"
 	"github.com/chaserensberger/wingman/models"
+	"github.com/chaserensberger/wingman/store"
 )
 
 // PartType is the discriminator string MarkerPart serializes with.
@@ -83,6 +84,8 @@ type MarkerPart struct {
 	// TokensBefore is the approximate model-facing input token count that
 	// triggered compaction.
 	TokensBefore int `json:"tokens_before,omitempty"`
+	// Usage is the total reported usage of the summarization requests.
+	Usage *models.Usage `json:"usage,omitempty"`
 }
 
 func (MarkerPart) Type() string { return PartType }
@@ -124,15 +127,16 @@ func DecodeMarker(p models.Part) (MarkerPart, bool) {
 // without breaking the sealed-union invariant.
 func newMarkerPart(m MarkerPart) (models.Part, error) {
 	body, err := json.Marshal(struct {
-		Type          string `json:"type"`
-		Version       int    `json:"version"`
-		Reason        string `json:"reason"`
-		Summary       string `json:"summary"`
-		Recent        string `json:"recent"`
-		OriginalCount int    `json:"original_count"`
-		CompactedAt   string `json:"compacted_at"`
-		TokensBefore  int    `json:"tokens_before,omitempty"`
-	}{PartType, m.Version, m.Reason, m.Summary, m.Recent, m.OriginalCount, m.CompactedAt, m.TokensBefore})
+		Type          string        `json:"type"`
+		Version       int           `json:"version"`
+		Reason        string        `json:"reason"`
+		Summary       string        `json:"summary"`
+		Recent        string        `json:"recent"`
+		OriginalCount int           `json:"original_count"`
+		CompactedAt   string        `json:"compacted_at"`
+		TokensBefore  int           `json:"tokens_before,omitempty"`
+		Usage         *models.Usage `json:"usage,omitempty"`
+	}{PartType, m.Version, m.Reason, m.Summary, m.Recent, m.OriginalCount, m.CompactedAt, m.TokensBefore, m.Usage})
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +258,7 @@ func (p *Plugin) transformHistory(ctx context.Context, info run.TransformHistory
 	return p.compact(ctx, info, false)
 }
 
-func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, force bool) ([]models.Message, error) {
+func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, force bool) (_ []models.Message, err error) {
 	force = force || info.ContextOverflow
 	if info.Client == nil || info.Model.Provider == "" || info.Model.ID == "" {
 		return info.Messages, nil
@@ -331,11 +335,6 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 		plan.context = append(plan.context, plan.recent[:split])
 		plan.recent = plan.recent[split:]
 	}
-	summary, err := summarizeBounded(ctx, summaryClient, summaryModel, summaryModelInfo, p.summaryPrompt, plan.previousSummary, plan.context, summaryLimit)
-	if err != nil {
-		return nil, fmt.Errorf("summarize: %w", err)
-	}
-
 	reason := "auto"
 	if force {
 		reason = "manual"
@@ -343,28 +342,52 @@ func (p *Plugin) compact(ctx context.Context, info run.TransformHistoryInfo, for
 	if info.ContextOverflow {
 		reason = "overflow"
 	}
-	markerPart, err := newMarkerPart(MarkerPart{
+	marker := MarkerPart{
 		Version:       1,
 		Reason:        reason,
-		Summary:       summary,
-		Recent:        plan.recent,
 		OriginalCount: plan.originalCount,
-		CompactedAt:   time.Now().UTC().Format(time.RFC3339),
 		TokensBefore:  tokens,
-	})
+	}
+	markerPart, err := newMarkerPart(marker)
 	if err != nil {
 		return nil, fmt.Errorf("build marker: %w", err)
 	}
 
 	markerMsg := models.Message{
-		Role:    models.RoleUser,
-		Content: models.Content{markerPart},
+		ID:       store.NewID(store.PrefixMessage),
+		Revision: 1,
+		State:    models.MessageStateInProgress,
+		Role:     models.RoleUser,
+		Content:  models.Content{models.WithPartID(markerPart, store.NewID(store.PrefixPart))},
 	}
+	if info.Sink != nil {
+		info.Sink.OnEvent(run.MessageEvent{Message: markerMsg})
+		defer func() {
+			if err != nil {
+				markerMsg.State = models.MessageStateFailed
+				markerMsg.Revision++
+				info.Sink.OnEvent(run.MessageEvent{Message: markerMsg})
+			}
+		}()
+	}
+	summary, usage, err := summarizeBounded(ctx, summaryClient, summaryModel, summaryModelInfo, p.summaryPrompt, plan.previousSummary, plan.context, summaryLimit)
+	if err != nil {
+		return nil, fmt.Errorf("summarize: %w", err)
+	}
+	marker.Summary, marker.Recent, marker.Usage = summary, plan.recent, usage
+	marker.CompactedAt = time.Now().UTC().Format(time.RFC3339)
+	markerPart, err = newMarkerPart(marker)
+	if err != nil {
+		return nil, fmt.Errorf("build marker: %w", err)
+	}
+	markerMsg.Content = models.Content{models.WithPartID(markerPart, models.PartID(markerMsg.Content[0]))}
+	markerMsg.State = models.MessageStateCompleted
 	check := info.Request
 	check.Messages = modelFacingMessages([]models.Message{markerMsg})
 	if approxRequestTokens(ctx, info.Client, check) > inputLimit {
 		return nil, fmt.Errorf("compaction: resulting checkpoint exceeds the request budget")
 	}
+	markerMsg.Revision++
 
 	// The physical marker is the active-context boundary. Durable messages stay
 	// untouched before it, and future messages are appended after it.
@@ -394,6 +417,14 @@ func (p *Plugin) transformContext(_ context.Context, info run.TransformContextIn
 }
 
 func modelFacingMessages(messages []models.Message) []models.Message {
+	completed := make([]models.Message, 0, len(messages))
+	for _, message := range messages {
+		if _, marker := markerInMessage(message); marker && message.State != "" && message.State != models.MessageStateCompleted {
+			continue
+		}
+		completed = append(completed, message)
+	}
+	messages = completed
 	latest := findLatestMarker(messages)
 	if latest < 0 {
 		return messages
@@ -551,7 +582,7 @@ func estimateTokens(text string) int {
 	return (len(text) + 3) / 4
 }
 
-func summarizeBounded(ctx context.Context, client models.Client, model models.ModelRef, modelInfo models.ModelInfo, prompt string, previous string, history []string, outputLimit int) (string, error) {
+func summarizeBounded(ctx context.Context, client models.Client, model models.ModelRef, modelInfo models.ModelInfo, prompt string, previous string, history []string, outputLimit int) (string, *models.Usage, error) {
 	if prompt == "" {
 		prompt = defaultSummaryPrompt
 	}
@@ -561,16 +592,17 @@ func summarizeBounded(ctx context.Context, client models.Client, model models.Mo
 	}
 	inputLimit := window - outputLimit
 	pending := strings.Join(history, "\n\n")
+	var usage *models.Usage
 	for attempt := 0; attempt < 8; attempt++ {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		request := func(text string) models.Request {
 			return models.Request{Model: model, Messages: []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: buildSummaryPrompt(prompt, previous, []string{text})}}}}, MaxOutputTokens: outputLimit}
 		}
 		base := approxRequestTokens(ctx, client, request(""))
 		if base >= inputLimit {
-			return "", fmt.Errorf("summary instructions and previous summary exceed the input budget")
+			return "", nil, fmt.Errorf("summary instructions and previous summary exceed the input budget")
 		}
 		size := min(len(pending), (inputLimit-base)*4)
 		for size > 0 && size < len(pending) && !utf8.RuneStart(pending[size]) {
@@ -582,21 +614,32 @@ func summarizeBounded(ctx context.Context, client models.Client, model models.Mo
 				size--
 			}
 			if size == 0 {
-				return "", fmt.Errorf("summary input cannot fit the context window")
+				return "", nil, fmt.Errorf("summary input cannot fit the context window")
 			}
 		}
 		if len(pending) > 0 && size == 0 {
-			return "", fmt.Errorf("summary input cannot fit the context window")
+			return "", nil, fmt.Errorf("summary input cannot fit the context window")
 		}
 		out, err := client.Generate(ctx, request(pending[:size]))
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		if out == nil {
-			return "", fmt.Errorf("model returned no summary")
+			return "", nil, fmt.Errorf("model returned no summary")
 		}
 		if out.FinishReason == models.FinishReasonMaxTokens {
-			return "", fmt.Errorf("model truncated the summary")
+			return "", nil, fmt.Errorf("model truncated the summary")
+		}
+		if out.Usage != nil {
+			if usage == nil {
+				usage = &models.Usage{}
+			}
+			usage.InputTokens += out.Usage.InputTokens
+			usage.OutputTokens += out.Usage.OutputTokens
+			usage.TotalTokens += out.Usage.TotalTokens
+			usage.ReasoningTokens += out.Usage.ReasoningTokens
+			usage.CachedInputTokens += out.Usage.CachedInputTokens
+			usage.CacheWriteTokens += out.Usage.CacheWriteTokens
 		}
 		var b strings.Builder
 		for _, part := range out.Content {
@@ -606,14 +649,14 @@ func summarizeBounded(ctx context.Context, client models.Client, model models.Mo
 		}
 		previous = strings.TrimSpace(b.String())
 		if previous == "" {
-			return "", fmt.Errorf("model returned an empty summary")
+			return "", nil, fmt.Errorf("model returned an empty summary")
 		}
 		pending = pending[size:]
 		if pending == "" {
-			return previous, nil
+			return previous, usage, nil
 		}
 	}
-	return "", fmt.Errorf("summary exceeded the eight-request budget")
+	return "", nil, fmt.Errorf("summary exceeded the eight-request budget")
 }
 
 func checkpointInputLimit(info run.TransformHistoryInfo, reserve int) int {

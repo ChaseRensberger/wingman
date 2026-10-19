@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { CircleNotchIcon } from "@phosphor-icons/react";
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
+import { ArrowRightIcon } from "@phosphor-icons/react";
 
 import { ToolActivityItem, ToolOutputParts } from "@/components/tool-activity";
 import { explorationSummary, transcriptToolStatus, type TranscriptTool } from "@/lib/transcript";
 import type { PermissionRequest } from "@/lib/types";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@wingman/core/components/core/collapsible";
+import { Collapsible, CollapsibleContent } from "@wingman/core/components/core/collapsible";
+import { Spinner } from "@wingman/core/components/core/spinner";
 
 export function ExplorationGroup({
   tools,
@@ -29,31 +27,32 @@ export function ExplorationGroup({
       ),
   );
   return (
-    <div className="px-4 py-1" data-component="exploration-group">
+    <div className="flex flex-col gap-1 px-4" data-component="exploration-group">
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger
-          className="min-h-7 justify-start gap-2 py-0.5 text-xs font-normal text-muted-foreground"
+        <CollapsiblePrimitive.Trigger
+          className="group/exploration flex min-h-7 max-w-full items-center gap-2 rounded-sm py-0.5 text-left text-xs font-normal text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           onKeyDown={(event) => {
             if (event.key === " ") event.stopPropagation();
           }}
         >
           {active ? (
-            <CircleNotchIcon className="size-3.5 shrink-0 animate-spin" />
+            <Spinner size={16} className="size-4 shrink-0" label="Exploring" />
           ) : (
-            <span aria-hidden="true" className="w-3.5 shrink-0 text-center">
-              →
-            </span>
+            <ArrowRightIcon aria-hidden="true" className="size-4 shrink-0" weight="bold" />
           )}
-          <span>{explorationSummary(tools)}</span>
-        </CollapsibleTrigger>
+          <span className="transition-colors group-hover/exploration:text-foreground">
+            {explorationSummary(tools)}
+          </span>
+        </CollapsiblePrimitive.Trigger>
         <CollapsibleContent className="pb-0">
-          {tools.map(({ key, ...tool }) => (
-            <ToolActivityItem key={key} {...tool} compact />
-          ))}
+          <div className="flex flex-col gap-1 pt-1">
+            {tools.map(({ key, ...tool }) => (
+              <ToolActivityItem key={key} {...tool} />
+            ))}
+          </div>
         </CollapsibleContent>
       </Collapsible>
-      {!open &&
-        alwaysVisible.map(({ key, ...tool }) => <ToolActivityItem key={key} {...tool} compact />)}
+      {!open && alwaysVisible.map(({ key, ...tool }) => <ToolActivityItem key={key} {...tool} />)}
       {!open &&
         tools
           .filter((tool) => !alwaysVisible.includes(tool))

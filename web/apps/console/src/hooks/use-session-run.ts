@@ -280,6 +280,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [streamingReasoning, setStreamingReasoning] = useState("");
+  const [isReasoningStreaming, setIsReasoningStreaming] = useState(false);
   const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
   const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
   const [toolActivities, setToolActivities] = useState<Map<string, ToolActivity>>(() => new Map());
@@ -310,11 +311,13 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     activeRunRef.current = null;
     requestRef.current = null;
     setIsStreaming(false);
+    setIsReasoningStreaming(false);
     setStreamingReasoning("");
     setStreamingText("");
   }
 
   function clearVolatileStreamState() {
+    setIsReasoningStreaming(false);
     setStreamingReasoning("");
     setStreamingText("");
     setToolActivities(new Map());
@@ -471,18 +474,21 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       const callID = ev.data.call_id ?? "";
       const delta = ev.data.delta;
       if (!callID || !delta) return;
+      setIsReasoningStreaming(false);
       setToolActivities((previous) =>
         reduceToolActivity(previous, { type: "input", ...ev.data, delta }),
       );
       return;
     }
     if (ev.type === "session.tool.progress") {
+      setIsReasoningStreaming(false);
       setToolActivities((previous) =>
         reduceToolActivity(previous, { type: "progress", ...ev.data }),
       );
       return;
     }
     if (ev.type === "session.tool.updated") {
+      setIsReasoningStreaming(false);
       setToolActivities((previous) =>
         reduceToolActivity(previous, { type: "updated", ...ev.data }),
       );
@@ -490,15 +496,22 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     }
     if (ev.type === "session.text.delta") {
       const delta = ev.data.delta;
-      if (delta) setStreamingText((previous) => previous + delta);
+      if (delta) {
+        setIsReasoningStreaming(false);
+        setStreamingText((previous) => previous + delta);
+      }
       return;
     }
     if (ev.type === "session.reasoning.delta") {
       const delta = ev.data.delta;
-      if (delta) setStreamingReasoning((previous) => previous + delta);
+      if (delta) {
+        setIsReasoningStreaming(true);
+        setStreamingReasoning((previous) => previous + delta);
+      }
       return;
     }
     if (ev.type === "session.reasoning.completed") {
+      setIsReasoningStreaming(false);
       const text = ev.data.text;
       if (text) setStreamingReasoning(text);
       return;
@@ -517,6 +530,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
         return { ...previous, history };
       });
       if (message.role === "assistant") {
+        setIsReasoningStreaming(false);
         setStreamingText("");
         setStreamingReasoning("");
       }
@@ -534,6 +548,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       }
       if (activeRunRef.current) activeRunRef.current = { ...activeRunRef.current, completed: true };
       setIsStreaming(false);
+      setIsReasoningStreaming(false);
       return ev.type === "session.run.completed" ? undefined : sessionRunEventError(ev.data);
     }
   }
@@ -731,6 +746,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     isStreaming: isStreaming || permissionRequests.length > 0,
     streamingText,
     streamingReasoning,
+    isReasoningStreaming: isStreaming && isReasoningStreaming,
     latestRunUsage,
     failedRun,
     toolActivities,

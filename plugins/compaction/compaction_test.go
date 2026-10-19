@@ -77,7 +77,8 @@ func TestTransformHistoryIgnoresOversizedReserve(t *testing.T) {
 }
 
 func TestManualActionSummarizesCompleteShortTurn(t *testing.T) {
-	client := &testClient{summary: "summary", body: map[string]any{"messages": "small"}}
+	usage := &models.Usage{InputTokens: 60300, OutputTokens: 1900, TotalTokens: 62200}
+	client := &testClient{summary: "summary", body: map[string]any{"messages": "small"}, usage: usage}
 	p := New(WithMinMessages(100))
 	msgs := []models.Message{
 		{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "Hello how are you?"}}},
@@ -106,6 +107,9 @@ func TestManualActionSummarizesCompleteShortTurn(t *testing.T) {
 	marker, ok := markerInMessage(out[2])
 	if !ok || marker.Recent != "" || marker.Reason != "manual" {
 		t.Fatalf("marker = %#v, want manual checkpoint with no separate recent tail", marker)
+	}
+	if marker.Usage == nil || *marker.Usage != *usage {
+		t.Fatalf("usage = %#v, want %#v", marker.Usage, usage)
 	}
 	facing := modelFacingMessages(out)
 	if len(facing) != 1 || !strings.Contains(facing[0].Content[0].(models.TextPart).Text, "<conversation-checkpoint>") {
@@ -167,7 +171,8 @@ func TestDefaultPromptRequiresCheckpointHeadings(t *testing.T) {
 }
 
 func TestCheckpointContextSurvivesMessageRoundTrip(t *testing.T) {
-	part, err := newMarkerPart(MarkerPart{Version: 1, Reason: "manual", Summary: "summary", Recent: "[User]: recent"})
+	usage := &models.Usage{InputTokens: 60300, OutputTokens: 1900, TotalTokens: 62200}
+	part, err := newMarkerPart(MarkerPart{Version: 1, Reason: "manual", Summary: "summary", Recent: "[User]: recent", Usage: usage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +184,10 @@ func TestCheckpointContextSurvivesMessageRoundTrip(t *testing.T) {
 	var restored []models.Message
 	if err := json.Unmarshal(body, &restored); err != nil {
 		t.Fatal(err)
+	}
+	marker, ok := markerInMessage(restored[0])
+	if !ok || marker.Usage == nil || *marker.Usage != *usage {
+		t.Fatalf("restored usage = %#v, want %#v", marker.Usage, usage)
 	}
 	facing := modelFacingMessages(restored)
 	if len(facing) != 1 {
@@ -197,10 +206,12 @@ func TestSummaryOutputTokensFitsSmallContext(t *testing.T) {
 }
 
 type testClient struct {
-	summary   string
-	body      map[string]any
-	maxOutput int
-	prompt    string
+	summary        string
+	body           map[string]any
+	maxOutput      int
+	prompt         string
+	usage          *models.Usage
+	beforeGenerate func(context.Context) error
 }
 
 func (c *testClient) Prepare(_ context.Context, req models.Request) (*models.PreparedRequest, error) {
@@ -210,14 +221,70 @@ func (c *testClient) Prepare(_ context.Context, req models.Request) (*models.Pre
 	return &models.PreparedRequest{Body: c.body}, nil
 }
 
-func (c *testClient) Generate(_ context.Context, req models.Request) (*models.Message, error) {
+func (c *testClient) Generate(ctx context.Context, req models.Request) (*models.Message, error) {
+	if c.beforeGenerate != nil {
+		if err := c.beforeGenerate(ctx); err != nil {
+			return nil, err
+		}
+	}
 	c.maxOutput = req.MaxOutputTokens
 	if len(req.Messages) > 0 && len(req.Messages[0].Content) > 0 {
 		if text, ok := req.Messages[0].Content[0].(models.TextPart); ok {
 			c.prompt = text.Text
 		}
 	}
-	return &models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: c.summary}}}, nil
+	return &models.Message{Role: models.RoleAssistant, Content: models.Content{models.TextPart{Text: c.summary}}, Usage: c.usage}, nil
+}
+
+func TestCompactionPublishesLifecycleSnapshots(t *testing.T) {
+	for _, outcome := range []string{"completed", "failed", "cancelled"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			messages := []models.Message{{Role: models.RoleUser, Content: models.Content{models.TextPart{Text: "original context"}}}}
+			var snapshots []models.Message
+			client := &testClient{summary: "summary"}
+			client.beforeGenerate = func(context.Context) error {
+				if len(snapshots) != 1 || snapshots[0].State != models.MessageStateInProgress {
+					t.Fatalf("before generate: %#v", snapshots)
+				}
+				pending := append(append([]models.Message(nil), messages...), snapshots[0])
+				if findLatestMarker(pending) != -1 || len(modelFacingMessages(pending)) != 1 {
+					t.Fatal("in-progress compaction replaced the model context")
+				}
+				if outcome == "cancelled" {
+					cancel()
+					return ctx.Err()
+				}
+				if outcome == "failed" {
+					return errors.New("provider unavailable")
+				}
+				return nil
+			}
+			out, err := New(WithKeepTail(0)).compact(ctx, run.TransformHistoryInfo{
+				Messages: messages, Client: client, Model: models.ModelRef{Provider: "test", ID: "model"}, ModelInfo: models.ModelInfo{ContextWindow: 4096},
+				Sink: run.SinkFunc(func(event run.Event) {
+					if message, ok := event.(run.MessageEvent); ok {
+						snapshots = append(snapshots, message.Message)
+					}
+				}),
+			}, true)
+			if len(snapshots) != 2 {
+				t.Fatalf("snapshots = %#v", snapshots)
+			}
+			first, last := snapshots[0], snapshots[1]
+			if first.ID == "" || first.ID != last.ID || first.Revision != 1 || last.Revision != 2 || models.PartID(first.Content[0]) != models.PartID(last.Content[0]) {
+				t.Fatalf("unstable lifecycle: %#v, %#v", first, last)
+			}
+			if outcome == "completed" {
+				if err != nil || last.State != models.MessageStateCompleted || len(out) != 2 || out[1].Revision != last.Revision {
+					t.Fatalf("out=%#v state=%s err=%v", out, last.State, err)
+				}
+			} else if err == nil || last.State != models.MessageStateFailed {
+				t.Fatalf("state=%s err=%v", last.State, err)
+			}
+		})
+	}
 }
 
 func (*testClient) Stream(context.Context, models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {

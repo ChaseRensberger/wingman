@@ -119,6 +119,7 @@ type sessionMessagePersistence struct {
 	session          *Session
 	nextIdx          int
 	assistantIndexes map[int]int
+	messageIndexes   map[string]int
 	feedbackIDs      map[string]bool
 }
 
@@ -140,13 +141,26 @@ func (p *sessionMessagePersistence) Save(ctx context.Context, info run.MessageCh
 func (p *sessionMessagePersistence) indexForEvent(event run.MessageEvent) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if event.Message.Role == models.RoleAssistant && event.Step > 0 {
-		if idx, ok := p.assistantIndexes[event.Step]; ok {
+	if event.Message.ID != "" {
+		if idx, ok := p.messageIndexes[event.Message.ID]; ok {
 			return idx
 		}
 	}
 	idx := p.nextIdx
-	p.nextIdx++
+	if event.Message.Role == models.RoleAssistant && event.Step > 0 {
+		if saved, ok := p.assistantIndexes[event.Step]; ok {
+			idx = saved
+		}
+	}
+	if idx == p.nextIdx {
+		p.nextIdx++
+	}
+	if event.Message.ID != "" {
+		if p.messageIndexes == nil {
+			p.messageIndexes = make(map[string]int)
+		}
+		p.messageIndexes[event.Message.ID] = idx
+	}
 	return idx
 }
 
@@ -659,6 +673,7 @@ func (s *Session) RunAction(ctx context.Context, id string, input json.RawMessag
 	s.mu.Unlock()
 	var persistErr error
 	emittedMessages := []models.Message{}
+	emittedIndexes := make(map[string]int)
 	messagePersistence := &sessionMessagePersistence{session: s, nextIdx: nextIdx}
 	info.Sink = run.SinkFunc(func(event run.Event) {
 		if message, ok := event.(run.MessageEvent); ok {
@@ -676,7 +691,12 @@ func (s *Session) RunAction(ctx context.Context, id string, input json.RawMessag
 				}
 			}
 			if persistedOK {
-				emittedMessages = append(emittedMessages, message.Message)
+				if idx, ok := emittedIndexes[message.Message.ID]; message.Message.ID != "" && ok {
+					emittedMessages[idx] = message.Message
+				} else {
+					emittedIndexes[message.Message.ID] = len(emittedMessages)
+					emittedMessages = append(emittedMessages, message.Message)
+				}
 			}
 			if !persistedOK {
 				return

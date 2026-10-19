@@ -34,6 +34,7 @@ type Props = {
   greeting: string;
   streamingText: string;
   streamingReasoning: string;
+  isReasoningStreaming: boolean;
   isStreaming: boolean;
   toolCallsById: Map<string, ToolCallPart>;
   toolResultsById: Map<string, ToolResultPart>;
@@ -139,6 +140,7 @@ export function SessionTranscript({
   greeting,
   streamingText,
   streamingReasoning,
+  isReasoningStreaming,
   isStreaming,
   toolCallsById,
   toolResultsById,
@@ -160,14 +162,27 @@ export function SessionTranscript({
     toolResultsById,
     toolActivitiesById,
     streamingReasoning,
+    isReasoningStreaming,
     streamingText,
+    isStreaming,
   });
   const hasActiveTool = [...toolActivitiesById.values()].some(
     (activity) => activity.status === "pending" || activity.status === "running",
   );
+  const hasActiveCompaction = messages.some(
+    (message) =>
+      message.state === "in_progress" &&
+      message.content.some((part) => part.type === "compaction_marker"),
+  );
   const showThinking = shouldShowThinking(
     isStreaming,
-    Boolean(streamingText || streamingReasoning || hasActiveTool || permissionRequests.length),
+    Boolean(
+      streamingText ||
+      streamingReasoning ||
+      hasActiveTool ||
+      hasActiveCompaction ||
+      permissionRequests.length,
+    ),
   );
   return (
     <div
@@ -206,65 +221,47 @@ export function SessionTranscript({
               </div>
             </div>
           ) : (
-            <div>
+            <div className="flex flex-col gap-2 pb-5" data-slot="transcript-rows">
               {rows.map((row, index) => {
-                if (row.type === "exploration") {
-                  return (
-                    <ExplorationGroup
-                      key={row.key}
-                      tools={row.tools}
-                      permissionRequests={permissionRequests}
-                    />
-                  );
-                }
-                if (row.type === "tool") {
-                  return (
-                    <div key={row.key} className="px-4">
-                      <ToolActivityItem
-                        call={row.tool.call}
-                        result={row.tool.result}
-                        activity={row.tool.activity}
-                      />
-                    </div>
-                  );
-                }
-                const message = row.message;
-                const call = modelCallsByMessageId.get(message.id ?? "");
-                const hasTool =
-                  message.role === "assistant" &&
-                  message.content.some((part) => part.type === "tool" || part.type === "tool_call");
-                const hasText =
-                  message.role === "assistant" &&
-                  message.content.some((part) => part.type === "text");
                 const previous = rows[index - 1];
-                const next = rows[index + 1];
-                const previousHasTool =
-                  previous?.type === "exploration" ||
-                  previous?.type === "tool" ||
-                  (previous?.type === "message" &&
-                    previous.message.role === "assistant" &&
-                    previous.message.content.some(
-                      (part) => part.type === "tool" || part.type === "tool_call",
-                    ));
-                const nextHasText =
-                  next?.type === "message" &&
-                  next.message.role === "assistant" &&
-                  next.message.content.some((part) => part.type === "text");
+                const turnBoundary =
+                  index > 0 &&
+                  ((row.type === "message" && row.message.role === "user") ||
+                    (previous?.type === "message" && previous.message.role === "user"));
+                const call =
+                  row.type === "message"
+                    ? modelCallsByMessageId.get(row.message.id ?? "")
+                    : undefined;
                 return (
-                  <ChatMessage
+                  <div
                     key={row.key}
-                    message={message}
-                    sourceMessage={row.sourceMessage}
-                    showMeta={row.showMeta}
-                    isStreaming={row.isStreaming}
-                    toolCallsById={toolCallsById}
-                    toolResultsById={toolResultsById}
-                    toolActivitiesById={toolActivitiesById}
-                    modelCall={call}
-                    agentName={agentNames.get(call?.agent_id ?? "")}
-                    compactTop={hasText && previousHasTool}
-                    compactBottom={hasTool && nextHasText}
-                  />
+                    className={turnBoundary ? "min-w-0 mt-4" : "min-w-0"}
+                    data-slot="transcript-row"
+                  >
+                    {row.type === "exploration" ? (
+                      <ExplorationGroup tools={row.tools} permissionRequests={permissionRequests} />
+                    ) : row.type === "tool" ? (
+                      <div className="px-4">
+                        <ToolActivityItem
+                          call={row.tool.call}
+                          result={row.tool.result}
+                          activity={row.tool.activity}
+                        />
+                      </div>
+                    ) : (
+                      <ChatMessage
+                        message={row.message}
+                        sourceMessage={row.sourceMessage}
+                        showMeta={row.showMeta}
+                        isStreaming={row.isStreaming}
+                        toolCallsById={toolCallsById}
+                        toolResultsById={toolResultsById}
+                        toolActivitiesById={toolActivitiesById}
+                        modelCall={call}
+                        agentName={agentNames.get(call?.agent_id ?? "")}
+                      />
+                    )}
+                  </div>
                 );
               })}
               {permissionRequests.map((request) => (

@@ -41,6 +41,9 @@ test("exploration starts collapsed with an accessible summary button", () => {
   expect(markup).toContain("Explored: 1 read");
   expect(markup).toContain('aria-expanded="false"');
   expect(markup).not.toContain("Read src/index.ts");
+  expect(markup).not.toContain("hover:bg-");
+  expect(markup.match(/<svg\b/g)).toHaveLength(1);
+  expect(markup).toContain("group-hover/exploration:text-foreground");
 });
 
 test("pending exploration has an active label", () => {
@@ -51,7 +54,7 @@ test("pending exploration has an active label", () => {
     }),
   );
   expect(markup).toContain("Exploring: 1 read");
-  expect(markup).toContain("animate-spin");
+  expect(markup).toContain('data-hexwave=""');
 });
 
 test("permission-blocked calls remain visible under a collapsed group", () => {
@@ -115,7 +118,6 @@ test("compact search rows include the pattern, path, and match count", () => {
         input: { pattern: "keydown|useHotkey", path: "web/apps/console/src" },
         metadata: { matches: 20 },
       }),
-      compact: true,
     }),
   );
   expect(markup).toContain(

@@ -759,9 +759,7 @@ type IterationEndEvent struct {
 	Turn Turn `json:"turn"`
 }
 
-// MessageEvent fires when a complete message has been appended to the
-// running history. This includes the assistant message at the end of
-// each turn and any tool result messages produced by tool execution.
+// MessageEvent publishes a full message snapshot, including lifecycle revisions.
 type MessageEvent struct {
 	// Step identifies a provider-produced assistant message. Synthesized
 	// messages and non-turn events leave it zero.

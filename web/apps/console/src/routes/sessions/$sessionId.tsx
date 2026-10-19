@@ -746,6 +746,7 @@ function SessionDetailPage() {
         greeting={greeting}
         streamingText={visibleStreamingText}
         streamingReasoning={run.streamingReasoning}
+        isReasoningStreaming={run.isReasoningStreaming}
         isStreaming={run.isStreaming}
         toolCallsById={toolCallsById}
         toolResultsById={toolResultsById}

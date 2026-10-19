@@ -6,6 +6,7 @@ import * as connection from "./lib/connection";
 import * as sessionRuns from "./hooks/use-session-run";
 import { mergeQuestions } from "./lib/questions";
 import { matchingSubmission, type SessionDraft } from "./lib/session-draft";
+import { reduceToolActivity } from "./lib/tool-activity-state";
 
 // Exercise the real private handlers with controlled hooks and network timing.
 function handler(path: string, name: string, dependencies: Record<string, unknown>) {
@@ -30,6 +31,54 @@ function handler(path: string, name: string, dependencies: Record<string, unknow
     ...Object.values(dependencies),
   );
 }
+
+test.each([
+  { type: "session.tool.updated", data: { call_id: "call_1", tool: "grep", status: "pending" } },
+  { type: "session.tool.input.delta", data: { call_id: "call_1", delta: "{}" } },
+  { type: "session.tool.updated", data: { call_id: "call_1", tool: "grep", status: "started" } },
+  { type: "session.tool.progress", data: { call_id: "call_1", output_delta: "match" } },
+  { type: "session.text.delta", data: { delta: "Answer" } },
+  { type: "session.reasoning.completed", data: { text: "Finished reasoning" } },
+  { type: "session.run.completed", data: {} },
+  { type: "session.run.failed", data: {} },
+  { type: "session.run.aborted", data: {} },
+])("reasoning activity ends on $type without discarding its text", (event) => {
+  let active = false;
+  let reasoning = "";
+  const apply = handler("./hooks/use-session-run.ts", "applySessionEvent", {
+    activeRunRef: { current: { runId: "run_1" } },
+    lastEventSeqRef: { current: 0 },
+    reduceToolActivity,
+    sessionRunEventError: sessionRuns.sessionRunEventError,
+    setIsReasoningStreaming: (value: boolean) => {
+      active = value;
+    },
+    setStreamingReasoning: (update: string | ((previous: string) => string)) => {
+      reasoning = typeof update === "function" ? update(reasoning) : update;
+    },
+    setStreamingText: () => {},
+    setToolActivities: (update: (previous: Map<string, unknown>) => unknown) => update(new Map()),
+    setIsStreaming: () => {},
+    setLatestRunUsage: () => {},
+  });
+  const delta = {
+    type: "session.reasoning.delta",
+    data: { run_id: "run_1", delta: "Thinking text" },
+  };
+  apply(delta);
+  expect(active).toBe(true);
+  apply({ ...event, data: { ...event.data, run_id: "another_run" } });
+  expect(active).toBe(true);
+  apply({ ...event, data: { ...event.data, run_id: "run_1" } });
+  expect(active).toBe(false);
+  expect(reasoning).toBe(
+    event.type === "session.reasoning.completed" ? "Finished reasoning" : "Thinking text",
+  );
+  if (!event.type.startsWith("session.run.")) {
+    apply(delta);
+    expect(active).toBe(true);
+  }
+});
 
 test.each(["unchanged", "new draft", "edited pending", "new request"])(
   "recovered admission keeps its identity and preserves newer drafts: %s",

@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CheckCircleIcon,
-  CircleNotchIcon,
   CodeIcon,
   FileTextIcon,
   GlobeIcon,
@@ -30,6 +29,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@wingman/core/components/core/collapsible";
+import { Spinner } from "@wingman/core/components/core/spinner";
 
 type Props = {
   call: ToolCallPart;
@@ -72,13 +72,13 @@ function normalizeTool({ call, result, activity }: Props): ToolView {
   };
 }
 
-export function ToolActivityItem({ compact = false, ...props }: Props & { compact?: boolean }) {
+export function ToolActivityItem(props: Props) {
   const view = normalizeTool(props);
   if (view.call.name === "bash") return <BashTool view={view} />;
   if (["apply_patch", "edit", "write"].includes(view.call.name))
     return <FileMutationTool view={view} />;
   if (["read", "grep", "glob", "webfetch", "websearch"].includes(view.call.name))
-    return <TimelineTool view={view} compact={compact} />;
+    return <TimelineTool view={view} />;
   return <CompactTool view={view} />;
 }
 
@@ -97,7 +97,7 @@ function useDuration(view: ToolView) {
 
 function StatusIcon({ status }: { status: ToolView["status"] }) {
   if (status === "pending" || status === "running")
-    return <CircleNotchIcon className="size-3.5 animate-spin" />;
+    return <Spinner size={16} className="size-4" label="Tool running" />;
   if (status === "error") return <WarningCircleIcon className="size-3.5" weight="fill" />;
   return <CheckCircleIcon className="size-3.5" weight="fill" />;
 }
@@ -179,7 +179,7 @@ function BashTool({ view }: { view: ToolView }) {
   return (
     <div
       className={cn(
-        "my-2 overflow-hidden rounded-lg border bg-[var(--console-command-background)] text-[var(--console-command-foreground)]",
+        "overflow-hidden rounded-lg border bg-[var(--console-command-background)] text-[var(--console-command-foreground)]",
         view.status === "error"
           ? "border-destructive/50"
           : "border-[var(--console-command-border)]",
@@ -231,7 +231,7 @@ function FileMutationTool({ view }: { view: ToolView }) {
   return (
     <div
       className={cn(
-        "my-2 border-l-2 pl-3",
+        "border-l-2 pl-3",
         view.status === "error" ? "border-destructive" : "border-border",
       )}
     >
@@ -250,7 +250,7 @@ function FileMutationTool({ view }: { view: ToolView }) {
   );
 }
 
-function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
+function TimelineTool({ view }: { view: ToolView }) {
   const baseTitle =
     view.call.name === "websearch" && typeof view.metadata.provider === "string"
       ? `${view.metadata.provider === "exa" ? "Exa Web Search" : humanizeToolName(view.metadata.provider)} ${compactInput(view.call.input)}`
@@ -269,7 +269,7 @@ function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
       : "";
   const title = countLabel ? `${baseTitle} (${countLabel})` : baseTitle;
   return (
-    <div className={compact ? "my-0" : "my-1.5"}>
+    <div>
       <div
         className={cn(
           "flex min-h-7 items-start gap-2 text-xs text-muted-foreground",
@@ -278,7 +278,7 @@ function TimelineTool({ view, compact }: { view: ToolView; compact: boolean }) {
       >
         <span className="flex h-7 w-3.5 shrink-0 items-center justify-center" aria-hidden="true">
           {view.status === "pending" || view.status === "running" ? (
-            <CircleNotchIcon className="size-3.5 animate-spin" />
+            <Spinner size={16} className="size-4" label="Tool running" />
           ) : view.status === "error" ? (
             <WarningCircleIcon className="size-3.5" />
           ) : view.call.name === "read" || view.call.name === "webfetch" ? (
@@ -323,13 +323,13 @@ function CompactTool({ view }: { view: ToolView }) {
   const title = countLabel ? `${baseTitle} (${countLabel})` : baseTitle;
   if (!hasDetails) {
     return (
-      <div className="my-1.5 flex min-h-7 items-center">
+      <div className="flex min-h-7 items-center">
         <ToolHeader view={view} title={title} />
       </div>
     );
   }
   return (
-    <Collapsible defaultOpen={defaultOpen} className="my-1.5">
+    <Collapsible defaultOpen={defaultOpen}>
       <CollapsibleTrigger
         disabled={!hasDetails}
         className="min-h-7 py-0.5 hover:no-underline disabled:opacity-100"

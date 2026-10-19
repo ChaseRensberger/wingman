@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { CaretRightIcon, CheckIcon, CopyIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 
 import type {
   Message,
@@ -8,13 +8,16 @@ import type {
   ToolCallPart,
   ToolPart,
   ToolResultPart,
+  Usage,
 } from "@/lib/types";
 import { ReasoningPart } from "@/components/reasoning-part";
 import { ToolActivityItem } from "@/components/tool-activity";
 import { lookupToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { formatDuration } from "@/lib/tool-display";
 import { toolPartProps } from "@/lib/transcript";
+import { formatTokenCount } from "@/lib/utils";
 import { Button } from "@wingman/core/components/core/button";
+import { Spinner } from "@wingman/core/components/core/spinner";
 
 const Markdown = lazy(async () => {
   const { Markdown } = await import("./markdown");
@@ -55,7 +58,7 @@ function AssistantMeta({
 
   if (!text && !call) return null;
   return (
-    <div className="mt-3 flex min-h-7 items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+    <div className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
       {text && (
         <Button
           type="button"
@@ -81,8 +84,6 @@ export function ChatMessage({
   toolActivitiesById,
   modelCall,
   agentName,
-  compactTop = false,
-  compactBottom = false,
   showMeta = true,
   sourceMessage = message,
 }: {
@@ -93,8 +94,6 @@ export function ChatMessage({
   toolActivitiesById?: Map<string, ToolActivity>;
   modelCall?: ModelCall;
   agentName?: string;
-  compactTop?: boolean;
-  compactBottom?: boolean;
   showMeta?: boolean;
   sourceMessage?: Message;
 }) {
@@ -102,36 +101,40 @@ export function ChatMessage({
   if (message.content.length === 0) return null;
 
   const compaction = message.content.find((part) => part.type === "compaction_marker") as
-    | {
-        summary?: string;
-        reason?: "auto" | "manual";
-        original_count?: number;
-        tokens_before?: number;
-      }
+    | { summary?: string; usage?: Usage }
     | undefined;
   if (compaction) {
+    const usage = compaction.usage;
+    const running = message.state === "in_progress";
+    const label =
+      message.state === "failed"
+        ? "Compaction failed"
+        : !running && usage && usage.input_tokens + usage.output_tokens > 0
+          ? `Compaction · ${formatTokenCount(usage.input_tokens).toUpperCase()} in · ${formatTokenCount(usage.output_tokens).toUpperCase()} out`
+          : "Compaction";
+    const separator = (
+      <>
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+        <span className="flex min-w-0 items-center gap-2">
+          {running && <Spinner size={16} className="size-4 shrink-0" label="Compaction running" />}
+          <span className="transition-colors group-hover/compaction:text-foreground">{label}</span>
+        </span>
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+      </>
+    );
     return (
-      <div className="px-4 py-5" data-component="session-compaction-message">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <div className="h-px flex-1 bg-border" />
-          <span>Session compacted</span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-        {compaction.summary && (
-          <details className="group/compaction mx-auto mt-2 max-w-3xl text-muted-foreground">
-            <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
-              <CaretRightIcon className="size-3 transition-transform duration-150 motion-reduce:transition-none group-open/compaction:rotate-90" />
-              <span>
-                {compaction.reason === "auto" ? "Automatic" : "Manual"} checkpoint
-                {compaction.original_count
-                  ? ` · ${compaction.original_count.toLocaleString()} messages`
-                  : ""}
-                {compaction.tokens_before
-                  ? ` · ${compaction.tokens_before.toLocaleString()} tokens`
-                  : ""}
-              </span>
+      <div className="px-4" data-component="session-compaction-message">
+        {compaction.summary ? (
+          <details>
+            <summary
+              className="group/compaction flex min-h-7 cursor-pointer list-none items-center gap-2 rounded-sm text-xs text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden"
+              onKeyDown={(event) => {
+                if (event.key === " ") event.stopPropagation();
+              }}
+            >
+              {separator}
             </summary>
-            <div className="mt-3 border-l border-border pl-3">
+            <div className="pt-2 text-sm leading-6 text-foreground">
               <Suspense
                 fallback={<div className="whitespace-pre-wrap text-sm">{compaction.summary}</div>}
               >
@@ -139,6 +142,10 @@ export function ChatMessage({
               </Suspense>
             </div>
           </details>
+        ) : (
+          <div className="flex min-h-7 items-center gap-2 text-xs text-muted-foreground">
+            {separator}
+          </div>
         )}
       </div>
     );
@@ -149,14 +156,14 @@ export function ChatMessage({
 
   return (
     <div
-      className={`relative ${compactTop ? "pt-1" : "pt-5"} ${compactBottom ? "pb-0" : "pb-5"} ${
+      className={`relative ${
         isUser
-          ? "mx-2 bg-primary/[0.03] before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']"
+          ? "mx-2 bg-primary/[0.03] py-4 before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']"
           : ""
       }`}
     >
       <div
-        className={`group/message min-w-0 ${isUser ? "px-2" : "px-4"} text-sm leading-6 ${
+        className={`group/message flex min-w-0 flex-col gap-2 ${isUser ? "px-2" : "px-4"} text-sm leading-6 ${
           isUser ? "text-foreground" : isAssistant ? "text-foreground" : "text-muted-foreground"
         }`}
       >
@@ -193,27 +200,23 @@ export function ChatMessage({
             const call = part as ToolCallPart;
             const key = toolActivityKey(call) ?? call.call_id;
             return (
-              <div key={call.id ?? key} className={compactBottom ? "mt-0" : "mt-1"}>
-                <ToolActivityItem
-                  call={call}
-                  result={toolResultsById?.get(key) ?? toolResultsById?.get(call.call_id)}
-                  activity={
-                    toolActivitiesById ? lookupToolActivity(toolActivitiesById, call) : undefined
-                  }
-                  compact={compactBottom}
-                />
-              </div>
+              <ToolActivityItem
+                key={call.id ?? key}
+                call={call}
+                result={toolResultsById?.get(key) ?? toolResultsById?.get(call.call_id)}
+                activity={
+                  toolActivitiesById ? lookupToolActivity(toolActivitiesById, call) : undefined
+                }
+              />
             );
           }
           if (part.type === "tool") {
             const tool = part as ToolPart;
             return (
-              <div
+              <ToolActivityItem
                 key={tool.id ?? tool.tool_use_id ?? tool.call_id}
-                className={compactBottom ? "mt-0" : "mt-1"}
-              >
-                <ToolActivityItem {...toolPartProps(tool)} compact={compactBottom} />
-              </div>
+                {...toolPartProps(tool)}
+              />
             );
           }
           if (part.type === "tool_result") {
@@ -228,15 +231,14 @@ export function ChatMessage({
               input: {},
             };
             return (
-              <div key={result.id ?? key} className="mt-1">
-                <ToolActivityItem
-                  call={call}
-                  result={result}
-                  activity={
-                    toolActivitiesById ? lookupToolActivity(toolActivitiesById, result) : undefined
-                  }
-                />
-              </div>
+              <ToolActivityItem
+                key={result.id ?? key}
+                call={call}
+                result={result}
+                activity={
+                  toolActivitiesById ? lookupToolActivity(toolActivitiesById, result) : undefined
+                }
+              />
             );
           }
           return (

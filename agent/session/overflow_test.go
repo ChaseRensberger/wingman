@@ -47,7 +47,9 @@ func (s *overflowCrashStore) SaveMessage(ctx context.Context, message store.Stor
 		return err
 	}
 	for _, part := range message.Parts {
-		if s.stage == "checkpoint" && part.Kind == compaction.PartType {
+		if part.Kind == compaction.PartType &&
+			((s.stage == "checkpoint" && message.State == string(models.MessageStateCompleted)) ||
+				(s.stage == "compaction-started" && message.State == string(models.MessageStateInProgress))) {
 			os.Exit(23)
 		}
 	}
@@ -87,7 +89,7 @@ func TestOverflowRecoveryAcrossProcessCrashes(t *testing.T) {
 		_, err = sess.Run(t.Context(), strings.Repeat("history ", 1000))
 		t.Fatalf("did not reach crash stage: %v", err)
 	}
-	for _, stage := range []string{"intent", "summary", "checkpoint"} {
+	for _, stage := range []string{"intent", "compaction-started", "summary", "checkpoint"} {
 		t.Run(stage, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "overflow.db")
 			data, err := store.NewSQLiteStore(path)
@@ -124,6 +126,15 @@ func TestOverflowRecoveryAcrossProcessCrashes(t *testing.T) {
 			}
 			if err := RecoverRunMessages(t.Context(), data, "ses_history", admitted.Run.ID); err != nil {
 				t.Fatal(err)
+			}
+			messages, err := data.ListMessages(t.Context(), "ses_history")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, message := range messages {
+				if message.State == string(models.MessageStateInProgress) {
+					t.Fatal("recovered compaction still appears active")
+				}
 			}
 			if _, err := data.RequeueSessionRun(t.Context(), admitted.Run.ID); err != nil {
 				t.Fatal(err)

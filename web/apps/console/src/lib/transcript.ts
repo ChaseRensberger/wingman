@@ -95,14 +95,18 @@ export function projectTranscript({
   toolResultsById,
   toolActivitiesById,
   streamingReasoning = "",
+  isReasoningStreaming = false,
   streamingText = "",
+  isStreaming = false,
 }: {
   messages: Message[];
   toolCallsById: Map<string, ToolCallPart>;
   toolResultsById: Map<string, ToolResultPart>;
   toolActivitiesById: Map<string, ToolActivity>;
   streamingReasoning?: string;
+  isReasoningStreaming?: boolean;
   streamingText?: string;
+  isStreaming?: boolean;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const renderedCalls: ToolCallPart[] = [];
@@ -134,17 +138,15 @@ export function projectTranscript({
     }
     let content: Part[] = [];
     let start = 0;
-    let lastMessageRow: Extract<TranscriptRow, { type: "message" }> | undefined;
     const flush = () => {
       if (content.length === 0) return;
-      lastMessageRow = {
+      rows.push({
         type: "message",
         key: `message:${messageKey}:${start}`,
         message: { ...message, content },
         sourceMessage: message,
         showMeta: false,
-      };
-      rows.push(lastMessageRow);
+      });
       content = [];
     };
     message.content.forEach((part, index) => {
@@ -178,7 +180,6 @@ export function projectTranscript({
       content.push(part);
     });
     flush();
-    if (lastMessageRow) lastMessageRow.showMeta = true;
   });
 
   if (streamingReasoning) {
@@ -192,7 +193,7 @@ export function projectTranscript({
       message,
       sourceMessage: message,
       showMeta: false,
-      isStreaming: true,
+      isStreaming: isReasoningStreaming,
     });
   }
   for (const activity of toolActivitiesById.values()) {
@@ -223,5 +224,31 @@ export function projectTranscript({
       isStreaming: true,
     });
   }
+
+  let lastResponseMessage: Extract<TranscriptRow, { type: "message" }> | undefined;
+  const commitResponseMeta = () => {
+    if (lastResponseMessage) lastResponseMessage.showMeta = true;
+    lastResponseMessage = undefined;
+  };
+  for (const row of rows) {
+    if (row.type !== "message") continue;
+    if (row.message.role === "user") {
+      commitResponseMeta();
+      continue;
+    }
+    if (
+      row.message.role === "assistant" &&
+      row.message.content.some(
+        (part) => part.type === "text" && (part as { text: string }).text.trim(),
+      )
+    ) {
+      lastResponseMessage = row;
+    }
+  }
+  const activeTool = [...toolActivitiesById.values()].some((activity) =>
+    ["pending", "running"].includes(activity.status),
+  );
+  if (!isStreaming && !streamingText && !streamingReasoning && !activeTool) commitResponseMeta();
+
   return rows;
 }
