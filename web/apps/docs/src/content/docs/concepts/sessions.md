@@ -93,8 +93,9 @@ Retry the same input with the same `request_id` to return the existing run.
 Changed input with that ID returns `409 Conflict`. Without an ID, each request creates a new run.
 See the [message reference](/reference/referenceapi#message-request) for the fields that must match.
 
-Queued work uses the agent, model, location, [project instructions](/configure/project-instructions), and [skills](/configure/skills) saved when the request was accepted.
-Later edits and session moves affect only new requests.
+Queued work uses the agent, model, location, and [skills](/configure/skills) saved when the request was accepted.
+Later agent edits, skill edits, and session moves affect only new requests.
+Wingman rereads [project instructions](/configure/project-instructions) before each model call, so file changes can affect queued work and later calls in an active run.
 
 ## Per-Message Agent and Model
 
@@ -166,7 +167,8 @@ wingman api getSessionRun --param "id=${SESSION_ID}" --param runID=run_...
 ```
 
 A run moves from `queued` to `running`. It then moves to `completed`, `failed`,
-or `aborted`. Remote validation pauses the run in `awaiting_completion`. A queued or paused run can also be aborted.
+or `aborted`. A tool question pauses the run in `awaiting_input`.
+Remote validation pauses the run in `awaiting_completion`. A queued or paused run can also be aborted.
 
 Abort a specific run with:
 

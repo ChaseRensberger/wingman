@@ -28,6 +28,33 @@ wingman api get /sessions/ses_example/model-calls |
 
 `wingman api` selects the local managed service. For a foreground or remote server, use the [direct HTTP setup](/concepts/authentication#direct-http-requests).
 
+## Inspect recorded input
+
+Recorded input is the content prepared for one model attempt.
+It contains the system prompt, messages, tool definitions, instruction sources, and any output schema.
+Wingman records this content after context transforms and before conversion to the provider's request format.
+It is not the provider's HTTP payload or proof that the provider received the request.
+
+1. Open the session Inspector from the context-usage indicator.
+2. Find an attempt under Model calls.
+3. Select Inspect model input.
+
+Expand the sections to read the recorded content.
+Instruction sources include their saved text and paths. Sources discovered through a file read also identify that read.
+Use Inspect preceding call to compare the input with the preceding attempt.
+The conversation can differ from this input because Wingman can summarize history or change context before a call.
+
+To read the same input through the managed-service API, replace both example IDs:
+
+```bash
+wingman api get /sessions/ses_example/model-calls/mcl_example/input | jq .input
+```
+
+TypeScript clients use `client.sessions.modelCalls.input(sessionID, callID)`.
+The endpoint returns `input: null` when the call exists but has no recorded input, such as an older call.
+The Inspector reports this absence. It does not reconstruct the input from the current conversation.
+Saved input remains available across restarts. Later instruction-file edits do not change it.
+
 ## Read logs
 
 Wingman writes to standard error. The default format is JSON and the default level is `info`.

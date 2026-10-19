@@ -32,8 +32,8 @@ Register extensions through `plugin.Registry` during `Activate`:
 | `RegisterAction`                      | Add a named session operation.                      |
 
 Hooks run in activation order. Each transform receives the previous hook's output.
-`TransformHistory` currently ignores a returned replacement when its message count is unchanged.
-Use `TransformContext` for request-only changes that keep the same count.
+`TransformHistory` replaces active history when it returns a non-nil slice, even when the message count stays the same.
+Use `TransformContext` for changes that apply only to one model request.
 
 ## System instructions
 

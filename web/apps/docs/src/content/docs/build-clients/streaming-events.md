@@ -67,18 +67,32 @@ Live text, reasoning, tool-input deltas, and tool progress do not have a cursor 
 Their SSE `id` is the event ID. Do not use that ID as a saved resume position.
 `session.tool.updated` can also arrive as a live `pending` update before a tool call is complete.
 
-| Event                                                                | Client action                                                                            |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `session.message.created`                                            | Replace the message when its revision is equal or newer. Match messages and parts by ID. |
-| `session.text.delta`, `session.reasoning.delta`                      | Append live text to the identified message part.                                         |
-| `session.tool.input.delta`                                           | Track input by run and call ID until `tool_use_id` is available.                         |
-| `session.tool.progress`                                              | Append `output_delta` and merge top-level `metadata` fields.                             |
-| Saved `session.tool.updated`                                         | Replace live tool output and metadata with the saved values.                             |
-| `session.permission.requested`, `session.permission.resolved`        | Update approval state from the complete request.                                         |
-| `session.run.completed`, `session.run.failed`, `session.run.aborted` | Update run status. These are not connection errors.                                      |
+| Event                                                                                                               | Client action                                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `session.message.created`                                                                                           | Replace the message when its revision is equal or newer. Match messages and parts by ID. |
+| `session.text.delta`, `session.reasoning.delta`                                                                     | Append live text to the identified message part.                                         |
+| `session.text.completed`, `session.reasoning.completed`                                                             | Replace the identified part's text with the complete saved text.                         |
+| `session.tool.input.delta`                                                                                          | Track input by run and call ID until `tool_use_id` is available.                         |
+| `session.tool.progress`                                                                                             | Append `output_delta` and merge top-level `metadata` fields.                             |
+| Saved `session.tool.updated`                                                                                        | Replace live tool output and metadata with the saved values.                             |
+| `session.permission.requested`, `session.permission.resolved`                                                       | Update approval state from the complete request.                                         |
+| `session.question.pending`, `session.question.answered`, `session.question.dismissed`, `session.question.cancelled` | Update question state from the complete question record.                                 |
+| `session.run.input`                                                                                                 | Update the run's wait or resumption status from `status`.                                |
+| `session.run.completed`, `session.run.failed`, `session.run.aborted`                                                | Update run status. These are not connection errors.                                      |
 
 A failed message can contain partial content. Provider `call_id` values can repeat, so use Wingman `tool_use_id` when available.
 See [Tools](/concepts/tools#durable-execution-lifecycle) for execution states.
+
+## Keep content in order
+
+Track live content by `message_id` and `part_id`.
+Keep text, reasoning, and tool parts in the order that they first appear.
+Append later deltas to the matching part without changing its position.
+Do not collect all text after tool rows because text can arrive before or between tools.
+
+Completed-part events contain complete text, not another delta. Replace the matching live text instead of appending it.
+When `session.message.created` arrives, use its saved `content` order and remove live parts for that message only.
+Match tool parts by part ID during the transition to a saved `tool_use_id` so the same call does not appear twice.
 
 ## Reconnect safely
 
@@ -88,6 +102,10 @@ Otherwise, a crash can skip an event that your application did not apply.
 On disconnect, reload the session and run, then reconnect from the last processed cursor.
 Receive missing events even if the run completed while disconnected.
 Use a limited wait between connection attempts.
+
+After a reconnect, rebuild pending questions from `GET /sessions/{id}/questions` and apply later question events by question ID.
+A run in `awaiting_input` waits for a question reply. It has not completed or failed.
+See [Questions](/concepts/sessions#questions) for replies, dismissal, and cancellation.
 
 `session.events.resync_required` means delivery overflowed or the cursor cannot match saved history. The server then disconnects.
 Discard live partial output, reload saved state, and reconnect with your last processed cursor.

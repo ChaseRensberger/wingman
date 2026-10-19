@@ -27,28 +27,32 @@ If omitted, Wingman uses `cli_wingclient`. Client identities do not provide sepa
 
 ## Main operations
 
-| Resource             | Operations                                                              |
-| -------------------- | ----------------------------------------------------------------------- |
-| Health               | `GET /health`, `GET /ready`                                             |
-| Service              | `GET /`, `POST /service/restart`                                        |
-| Agents               | `GET` or `POST /agents`, `GET`, `PUT`, or `DELETE /agents/{id}`         |
-| Clients              | `GET` or `POST /clients`, `GET /clients/{id}`, `GET /client`            |
-| Workspaces           | `GET` or `POST /workspaces`, `GET`, `PUT`, or `DELETE /workspaces/{id}` |
-| Sessions             | `GET` or `POST /sessions`, `GET /sessions/{id}`                         |
-| Messages             | `POST /sessions/{id}/message`                                           |
-| Runs                 | `GET /sessions/{id}/runs`, `GET /sessions/{id}/runs/{runID}`            |
-| Events               | `GET /sessions/{id}/events`, `GET /sessions/{id}/events/history`        |
-| One-shot runs        | `POST /run`                                                             |
-| Provider credentials | `GET` or `PUT /provider/auth`, `DELETE /provider/auth/{provider}`       |
-| Providers and models | `GET /provider`, `GET /provider/{name}`, `GET /provider/{name}/models`  |
-| Registered plugins   | `GET /plugins`                                                          |
-| RPC plugins          | `GET /rpc-plugins`, `POST /rpc-plugins/reload`                          |
-| Tool sources         | `GET /tools`, `GET /mcp`                                                |
-| Diagnostics          | `GET /logs`, `GET /diagnostics`                                         |
+| Resource             | Operations                                                                        |
+| -------------------- | --------------------------------------------------------------------------------- |
+| Health               | `GET /health`, `GET /ready`                                                       |
+| Service              | `GET /`, `POST /service/restart`                                                  |
+| Agents               | `GET` or `POST /agents`, `GET`, `PUT`, or `DELETE /agents/{id}`                   |
+| Clients              | `GET` or `POST /clients`, `GET /clients/{id}`, `GET /client`                      |
+| Workspaces           | `GET` or `POST /workspaces`, `GET`, `PUT`, or `DELETE /workspaces/{id}`           |
+| Sessions             | `GET` or `POST /sessions`, `GET /sessions/{id}`                                   |
+| Messages             | `POST /sessions/{id}/message`                                                     |
+| Runs                 | `GET /sessions/{id}/runs`, `GET /sessions/{id}/runs/{runID}`                      |
+| Events               | `GET /sessions/{id}/events`, `GET /sessions/{id}/events/history`                  |
+| Model calls          | `GET /sessions/{id}/model-calls`, `GET /sessions/{id}/model-calls/{callID}/input` |
+| Questions            | `GET` or `POST /sessions/{id}/questions`                                          |
+| One-shot runs        | `POST /run`                                                                       |
+| Provider credentials | `GET` or `PUT /provider/auth`, `DELETE /provider/auth/{provider}`                 |
+| Providers and models | `GET /provider`, `GET /provider/{name}`, `GET /provider/{name}/models`            |
+| Registered plugins   | `GET /plugins`                                                                    |
+| RPC plugins          | `GET /rpc-plugins`, `POST /rpc-plugins/reload`                                    |
+| Tool sources         | `GET /tools`, `GET /mcp`                                                          |
+| Diagnostics          | `GET /logs`, `GET /diagnostics`                                                   |
 
 `GET /ready` reports readiness, instance ID, and version. Readiness does not prove that provider credentials or credits are valid.
 `POST /service/restart` requires `X-Wingman-Console: 1`. It returns `409` for a foreground server.
 MCP OAuth authorization and logout endpoints return `501 Not Implemented`.
+See [Questions](/concepts/sessions#questions) for question reads and replies.
+See [Recorded Input](/use-wingman/observability#inspect-recorded-input) for inspecting model-call content.
 
 ## Session responses
 
@@ -96,7 +100,8 @@ Changing the prompt, effective agent or model, output schema, client, or current
 Without an ID, each request creates another run.
 
 An identical retry also returns `202`. Its `status` and `session_version` reflect the current state.
-Saved input includes the accepted agent, location, project instructions, and skills.
+Saved input includes the accepted agent, location, skills, and an initial copy of project instructions.
+Wingman rereads project instructions before each model call. See [Project Instructions](/configure/project-instructions) for refresh and retry behavior.
 
 ## Session changes
 
@@ -113,7 +118,8 @@ Deletion permanently removes the session and its records. Wingman cancels active
 
 ## Run status and cancellation
 
-Run statuses are `queued`, `running`, `completed`, `failed`, and `aborted`.
+Run statuses are `queued`, `running`, `awaiting_input`, `awaiting_completion`, `completed`, `failed`, and `aborted`.
+Tool questions pause runs in `awaiting_input`. Remote completion validation pauses runs in `awaiting_completion`.
 Runs execute in submission order within one session. See [Sessions](/concepts/sessions#run-status-and-recovery) for restart recovery.
 
 `POST /sessions/{id}/abort` cancels the active run and leaves queued work scheduled.
