@@ -165,7 +165,7 @@ test.each(["read", "bash", "apply_patch", "custom"])(
       true,
     ]);
     expect(markup).not.toMatch(/class="relative[^"]*p[bt]-5/);
-    expect(markup).not.toMatch(/class="[^"]*\bmy-(?:1\.5|2)\b/);
+    expect(markup).not.toMatch(/class="(?:[^"]*\s)?my-(?:1\.5|2)(?:\s|")/);
   },
 );
 
@@ -189,7 +189,7 @@ test("mixed thought, tool, and text parts use the same internal gap", () => {
   );
   expect(markup).toContain("group/message flex min-w-0 flex-col gap-2");
   expect(markup.match(/data-slot="transcript-row"/g)).toHaveLength(1);
-  expect(markup).not.toMatch(/class="[^"]*\bmy-2\b/);
+  expect(markup).not.toMatch(/class="(?:[^"]*\s)?my-2(?:\s|")/);
 });
 
 test("running compaction replaces the generic responding indicator", () => {

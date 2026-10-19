@@ -29,6 +29,10 @@ func TestInstructionDiscoveryRecoveryAndHistoricalInputs(t *testing.T) {
 	if err := os.WriteFile(file, []byte("package example"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	resolvedFile, err := filepath.EvalSymlinks(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(file, filepath.Join(work, "source.go")); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +107,7 @@ func TestInstructionDiscoveryRecoveryAndHistoricalInputs(t *testing.T) {
 		t.Fatalf("recovery without transcript: %#v %q %v", resumed, system, err)
 	}
 	old, err := data.GetModelCallInput(t.Context(), sess.ID, "mcl_guidance")
-	if err != nil || old.Instructions[0].Content != "original guidance" || old.Instructions[0].ResolvedPath != file || old.Instructions[0].ToolUseID != use.ID {
+	if err != nil || old.Instructions[0].Content != "original guidance" || old.Instructions[0].ResolvedPath != resolvedFile || old.Instructions[0].ToolUseID != use.ID {
 		t.Fatalf("historical snapshot: %#v %v", old, err)
 	}
 	if err := os.Remove(guide); err != nil {

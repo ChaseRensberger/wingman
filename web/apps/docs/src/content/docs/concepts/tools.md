@@ -46,9 +46,12 @@ Its default timeout is 30 seconds, with a maximum of 120 seconds. Output default
 
 ## Code search and file changes
 
-The `grep` and `glob` tools require ripgrep, a file-search program, on the computer that runs Wingman.
-Install ripgrep and make sure that `rg` is on the Wingman process's `PATH`. The Wingman container includes it.
-Wingman reports a tool error if `rg` is missing.
+The `grep` and `glob` tools use ripgrep, a file-search program. Wingman first looks for `rg` on its process's `PATH`.
+If `rg` is missing, the first search downloads ripgrep 15.1.0 from GitHub and checks its SHA-256 checksum.
+Wingman saves the program in the operating system's user cache directory and reuses it for later searches.
+Automatic downloads support Linux, macOS, and Windows on amd64 and arm64. The Linux arm64 download requires glibc.
+If a download fails or the platform is unsupported, install ripgrep and add `rg` to the Wingman process's `PATH`.
+For offline use, install ripgrep before the first search. The Wingman container includes it.
 
 Both tools use ripgrep's ignore-file rules. Explicit inclusion patterns can override those rules.
 Hidden files are excluded unless `hidden` is `true`. Both tools exclude the `.git` directory.

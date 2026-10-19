@@ -15,7 +15,7 @@ type GrepTool struct{}
 func NewGrepTool() *GrepTool     { return &GrepTool{} }
 func (t *GrepTool) Name() string { return "grep" }
 func (t *GrepTool) Description() string {
-	return "Search text files with ripgrep ignore and glob rules. Skips binary files and returns matching lines with paths and line numbers. Requires rg."
+	return "Search text files with ripgrep ignore and glob rules. Skips binary files and returns matching lines with paths and line numbers."
 }
 func (t *GrepTool) Definition() Definition {
 	return Definition{ReplaySafe: true, Name: t.Name(), Description: t.Description(), InputSchema: InputSchema{

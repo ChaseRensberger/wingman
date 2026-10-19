@@ -74,6 +74,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test ripgrep acquisition
+        env:
+          WINGMAN_TEST_RIPGREP_DOWNLOAD: "1"
+        run: go test ./tool -run '^TestRipgrepDownloadIntegration$' -count=1
+
       - name: Test installer
         run: ./scripts/test-install.sh
 
@@ -101,6 +106,11 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      - name: Test ripgrep acquisition
+        env:
+          WINGMAN_TEST_RIPGREP_DOWNLOAD: "1"
+        run: go test ./tool -run '^TestRipgrepDownloadIntegration$' -count=1
 
   release-smoke:
     runs-on: ubuntu-latest

@@ -13,7 +13,7 @@ type GlobTool struct{}
 func NewGlobTool() *GlobTool     { return &GlobTool{} }
 func (t *GlobTool) Name() string { return "glob" }
 func (t *GlobTool) Description() string {
-	return "Find files with ripgrep ignore and glob rules. Returns paths relative to the search directory. Requires rg."
+	return "Find files with ripgrep ignore and glob rules. Returns paths relative to the search directory."
 }
 func (t *GlobTool) Definition() Definition {
 	return Definition{ReplaySafe: true, Name: t.Name(), Description: t.Description(), InputSchema: InputSchema{

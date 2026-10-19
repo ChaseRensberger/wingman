@@ -56,6 +56,8 @@ func TestRipgrepSearchSemantics(t *testing.T) {
 		t.Fatal("invalid regex accepted")
 	}
 	t.Setenv("PATH", t.TempDir())
+	setOutputCacheDir(t, "")
+	t.Setenv("LOCALAPPDATA", "")
 	if _, err := NewGlobTool().Execute(t.Context(), Invocation{WorkDir: dir, Input: map[string]any{"pattern": "*"}}); err == nil || !strings.Contains(err.Error(), "install ripgrep") {
 		t.Fatalf("missing dependency: %v", err)
 	}

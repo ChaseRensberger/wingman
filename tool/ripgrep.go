@@ -57,9 +57,9 @@ func searchVisibility(inv Invocation) []string {
 }
 
 func runRipgrep(ctx context.Context, dir string, args []string, split bufio.SplitFunc, visit func([]byte) error) error {
-	binary, err := exec.LookPath("rg")
+	binary, err := ripgrepBinary(ctx)
 	if err != nil {
-		return fmt.Errorf("ripgrep (rg) is required for grep and glob; install ripgrep and ensure rg is on PATH")
+		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

@@ -55,7 +55,11 @@ func TestDiscoveryOrderSymlinksAndLiveUpdates(t *testing.T) {
 	if err != nil || len(dedup) != 4 {
 		t.Fatalf("dedup = %#v, %v", dedup, err)
 	}
-	if strings.Count(Render("base", dedup), "Source: "+global) != 1 {
+	canonicalGlobal, err := filepath.EvalSymlinks(global)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(Render("base", dedup), "Source: "+canonicalGlobal) != 1 {
 		t.Fatal("duplicate global instruction")
 	}
 }
