@@ -14,6 +14,7 @@ import { onPageResume } from "@/lib/connection";
 import { mergeQuestions } from "@/lib/questions";
 import { formatSessionError } from "@/lib/session-detail";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
+import { reduceStreamingParts, type StreamingPart } from "@/lib/streaming-parts";
 import type {
   Message,
   PermissionRequest,
@@ -278,8 +279,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const requestRef = useRef<SessionRunRequest | null>(null);
   const [resumeRevision, setResumeRevision] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
-  const [streamingReasoning, setStreamingReasoning] = useState("");
+  const [streamingParts, setStreamingParts] = useState<StreamingPart[]>([]);
   const [isReasoningStreaming, setIsReasoningStreaming] = useState(false);
   const [latestRunUsage, setLatestRunUsage] = useState<Usage>();
   const [failedRun, setFailedRun] = useState<FailedRun | null>(null);
@@ -312,14 +312,12 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     requestRef.current = null;
     setIsStreaming(false);
     setIsReasoningStreaming(false);
-    setStreamingReasoning("");
-    setStreamingText("");
+    setStreamingParts([]);
   }
 
   function clearVolatileStreamState() {
     setIsReasoningStreaming(false);
-    setStreamingReasoning("");
-    setStreamingText("");
+    setStreamingParts([]);
     setToolActivities(new Map());
   }
 
@@ -470,6 +468,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       ev.data.run_id !== activeRunRef.current.runId
     )
       return;
+    setStreamingParts((previous) => reduceStreamingParts(previous, ev));
     if (ev.type === "session.tool.input.delta") {
       const callID = ev.data.call_id ?? "";
       const delta = ev.data.delta;
@@ -498,7 +497,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       const delta = ev.data.delta;
       if (delta) {
         setIsReasoningStreaming(false);
-        setStreamingText((previous) => previous + delta);
       }
       return;
     }
@@ -506,14 +504,11 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       const delta = ev.data.delta;
       if (delta) {
         setIsReasoningStreaming(true);
-        setStreamingReasoning((previous) => previous + delta);
       }
       return;
     }
     if (ev.type === "session.reasoning.completed") {
       setIsReasoningStreaming(false);
-      const text = ev.data.text;
-      if (text) setStreamingReasoning(text);
       return;
     }
     if (ev.type === "session.message.created") {
@@ -531,8 +526,6 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       });
       if (message.role === "assistant") {
         setIsReasoningStreaming(false);
-        setStreamingText("");
-        setStreamingReasoning("");
       }
       return;
     }
@@ -662,9 +655,8 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     requestRef.current = request;
     setFailedRun(null);
     setIsStreaming(true);
-    setStreamingReasoning("");
+    setStreamingParts([]);
     setLatestRunUsage(undefined);
-    setStreamingText("");
     return controller;
   }
 
@@ -744,8 +736,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const permissionRequests = pendingPermissionRequests(permissionRequestRecords);
   return {
     isStreaming: isStreaming || permissionRequests.length > 0,
-    streamingText,
-    streamingReasoning,
+    streamingParts,
+    streamingText: streamingParts
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join(""),
     isReasoningStreaming: isStreaming && isReasoningStreaming,
     latestRunUsage,
     failedRun,

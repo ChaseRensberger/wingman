@@ -98,6 +98,7 @@ export default defineConfig({
       "/sessions": daemonProxy(),
       "/tools": daemonProxy(),
       "/plugins": daemonProxy(),
+      "/rpc-plugins": daemonProxy(),
       "/run": daemonProxy(),
     },
   },

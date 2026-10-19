@@ -463,7 +463,6 @@ func copyAgent(a *store.Agent) *store.Agent {
 	cp := *a
 	cp.Tools = make([]string, len(a.Tools))
 	copy(cp.Tools, a.Tools)
-	cp.Plugins = append([]string(nil), a.Plugins...)
 	cp.Options = deepCopyMap(a.Options)
 	cp.OutputSchema = deepCopyMap(a.OutputSchema)
 	return &cp

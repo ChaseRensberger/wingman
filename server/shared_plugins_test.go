@@ -17,7 +17,7 @@ import (
 	"github.com/chaserensberger/wingman/store/memory"
 )
 
-func TestAgentPluginActionRequestPaths(t *testing.T) {
+func TestSharedPluginActionRequestPaths(t *testing.T) {
 	for _, workflow := range []string{"production", "proxied-development", "vite-development"} {
 		t.Run(workflow, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 40*time.Second)
@@ -30,13 +30,10 @@ func TestAgentPluginActionRequestPaths(t *testing.T) {
 			if err := data.CreateSession(&store.Session{ID: "ses_agent_action", ClientID: owner.ID}); err != nil {
 				t.Fatal(err)
 			}
-			for _, id := range []string{"selected", "unselected"} {
+			for _, id := range []string{"first", "second"} {
 				agent := &store.Agent{
 					ID: id, Name: id, ModelRef: "test/model",
 					Options: map[string]any{agentOptionModelRoute: models.ModelInfo{Provider: "test", ID: "model", API: models.APIOpenAICompatible, BaseURL: "http://127.0.0.1:1"}},
-				}
-				if id == "selected" {
-					agent.Plugins = []string{"test"}
 				}
 				if err := data.CreateAgent(agent); err != nil {
 					t.Fatal(err)
@@ -48,7 +45,7 @@ func TestAgentPluginActionRequestPaths(t *testing.T) {
 			defer frontend.Close()
 			cfg := Config{
 				Store: data, Username: "test", Password: "recovery-test-password",
-				AgentPluginFactories: map[string]func() plugin.Plugin{"test": func() plugin.Plugin { return sessionActionTestPlugin{} }},
+				Plugins: []PluginRegistration{{ID: "test", Enabled: true, Factory: func() plugin.Plugin { return sessionActionTestPlugin{} }}},
 			}
 			if workflow == "proxied-development" {
 				cfg.ConsoleDevURL = frontend.URL
@@ -66,7 +63,7 @@ func TestAgentPluginActionRequestPaths(t *testing.T) {
 			}
 			admit := func(action, agent string, want int) api.ActionSessionResponse {
 				t.Helper()
-				body := `{"request_id":"agent-action","agent_id":"` + agent + `"}`
+				body := `{"request_id":"agent-action-` + agent + `","agent_id":"` + agent + `"}`
 				req, err := http.NewRequestWithContext(ctx, http.MethodPost, target+"/sessions/ses_agent_action/actions/"+action, strings.NewReader(body))
 				if err != nil {
 					t.Fatal(err)
@@ -90,27 +87,29 @@ func TestAgentPluginActionRequestPaths(t *testing.T) {
 				}
 				return admission
 			}
-			admit("test.run", "unselected", http.StatusNotFound)
-			first := admit("run", "selected", http.StatusAccepted)
-			retry := admit("test.run", "selected", http.StatusAccepted)
-			if first.RunID == "" || retry.RunID != first.RunID {
-				t.Fatalf("action retry created a different run: first=%+v retry=%+v", first, retry)
-			}
-			for {
-				run, err := data.GetSessionRun(ctx, "ses_agent_action", first.RunID)
-				if err != nil {
-					t.Fatal(err)
+			admit("missing", "first", http.StatusNotFound)
+			for _, agent := range []string{"first", "second"} {
+				first := admit("run", agent, http.StatusAccepted)
+				retry := admit("test.run", agent, http.StatusAccepted)
+				if first.RunID == "" || retry.RunID != first.RunID {
+					t.Fatalf("action retry created a different run: first=%+v retry=%+v", first, retry)
 				}
-				if run.Action != "test.run" {
-					t.Fatalf("action alias was not canonicalized: %s", run.Action)
+				for {
+					run, err := data.GetSessionRun(ctx, "ses_agent_action", first.RunID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if run.Action != "test.run" {
+						t.Fatalf("action alias was not canonicalized: %s", run.Action)
+					}
+					if run.Status == store.SessionRunStatusCompleted {
+						break
+					}
+					if run.Status == store.SessionRunStatusFailed || ctx.Err() != nil {
+						t.Fatalf("action status=%s error=%s: %s", run.Status, run.ErrorType, run.ErrorMessage)
+					}
+					time.Sleep(time.Millisecond)
 				}
-				if run.Status == store.SessionRunStatusCompleted {
-					break
-				}
-				if run.Status == store.SessionRunStatusFailed || ctx.Err() != nil {
-					t.Fatalf("action status=%s error=%s: %s", run.Status, run.ErrorType, run.ErrorMessage)
-				}
-				time.Sleep(time.Millisecond)
 			}
 		})
 	}

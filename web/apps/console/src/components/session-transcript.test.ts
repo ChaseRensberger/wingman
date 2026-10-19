@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createElement, type ComponentProps } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 
 import { SessionTranscript } from "@/components/session-transcript";
 import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
@@ -20,7 +20,7 @@ function Transcript({
     jsonMode: false,
     greeting: "",
     streamingText: "",
-    streamingReasoning: "",
+    streamingParts: [],
     isReasoningStreaming: false,
     isStreaming: true,
     toolCallsById: new Map(),
@@ -131,7 +131,7 @@ test("transcript groups saved and live exploration without hiding approval cards
 
 test.each(["read", "bash", "apply_patch", "custom"])(
   "transcript owns consistent gaps around thoughts and %s tools",
-  (name) => {
+  async (name) => {
     const messages: Message[] = [
       { id: "user", role: "user", content: [{ type: "text", text: "Start" }] },
       { id: "thought", role: "assistant", content: [{ type: "reasoning", reasoning: "Checking" }] },
@@ -148,9 +148,12 @@ test.each(["read", "bash", "apply_patch", "custom"])(
         content: [{ type: "reasoning", reasoning: "Next" }],
       },
     ];
-    const markup = renderToStaticMarkup(
+    const stream = await renderToReadableStream(
       createElement(Transcript, { props: { messages, isStreaming: false } }),
     );
+    await stream.allReady;
+    const markup = await new Response(stream).text();
+    expect(markup).toContain("<p>Answer</p>");
     const rowClasses = [
       ...markup.matchAll(/<div class="([^"]*)" data-slot="transcript-row">/g),
     ].map((match) => match[1]);

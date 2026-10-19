@@ -113,15 +113,6 @@
               "null"
             ]
           },
-          "plugins": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
           "tools": {
             "items": {
               "type": "string"
@@ -169,15 +160,6 @@
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/Rule"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "plugins": {
-            "items": {
-              "type": "string"
             },
             "type": [
               "array",
@@ -790,15 +772,6 @@
           "permissions": {
             "items": {
               "$ref": "#/components/schemas/Rule"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "plugins": {
-            "items": {
-              "type": "string"
             },
             "type": [
               "array",
@@ -2194,8 +2167,15 @@
       "PluginsResponse": {
         "additionalProperties": false,
         "properties": {
-          "errors": {},
-          "plugins": {}
+          "plugins": {
+            "items": {
+              "$ref": "#/components/schemas/RegisteredPlugin"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
         },
         "required": [
           "plugins"
@@ -2735,6 +2715,22 @@
         ],
         "type": "object"
       },
+      "RegisteredPlugin": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "RenameSessionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2840,6 +2836,17 @@
           "provider",
           "id",
           "capabilities"
+        ],
+        "type": "object"
+      },
+      "RpcPluginsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {},
+          "plugins": {}
+        },
+        "required": [
+          "plugins"
         ],
         "type": "object"
       },
@@ -4936,15 +4943,6 @@
               "null"
             ]
           },
-          "plugins": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
           "tools": {
             "items": {
               "type": "string"
@@ -6132,50 +6130,7 @@
             "basicAuth": []
           }
         ],
-        "summary": "List plugin status"
-      }
-    },
-    "/plugins/reload": {
-      "post": {
-        "operationId": "reloadPlugins",
-        "parameters": [
-          {
-            "description": "Client identity for resource attribution and scoping",
-            "in": "header",
-            "name": "X-Wingman-Client",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PluginsResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Request failed"
-          }
-        },
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
-        "summary": "Reload plugins"
+        "summary": "List registered plugins"
       }
     },
     "/provider": {
@@ -6764,6 +6719,92 @@
           }
         ],
         "summary": "Check daemon readiness"
+      }
+    },
+    "/rpc-plugins": {
+      "get": {
+        "operationId": "listRPCPlugins",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RpcPluginsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "List RPC plugin status"
+      }
+    },
+    "/rpc-plugins/reload": {
+      "post": {
+        "operationId": "reloadRPCPlugins",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RpcPluginsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Reload RPC plugins"
       }
     },
     "/run": {

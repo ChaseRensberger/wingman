@@ -17,7 +17,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 3 || migrations[0].name != "init" || migrations[1].name != "model_input" || migrations[2].name != "agent_plugins" {
+	if len(migrations) != 4 || migrations[0].name != "init" || migrations[1].name != "model_input" || migrations[2].name != "agent_plugins" || migrations[3].name != "shared_plugins" {
 		t.Fatalf("unexpected migrations: %d", len(migrations))
 	}
 	var count int
@@ -28,7 +28,7 @@ func TestRunMigrationsCreatesCanonicalSchema(t *testing.T) {
 		t.Fatalf("recorded initial migration = %d, want 1", count)
 	}
 	for table, columns := range map[string][]string{
-		"agents":              {"permissions_json", "plugins_json"},
+		"agents":              {"permissions_json"},
 		"sessions":            {"aggregate_version"},
 		"messages":            {"run_id"},
 		"session_runs":        {"request_id", "request_hash", "admitted_version", "work_dir", "workspace_id", "client_id", "error_type", "effective_instructions", "instruction_sources_json", "skills_json", "kind", "action", "input_json", "recovery_attempts"},
@@ -150,7 +150,7 @@ func TestRunMigrationsRejectsUnknownHistory(t *testing.T) {
 	if err := runMigrations(db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (4, 'removed', 'checksum', ?)`, Now()); err != nil {
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name, checksum, applied_at) SELECT MAX(version) + 1, 'removed', 'checksum', ? FROM schema_migrations`, Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := runMigrations(db); err == nil || !strings.Contains(err.Error(), "unknown version") {

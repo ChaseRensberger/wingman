@@ -24,6 +24,7 @@ export type RunRequest = components["schemas"]["RunRequest"];
 export type RunStreamEvent = components["schemas"]["RunStreamEvent"];
 export type Session = components["schemas"]["Session"];
 export type SessionDetail = components["schemas"]["SessionDetail"];
+export type PluginsResponse = components["schemas"]["PluginsResponse"];
 export type SessionEvent = components["schemas"]["SessionEvent"];
 export type SessionRun = components["schemas"]["SessionRun"];
 export type CompletionOptions = components["schemas"]["CompletionOptions"];
@@ -598,7 +599,10 @@ export function createWingmanClient(options: WingmanClientOptions) {
     },
     plugins: {
       list: () => requestData(api.GET("/plugins")),
-      reload: () => requestData(api.POST("/plugins/reload")),
+    },
+    rpcPlugins: {
+      list: () => requestData(api.GET("/rpc-plugins")),
+      reload: () => requestData(api.POST("/rpc-plugins/reload")),
     },
     providers: {
       list: () => requestData(api.GET("/provider")),

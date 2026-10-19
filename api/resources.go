@@ -14,7 +14,6 @@ type Agent struct {
 	Name         string             `json:"name"`
 	Instructions string             `json:"instructions,omitempty"`
 	Tools        []string           `json:"tools,omitempty"`
-	Plugins      []string           `json:"plugins,omitempty"`
 	Permissions  permission.Ruleset `json:"permissions,omitempty"`
 	ModelRef     string             `json:"model_ref,omitempty"`
 	Options      map[string]any     `json:"options,omitempty"`
@@ -28,7 +27,6 @@ type CreateAgentRequest struct {
 	Name         string             `json:"name"`
 	Instructions string             `json:"instructions,omitempty"`
 	Tools        []string           `json:"tools,omitempty"`
-	Plugins      []string           `json:"plugins,omitempty"`
 	Permissions  permission.Ruleset `json:"permissions,omitempty"`
 	ModelRef     string             `json:"model_ref,omitempty"`
 	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`
@@ -41,7 +39,6 @@ type UpdateAgentRequest struct {
 	Name         *string            `json:"name,omitempty"`
 	Instructions *string            `json:"instructions,omitempty"`
 	Tools        []string           `json:"tools,omitempty"`
-	Plugins      []string           `json:"plugins,omitempty"`
 	Permissions  permission.Ruleset `json:"permissions,omitempty"`
 	ModelRef     *string            `json:"model_ref,omitempty"`
 	ModelRoute   *models.ModelInfo  `json:"model_route,omitempty"`

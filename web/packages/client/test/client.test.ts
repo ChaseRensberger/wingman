@@ -29,6 +29,42 @@ test("readSSE handles split, multiline, and comment frames", async () => {
   expect(events).toEqual([{ id: "42", event: "session.text.delta", data: { delta: "hello" } }]);
 });
 
+test("registered plugins use the authenticated global endpoint without a session", async () => {
+  let request: Request | undefined;
+  const inventory = { plugins: [{ id: "wingcode", enabled: true }] };
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    password: "secret",
+    clientName: "console",
+    fetch: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json(inventory);
+    },
+  });
+  expect(await client.plugins.list()).toEqual(inventory);
+  expect(request?.url).toBe("https://wingman.test/plugins");
+  expect(request?.headers.get("Authorization")).toBe("Basic d2luZ21hbjpzZWNyZXQ=");
+  expect(request?.headers.get("X-Wingman-Client")).toBe("console");
+});
+
+test("RPC plugin operations use their separate endpoints", async () => {
+  const requests: string[] = [];
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(`${request.method} ${request.url}`);
+      return Response.json({ plugins: [] });
+    },
+  });
+  await client.rpcPlugins.list();
+  await client.rpcPlugins.reload();
+  expect(requests).toEqual([
+    "GET https://wingman.test/rpc-plugins",
+    "POST https://wingman.test/rpc-plugins/reload",
+  ]);
+});
+
 test("parses known and unknown event envelopes", () => {
   const session = parseSessionEvent({
     id: "evt-1",

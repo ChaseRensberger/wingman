@@ -31,6 +31,7 @@ import (
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/plugins/compaction"
 	"github.com/chaserensberger/wingman/plugins/orientation"
+	"github.com/chaserensberger/wingman/plugins/wingcode"
 	"github.com/chaserensberger/wingman/server"
 	"github.com/chaserensberger/wingman/store"
 )
@@ -204,8 +205,11 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 		GlobalInstructionsPath: globalInstructionsPath,
 		GlobalSkillDirs:        skillDirs,
 		References:             cfg.References,
-		PluginFactories:        []func() plugin.Plugin{func() plugin.Plugin { return compaction.New() }},
-		RequestRestart:         cfg.RequestRestart,
+		Plugins: []server.PluginRegistration{
+			{ID: "compaction", Enabled: true, Factory: func() plugin.Plugin { return compaction.New() }},
+			{ID: "wingcode", Enabled: true, Factory: func() plugin.Plugin { return wingcode.New() }},
+		},
+		RequestRestart: cfg.RequestRestart,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {

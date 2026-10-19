@@ -13,7 +13,10 @@ import (
 )
 
 func TestInstructionDiscoveryRecoveryAndHistoricalInputs(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	work := filepath.Join(root, "repo")
 	reference := filepath.Join(root, "reference")
 	for _, dir := range []string{work, reference} {

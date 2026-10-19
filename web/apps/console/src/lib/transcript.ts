@@ -1,5 +1,6 @@
 import { lookupToolActivity, sameToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { modelCallChanges } from "@/lib/model-input";
+import type { StreamingPart } from "@/lib/streaming-parts";
 import type {
   Message,
   ModelCall,
@@ -97,7 +98,7 @@ export function projectTranscript({
   toolCallsById,
   toolResultsById,
   toolActivitiesById,
-  streamingReasoning = "",
+  streamingParts = [],
   isReasoningStreaming = false,
   streamingText = "",
   isStreaming = false,
@@ -107,7 +108,7 @@ export function projectTranscript({
   toolCallsById: Map<string, ToolCallPart>;
   toolResultsById: Map<string, ToolResultPart>;
   toolActivitiesById: Map<string, ToolActivity>;
-  streamingReasoning?: string;
+  streamingParts?: StreamingPart[];
   isReasoningStreaming?: boolean;
   streamingText?: string;
   isStreaming?: boolean;
@@ -200,24 +201,17 @@ export function projectTranscript({
     flush();
   });
 
-  if (streamingReasoning) {
-    const message: Message = {
-      role: "assistant",
-      content: [{ type: "reasoning", reasoning: streamingReasoning }],
-    };
-    rows.push({
-      type: "message",
-      key: "streaming-reasoning",
-      message,
-      sourceMessage: message,
-      showMeta: false,
-      isStreaming: isReasoningStreaming,
-    });
-  }
-  for (const activity of toolActivitiesById.values()) {
-    if (renderedCalls.some((call) => sameToolActivity(call, activity))) continue;
+  const renderedActivities = new Set<string>();
+  const appendActivity = (activity: ToolActivity) => {
+    const key = toolActivityKey(activity) ?? activity.call_id;
+    if (
+      renderedActivities.has(key) ||
+      renderedCalls.some((call) => sameToolActivity(call, activity))
+    )
+      return;
+    renderedActivities.add(key);
     appendTool({
-      key: toolActivityKey(activity) ?? activity.call_id,
+      key,
       call: {
         type: "tool_call",
         tool_use_id: activity.tool_use_id,
@@ -227,20 +221,38 @@ export function projectTranscript({
       },
       activity,
     });
-  }
-  if (streamingText) {
+  };
+  let textOffset = 0;
+  streamingParts.forEach((part, index) => {
+    if (part.type === "tool") {
+      const activity = lookupToolActivity(toolActivitiesById, { ...part, id: part.partID });
+      if (activity) appendActivity(activity);
+      return;
+    }
+    const text =
+      part.type === "text"
+        ? streamingText.slice(textOffset, textOffset + part.text.length)
+        : part.text;
+    if (part.type === "text") textOffset += part.text.length;
+    if (!text) return;
     const message: Message = {
       role: "assistant",
-      content: [{ type: "text", text: streamingText }],
+      content: [
+        part.type === "text" ? { type: "text", text } : { type: "reasoning", reasoning: text },
+      ],
     };
     rows.push({
       type: "message",
-      key: "streaming-text",
+      key: `streaming:${part.messageID}:${part.partID ?? index}`,
       message,
       sourceMessage: message,
       showMeta: false,
-      isStreaming: true,
+      isStreaming:
+        part.type === "text" || (isReasoningStreaming && index === streamingParts.length - 1),
     });
+  });
+  for (const activity of toolActivitiesById.values()) {
+    appendActivity(activity);
   }
 
   let lastResponseMessage: Extract<TranscriptRow, { type: "message" }> | undefined;
@@ -266,7 +278,7 @@ export function projectTranscript({
   const activeTool = [...toolActivitiesById.values()].some((activity) =>
     ["pending", "running"].includes(activity.status),
   );
-  if (!isStreaming && !streamingText && !streamingReasoning && !activeTool) commitResponseMeta();
+  if (!isStreaming && !streamingParts.length && !activeTool) commitResponseMeta();
 
   return rows;
 }

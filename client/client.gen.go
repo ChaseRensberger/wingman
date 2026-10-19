@@ -181,7 +181,6 @@ type Agent struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
-	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 	UpdatedAt    string                  `json:"updated_at"`
 }
@@ -195,7 +194,6 @@ type AgentSpec struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
-	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
@@ -354,7 +352,6 @@ type CreateAgentRequest struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
-	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
@@ -759,8 +756,7 @@ type PermissionTarget struct {
 
 // PluginsResponse defines model for PluginsResponse.
 type PluginsResponse struct {
-	Errors  interface{} `json:"errors,omitempty"`
-	Plugins interface{} `json:"plugins"`
+	Plugins *[]RegisteredPlugin `json:"plugins"`
 }
 
 // Prompt defines model for Prompt.
@@ -906,6 +902,12 @@ type RecordedOutputSchema struct {
 	Strict *bool                  `json:"strict,omitempty"`
 }
 
+// RegisteredPlugin defines model for RegisteredPlugin.
+type RegisteredPlugin struct {
+	Enabled bool   `json:"enabled"`
+	Id      string `json:"id"`
+}
+
 // RenameSessionRequest defines model for RenameSessionRequest.
 type RenameSessionRequest struct {
 	ExpectedVersion int64  `json:"expected_version"`
@@ -935,6 +937,12 @@ type RouteInfo struct {
 	OutputCostPerMtok *float64          `json:"output_cost_per_mtok,omitempty"`
 	Provider          string            `json:"provider"`
 	Variants          *[]ModelVariant   `json:"variants,omitempty"`
+}
+
+// RpcPluginsResponse defines model for RpcPluginsResponse.
+type RpcPluginsResponse struct {
+	Errors  interface{} `json:"errors,omitempty"`
+	Plugins interface{} `json:"plugins"`
 }
 
 // Rule defines model for Rule.
@@ -1313,7 +1321,6 @@ type UpdateAgentRequest struct {
 	Options      *map[string]interface{} `json:"options,omitempty"`
 	OutputSchema *map[string]interface{} `json:"output_schema,omitempty"`
 	Permissions  *[]Rule                 `json:"permissions,omitempty"`
-	Plugins      *[]string               `json:"plugins,omitempty"`
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
@@ -1484,12 +1491,6 @@ type ListPluginsParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
-// ReloadPluginsParams defines parameters for ReloadPlugins.
-type ReloadPluginsParams struct {
-	// XWingmanClient Client identity for resource attribution and scoping
-	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
-}
-
 // ListProvidersParams defines parameters for ListProviders.
 type ListProvidersParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
@@ -1552,6 +1553,18 @@ type GetProviderOAuthAttemptParams struct {
 
 // GetReadinessParams defines parameters for GetReadiness.
 type GetReadinessParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ListRPCPluginsParams defines parameters for ListRPCPlugins.
+type ListRPCPluginsParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ReloadRPCPluginsParams defines parameters for ReloadRPCPlugins.
+type ReloadRPCPluginsParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -2280,15 +2293,10 @@ type ClientInterface interface {
 	// Corresponds with POST /mcp/{name}/disconnect (the `DisconnectMCPServer` operationId).
 	DisconnectMCPServer(ctx context.Context, name string, params *DisconnectMCPServerParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListPlugins List plugin status
+	// ListPlugins List registered plugins
 	//
 	// Corresponds with GET /plugins (the `ListPlugins` operationId).
 	ListPlugins(ctx context.Context, params *ListPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ReloadPlugins Reload plugins
-	//
-	// Corresponds with POST /plugins/reload (the `ReloadPlugins` operationId).
-	ReloadPlugins(ctx context.Context, params *ReloadPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProviders List model providers
 	//
@@ -2362,6 +2370,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /ready (the `GetReadiness` operationId).
 	GetReadiness(ctx context.Context, params *GetReadinessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRPCPlugins List RPC plugin status
+	//
+	// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
+	ListRPCPlugins(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReloadRPCPlugins Reload RPC plugins
+	//
+	// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
+	ReloadRPCPlugins(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RunAgentWithBody Run one ephemeral agent turn
 	//
@@ -3038,26 +3056,11 @@ func (c *GeneratedClient) DisconnectMCPServer(ctx context.Context, name string, 
 	return c.Client.Do(req)
 }
 
-// ListPlugins List plugin status
+// ListPlugins List registered plugins
 //
 // Corresponds with GET /plugins (the `ListPlugins` operationId).
 func (c *GeneratedClient) ListPlugins(ctx context.Context, params *ListPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPluginsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// ReloadPlugins Reload plugins
-//
-// Corresponds with POST /plugins/reload (the `ReloadPlugins` operationId).
-func (c *GeneratedClient) ReloadPlugins(ctx context.Context, params *ReloadPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewReloadPluginsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3261,6 +3264,36 @@ func (c *GeneratedClient) GetProviderOAuthAttempt(ctx context.Context, name stri
 // Corresponds with GET /ready (the `GetReadiness` operationId).
 func (c *GeneratedClient) GetReadiness(ctx context.Context, params *GetReadinessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetReadinessRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRPCPlugins List RPC plugin status
+//
+// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
+func (c *GeneratedClient) ListRPCPlugins(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRPCPluginsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReloadRPCPlugins Reload RPC plugins
+//
+// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
+func (c *GeneratedClient) ReloadRPCPlugins(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReloadRPCPluginsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5123,48 +5156,6 @@ func NewListPluginsRequest(server string, params *ListPluginsParams) (*http.Requ
 	return req, nil
 }
 
-// NewReloadPluginsRequest constructs an http.Request for the ReloadPlugins method
-func NewReloadPluginsRequest(server string, params *ReloadPluginsParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/plugins/reload")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-
-		if params.XWingmanClient != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("X-Wingman-Client", headerParam0)
-		}
-
-	}
-
-	return req, nil
-}
-
 // NewListProvidersRequest constructs an http.Request for the ListProviders method
 func NewListProvidersRequest(server string, params *ListProvidersParams) (*http.Request, error) {
 	var err error
@@ -5701,6 +5692,90 @@ func NewGetReadinessRequest(server string, params *GetReadinessParams) (*http.Re
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListRPCPluginsRequest constructs an http.Request for the ListRPCPlugins method
+func NewListRPCPluginsRequest(server string, params *ListRPCPluginsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewReloadRPCPluginsRequest constructs an http.Request for the ReloadRPCPlugins method
+func NewReloadRPCPluginsRequest(server string, params *ReloadRPCPluginsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/reload")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7801,19 +7876,12 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /mcp/{name}/disconnect (the `DisconnectMCPServer` operationId).
 	DisconnectMCPServerWithResponse(ctx context.Context, name string, params *DisconnectMCPServerParams, reqEditors ...RequestEditorFn) (*DisconnectMCPServerHTTPResponse, error)
 
-	// ListPluginsWithResponse List plugin status
+	// ListPluginsWithResponse List registered plugins
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /plugins (the `ListPlugins` operationId).
 	ListPluginsWithResponse(ctx context.Context, params *ListPluginsParams, reqEditors ...RequestEditorFn) (*ListPluginsHTTPResponse, error)
-
-	// ReloadPluginsWithResponse Reload plugins
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /plugins/reload (the `ReloadPlugins` operationId).
-	ReloadPluginsWithResponse(ctx context.Context, params *ReloadPluginsParams, reqEditors ...RequestEditorFn) (*ReloadPluginsHTTPResponse, error)
 
 	// ListProvidersWithResponse List model providers
 	//
@@ -7905,6 +7973,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /ready (the `GetReadiness` operationId).
 	GetReadinessWithResponse(ctx context.Context, params *GetReadinessParams, reqEditors ...RequestEditorFn) (*GetReadinessHTTPResponse, error)
+
+	// ListRPCPluginsWithResponse List RPC plugin status
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
+	ListRPCPluginsWithResponse(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*ListRPCPluginsHTTPResponse, error)
+
+	// ReloadRPCPluginsWithResponse Reload RPC plugins
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
+	ReloadRPCPluginsWithResponse(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*ReloadRPCPluginsHTTPResponse, error)
 
 	// RunAgentWithBodyWithResponse Run one ephemeral agent turn
 	//
@@ -9319,54 +9401,6 @@ func (r ListPluginsHTTPResponse) ContentType() string {
 	return ""
 }
 
-type ReloadPluginsHTTPResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *PluginsResponse
-	// JSONDefault the response for an HTTP default `application/json` response
-	JSONDefault *ErrorResponse
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ReloadPluginsHTTPResponse) GetJSON200() *PluginsResponse {
-	return r.JSON200
-}
-
-// GetJSONDefault returns the response for an HTTP default `application/json` response
-func (r ReloadPluginsHTTPResponse) GetJSONDefault() *ErrorResponse {
-	return r.JSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r ReloadPluginsHTTPResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ReloadPluginsHTTPResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ReloadPluginsHTTPResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ReloadPluginsHTTPResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type ListProvidersHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9896,6 +9930,102 @@ func (r GetReadinessHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetReadinessHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListRPCPluginsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RpcPluginsResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRPCPluginsHTTPResponse) GetJSON200() *RpcPluginsResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListRPCPluginsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRPCPluginsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRPCPluginsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRPCPluginsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRPCPluginsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReloadRPCPluginsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RpcPluginsResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReloadRPCPluginsHTTPResponse) GetJSON200() *RpcPluginsResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ReloadRPCPluginsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ReloadRPCPluginsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReloadRPCPluginsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReloadRPCPluginsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReloadRPCPluginsHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11859,7 +11989,7 @@ func (c *ClientWithResponses) DisconnectMCPServerWithResponse(ctx context.Contex
 	return ParseDisconnectMCPServerHTTPResponse(rsp)
 }
 
-// ListPluginsWithResponse List plugin status
+// ListPluginsWithResponse List registered plugins
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -11870,19 +12000,6 @@ func (c *ClientWithResponses) ListPluginsWithResponse(ctx context.Context, param
 		return nil, err
 	}
 	return ParseListPluginsHTTPResponse(rsp)
-}
-
-// ReloadPluginsWithResponse Reload plugins
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /plugins/reload (the `ReloadPlugins` operationId).
-func (c *ClientWithResponses) ReloadPluginsWithResponse(ctx context.Context, params *ReloadPluginsParams, reqEditors ...RequestEditorFn) (*ReloadPluginsHTTPResponse, error) {
-	rsp, err := c.ReloadPlugins(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseReloadPluginsHTTPResponse(rsp)
 }
 
 // ListProvidersWithResponse List model providers
@@ -12052,6 +12169,32 @@ func (c *ClientWithResponses) GetReadinessWithResponse(ctx context.Context, para
 		return nil, err
 	}
 	return ParseGetReadinessHTTPResponse(rsp)
+}
+
+// ListRPCPluginsWithResponse List RPC plugin status
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
+func (c *ClientWithResponses) ListRPCPluginsWithResponse(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*ListRPCPluginsHTTPResponse, error) {
+	rsp, err := c.ListRPCPlugins(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRPCPluginsHTTPResponse(rsp)
+}
+
+// ReloadRPCPluginsWithResponse Reload RPC plugins
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
+func (c *ClientWithResponses) ReloadRPCPluginsWithResponse(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*ReloadRPCPluginsHTTPResponse, error) {
+	rsp, err := c.ReloadRPCPlugins(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReloadRPCPluginsHTTPResponse(rsp)
 }
 
 // RunAgentWithBodyWithResponse Run one ephemeral agent turn
@@ -13403,39 +13546,6 @@ func ParseListPluginsHTTPResponse(rsp *http.Response) (*ListPluginsHTTPResponse,
 	return response, nil
 }
 
-// ParseReloadPluginsHTTPResponse parses an HTTP response from a ReloadPluginsWithResponse call
-func ParseReloadPluginsHTTPResponse(rsp *http.Response) (*ReloadPluginsHTTPResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ReloadPluginsHTTPResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest PluginsResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSONDefault = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseListProvidersHTTPResponse parses an HTTP response from a ListProvidersWithResponse call
 func ParseListProvidersHTTPResponse(rsp *http.Response) (*ListProvidersHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13793,6 +13903,72 @@ func ParseGetReadinessHTTPResponse(rsp *http.Response) (*GetReadinessHTTPRespons
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListRPCPluginsHTTPResponse parses an HTTP response from a ListRPCPluginsWithResponse call
+func ParseListRPCPluginsHTTPResponse(rsp *http.Response) (*ListRPCPluginsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRPCPluginsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RpcPluginsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReloadRPCPluginsHTTPResponse parses an HTTP response from a ReloadRPCPluginsWithResponse call
+func ParseReloadRPCPluginsHTTPResponse(rsp *http.Response) (*ReloadRPCPluginsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReloadRPCPluginsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RpcPluginsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest ErrorResponse

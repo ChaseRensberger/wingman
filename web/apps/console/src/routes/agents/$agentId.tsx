@@ -50,7 +50,6 @@ function formFromAgent(agent: Agent) {
     model: modelRef.model,
     variant: modelRef.variant,
     tools: agent.tools ?? [],
-    plugins: agent.plugins ?? [],
     outputSchema:
       agent.output_schema && Object.keys(agent.output_schema).length > 0
         ? JSON.stringify(agent.output_schema, null, 2)
@@ -238,25 +237,6 @@ function AgentDetailPage() {
                 />
                 <FieldError errors={field.state.meta.errors as Array<{ message?: string }>} />
               </Field>
-            )}
-          />
-          <form.Field
-            name="plugins"
-            children={(field) => (
-              <Button
-                type="button"
-                variant={field.state.value.includes("wingcode") ? "secondary" : "outline"}
-                aria-pressed={field.state.value.includes("wingcode")}
-                onClick={() =>
-                  field.handleChange(
-                    field.state.value.includes("wingcode")
-                      ? field.state.value.filter((name) => name !== "wingcode")
-                      : [...field.state.value, "wingcode"],
-                  )
-                }
-              >
-                Wingcode: coding guidance and repository context
-              </Button>
             )}
           />
           <form.Subscribe

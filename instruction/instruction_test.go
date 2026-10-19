@@ -8,7 +8,10 @@ import (
 )
 
 func TestDiscoveryOrderSymlinksAndLiveUpdates(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	work := filepath.Join(root, "repo")
 	nested := filepath.Join(work, "src")
 	external := filepath.Join(root, "external")

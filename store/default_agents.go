@@ -7,13 +7,11 @@ func DefaultAgents() []*Agent {
 	return []*Agent{
 		{
 			Name:         "Build",
-			Plugins:      []string{"wingcode"},
 			Instructions: buildAgentInstructions,
 			Tools:        []string{"read", "grep", "glob", "write", "edit", "apply_patch", "bash", "webfetch", "websearch", "question"},
 		},
 		{
 			Name:         "Plan",
-			Plugins:      []string{"wingcode"},
 			Instructions: planAgentInstructions,
 			Tools:        []string{"read", "grep", "glob", "webfetch", "websearch", "question"},
 		},

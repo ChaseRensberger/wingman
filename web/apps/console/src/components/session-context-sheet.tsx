@@ -6,6 +6,7 @@ import { formatTokenCount, modelCallAnswerSpeed } from "@/lib/utils";
 import { formatModelCallDiagnostics } from "@/lib/model-call-diagnostics";
 import { showErrorToast } from "@/lib/toast";
 import { ModelCallInputView } from "@/components/model-call-input";
+import { RegisteredPlugins } from "@/components/registered-plugins";
 import { Button } from "@wingman/core/components/core/button";
 import { Card } from "@wingman/core/components/core/card";
 import {
@@ -241,6 +242,11 @@ export function SessionContextSheet({
                   value={hasUsage ? formatTokenCount(totalCached) : "Not reported"}
                 />
               </div>
+              {selection !== null && (
+                <div className="mt-6">
+                  <RegisteredPlugins />
+                </div>
+              )}
               <section className="mt-6">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <StackIcon className="size-4" />

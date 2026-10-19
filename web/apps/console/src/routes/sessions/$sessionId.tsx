@@ -750,7 +750,7 @@ function SessionDetailPage() {
         jsonMode={jsonMode}
         greeting={greeting}
         streamingText={visibleStreamingText}
-        streamingReasoning={run.streamingReasoning}
+        streamingParts={run.streamingParts}
         isReasoningStreaming={run.isReasoningStreaming}
         isStreaming={run.isStreaming}
         toolCallsById={toolCallsById}

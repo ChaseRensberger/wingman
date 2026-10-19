@@ -305,27 +305,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List plugin status */
+        /** List registered plugins */
         get: operations["listPlugins"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/reload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reload plugins */
-        post: operations["reloadPlugins"];
         delete?: never;
         options?: never;
         head?: never;
@@ -481,6 +464,40 @@ export interface paths {
         get: operations["getReadiness"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List RPC plugin status */
+        get: operations["listRPCPlugins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reload RPC plugins */
+        post: operations["reloadRPCPlugins"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1025,7 +1042,6 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
-            plugins?: string[] | null;
             tools?: string[] | null;
             updated_at: string;
         };
@@ -1041,7 +1057,6 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
-            plugins?: string[] | null;
             tools?: string[] | null;
         };
         AuthCredential: {
@@ -1216,7 +1231,6 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
-            plugins?: string[] | null;
             tools?: string[] | null;
         };
         CreateClientRequest: {
@@ -1628,8 +1642,7 @@ export interface components {
             resource_fields?: string[] | null;
         };
         PluginsResponse: {
-            errors?: unknown;
-            plugins: unknown;
+            plugins: components["schemas"]["RegisteredPlugin"][] | null;
         };
         Prompt: {
             header: string;
@@ -1764,6 +1777,10 @@ export interface components {
             };
             strict?: boolean;
         };
+        RegisteredPlugin: {
+            enabled: boolean;
+            id: string;
+        };
         RenameSessionRequest: {
             /** Format: int64 */
             expected_version: number;
@@ -1793,6 +1810,10 @@ export interface components {
             output_cost_per_mtok?: number;
             provider: string;
             variants?: components["schemas"]["ModelVariant"][] | null;
+        };
+        RpcPluginsResponse: {
+            errors?: unknown;
+            plugins: unknown;
         };
         Rule: {
             action: string;
@@ -2419,7 +2440,6 @@ export interface components {
                 [key: string]: unknown;
             };
             permissions?: components["schemas"]["Rule"][] | null;
-            plugins?: string[] | null;
             tools?: string[] | null;
         };
         UpdateWorkspaceRequest: {
@@ -3208,38 +3228,6 @@ export interface operations {
             };
         };
     };
-    reloadPlugins: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Client identity for resource attribution and scoping */
-                "X-Wingman-Client"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginsResponse"];
-                };
-            };
-            /** @description Request failed */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     listProviders: {
         parameters: {
             query?: never;
@@ -3615,6 +3603,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listRPCPlugins: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RpcPluginsResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reloadRPCPlugins: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RpcPluginsResponse"];
                 };
             };
             /** @description Request failed */

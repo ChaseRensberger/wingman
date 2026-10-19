@@ -53,8 +53,20 @@ session.WithPlugin(
 )
 ```
 
-The server includes orientation automatically. Agent definitions select `wingcode` through their `plugins` list.
-Server applications can supply other named factories through `server.Config.AgentPluginFactories`.
+The server includes orientation automatically. The standard application also enables compaction and `wingcode` for every agent.
+Server applications register shared plugins through `server.Config.Plugins`:
+
+```go
+server.PluginRegistration{
+    ID: "wingcode",
+    Enabled: true,
+    Factory: func() plugin.Plugin { return wingcode.New() },
+}
+```
+
+Use the plugin's `Name()` as its registration ID. Each enabled factory supplies a fresh plugin for session activation.
+Set `Enabled` to `false` to keep a registration visible without activating it.
+`GET /plugins` reads these registrations without creating plugin instances or loading project directories.
 
 ## Completion validation
 

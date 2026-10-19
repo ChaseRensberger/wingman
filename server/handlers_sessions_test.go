@@ -501,8 +501,8 @@ func TestSessionActionCatalogAndAdmissionAreGenericAndIdempotent(t *testing.T) {
 	}
 	server := New(Config{
 		Store: &admissionTestStore{Store: data},
-		PluginFactories: []func() plugin.Plugin{
-			func() plugin.Plugin { return sessionActionTestPlugin{} },
+		Plugins: []PluginRegistration{
+			{ID: "test", Enabled: true, Factory: func() plugin.Plugin { return sessionActionTestPlugin{} }},
 		},
 	})
 

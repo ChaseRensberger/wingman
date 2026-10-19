@@ -15,10 +15,11 @@ import {
 import { Empty, EmptyDescription, EmptyTitle } from "@wingman/core/components/core/empty";
 import { Spinner } from "@wingman/core/components/core/spinner";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
+import { RegisteredPlugins } from "@/components/registered-plugins";
 import { client } from "@/lib/client";
 import { showErrorToast } from "@/lib/toast";
 import { queryKeys, toolsQuery } from "@/lib/queries";
-import type { MCPServer, PluginStatus, ToolCatalogItem } from "@/lib/types";
+import type { MCPServer, ToolCatalogItem } from "@/lib/types";
 
 export const Route = createFileRoute("/tools")({
   component: ToolsPage,
@@ -35,11 +36,6 @@ function ToolsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tools }),
     onError: (error) => showErrorToast(error),
   });
-  const reloadPlugins = useMutation({
-    mutationFn: () => client.plugins.reload(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tools }),
-    onError: (error) => showErrorToast(error),
-  });
 
   useEffect(() => {
     if (toolsResult.error) showErrorToast(toolsResult.error);
@@ -47,8 +43,6 @@ function ToolsPage() {
 
   const tools = toolsResult.data?.tools.tools ?? emptyTools;
   const servers = toolsResult.data?.mcp.servers ?? [];
-  const plugins = toolsResult.data?.plugins.plugins ?? [];
-  const pluginErrors = toolsResult.data?.plugins.errors ?? [];
   const busy =
     mcpAction.isPending && mcpAction.variables
       ? `${mcpAction.variables.server.name}:${mcpAction.variables.action}`
@@ -70,75 +64,7 @@ function ToolsPage() {
       </div>
 
       <Card size="sm" className="mb-6 px-3">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">RPC plugins</h2>
-            <p className="text-xs text-muted-foreground">
-              Supervised external plugin processes and negotiated capabilities.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={reloadPlugins.isPending}
-            onClick={() => reloadPlugins.mutate()}
-          >
-            {reloadPlugins.isPending ? "Reloading..." : "Reload"}
-          </Button>
-        </div>
-        {pluginErrors?.map((item) => (
-          <div
-            key={`${item.path}:${item.error}`}
-            className="mb-3 rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            <span className="font-mono">{item.path}</span>: {item.error}
-          </div>
-        ))}
-        {plugins.length === 0 ? (
-          <p className="py-3 text-sm text-muted-foreground">No RPC plugins loaded.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plugin</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Process</TableHead>
-                <TableHead>Capabilities</TableHead>
-                <TableHead>Tools</TableHead>
-                <TableHead>Health / diagnostics</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plugins.map((plugin) => (
-                <TableRow key={plugin.id}>
-                  <TableCell>
-                    <div className="font-medium">{plugin.name || plugin.id}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{plugin.id}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={pluginStatusVariant(plugin.status)}>{plugin.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    <div>{plugin.pid ? `PID ${plugin.pid}` : "No process"}</div>
-                    <div>
-                      {plugin.plugin_version ? `v${plugin.plugin_version}` : "Unversioned"},
-                      protocol {plugin.protocol_version ?? "-"}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {plugin.capabilities?.join(", ") || "None"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {plugin.tools?.join(", ") || "None"}
-                  </TableCell>
-                  <TableCell className="max-w-sm text-xs text-muted-foreground">
-                    {pluginDiagnostic(plugin)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <RegisteredPlugins />
       </Card>
 
       {servers.length > 0 && (
@@ -291,17 +217,4 @@ function traitSummary(tool: ToolCatalogItem) {
     tool.permission?.action ? `permission:${tool.permission.action}` : null,
   ].filter(Boolean);
   return traits.join(", ");
-}
-
-function pluginStatusVariant(status: PluginStatus["status"]) {
-  if (status === "running") return "default" as const;
-  if (status === "failed") return "destructive" as const;
-  return "outline" as const;
-}
-
-function pluginDiagnostic(plugin: PluginStatus) {
-  if (plugin.error) return plugin.error;
-  const latest = plugin.diagnostics?.at(-1);
-  if (latest) return `${latest.source}: ${latest.message}`;
-  return plugin.health_message || "-";
 }

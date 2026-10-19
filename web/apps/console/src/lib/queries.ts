@@ -5,7 +5,6 @@ import type {
   Agent,
   Client,
   MCPResponse,
-  PluginsResponse,
   Provider,
   ProviderModel,
   SessionSummary,
@@ -68,12 +67,11 @@ export const sessionsQuery = queryOptions({
 export const toolsQuery = queryOptions({
   queryKey: queryKeys.tools,
   queryFn: async () => {
-    const [tools, mcp, plugins] = await Promise.all([
+    const [tools, mcp] = await Promise.all([
       client.tools.list() as Promise<ToolsResponse>,
       client.mcp.list() as Promise<MCPResponse>,
-      client.plugins.list() as Promise<PluginsResponse>,
     ]);
-    return { tools, mcp, plugins };
+    return { tools, mcp };
   },
 });
 

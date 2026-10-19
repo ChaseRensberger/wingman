@@ -5,14 +5,23 @@ description: "Choose a plugin type and load external tools."
 
 # Plugins
 
-Plugins add tools or change session behavior. Go plugins run inside an embedded application or custom Wingman binary.
-RPC plugins run as external programs and add tools to the standard server.
+Plugins add tools or change session behavior. The standard server registers compaction, `wingcode`, and orientation as enabled plugins.
+These plugins are bundled with the server and apply to every agent.
 
 Use a client on the HTTP API to manage multiple sessions.
 See [Plugin Capabilities](/extend/plugin-capabilities) for extension methods.
 
+## Inspect registered plugins
+
+In Console, open Tools or the session Inspector. The Plugins section lists registered plugins and their enabled or disabled state.
+The list is available before you create a session. Select Refresh to read the server's current registrations.
+
+The API provides the same list at `GET /plugins`.
+To read it on the local managed service, run `wingman api listPlugins`.
+
 ## Install an external plugin
 
+RPC plugins run as external programs and add tools to the server.
 Put a `wingman-plugin.json` manifest in `~/.config/wingman/plugins/` or one of its immediate subdirectories.
 Files ending in `.plugin.json` also load from the plugin directory.
 The default plugin path does not follow `XDG_CONFIG_HOME`.
@@ -41,9 +50,10 @@ An inline agent in `/run` can select project tools for its working directory.
 Names must be unique across built-in, plugin, and MCP tools. The name `skill` is reserved.
 Plugins run with Wingman's operating system permissions. Install only plugins that you trust.
 
-To read plugin status on the local managed service, run `wingman api listPlugins`.
-To reload plugins, run `wingman api reloadPlugins`.
+To read external plugin status on the local managed service, run `wingman api listRPCPlugins`.
+To reload external plugins, run `wingman api reloadRPCPlugins`.
 If the replacement fails to load, Wingman keeps the current plugins.
+These operations use `GET /rpc-plugins` and `POST /rpc-plugins/reload` for global plugin directories.
 
 ## Go plugins
 

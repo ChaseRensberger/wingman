@@ -8,7 +8,6 @@ export interface AgentForm {
   model: string;
   variant: string;
   tools: string[];
-  plugins: string[];
   outputSchema: string;
 }
 
@@ -19,7 +18,6 @@ export const emptyForm: AgentForm = {
   model: "",
   variant: "",
   tools: [],
-  plugins: [],
   outputSchema: "",
 };
 
@@ -32,7 +30,6 @@ export const agentFormSchema = z.object({
   model: z.string(),
   variant: z.string(),
   tools: z.array(z.string()),
-  plugins: z.array(z.string()),
   outputSchema: z.string().refine(
     (val) => {
       if (!val.trim()) return true;
@@ -57,7 +54,6 @@ export function buildAgentPayload(form: AgentForm) {
     instructions: form.instructions,
     model_ref: buildModelRef(form.provider, form.model, form.variant),
     tools: form.tools,
-    plugins: form.plugins,
     output_schema,
   };
 }

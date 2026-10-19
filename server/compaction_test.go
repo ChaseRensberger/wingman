@@ -75,8 +75,8 @@ func TestCompactionUsageRequestPathsAndRestart(t *testing.T) {
 			for phase := 0; phase < 2; phase++ {
 				cfg := Config{
 					Store: data, Username: "test", Password: "recovery-test-password",
-					Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
-					PluginFactories: []func() plugin.Plugin{func() plugin.Plugin { return compaction.New() }},
+					Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+					Plugins: []PluginRegistration{{ID: "compaction", Enabled: true, Factory: func() plugin.Plugin { return compaction.New() }}},
 				}
 				if workflow == "proxied-development" {
 					cfg.ConsoleDevURL = frontend.URL

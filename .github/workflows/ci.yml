@@ -98,6 +98,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install test dependencies
+        run: brew install ripgrep
+
       - name: Vet
         run: go vet ./...
 

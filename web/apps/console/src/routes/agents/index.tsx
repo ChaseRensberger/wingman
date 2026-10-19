@@ -218,25 +218,6 @@ function AgentsPage() {
                 </Field>
               )}
             />
-            <form.Field
-              name="plugins"
-              children={(field) => (
-                <Button
-                  type="button"
-                  variant={field.state.value.includes("wingcode") ? "secondary" : "outline"}
-                  aria-pressed={field.state.value.includes("wingcode")}
-                  onClick={() =>
-                    field.handleChange(
-                      field.state.value.includes("wingcode")
-                        ? field.state.value.filter((name) => name !== "wingcode")
-                        : [...field.state.value, "wingcode"],
-                    )
-                  }
-                >
-                  Wingcode: coding guidance and repository context
-                </Button>
-              )}
-            />
             <form.Subscribe
               selector={(state) => [state.values.provider, state.values.model] as const}
               children={([provider, selectedModel]) => {

@@ -31,7 +31,6 @@ import (
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/plugins/orientation"
-	"github.com/chaserensberger/wingman/plugins/wingcode"
 	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
 	consoleui "github.com/chaserensberger/wingman/web/apps/console"
@@ -58,8 +57,7 @@ type Server struct {
 	version                string
 	globalInstructionsPath string
 	globalSkillDirs        []string
-	pluginFactories        []func() plugin.Plugin
-	agentPluginFactories   map[string]func() plugin.Plugin
+	plugins                []PluginRegistration
 	references             []orientation.Reference
 	requestRestart         func()
 	ready                  atomic.Bool
@@ -106,9 +104,8 @@ type Config struct {
 	GlobalInstructionsPath string
 	// GlobalSkillDirs selects daemon-wide skill directories.
 	GlobalSkillDirs []string
-	PluginFactories []func() plugin.Plugin
-	// AgentPluginFactories supplies plugins selected explicitly by each agent.
-	AgentPluginFactories map[string]func() plugin.Plugin
+	// Plugins registers bundled plugins in activation order.
+	Plugins []PluginRegistration
 	// References advertises additional directories without granting permissions.
 	References []orientation.Reference
 	// RequestRestart asks the process owner to replace this daemon. A nil
@@ -160,18 +157,16 @@ func New(cfg Config) *Server {
 		version:                cfg.Version,
 		globalInstructionsPath: cfg.GlobalInstructionsPath,
 		globalSkillDirs:        append([]string(nil), cfg.GlobalSkillDirs...),
-		pluginFactories:        append([]func() plugin.Plugin(nil), cfg.PluginFactories...),
+		plugins:                append([]PluginRegistration(nil), cfg.Plugins...),
 		requestRestart:         cfg.RequestRestart,
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
 	}
 	s.references = append([]orientation.Reference(nil), cfg.References...)
-	s.agentPluginFactories = map[string]func() plugin.Plugin{
-		"wingcode": func() plugin.Plugin { return wingcode.New() },
-	}
-	for name, factory := range cfg.AgentPluginFactories {
-		s.agentPluginFactories[name] = factory
-	}
+	s.plugins = append(s.plugins, PluginRegistration{
+		ID: "orientation", Enabled: true,
+		Factory: func() plugin.Plugin { return orientation.New(orientation.Config{References: s.references}) },
+	})
 	s.runs = newSessionRunManager(s)
 	if cfg.MaxActiveRuns > 0 {
 		s.runs.limit = cfg.MaxActiveRuns
@@ -337,8 +332,9 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/logs", "listLogs", "List recent daemon logs", nil, http.StatusOK, []observability.LogEntry{}, s.handleLogs)
 	s.registerJSON(http.MethodGet, "/diagnostics", "getDiagnostics", "Get bounded daemon operational diagnostics", nil, http.StatusOK, api.DiagnosticsResponse{}, s.handleDiagnostics)
 	s.registerJSONWithParameters(http.MethodPost, "/service/restart", "restartService", "Restart the managed daemon", nil, http.StatusAccepted, api.StatusResponse{}, []*huma.Param{{Name: "X-Wingman-Console", In: "header", Required: true, Schema: &huma.Schema{Type: huma.TypeString}}}, s.handleRestartService)
-	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List plugin status", nil, http.StatusOK, pluginsResponse{}, s.handleListPlugins)
-	s.registerJSON(http.MethodPost, "/plugins/reload", "reloadPlugins", "Reload plugins", nil, http.StatusOK, pluginsResponse{}, s.handleReloadPlugins)
+	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List registered plugins", nil, http.StatusOK, api.PluginsResponse{}, s.handleListPlugins)
+	s.registerJSON(http.MethodGet, "/rpc-plugins", "listRPCPlugins", "List RPC plugin status", nil, http.StatusOK, rpcPluginsResponse{}, s.handleListRPCPlugins)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/reload", "reloadRPCPlugins", "Reload RPC plugins", nil, http.StatusOK, rpcPluginsResponse{}, s.handleReloadRPCPlugins)
 	s.registerJSON(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, s.handleListMCP)
 	s.registerJSON(http.MethodPost, "/mcp/{name}/connect", "connectMCPServer", "Connect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleConnectMCP)
 	s.registerJSON(http.MethodPost, "/mcp/{name}/disconnect", "disconnectMCPServer", "Disconnect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleDisconnectMCP)

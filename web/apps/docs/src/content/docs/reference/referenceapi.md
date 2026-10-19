@@ -41,7 +41,9 @@ If omitted, Wingman uses `cli_wingclient`. Client identities do not provide sepa
 | One-shot runs        | `POST /run`                                                             |
 | Provider credentials | `GET` or `PUT /provider/auth`, `DELETE /provider/auth/{provider}`       |
 | Providers and models | `GET /provider`, `GET /provider/{name}`, `GET /provider/{name}/models`  |
-| Tool sources         | `GET /tools`, `GET /plugins`, `GET /mcp`                                |
+| Registered plugins   | `GET /plugins`                                                          |
+| RPC plugins          | `GET /rpc-plugins`, `POST /rpc-plugins/reload`                          |
+| Tool sources         | `GET /tools`, `GET /mcp`                                                |
 | Diagnostics          | `GET /logs`, `GET /diagnostics`                                         |
 
 `GET /ready` reports readiness, instance ID, and version. Readiness does not prove that provider credentials or credits are valid.

@@ -240,7 +240,11 @@ describe("exploration transcript", () => {
 
   test("live reasoning and text remain boundaries around live tool activity", () => {
     const rows = project([assistant("one", [tool("read", "1")])], {
-      streamingReasoning: "Thinking",
+      streamingParts: [
+        { type: "reasoning", text: "Thinking" },
+        { type: "tool", run_id: "run", call_id: "call-2" },
+        { type: "text", text: "Answer" },
+      ],
       isReasoningStreaming: true,
       streamingText: "Answer",
       toolActivitiesById: new Map([
@@ -253,15 +257,17 @@ describe("exploration transcript", () => {
       "exploration",
       "message",
     ]);
-    expect(
-      rows.filter((row) => row.type === "message").every((row) => row.isStreaming && !row.showMeta),
-    ).toBe(true);
+    expect(rows.filter((row) => row.type === "message").map((row) => row.isStreaming)).toEqual([
+      false,
+      true,
+    ]);
+    expect(rows.filter((row) => row.type === "message").every((row) => !row.showMeta)).toBe(true);
   });
 
   test("retained reasoning stops spinning when tool execution begins", () => {
     const rows = project([], {
       isStreaming: true,
-      streamingReasoning: "I should search the source",
+      streamingParts: [{ type: "reasoning", text: "I should search the source" }],
       isReasoningStreaming: false,
       toolActivitiesById: new Map([["1", { call_id: "1", tool: "grep", status: "running" }]]),
     });

@@ -10,6 +10,7 @@ import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
 import { indexInstructionDiscoveries, type InstructionDiscovery } from "@/lib/model-input";
 import { shouldShowThinking } from "@/lib/session-detail";
 import { projectTranscript } from "@/lib/transcript";
+import type { StreamingPart } from "@/lib/streaming-parts";
 import type {
   Message,
   ModelCall,
@@ -35,7 +36,7 @@ type Props = {
   jsonMode: boolean;
   greeting: string;
   streamingText: string;
-  streamingReasoning: string;
+  streamingParts: StreamingPart[];
   isReasoningStreaming: boolean;
   isStreaming: boolean;
   toolCallsById: Map<string, ToolCallPart>;
@@ -143,7 +144,7 @@ export function SessionTranscript({
   jsonMode,
   greeting,
   streamingText,
-  streamingReasoning,
+  streamingParts,
   isReasoningStreaming,
   isStreaming,
   toolCallsById,
@@ -172,7 +173,7 @@ export function SessionTranscript({
     toolCallsById,
     toolResultsById,
     toolActivitiesById,
-    streamingReasoning,
+    streamingParts,
     isReasoningStreaming,
     streamingText,
     isStreaming,
@@ -189,7 +190,7 @@ export function SessionTranscript({
     isStreaming,
     Boolean(
       streamingText ||
-      streamingReasoning ||
+      streamingParts.length ||
       hasActiveTool ||
       hasActiveCompaction ||
       permissionRequests.length,

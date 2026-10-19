@@ -1,12 +1,14 @@
 import type { ToolActivity } from "@/lib/types";
 
 type ToolIdentity = {
+  id?: unknown;
   tool_use_id?: unknown;
   run_id?: unknown;
   call_id?: unknown;
 };
 
 export type ToolActivityEvent = ToolIdentity & {
+  part_id?: unknown;
   type: "input" | "progress" | "updated";
   tool?: unknown;
   status?: unknown;
@@ -84,6 +86,7 @@ export function reduceToolActivity(
   if (!callID) return previous;
   const common = {
     ...current,
+    part_id: stringField(event.part_id) ?? current?.part_id,
     call_id: callID,
     tool_use_id: toolUseID ?? current?.tool_use_id,
     run_id: stringField(event.run_id) ?? current?.run_id,
@@ -144,6 +147,11 @@ export function lookupToolActivity(
 ): ToolActivity | undefined {
   const toolUseID = stringField(identity.tool_use_id);
   if (toolUseID) return activities.get(toolUseID);
+  const partID = stringField(identity.id);
+  if (partID) {
+    const activity = [...activities.values()].find((activity) => activity.part_id === partID);
+    if (activity) return activity;
+  }
   const key = toolActivityKey(identity);
   if (key && activities.has(key)) return activities.get(key);
   const callID = stringField(identity.call_id);
@@ -154,6 +162,8 @@ export function lookupToolActivity(
 
 export function sameToolActivity(identity: ToolIdentity, activity: ToolActivity): boolean {
   const toolUseID = stringField(identity.tool_use_id);
+  const partID = stringField(identity.id);
+  if (partID && activity.part_id) return partID === activity.part_id;
   if (toolUseID || activity.tool_use_id) return toolUseID === activity.tool_use_id;
   return stringField(identity.call_id) === activity.call_id;
 }

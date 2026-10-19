@@ -173,6 +173,34 @@ func TestNewEphemeralApplication(t *testing.T) {
 	}
 }
 
+func TestApplicationRegistersSharedPlugins(t *testing.T) {
+	var names []string
+	a, err := newWithFactories(t.Context(), Config{}, factories{
+		openStore: func(string) (storeResource, error) {
+			return storeResource{close: func() error { return nil }}, nil
+		},
+		newScopes: func(execution.Config) (scopeResource, error) {
+			return scopeResource{close: func(context.Context) error { return nil }}, nil
+		},
+		newServer: func(cfg server.Config) lifecycleServer {
+			for _, registration := range cfg.Plugins {
+				if !registration.Enabled || registration.Factory().Name() != registration.ID {
+					t.Fatalf("invalid registration: %+v", registration)
+				}
+				names = append(names, registration.ID)
+			}
+			return &fakeServer{}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close(t.Context())
+	if !reflect.DeepEqual(names, []string{"compaction", "wingcode"}) {
+		t.Fatalf("shared runtime plugins=%v", names)
+	}
+}
+
 func TestApplicationsUseIsolatedProviderGenerations(t *testing.T) {
 	configured, err := New(context.Background(), Config{
 		Ephemeral: true, DisablePlugins: true,

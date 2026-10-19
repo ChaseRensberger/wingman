@@ -7,6 +7,7 @@ import * as sessionRuns from "./hooks/use-session-run";
 import { mergeQuestions } from "./lib/questions";
 import { matchingSubmission, type SessionDraft } from "./lib/session-draft";
 import { reduceToolActivity } from "./lib/tool-activity-state";
+import { reduceStreamingParts, type StreamingPart } from "./lib/streaming-parts";
 
 // Exercise the real private handlers with controlled hooks and network timing.
 function handler(path: string, name: string, dependencies: Record<string, unknown>) {
@@ -44,19 +45,19 @@ test.each([
   { type: "session.run.aborted", data: {} },
 ])("reasoning activity ends on $type without discarding its text", (event) => {
   let active = false;
-  let reasoning = "";
+  let parts: StreamingPart[] = [];
   const apply = handler("./hooks/use-session-run.ts", "applySessionEvent", {
     activeRunRef: { current: { runId: "run_1" } },
     lastEventSeqRef: { current: 0 },
     reduceToolActivity,
+    reduceStreamingParts,
     sessionRunEventError: sessionRuns.sessionRunEventError,
     setIsReasoningStreaming: (value: boolean) => {
       active = value;
     },
-    setStreamingReasoning: (update: string | ((previous: string) => string)) => {
-      reasoning = typeof update === "function" ? update(reasoning) : update;
+    setStreamingParts: (update: (previous: StreamingPart[]) => StreamingPart[]) => {
+      parts = update(parts);
     },
-    setStreamingText: () => {},
     setToolActivities: (update: (previous: Map<string, unknown>) => unknown) => update(new Map()),
     setIsStreaming: () => {},
     setLatestRunUsage: () => {},
@@ -71,7 +72,7 @@ test.each([
   expect(active).toBe(true);
   apply({ ...event, data: { ...event.data, run_id: "run_1" } });
   expect(active).toBe(false);
-  expect(reasoning).toBe(
+  expect(parts.flatMap((part) => (part.type === "reasoning" ? [part.text] : [])).join("")).toBe(
     event.type === "session.reasoning.completed" ? "Finished reasoning" : "Thinking text",
   );
   if (!event.type.startsWith("session.run.")) {
