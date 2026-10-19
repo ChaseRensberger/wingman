@@ -27,7 +27,11 @@ func TestStartupContextRecordedForAllAgents(t *testing.T) {
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"done\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer upstream.Close()
-	work := t.TempDir()
+	// Keep the supplied and resolved paths distinct on every platform, as on macOS.
+	work := filepath.Join(t.TempDir(), "workspace")
+	if err := os.Symlink(t.TempDir(), work); err != nil {
+		t.Fatal(err)
+	}
 	if out, err := exec.Command("git", "-C", work, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
@@ -73,7 +77,7 @@ func TestStartupContextRecordedForAllAgents(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, text := range []string{"Current date:", "Working directory: " + canonical, "Platform:", "Temporary directory:", "Provider ID: test", "Model ID: model", "manual (Manual lookup)", "Reference manuals", "Original project instructions"} {
+			for _, text := range []string{"Current date:", "Working directory: " + work, "Platform:", "Temporary directory:", "Provider ID: test", "Model ID: model", "manual (Manual lookup)", "Reference manuals", "Original project instructions"} {
 				if !strings.Contains(input.System, text) {
 					t.Fatalf("missing %q in %s", text, input.System)
 				}
