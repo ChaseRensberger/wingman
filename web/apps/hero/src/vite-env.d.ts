@@ -8,13 +8,3 @@ declare module "virtual:docs" {
   }
   export const docs: Doc[];
 }
-
-declare module "virtual:blog" {
-  export interface Post {
-    slug: string;
-    title: string;
-    date: string;
-    content: string;
-  }
-  export const posts: Post[];
-}

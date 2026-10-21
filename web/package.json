@@ -7,7 +7,6 @@
   ],
   "scripts": {
     "build": "bun run build:client && bun run --sequential --workspaces build",
-    "build:blog": "bun run --filter @wingman/blog build",
     "build:docs": "bun run --filter @wingman/docs build",
     "build:hero": "bun run --filter @wingman/hero build",
     "build:console": "bun run --filter @wingman/console build",
