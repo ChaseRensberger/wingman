@@ -216,6 +216,7 @@ type SessionRunAdmission struct {
 type SessionRunTransition struct {
 	Run     SessionRun
 	Event   SessionEvent
+	Notices []SessionEvent
 	Changed bool
 }
 

@@ -2514,6 +2514,17 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 	if n, _ := result.RowsAffected(); n != 1 {
 		return SessionRunTransition{}, ErrSessionRunTransitionConflict
 	}
+	var previous *SessionRun
+	if run.StartedAt.IsZero() {
+		prior, err := scanSessionRun(tx.QueryRowContext(ctx, `SELECT `+sessionRunColumns+` FROM session_runs WHERE session_id = ? AND sequence < ? AND started_at IS NOT NULL ORDER BY sequence DESC LIMIT 1`, sessionID, run.Sequence))
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return SessionRunTransition{}, err
+		}
+		if err == nil {
+			previous = &prior
+		}
+	}
+	switches := SessionRunSwitches(run, previous)
 	run.Status, run.UpdatedAt = SessionRunStatusRunning, now
 	if run.StartedAt.IsZero() {
 		run.StartedAt = now
@@ -2533,10 +2544,18 @@ func (s *SQLiteStore) ClaimNextSessionRun(ctx context.Context, sessionID string)
 	if err != nil {
 		return SessionRunTransition{}, err
 	}
+	var notices []SessionEvent
+	for _, change := range switches {
+		notice, err := appendRunEventTx(ctx, tx, run, change.Type, change.Data, now)
+		if err != nil {
+			return SessionRunTransition{}, err
+		}
+		notices = append(notices, notice)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SessionRunTransition{}, err
 	}
-	return SessionRunTransition{Run: run, Event: event, Changed: true}, nil
+	return SessionRunTransition{Run: run, Event: event, Notices: notices, Changed: true}, nil
 }
 
 func (s *SQLiteStore) SettleSessionRun(ctx context.Context, settlement SessionRunSettlement) (SessionRunTransition, error) {
@@ -2872,6 +2891,30 @@ func (s *SQLiteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 		ev.Data = json.RawMessage(ev.DataJSON)
 		ev.Time, _ = time.Parse(time.RFC3339Nano, createdAt)
 		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
+// ListSessionNotices returns saved agent and model switch events in order.
+func (s *SQLiteStore) ListSessionNotices(ctx context.Context, sessionID string) ([]SessionEvent, error) {
+	if err := s.sessionExists(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, session_id, seq, schema_version, type, data_json, created_at FROM session_events WHERE session_id = ? AND type IN (?, ?) ORDER BY seq`, sessionID, EventSessionAgentSwitched, EventSessionModelSwitched)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SessionEvent{}
+	for rows.Next() {
+		var event SessionEvent
+		var created string
+		if err := rows.Scan(&event.ID, &event.SessionID, &event.Seq, &event.SchemaVersion, &event.Type, &event.DataJSON, &created); err != nil {
+			return nil, err
+		}
+		event.Data = json.RawMessage(event.DataJSON)
+		event.Time, _ = time.Parse(time.RFC3339Nano, created)
+		out = append(out, event)
 	}
 	return out, rows.Err()
 }

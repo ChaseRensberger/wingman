@@ -103,6 +103,7 @@ type Session struct {
 type SessionDetail struct {
 	Session
 	History         []models.Message `json:"history"`
+	Notices         []SessionEvent   `json:"notices"`
 	LatestModelCall *ModelCall       `json:"latest_model_call,omitempty"`
 }
 

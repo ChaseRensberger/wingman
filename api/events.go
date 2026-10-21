@@ -21,6 +21,8 @@ const (
 const (
 	SessionEventRunQueued                 SessionEventType = "session.run.queued"
 	SessionEventRunStarted                SessionEventType = "session.run.started"
+	SessionEventAgentSwitched             SessionEventType = "session.agent.switched"
+	SessionEventModelSwitched             SessionEventType = "session.model.switched"
 	SessionEventRunCompleted              SessionEventType = "session.run.completed"
 	SessionEventRunFailed                 SessionEventType = "session.run.failed"
 	SessionEventRunAborted                SessionEventType = "session.run.aborted"
@@ -150,6 +152,24 @@ type RunEventData struct {
 	UpdatedAt    string        `json:"updated_at,omitempty"`
 }
 
+// AgentSwitchedEventData records the agent change applied to a started turn.
+type AgentSwitchedEventData struct {
+	sessionEventData
+	RunID        string `json:"run_id"`
+	Agent        string `json:"agent"`
+	Name         string `json:"name"`
+	Previous     string `json:"previous"`
+	PreviousName string `json:"previous_name"`
+}
+
+// ModelSwitchedEventData records the model change applied to a started turn.
+type ModelSwitchedEventData struct {
+	sessionEventData
+	RunID    string `json:"run_id"`
+	ModelRef string `json:"model_ref"`
+	Previous string `json:"previous"`
+}
+
 // StepEventData describes one model/tool loop iteration.
 type StepEventData struct {
 	sessionEventData
@@ -277,6 +297,10 @@ func DecodeSessionEventDataForSchemaVersion(schemaVersion int, eventType Session
 	}
 	var data SessionEventData
 	switch eventType {
+	case SessionEventAgentSwitched:
+		data = &AgentSwitchedEventData{}
+	case SessionEventModelSwitched:
+		data = &ModelSwitchedEventData{}
 	case SessionEventRunQueued, SessionEventRunStarted, SessionEventRunCompleted, SessionEventRunFailed, SessionEventRunAborted, SessionEventRunInput:
 		data = &RunEventData{}
 	case SessionEventQuestionPending, SessionEventQuestionAnswered, SessionEventQuestionDismissed, SessionEventQuestionCancelled:

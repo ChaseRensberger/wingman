@@ -27,7 +27,7 @@ export function ExplorationGroup({
       ),
   );
   return (
-    <div className="flex flex-col gap-1 px-4" data-component="exploration-group">
+    <div className="flex min-w-0 flex-col gap-1" data-component="exploration-group">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsiblePrimitive.Trigger
           className="group/exploration flex min-h-7 max-w-full items-center gap-2 rounded-sm py-0.5 text-left text-xs font-normal text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

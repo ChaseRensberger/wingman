@@ -55,15 +55,26 @@ describe("session run recovery", () => {
     ).toBe("waiting");
     expect(terminalSessionRunError(run("waiting", 1, "awaiting_input"))).toBeUndefined();
   });
-  test("selects the latest queued or running run", () => {
+  test("follows the running turn instead of a newer queued turn", () => {
     expect(
       latestActiveSessionRun([
         run("completed", 1, "completed"),
-        run("queued", 2, "queued"),
-        run("running", 3, "running"),
+        run("running", 2, "running"),
+        run("queued", 3, "queued"),
         run("failed", 4, "failed"),
       ]),
     ).toMatchObject({ id: "running" });
+  });
+
+  test("follows queued turns in sequence and keeps completion waits active", () => {
+    expect(
+      latestActiveSessionRun([run("second", 2, "queued"), run("first", 1, "queued")])?.id,
+    ).toBe("first");
+    expect(
+      latestActiveSessionRun([run("waiting", 1, "awaiting_completion"), run("next", 2, "queued")])
+        ?.id,
+    ).toBe("waiting");
+    expect(terminalSessionRunError(run("waiting", 1, "awaiting_completion"))).toBeUndefined();
   });
 
   test("follows a queued run after a transient list failure", async () => {

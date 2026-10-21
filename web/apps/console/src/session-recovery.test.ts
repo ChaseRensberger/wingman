@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import * as connection from "./lib/connection";
 import * as sessionRuns from "./hooks/use-session-run";
 import { mergeQuestions } from "./lib/questions";
+import { isSessionNotice } from "./lib/session-queue";
 import { matchingSubmission, type SessionDraft } from "./lib/session-draft";
 import { reduceToolActivity } from "./lib/tool-activity-state";
 import { reduceStreamingParts, type StreamingPart } from "./lib/streaming-parts";
@@ -51,6 +52,7 @@ test.each([
     lastEventSeqRef: { current: 0 },
     reduceToolActivity,
     reduceStreamingParts,
+    isSessionNotice,
     sessionRunEventError: sessionRuns.sessionRunEventError,
     setIsReasoningStreaming: (value: boolean) => {
       active = value;
@@ -128,12 +130,12 @@ test.each(["unchanged", "new draft", "edited pending", "new request"])(
       },
       transcriptScroll: { reset: () => {} },
       setSession: () => {},
-      buildUserMessage: () => ({}),
       buildModelRef: () => pending.modelRef,
       run: {
         begin: () => new AbortController(),
         captureCursor: () => cursor.promise,
         finishSubmission: () => {},
+        accept: async () => {},
         fail: (error: unknown) => {
           throw error;
         },
@@ -179,6 +181,83 @@ test.each(["unchanged", "new draft", "edited pending", "new request"])(
     expect(messageText).toBe(expectedComposerText);
   },
 );
+
+test("Retry submits a recovered action ID and input without reparsing a command", async () => {
+  const retry = {
+    message: "",
+    agentId: "agent_1",
+    modelRef: "provider/model",
+    kind: "action",
+    action: "compaction.compact",
+    input: { arguments: "keep recent changes", limit: 10 },
+  };
+  let draft: SessionDraft = { text: "" };
+  const calls: unknown[] = [];
+  const accepted: unknown[] = [];
+  const send = handler("./routes/sessions/$sessionId.tsx", "handleSend", {
+    availableAgents: [{ id: retry.agentId }],
+    actions: [],
+    macros: [],
+    sessionId: "ses_1",
+    session: { id: "ses_1", history: [] },
+    storageKey: "draft",
+    isDraft: false,
+    pendingSubmissionRef: { current: null },
+    activeSessionIdRef: { current: "ses_1" },
+    actionInvocation: () => undefined,
+    macroInvocation: () => {
+      throw new Error("An action retry must not become a macro");
+    },
+    titleSourceMessage: () => "",
+    persistLastAgentId: () => {},
+    persistLastModelRef: () => {},
+    setMessageText: () => {},
+    setSession: () => {},
+    readDraft: () => draft,
+    saveDraft: (_key: string, value: SessionDraft) => {
+      draft = value;
+    },
+    draftKey: () => "draft",
+    matchingSubmission,
+    newRequestID: () => "retry_request",
+    transcriptScroll: { reset: () => {} },
+    run: {
+      begin: () => new AbortController(),
+      captureCursor: async () => {},
+      accept: async (...args: unknown[]) => {
+        accepted.push(args);
+      },
+      finishSubmission: () => {},
+      fail: (err: unknown) => {
+        throw err;
+      },
+    },
+    client: {
+      sessions: {
+        actions: {
+          admit: async (...args: unknown[]) => {
+            calls.push(args);
+            return { run_id: "retried", status: "queued", session_version: 2 };
+          },
+        },
+      },
+    },
+  });
+  await send(undefined, retry);
+  expect(calls).toEqual([
+    [
+      "ses_1",
+      retry.action,
+      {
+        request_id: "retry_request",
+        agent_id: retry.agentId,
+        model_ref: retry.modelRef,
+        input: retry.input,
+      },
+    ],
+  ]);
+  expect(accepted).toEqual([["ses_1", "retried"]]);
+});
 
 test("returning to a healthy daemon preserves the route revision", async () => {
   let state = { phase: "connecting", revision: 0, hasConnected: false };
@@ -293,6 +372,17 @@ test("session resume preserves a pending send and replaces a suspended active st
     },
     client: {
       sessions: {
+        runs: {
+          list: async () => [
+            {
+              id: "run_1",
+              status: "running",
+              sequence: 1,
+              agent: { id: "agent_1", model_ref: "provider/model" },
+              message: "task",
+            },
+          ],
+        },
         questions: { list: async () => [] },
         permissionRequests: {
           list: async () => {
@@ -315,16 +405,16 @@ test("session resume preserves a pending send and replaces a suspended active st
   resume!();
   expect(submission.signal.aborted).toBe(false);
   expect(loads).toBe(0);
-  expect(states[0]).toBe(1);
+  expect(states[2]).toBe(1);
+  await run.accept("ses_1", "run_1");
   run.finishSubmission();
-  run.start("ses_1", "run_1");
   expect(streams[0].isCurrent()).toBe(true);
   resume!();
   expect(streams).toHaveLength(2);
   expect(streams[0].isCurrent()).toBe(false);
   expect(streams[1].isCurrent()).toBe(true);
-  expect(states[0]).toBe(2);
-  expect(loads).toBe(0);
+  expect(states[2]).toBe(3);
+  expect(loads).toBe(1);
   expect(permissionLoads).toBeGreaterThan(0);
 });
 
@@ -358,15 +448,27 @@ test("request reload dependencies stay stable until the session changes", () => 
     return dependencies;
   }
   const initial = render("ses_1");
-  expect(initial[2]).toEqual(["ses_1", callbacks[0].callback]);
-  expect(initial[3]).toEqual(["ses_1", loadSession, 0, callbacks[0].callback]);
+  expect(initial[2]).toEqual(["ses_1", callbacks[1].callback]);
+  expect(initial[3]).toEqual([
+    "ses_1",
+    loadSession,
+    0,
+    callbacks[1].callback,
+    callbacks[0].callback,
+  ]);
   const rerender = render("ses_1");
   expect(rerender[2]).toEqual(initial[2]);
   expect(rerender[3]).toEqual(initial[3]);
   const changed = render("ses_2");
   expect(changed[2][1]).not.toBe(initial[2][1]);
-  expect(changed[2]).toEqual(["ses_2", callbacks[0].callback]);
-  expect(changed[3]).toEqual(["ses_2", loadSession, 0, callbacks[0].callback]);
+  expect(changed[2]).toEqual(["ses_2", callbacks[1].callback]);
+  expect(changed[3]).toEqual([
+    "ses_2",
+    loadSession,
+    0,
+    callbacks[1].callback,
+    callbacks[0].callback,
+  ]);
 });
 
 test.each(["before cursor", "after snapshot", "pending send"])(
@@ -389,6 +491,7 @@ test.each(["before cursor", "after snapshot", "pending send"])(
     const hook = handler("./hooks/use-session-run.ts", "useSessionRun", {
       ...sessionRuns,
       mergeQuestions,
+      isSessionNotice,
       useCallback: (callback: unknown) => callback,
       useRef: (current: unknown) => refs[refIndex++] ?? (refs[refIndex - 1] = { current }),
       useState: (initial: unknown) => {

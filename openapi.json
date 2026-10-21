@@ -181,6 +181,34 @@
         ],
         "type": "object"
       },
+      "AgentSwitchedEventData": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          },
+          "previous_name": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "agent",
+          "name",
+          "previous",
+          "previous_name"
+        ],
+        "type": "object"
+      },
       "AuthCredential": {
         "additionalProperties": false,
         "properties": {
@@ -1850,6 +1878,26 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ModelSwitchedEventData": {
+        "additionalProperties": false,
+        "properties": {
+          "model_ref": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "model_ref",
+          "previous"
+        ],
         "type": "object"
       },
       "ModelVariant": {
@@ -3709,6 +3757,15 @@
           "latest_model_call": {
             "$ref": "#/components/schemas/ModelCall"
           },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/SessionEvent"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "run_status": {
             "type": "string"
           },
@@ -3731,6 +3788,7 @@
         },
         "required": [
           "history",
+          "notices",
           "id",
           "created_at",
           "updated_at",
@@ -3834,6 +3892,72 @@
               "type": {
                 "enum": [
                   "session.run.input"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data",
+              "id",
+              "schema_version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cursor": {
+                "$ref": "#/components/schemas/SessionEventCursor"
+              },
+              "data": {
+                "$ref": "#/components/schemas/AgentSwitchedEventData"
+              },
+              "id": {
+                "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "session.agent.switched"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data",
+              "id",
+              "schema_version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "cursor": {
+                "$ref": "#/components/schemas/SessionEventCursor"
+              },
+              "data": {
+                "$ref": "#/components/schemas/ModelSwitchedEventData"
+              },
+              "id": {
+                "type": "string"
+              },
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
+              "time": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "session.model.switched"
                 ],
                 "type": "string"
               }

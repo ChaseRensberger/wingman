@@ -51,9 +51,9 @@ test.each([undefined, { input_tokens: 0, output_tokens: 0, total_tokens: 0 }])(
   },
 );
 
-test("the compaction separator is the only toggle and the full summary has message padding", () => {
+test("the compaction separator is the only toggle and the full summary stays visible when expanded", () => {
   const markup = compaction();
-  expect(markup).toContain('class="px-4" data-component="session-compaction-message"');
+  expect(markup).toContain('data-component="session-compaction-message"');
   expect(markup).toContain("<details><summary");
   expect(markup).not.toContain("<details open");
   expect(markup).toMatch(/<summary[^>]*>.*>Compaction<\/span>.*<\/summary>/);

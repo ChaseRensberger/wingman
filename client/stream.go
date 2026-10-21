@@ -15,6 +15,9 @@ import (
 	"github.com/chaserensberger/wingman/api"
 )
 
+// SessionEvent is a typed event shared by session history and event streams.
+type SessionEvent = api.SessionEvent
+
 // SessionEventsOptions configures a persistent-session event stream.
 type SessionEventsOptions struct {
 	After       *int64

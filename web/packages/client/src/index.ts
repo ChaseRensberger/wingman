@@ -202,6 +202,8 @@ export type ParsedSessionEvent =
 const sessionEventTypes = new Set<SessionEvent["type"]>([
   "session.run.queued",
   "session.run.started",
+  "session.agent.switched",
+  "session.model.switched",
   "session.run.completed",
   "session.run.failed",
   "session.run.aborted",

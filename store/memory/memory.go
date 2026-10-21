@@ -187,6 +187,23 @@ func (s *Store) ListSessionRuns(ctx context.Context, sessionID string) ([]store.
 	return out, nil
 }
 
+// ListSessionNotices returns saved agent and model switch events in order.
+func (s *Store) ListSessionNotices(ctx context.Context, sessionID string) ([]store.SessionEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, store.ErrSessionNotFound
+	}
+	out := []store.SessionEvent{}
+	for _, event := range s.events {
+		if event.SessionID == sessionID && (event.Type == store.EventSessionAgentSwitched || event.Type == store.EventSessionModelSwitched) {
+			out = append(out, copySessionEvent(event))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	return out, nil
+}
+
 func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (store.SessionRunTransition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -210,6 +227,13 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	}
 	now := time.Now().UTC()
 	candidate := copySessionRun(next)
+	var previous *store.SessionRun
+	for _, run := range s.runs {
+		if run.SessionID == sessionID && run.Sequence < next.Sequence && !run.StartedAt.IsZero() && (previous == nil || run.Sequence > previous.Sequence) {
+			previous = run
+		}
+	}
+	switches := store.SessionRunSwitches(candidate, previous)
 	candidate.Status, candidate.UpdatedAt = store.SessionRunStatusRunning, now
 	if candidate.StartedAt.IsZero() {
 		candidate.StartedAt = now
@@ -227,12 +251,20 @@ func (s *Store) ClaimNextSessionRun(ctx context.Context, sessionID string) (stor
 	if err != nil {
 		return store.SessionRunTransition{}, err
 	}
+	var notices []store.SessionEvent
+	for _, change := range switches {
+		notice, err := s.appendRunEventLocked(&candidate, change.Type, change.Data, now)
+		if err != nil {
+			return store.SessionRunTransition{}, err
+		}
+		notices = append(notices, notice)
+	}
 	s.globalSeq++
 	aggregateEvent.GlobalSequence = s.globalSeq
 	s.aggregates[aggregateEvent.Aggregate] = append(s.aggregates[aggregateEvent.Aggregate], copyAggregateEvent(aggregateEvent))
 	s.sessions[sessionID] = copySession(projected)
 	*next = candidate
-	return store.SessionRunTransition{Run: copySessionRun(next), Event: event, Changed: true}, nil
+	return store.SessionRunTransition{Run: copySessionRun(next), Event: event, Notices: notices, Changed: true}, nil
 }
 
 func (s *Store) SettleSessionRun(ctx context.Context, settlement store.SessionRunSettlement) (store.SessionRunTransition, error) {

@@ -157,7 +157,10 @@ test.each(["read", "bash", "apply_patch", "custom"])(
     const rowClasses = [
       ...markup.matchAll(/<div class="([^"]*)" data-slot="transcript-row">/g),
     ].map((match) => match[1]);
-    expect(markup).toContain('class="flex flex-col gap-2 pb-5" data-slot="transcript-rows"');
+    const layoutClasses = markup
+      .match(/class="([^"]*)" data-slot="transcript-rows"/)?.[1]
+      .split(" ");
+    expect(layoutClasses).toEqual(expect.arrayContaining(["flex", "flex-col", "gap-2", "pb-5"]));
     expect(rowClasses).toHaveLength(6);
     expect(rowClasses.map((classes) => classes.includes("mt-4"))).toEqual([
       false,

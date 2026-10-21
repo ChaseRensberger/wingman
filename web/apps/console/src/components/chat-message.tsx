@@ -132,7 +132,7 @@ export function ChatMessage({
       </>
     );
     return (
-      <div className="px-4" data-component="session-compaction-message">
+      <div data-component="session-compaction-message">
         {compaction.summary ? (
           <details>
             <summary
@@ -172,12 +172,12 @@ export function ChatMessage({
     <div
       className={`relative ${
         isUser
-          ? "mx-2 bg-primary/[0.03] py-4 before:absolute before:inset-y-0 before:-left-2 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:-right-2 after:w-0.5 after:bg-primary/35 after:content-['']"
+          ? "bg-primary/[0.03] py-4 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary/35 before:content-[''] after:absolute after:inset-y-0 after:right-0 after:w-0.5 after:bg-primary/35 after:content-['']"
           : ""
       }`}
     >
       <div
-        className={`group/message flex min-w-0 flex-col gap-2 ${isUser ? "px-2" : "px-4"} text-sm leading-6 ${
+        className={`group/message flex min-w-0 flex-col gap-2 ${isUser ? "px-3" : ""} text-sm leading-6 break-words ${
           isUser ? "text-foreground" : isAssistant ? "text-foreground" : "text-muted-foreground"
         }`}
       >

@@ -134,7 +134,18 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiSessionDetail(sess, history, latestCall))
+	notices, err := s.store.ListSessionNotices(r.Context(), id)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	detail := apiSessionDetail(sess, history, latestCall)
+	detail.Notices, err = apiSessionEvents(notices)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
 }
 
 func (s *Server) handleListSessionModelCalls(w http.ResponseWriter, r *http.Request) {
@@ -233,6 +244,9 @@ func (s *Server) sessionHistory(ctx context.Context, sessionID string) ([]models
 			msg.Metadata = models.Meta{}
 		}
 		msg.Metadata["message_id"] = sm.ID
+		if sm.RunID != "" {
+			msg.Metadata["run_id"] = sm.RunID
+		}
 		history[i] = msg
 	}
 	if history == nil {

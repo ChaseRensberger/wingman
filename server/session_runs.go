@@ -133,6 +133,9 @@ func (m *sessionRunManager) drain(sessionID string, ctx context.Context) {
 		}
 		if transition.Changed {
 			m.server.events.publish(transition.Event)
+			for _, notice := range transition.Notices {
+				m.server.events.publish(notice)
+			}
 		}
 		if transition.Run.ID == "" {
 			m.mu.Lock()

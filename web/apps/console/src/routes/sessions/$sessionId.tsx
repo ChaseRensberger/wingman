@@ -5,12 +5,12 @@ import { APIError, client, moveSession, purgeSession, renameSession } from "@/li
 import { actionInvocation } from "@/lib/action";
 import { selectGreeting } from "@/lib/greeting";
 import { macroInvocation } from "@/lib/macro";
+import { withStartedRunMessages } from "@/lib/session-queue";
 import { isProviderSelectable } from "@/lib/providers";
 import {
   sessionAgents,
   selectSessionAgent,
   loadSessionTools,
-  buildUserMessage,
   modelRefExists,
   persistLastAgentId,
   persistLastModelRef,
@@ -51,6 +51,7 @@ import {
 } from "@/lib/utils";
 import { Spinner } from "@wingman/core/components/core/spinner";
 import { SessionComposer } from "@/components/session-composer";
+import { SessionQueue } from "@/components/session-queue";
 import { SessionDialogs } from "@/components/session-dialogs";
 import { SessionHeader } from "@/components/session-header";
 import type { InspectorSelection } from "@/components/session-context-sheet";
@@ -180,6 +181,7 @@ function SessionDetailPage() {
           client.sessions.modelCalls.list(id) as Promise<ModelCall[]>,
           client.sessions.macros.list(id) as Promise<Macro[]>,
         ]);
+        if (activeSessionIdRef.current !== id) return;
         setSession(data);
         setModelCalls(calls);
         setMacros(macroData);
@@ -433,7 +435,11 @@ function SessionDetailPage() {
   }
 
   async function handleAbort() {
-    await run.abort(activeSessionIdRef.current);
+    try {
+      await run.abort(activeSessionIdRef.current);
+    } catch (err) {
+      showErrorToast(err, "Could not stop generation");
+    }
   }
 
   async function handleReplyPermission(requestID: string, response: "once" | "always" | "reject") {
@@ -450,7 +456,11 @@ function SessionDetailPage() {
     const outboundAgentId = retry?.agentId ?? selectedAgent;
     const outboundModelRef =
       retry?.modelRef ?? buildModelRef(selectedProvider, selectedModel, selectedVariant);
-    if (!outboundText || !availableAgents.some((agent) => agent.id === outboundAgentId)) return;
+    if (
+      (!outboundText && !retry?.action) ||
+      !availableAgents.some((agent) => agent.id === outboundAgentId)
+    )
+      return;
 
     // Recovery can clear the pending ref while cursor capture is in flight.
     const requestId =
@@ -462,8 +472,23 @@ function SessionDetailPage() {
         outboundText,
       ) ?? newRequestID();
 
-    const action = actionInvocation(outboundText, actions);
+    const command = actionInvocation(outboundText, actions);
+    const action = retry?.action ?? command?.action;
+    const input = retry?.action
+      ? retry.input
+      : command?.arguments
+        ? { arguments: command.arguments }
+        : {};
     let invocation = action ? undefined : macroInvocation(outboundText, macros);
+    const controller = run.begin({
+      message: outboundText,
+      agentId: outboundAgentId,
+      modelRef: outboundModelRef,
+      kind: action ? "action" : "message",
+      action,
+      input: action ? input : undefined,
+    });
+    if (!controller) return;
 
     const shouldGenerateTitle = !action && shouldAutoGenerateTitle(session);
     const titleSource = titleSourceMessage(session, outboundText);
@@ -475,19 +500,6 @@ function SessionDetailPage() {
     });
     setMessageText("");
     transcriptScroll.reset();
-    if (!action) {
-      setSession((prev) => {
-        if (!prev) return prev;
-        return { ...prev, history: [...prev.history, buildUserMessage(outboundText)] };
-      });
-    }
-
-    const controller = run.begin({
-      message: outboundText,
-      agentId: outboundAgentId,
-      modelRef: outboundModelRef,
-      kind: action ? "action" : "message",
-    });
     let accepted = false;
     let activeSessionId = sessionId;
     let titlePromise: Promise<string> | null = null;
@@ -531,7 +543,9 @@ function SessionDetailPage() {
         const created = (await client.sessions.create(
           draftWorkspaceId ? { workspace_id: draftWorkspaceId } : {},
         )) as SessionSummary;
+        if (controller.signal.aborted) return;
         activeSessionId = created.id;
+        run.attachSession(created.id);
         activeSessionIdRef.current = created.id;
         saveDraft(draftKey(created.id), { text: outboundText });
         saveDraft(storageKey, { text: "" });
@@ -539,7 +553,7 @@ function SessionDetailPage() {
         skipNextSessionLoadRef.current = true;
         setSession({
           ...created,
-          history: action ? [] : [buildUserMessage(outboundText)],
+          history: [],
         });
         navigate({ to: "/sessions/$sessionId", params: { sessionId: created.id }, replace: true });
         const createdMacros = (await client.sessions.macros.list(created.id)) as Macro[];
@@ -547,6 +561,7 @@ function SessionDetailPage() {
         invocation = macroInvocation(outboundText, createdMacros);
       }
       await run.captureCursor(activeSessionId);
+      if (controller.signal.aborted) return;
       pendingSubmissionRef.current = {
         requestId,
         sessionId: activeSessionId,
@@ -560,11 +575,11 @@ function SessionDetailPage() {
       });
 
       const admitted = action
-        ? await client.sessions.actions.admit(activeSessionId, action.action, {
+        ? await client.sessions.actions.admit(activeSessionId, action, {
             request_id: requestId,
             agent_id: outboundAgentId,
             model_ref: outboundModelRef,
-            input: action.arguments ? { arguments: action.arguments } : {},
+            input,
           })
         : invocation
           ? await client.sessions.macros.admit(activeSessionId, {
@@ -583,6 +598,7 @@ function SessionDetailPage() {
       if (!admitted.run_id || !admitted.status || !admitted.session_version) {
         throw new Error("Message was not accepted for execution");
       }
+      if (controller.signal.aborted) return;
       setSession((prev) =>
         prev && prev.id === activeSessionId
           ? { ...prev, version: admitted.session_version! }
@@ -600,20 +616,20 @@ function SessionDetailPage() {
           setMessageText((text) => (text === outboundText ? "" : text));
       }
       accepted = true;
-      if (admitted.status === "queued" || admitted.status === "running") {
-        run.start(activeSessionId, admitted.run_id);
-      } else {
-        await loadSession(activeSessionId);
-      }
+      await run.accept(activeSessionId, admitted.run_id);
     } catch (err) {
-      if ((err as Error).name !== "AbortError") {
+      if ((err as Error).name !== "AbortError" && !controller.signal.aborted) {
         console.error("Send failed", err);
         setMessageText(outboundText);
         await run.fail(err, activeSessionId);
       }
     } finally {
-      run.finishSubmission();
-      if (!accepted && controller.signal.aborted) {
+      run.finishSubmission(controller);
+      if (
+        !accepted &&
+        controller.signal.aborted &&
+        activeSessionIdRef.current === activeSessionId
+      ) {
         setMessageText(outboundText);
       }
     }
@@ -709,7 +725,10 @@ function SessionDetailPage() {
     }
   }
   const transcriptHistory = withFailedUserMessage(
-    (session?.history ?? []).filter((message) => message.role !== "tool"),
+    withStartedRunMessages(
+      (session?.history ?? []).filter((message) => message.role !== "tool"),
+      run.runs,
+    ),
     run.failedRun?.kind === "action" ? undefined : run.failedRun?.message,
   );
 
@@ -745,6 +764,8 @@ function SessionDetailPage() {
         onDelete={() => setDeleteSessionOpen(true)}
       />
       <SessionTranscript
+        notices={session.notices ?? []}
+        runs={run.runs}
         messages={transcriptHistory}
         rawMessages={session.history}
         jsonMode={jsonMode}
@@ -769,57 +790,58 @@ function SessionDetailPage() {
         onRetry={() => void handleSend(undefined, run.failedRun ?? undefined)}
         scroll={transcriptScroll}
       />
-      {run.questions.length > 0 ? (
+      {run.questions.length > 0 && (
         <QuestionPanel
           questions={run.questions}
           onReply={run.replyQuestion}
           onAbort={run.isStreaming ? handleAbort : undefined}
         />
-      ) : (
-        <SessionComposer
-          composerRef={composerRef}
-          messageText={messageText}
-          selectedAgent={selectedAgent}
-          selectedAgentName={selectedAgentName}
-          selectedProvider={selectedProvider}
-          selectedModel={selectedModel}
-          selectedVariant={selectedVariant}
-          selectedProviderName={selectedProviderName}
-          agents={availableAgents}
-          providers={selectableProviders}
-          models={models}
-          macros={macros}
-          actions={actions}
-          hasModels={hasModels}
-          isStreaming={run.isStreaming}
-          isNearTranscriptBottom={transcriptScroll.isNearBottom}
-          onMessageChange={changeMessageText}
-          onAgentChange={(agentId) => {
-            setSelectedAgent(agentId);
-            persistLastAgentId(agentId);
-          }}
-          onModelChange={(modelRef, selectedVariant) => {
-            const ref = splitModelRef(modelRef);
-            const variants =
-              models[ref.provider]?.find((model) => model.id === ref.model)?.variants ?? [];
-            const preferredVariant = storedModelVariant(ref.provider, ref.model);
-            const variant =
-              selectedVariant === undefined
-                ? preferredVariant && variants.includes(preferredVariant)
-                  ? preferredVariant
-                  : null
-                : selectedVariant;
-            setSelectedProvider(ref.provider);
-            setSelectedModel(ref.model);
-            setSelectedVariant(variant);
-            persistModelVariant(ref.provider, ref.model, variant);
-            persistLastModelRef(buildModelRef(ref.provider, ref.model, variant));
-          }}
-          onSubmit={() => void handleSend()}
-          onAbort={handleAbort}
-          onJumpToBottom={transcriptScroll.jumpToBottom}
-        />
       )}
+      <SessionQueue runs={run.runs} />
+      <SessionComposer
+        composerRef={composerRef}
+        messageText={messageText}
+        selectedAgent={selectedAgent}
+        selectedAgentName={selectedAgentName}
+        selectedProvider={selectedProvider}
+        selectedModel={selectedModel}
+        selectedVariant={selectedVariant}
+        selectedProviderName={selectedProviderName}
+        agents={availableAgents}
+        providers={selectableProviders}
+        models={models}
+        macros={macros}
+        actions={actions}
+        hasModels={hasModels}
+        isStreaming={run.isStreaming}
+        isSubmitting={run.isSubmitting}
+        isNearTranscriptBottom={transcriptScroll.isNearBottom}
+        onMessageChange={changeMessageText}
+        onAgentChange={(agentId) => {
+          setSelectedAgent(agentId);
+          persistLastAgentId(agentId);
+        }}
+        onModelChange={(modelRef, selectedVariant) => {
+          const ref = splitModelRef(modelRef);
+          const variants =
+            models[ref.provider]?.find((model) => model.id === ref.model)?.variants ?? [];
+          const preferredVariant = storedModelVariant(ref.provider, ref.model);
+          const variant =
+            selectedVariant === undefined
+              ? preferredVariant && variants.includes(preferredVariant)
+                ? preferredVariant
+                : null
+              : selectedVariant;
+          setSelectedProvider(ref.provider);
+          setSelectedModel(ref.model);
+          setSelectedVariant(variant);
+          persistModelVariant(ref.provider, ref.model, variant);
+          persistLastModelRef(buildModelRef(ref.provider, ref.model, variant));
+        }}
+        onSubmit={() => void handleSend()}
+        onAbort={handleAbort}
+        onJumpToBottom={transcriptScroll.jumpToBottom}
+      />
       <SessionDialogs
         session={session}
         editing={editingSession}

@@ -1,3 +1,5 @@
+import type { SessionNotice } from "./session-queue";
+
 export interface Agent {
   id: string;
   name: string;
@@ -114,6 +116,7 @@ export interface SessionSummary {
 
 export interface Session extends SessionSummary {
   history: Message[];
+  notices?: SessionNotice[];
   latest_model_call?: ModelCall;
 }
 
@@ -126,7 +129,14 @@ export interface SessionRun {
   workspace_id?: string;
   client_id?: string;
   sequence: number;
-  status: "queued" | "running" | "awaiting_input" | "completed" | "failed" | "aborted";
+  status:
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "awaiting_completion"
+    | "completed"
+    | "failed"
+    | "aborted";
   kind?: "message" | "action";
   message: string;
   action?: string;

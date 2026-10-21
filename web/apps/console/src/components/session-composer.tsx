@@ -41,6 +41,7 @@ type Props = {
   actions: PluginAction[];
   hasModels: boolean;
   isStreaming: boolean;
+  isSubmitting: boolean;
   isNearTranscriptBottom: boolean;
   onMessageChange: (value: string) => void;
   onAgentChange: (agentId: string) => void;
@@ -85,7 +86,7 @@ export function SessionComposer(props: Props) {
       }}
       className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4"
     >
-      <Card size="sm" className="relative mx-auto max-w-4xl gap-0 p-2">
+      <Card size="sm" className="relative mx-auto min-w-0 max-w-4xl gap-0 p-2">
         {!props.isNearTranscriptBottom && (
           <Button
             className="absolute -top-10 right-2 z-20 rounded-full shadow-md"
@@ -131,7 +132,7 @@ export function SessionComposer(props: Props) {
           }}
           placeholder="Ask anything..."
           className="min-h-20 max-h-60 resize-none overflow-y-auto border-0 bg-transparent shadow-none focus-visible:ring-0 sm:min-h-24"
-          disabled={props.isStreaming}
+          disabled={props.isSubmitting}
         />
         {commandQuery !== undefined && (
           <div
@@ -235,7 +236,7 @@ export function SessionComposer(props: Props) {
             </DropdownMenu>
           </div>
           <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-            {props.isStreaming ? (
+            {props.isStreaming && (
               <Button
                 size="icon-sm"
                 variant="destructive"
@@ -246,17 +247,16 @@ export function SessionComposer(props: Props) {
               >
                 <StopIcon className="size-4" />
               </Button>
-            ) : (
-              <Button
-                size="icon-sm"
-                type="submit"
-                aria-label="Send message"
-                title="Send message"
-                disabled={!props.messageText.trim() || !props.selectedAgent}
-              >
-                <PaperPlaneIcon className="size-4" />
-              </Button>
             )}
+            <Button
+              size="icon-sm"
+              type="submit"
+              aria-label={props.isStreaming ? "Queue message" : "Send message"}
+              title={props.isStreaming ? "Queue message" : "Send message"}
+              disabled={props.isSubmitting || !props.messageText.trim() || !props.selectedAgent}
+            >
+              <PaperPlaneIcon className="size-4" />
+            </Button>
           </div>
         </div>
       </Card>

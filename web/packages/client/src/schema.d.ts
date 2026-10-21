@@ -1059,6 +1059,13 @@ export interface components {
             permissions?: components["schemas"]["Rule"][] | null;
             tools?: string[] | null;
         };
+        AgentSwitchedEventData: {
+            agent: string;
+            name: string;
+            previous: string;
+            previous_name: string;
+            run_id: string;
+        };
         AuthCredential: {
             access?: string;
             account_id?: string;
@@ -1554,6 +1561,11 @@ export interface components {
             max_output?: number;
             provider?: string;
             variant?: string;
+        };
+        ModelSwitchedEventData: {
+            model_ref: string;
+            previous: string;
+            run_id: string;
         };
         ModelVariant: {
             http?: components["schemas"]["HTTPOptions"];
@@ -2056,6 +2068,7 @@ export interface components {
             history: components["schemas"]["Message"][] | null;
             id: string;
             latest_model_call?: components["schemas"]["ModelCall"];
+            notices: components["schemas"]["SessionEvent"][] | null;
             run_status?: string;
             title?: string;
             updated_at: string;
@@ -2092,6 +2105,24 @@ export interface components {
             time?: string;
             /** @enum {string} */
             type: "session.run.input";
+        } | {
+            cursor?: components["schemas"]["SessionEventCursor"];
+            data: components["schemas"]["AgentSwitchedEventData"];
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            time?: string;
+            /** @enum {string} */
+            type: "session.agent.switched";
+        } | {
+            cursor?: components["schemas"]["SessionEventCursor"];
+            data: components["schemas"]["ModelSwitchedEventData"];
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            time?: string;
+            /** @enum {string} */
+            type: "session.model.switched";
         } | {
             cursor?: components["schemas"]["SessionEventCursor"];
             data: components["schemas"]["QuestionEventData"];

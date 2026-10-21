@@ -197,6 +197,15 @@ type AgentSpec struct {
 	Tools        *[]string               `json:"tools,omitempty"`
 }
 
+// AgentSwitchedEventData defines model for AgentSwitchedEventData.
+type AgentSwitchedEventData struct {
+	Agent        string `json:"agent"`
+	Name         string `json:"name"`
+	Previous     string `json:"previous"`
+	PreviousName string `json:"previous_name"`
+	RunId        string `json:"run_id"`
+}
+
 // AuthCredential defines model for AuthCredential.
 type AuthCredential struct {
 	Access    *string `json:"access,omitempty"`
@@ -331,6 +340,21 @@ type CompletionDecision struct {
 // CompletionDecisionAction defines model for CompletionDecision.Action.
 type CompletionDecisionAction string
 
+// CompletionEventData defines model for CompletionEventData.
+type CompletionEventData struct {
+	CompletedAt  *string    `json:"completed_at,omitempty"`
+	Completion   Completion `json:"completion"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
+	ErrorType    *string    `json:"error_type,omitempty"`
+	Message      *string    `json:"message,omitempty"`
+	RunId        string     `json:"run_id"`
+	StartedAt    *string    `json:"started_at,omitempty"`
+	Status       *string    `json:"status,omitempty"`
+	Steps        *int64     `json:"steps,omitempty"`
+	UpdatedAt    *string    `json:"updated_at,omitempty"`
+	Usage        *Usage     `json:"usage,omitempty"`
+}
+
 // CompletionOptions defines model for CompletionOptions.
 type CompletionOptions struct {
 	MaxContinuations *int64 `json:"max_continuations,omitempty"`
@@ -341,6 +365,26 @@ type CompletionOptions struct {
 type CompletionReplyRequest struct {
 	CandidateId string             `json:"candidate_id"`
 	Decision    CompletionDecision `json:"decision"`
+}
+
+// ContentCompletedEventData defines model for ContentCompletedEventData.
+type ContentCompletedEventData struct {
+	MessageId *string `json:"message_id,omitempty"`
+	PartId    *string `json:"part_id,omitempty"`
+	Revision  *int64  `json:"revision,omitempty"`
+	RunId     string  `json:"run_id"`
+	Text      string  `json:"text"`
+}
+
+// ContentDeltaEventData defines model for ContentDeltaEventData.
+type ContentDeltaEventData struct {
+	CallId    *string `json:"call_id,omitempty"`
+	Delta     string  `json:"delta"`
+	MessageId *string `json:"message_id,omitempty"`
+	PartId    *string `json:"part_id,omitempty"`
+	Revision  *int64  `json:"revision,omitempty"`
+	RunId     string  `json:"run_id"`
+	Step      *int64  `json:"step,omitempty"`
 }
 
 // CreateAgentRequest defines model for CreateAgentRequest.
@@ -442,6 +486,18 @@ type ErrorResponse struct {
 	Error Error `json:"error"`
 }
 
+// EventsResyncRequiredEventData defines model for EventsResyncRequiredEventData.
+type EventsResyncRequiredEventData struct {
+	Cursor int64  `json:"cursor"`
+	Reason string `json:"reason"`
+}
+
+// EventsSynchronizedEventData defines model for EventsSynchronizedEventData.
+type EventsSynchronizedEventData struct {
+	Cursor    int64 `json:"cursor"`
+	Watermark int64 `json:"watermark"`
+}
+
 // HTTPOptions defines model for HTTPOptions.
 type HTTPOptions struct {
 	Body    *map[string]interface{} `json:"body,omitempty"`
@@ -541,6 +597,12 @@ type Message struct {
 	Role         string                  `json:"role"`
 	State        *string                 `json:"state,omitempty"`
 	Usage        *Usage                  `json:"usage,omitempty"`
+}
+
+// MessageCreatedEventData defines model for MessageCreatedEventData.
+type MessageCreatedEventData struct {
+	Message Message `json:"message"`
+	RunId   string  `json:"run_id"`
 }
 
 // MessageOrigin defines model for MessageOrigin.
@@ -675,6 +737,13 @@ type ModelRef struct {
 	Variant       *string            `json:"variant,omitempty"`
 }
 
+// ModelSwitchedEventData defines model for ModelSwitchedEventData.
+type ModelSwitchedEventData struct {
+	ModelRef string `json:"model_ref"`
+	Previous string `json:"previous"`
+	RunId    string `json:"run_id"`
+}
+
 // ModelVariant defines model for ModelVariant.
 type ModelVariant struct {
 	Http            *HTTPOptions            `json:"http,omitempty"`
@@ -714,6 +783,24 @@ type Part struct {
 type Part6 struct {
 	Type                 string                 `json:"type"`
 	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// PermissionEventData defines model for PermissionEventData.
+type PermissionEventData struct {
+	Action       string     `json:"action"`
+	CallId       *string    `json:"call_id,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
+	ErrorType    *string    `json:"error_type,omitempty"`
+	Id           string     `json:"id"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	Resources    *[]string  `json:"resources"`
+	Response     *string    `json:"response,omitempty"`
+	RunId        *string    `json:"run_id,omitempty"`
+	SessionId    string     `json:"session_id"`
+	Status       string     `json:"status"`
+	ToolUseId    *string    `json:"tool_use_id,omitempty"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // PermissionGrant defines model for PermissionGrant.
@@ -819,6 +906,20 @@ type ProvidersAuthResponse struct {
 
 // Question defines model for Question.
 type Question struct {
+	Answers   *[]*[]string `json:"answers,omitempty"`
+	ClientId  string       `json:"client_id"`
+	CreatedAt time.Time    `json:"created_at"`
+	Id        string       `json:"id"`
+	Questions *[]Prompt    `json:"questions"`
+	RunId     *string      `json:"run_id,omitempty"`
+	SessionId string       `json:"session_id"`
+	Status    string       `json:"status"`
+	ToolUseId *string      `json:"tool_use_id,omitempty"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// QuestionEventData defines model for QuestionEventData.
+type QuestionEventData struct {
 	Answers   *[]*[]string `json:"answers,omitempty"`
 	ClientId  string       `json:"client_id"`
 	CreatedAt time.Time    `json:"created_at"`
@@ -975,6 +1076,20 @@ type RunErrorEventData struct {
 	RequestId *string        `json:"request_id,omitempty"`
 }
 
+// RunEventData defines model for RunEventData.
+type RunEventData struct {
+	CompletedAt  *string `json:"completed_at,omitempty"`
+	ErrorMessage *string `json:"error_message,omitempty"`
+	ErrorType    *string `json:"error_type,omitempty"`
+	Message      *string `json:"message,omitempty"`
+	RunId        string  `json:"run_id"`
+	StartedAt    *string `json:"started_at,omitempty"`
+	Status       *string `json:"status,omitempty"`
+	Steps        *int64  `json:"steps,omitempty"`
+	UpdatedAt    *string `json:"updated_at,omitempty"`
+	Usage        *Usage  `json:"usage,omitempty"`
+}
+
 // RunIterationEndEventData defines model for RunIterationEndEventData.
 type RunIterationEndEventData struct {
 	Step int64   `json:"step"`
@@ -1115,17 +1230,24 @@ type Session struct {
 
 // SessionDetail defines model for SessionDetail.
 type SessionDetail struct {
-	ClientId        *string    `json:"client_id,omitempty"`
-	CreatedAt       string     `json:"created_at"`
-	History         *[]Message `json:"history"`
-	Id              string     `json:"id"`
-	LatestModelCall *ModelCall `json:"latest_model_call,omitempty"`
-	RunStatus       *string    `json:"run_status,omitempty"`
-	Title           *string    `json:"title,omitempty"`
-	UpdatedAt       string     `json:"updated_at"`
-	Version         int64      `json:"version"`
-	WorkDir         *string    `json:"work_dir,omitempty"`
-	WorkspaceId     *string    `json:"workspace_id,omitempty"`
+	ClientId        *string         `json:"client_id,omitempty"`
+	CreatedAt       string          `json:"created_at"`
+	History         *[]Message      `json:"history"`
+	Id              string          `json:"id"`
+	LatestModelCall *ModelCall      `json:"latest_model_call,omitempty"`
+	Notices         *[]SessionEvent `json:"notices"`
+	RunStatus       *string         `json:"run_status,omitempty"`
+	Title           *string         `json:"title,omitempty"`
+	UpdatedAt       string          `json:"updated_at"`
+	Version         int64           `json:"version"`
+	WorkDir         *string         `json:"work_dir,omitempty"`
+	WorkspaceId     *string         `json:"workspace_id,omitempty"`
+}
+
+// SessionEventCursor defines model for SessionEventCursor.
+type SessionEventCursor struct {
+	Seq       int64  `json:"seq"`
+	SessionId string `json:"session_id"`
 }
 
 // SessionRun defines model for SessionRun.
@@ -1164,6 +1286,21 @@ type SetProvidersAuthRequest struct {
 // StatusResponse defines model for StatusResponse.
 type StatusResponse struct {
 	Status string `json:"status"`
+}
+
+// StepEventData defines model for StepEventData.
+type StepEventData struct {
+	RunId string `json:"run_id"`
+	Step  int64  `json:"step"`
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// StructuredOutputEventData defines model for StructuredOutputEventData.
+type StructuredOutputEventData struct {
+	Parsed  map[string]interface{} `json:"parsed"`
+	RawJson string                 `json:"raw_json"`
+	RunId   string                 `json:"run_id"`
+	Schema  *string                `json:"schema,omitempty"`
 }
 
 // SystemTrace defines model for SystemTrace.
@@ -1224,6 +1361,32 @@ type ToolDef struct {
 	Description string                 `json:"description"`
 	InputSchema map[string]interface{} `json:"input_schema"`
 	Name        string                 `json:"name"`
+}
+
+// ToolEventData defines model for ToolEventData.
+type ToolEventData struct {
+	AuthorizedAt *string                 `json:"authorized_at,omitempty"`
+	CallId       *string                 `json:"call_id,omitempty"`
+	CompletedAt  *string                 `json:"completed_at,omitempty"`
+	DurationMs   *int64                  `json:"duration_ms,omitempty"`
+	Error        *string                 `json:"error,omitempty"`
+	Input        *map[string]interface{} `json:"input,omitempty"`
+	MessageId    *string                 `json:"message_id,omitempty"`
+	Metadata     *map[string]interface{} `json:"metadata,omitempty"`
+	ModelCallId  *string                 `json:"model_call_id,omitempty"`
+	Ordinal      *int64                  `json:"ordinal,omitempty"`
+	Output       *string                 `json:"output,omitempty"`
+	OutputDelta  *string                 `json:"output_delta,omitempty"`
+	PartId       *string                 `json:"part_id,omitempty"`
+	ProposedAt   *string                 `json:"proposed_at,omitempty"`
+	Revision     *int64                  `json:"revision,omitempty"`
+	RunId        string                  `json:"run_id"`
+	StartedAt    *string                 `json:"started_at,omitempty"`
+	Status       *string                 `json:"status,omitempty"`
+	Step         *int64                  `json:"step,omitempty"`
+	Structured   interface{}             `json:"structured,omitempty"`
+	Tool         *string                 `json:"tool,omitempty"`
+	ToolUseId    *string                 `json:"tool_use_id,omitempty"`
 }
 
 // ToolPart defines model for ToolPart.

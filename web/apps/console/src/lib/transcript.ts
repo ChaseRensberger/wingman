@@ -1,5 +1,6 @@
 import { lookupToolActivity, sameToolActivity, toolActivityKey } from "@/lib/tool-activity-state";
 import { modelCallChanges } from "@/lib/model-input";
+import { noticeLabel, type SessionNotice } from "@/lib/session-queue";
 import type { StreamingPart } from "@/lib/streaming-parts";
 import type {
   Message,
@@ -9,6 +10,7 @@ import type {
   ToolCallPart,
   ToolPart,
   ToolResultPart,
+  SessionRun,
 } from "@/lib/types";
 
 export type TranscriptTool = {
@@ -19,6 +21,7 @@ export type TranscriptTool = {
 };
 
 export type TranscriptRow =
+  | { type: "notice"; key: string; text: string }
   | { type: "model-call"; key: string; call: ModelCall; notices: string[] }
   | {
       type: "message";
@@ -103,6 +106,8 @@ export function projectTranscript({
   streamingText = "",
   isStreaming = false,
   modelCalls = [],
+  notices = [],
+  runs = [],
 }: {
   messages: Message[];
   toolCallsById: Map<string, ToolCallPart>;
@@ -113,8 +118,24 @@ export function projectTranscript({
   streamingText?: string;
   isStreaming?: boolean;
   modelCalls?: ModelCall[];
+  notices?: SessionNotice[];
+  runs?: SessionRun[];
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+  const runSequences = new Map(runs.map((run) => [run.id, run.sequence]));
+  const remainingNotices = new Map(notices.map((notice) => [notice.id, notice]));
+  const appendNotices = (runId?: string) => {
+    for (const [id, notice] of remainingNotices) {
+      if (
+        !runId ||
+        notice.data.run_id === runId ||
+        (runSequences.get(notice.data.run_id) ?? Infinity) < (runSequences.get(runId) ?? -Infinity)
+      ) {
+        rows.push({ type: "notice", key: `notice:${id}`, text: noticeLabel(notice) });
+        remainingNotices.delete(id);
+      }
+    }
+  };
   const noticesByMessage = new Map<string, Array<{ call: ModelCall; notices: string[] }>>();
   modelCalls.forEach((call, index) => {
     if (!call.assistant_message_id) return;
@@ -138,6 +159,7 @@ export function projectTranscript({
 
   messages.forEach((message, messageIndex) => {
     if (message.role === "tool") return;
+    if (typeof message.metadata?.run_id === "string") appendNotices(message.metadata.run_id);
     const messageKey = message.id ?? messageIndex;
     for (const { call, notices } of noticesByMessage.get(message.id ?? "") ?? []) {
       rows.push({ type: "model-call", key: `model-call:${call.id}`, call, notices });
@@ -201,6 +223,7 @@ export function projectTranscript({
     flush();
   });
 
+  appendNotices();
   const renderedActivities = new Set<string>();
   const appendActivity = (activity: ToolActivity) => {
     const key = toolActivityKey(activity) ?? activity.call_id;

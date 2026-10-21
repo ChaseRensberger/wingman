@@ -10,6 +10,7 @@ import { useTranscriptScroll } from "@/hooks/use-transcript-scroll";
 import { indexInstructionDiscoveries, type InstructionDiscovery } from "@/lib/model-input";
 import { shouldShowThinking } from "@/lib/session-detail";
 import { projectTranscript } from "@/lib/transcript";
+import type { SessionNotice } from "@/lib/session-queue";
 import type { StreamingPart } from "@/lib/streaming-parts";
 import type {
   Message,
@@ -18,6 +19,7 @@ import type {
   ToolActivity,
   ToolCallPart,
   ToolResultPart,
+  SessionRun,
 } from "@/lib/types";
 import { Button } from "@wingman/core/components/core/button";
 import { Spinner } from "@wingman/core/components/core/spinner";
@@ -31,6 +33,8 @@ type FailedRun = {
 };
 
 type Props = {
+  notices?: SessionNotice[];
+  runs?: SessionRun[];
   messages: Message[];
   rawMessages: Message[];
   jsonMode: boolean;
@@ -77,7 +81,7 @@ function PermissionRequestCard({
   return (
     <section
       aria-labelledby={headingID}
-      className="mx-4 my-5 rounded-lg border border-border bg-muted/30 p-4 text-sm sm:mx-6"
+      className="my-5 rounded-lg border border-border bg-muted/30 p-4 text-sm"
     >
       <div className="font-medium" id={headingID}>
         Permission requested
@@ -139,6 +143,8 @@ function PermissionRequestCard({
 }
 
 export function SessionTranscript({
+  notices,
+  runs,
   messages,
   rawMessages,
   jsonMode,
@@ -168,6 +174,8 @@ export function SessionTranscript({
     [modelCalls],
   );
   const rows = projectTranscript({
+    notices,
+    runs,
     modelCalls,
     messages,
     toolCallsById,
@@ -210,9 +218,9 @@ export function SessionTranscript({
         role="region"
         aria-label="Session transcript"
         data-scrollable
-        className="h-full overflow-y-auto outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="h-full overflow-y-auto px-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pt-5 pb-0 sm:px-4 sm:pt-6">
+        <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col pt-5 pb-0 sm:pt-6">
           {jsonMode ? (
             <div className="px-4 pb-6 sm:px-6">
               <p className="mb-3 text-sm text-muted-foreground">
@@ -229,7 +237,7 @@ export function SessionTranscript({
                 />
               ))}
             </div>
-          ) : messages.length === 0 && !isStreaming && !failedRun ? (
+          ) : messages.length === 0 && !notices?.length && !isStreaming && !failedRun ? (
             <div className="flex flex-1 items-start justify-center pt-[20dvh] pb-12 text-center">
               <div className="flex flex-col items-center gap-4">
                 <img src={WingmanIcon} className="size-16" alt="Wingman logo" />
@@ -237,7 +245,7 @@ export function SessionTranscript({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 pb-5" data-slot="transcript-rows">
+            <div className="flex min-w-0 flex-col gap-2 px-2 pb-5" data-slot="transcript-rows">
               {rows.map((row, index) => {
                 const previous = rows[index - 1];
                 const turnBoundary =
@@ -267,48 +275,22 @@ export function SessionTranscript({
                     className={turnBoundary ? "min-w-0 mt-4" : "min-w-0"}
                     data-slot="transcript-row"
                   >
-                    {row.type === "model-call" ? (
-                      <details className="mx-4 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                        <summary className="cursor-pointer">{row.notices.join(" · ")}</summary>
-                        <p className="mt-2">
-                          Step {row.call.step} · attempt {row.call.attempt} · {row.call.status}.
-                          Settings changes compare recorded calls; this entry is not a conversation
-                          message.
-                        </p>
-                        {row.call.status === "aborted" && (
-                          <p className="mt-1">
-                            Execution stopped. This does not mean an interruption message was
-                            included in a later model request.
-                          </p>
-                        )}
-                        {row.call.trace?.instructions
-                          ?.filter((source) => source.resolved_path)
-                          .map((source) => (
-                            <p key={source.path} className="mt-1 break-all">
-                              Guidance: {source.path} · discovered by reading{" "}
-                              {source.requested_path} → {source.resolved_path}
-                            </p>
-                          ))}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-1"
-                          onClick={() => onInspectCall(row.call.id)}
-                        >
-                          Inspect model input
-                        </Button>
-                      </details>
+                    {row.type === "notice" ? (
+                      <div className="py-1 text-xs break-words text-muted-foreground">
+                        {row.text}
+                      </div>
+                    ) : row.type === "model-call" ? (
+                      <div className="py-1 text-xs break-words text-muted-foreground">
+                        {row.notices.join(" · ")}
+                      </div>
                     ) : row.type === "exploration" ? (
                       <ExplorationGroup tools={row.tools} permissionRequests={permissionRequests} />
                     ) : row.type === "tool" ? (
-                      <div className="px-4">
-                        <ToolActivityItem
-                          call={row.tool.call}
-                          result={row.tool.result}
-                          activity={row.tool.activity}
-                        />
-                      </div>
+                      <ToolActivityItem
+                        call={row.tool.call}
+                        result={row.tool.result}
+                        activity={row.tool.activity}
+                      />
                     ) : (
                       <ChatMessage
                         message={row.message}
@@ -326,7 +308,7 @@ export function SessionTranscript({
                     {[...discovered.values()].map((source) => (
                       <details
                         key={source.path}
-                        className="mx-4 mt-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+                        className="mt-1 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
                       >
                         <summary className="cursor-pointer">
                           Directory instructions discovered · {source.path}
@@ -357,7 +339,7 @@ export function SessionTranscript({
               ))}
               {showThinking && <ThinkingIndicator />}
               {failedRun && (
-                <div className="mx-4 my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm sm:mx-6">
+                <div className="my-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
                   <div className="flex items-start gap-2">
                     <WarningCircleIcon
                       className="mt-0.5 size-4 shrink-0 text-destructive"

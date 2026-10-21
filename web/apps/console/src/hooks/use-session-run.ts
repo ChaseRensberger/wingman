@@ -13,6 +13,7 @@ import { client } from "@/lib/client";
 import { onPageResume } from "@/lib/connection";
 import { mergeQuestions } from "@/lib/questions";
 import { formatSessionError } from "@/lib/session-detail";
+import { isSessionNotice } from "@/lib/session-queue";
 import { reduceToolActivity } from "@/lib/tool-activity-state";
 import { reduceStreamingParts, type StreamingPart } from "@/lib/streaming-parts";
 import type {
@@ -29,6 +30,8 @@ export type FailedRun = {
   agentId: string;
   modelRef: string;
   kind?: "message" | "action";
+  action?: string;
+  input?: unknown;
   error: string;
 };
 export type SessionRunRequest = Omit<FailedRun, "error">;
@@ -61,13 +64,16 @@ type SessionStreamRecoveryOptions = {
 };
 
 export function latestActiveSessionRun(runs: readonly SessionRun[]): SessionRun | undefined {
-  const waiting = runs.find((run) => run.status === "awaiting_input");
-  if (waiting) return waiting;
-  return runs.reduce<SessionRun | undefined>((latest, run) => {
-    if (run.status !== "queued" && run.status !== "running" && run.status !== "awaiting_input")
-      return latest;
-    if (!latest || run.sequence > latest.sequence) return run;
-    return latest;
+  const active = runs.find(
+    (run) =>
+      run.status === "running" ||
+      run.status === "awaiting_input" ||
+      run.status === "awaiting_completion",
+  );
+  if (active) return active;
+  return runs.reduce<SessionRun | undefined>((first, run) => {
+    if (run.status !== "queued") return first;
+    return !first || run.sequence < first.sequence ? run : first;
   }, undefined);
 }
 
@@ -133,7 +139,8 @@ export function terminalSessionRunError(run: SessionRun): string | undefined {
     run.status === "completed" ||
     run.status === "queued" ||
     run.status === "running" ||
-    run.status === "awaiting_input"
+    run.status === "awaiting_input" ||
+    run.status === "awaiting_completion"
   )
     return undefined;
   return run.error_message ?? run.error_type ?? `Run ${run.status}`;
@@ -168,7 +175,8 @@ export async function maintainSessionRunStream(options: SessionStreamRecoveryOpt
       run &&
       run.status !== "queued" &&
       run.status !== "running" &&
-      run.status !== "awaiting_input"
+      run.status !== "awaiting_input" &&
+      run.status !== "awaiting_completion"
     ) {
       await options.finish(terminalSessionRunError(run));
       return;
@@ -270,6 +278,7 @@ async function latestSessionEventSeq(sessionId: string): Promise<number> {
 export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   const load = loadSession;
   const submissionControllerRef = useRef<AbortController | null>(null);
+  const submissionSessionRef = useRef(sessionId);
   const eventControllerRef = useRef<AbortController | null>(null);
   const followControllerRef = useRef<AbortController | null>(null);
   const lastEventSeqRef = useRef(0);
@@ -277,6 +286,12 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     null,
   );
   const requestRef = useRef<SessionRunRequest | null>(null);
+  const submissionRequestRef = useRef<SessionRunRequest | null>(null);
+  const currentSessionRef = useRef(sessionId);
+  currentSessionRef.current = sessionId;
+  const runsRevisionRef = useRef(0);
+  const [runs, setRuns] = useState<SessionRun[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [resumeRevision, setResumeRevision] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingParts, setStreamingParts] = useState<StreamingPart[]>([]);
@@ -292,13 +307,17 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     () => new Set(),
   );
   const permissionRepliesInFlightRef = useRef(new Set<string>());
-  const startRecoveredRun = useEffectEvent((id: string, runID: string) => start(id, runID));
+  const startRecoveredRun = useEffectEvent((id: string, run: SessionRun) => start(id, run));
   const resumeSession = useEffectEvent(() => {
     if (sessionId === "new") return;
     setResumeRevision((revision) => revision + 1);
     const active = activeRunRef.current;
-    if (active?.runId) start(sessionId, active.runId);
-    else
+    if (active?.runId) {
+      const controller = new AbortController();
+      eventControllerRef.current?.abort();
+      eventControllerRef.current = controller;
+      void subscribeAndFinish(sessionId, controller);
+    } else
       void reloadPermissionRequests(sessionId).catch((err) => {
         console.error("Failed to reload permission requests", err);
       });
@@ -321,17 +340,36 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     setToolActivities(new Map());
   }
 
+  const reloadRuns = useCallback(async (id: string, signal?: AbortSignal) => {
+    const revision = ++runsRevisionRef.current;
+    const records = (await client.sessions.runs.list(id)) as SessionRun[];
+    if (
+      !signal?.aborted &&
+      revision === runsRevisionRef.current &&
+      (currentSessionRef.current === id || currentSessionRef.current === "new")
+    )
+      setRuns(records);
+    return records;
+  }, []);
+
   useEffect(() => {
     // Creating a draft session changes the route before its admission request finishes.
-    if (submissionControllerRef.current) return;
-    lastEventSeqRef.current = 0;
-    setFailedRun(null);
-    setToolActivities(new Map());
-    setPermissionRequestRecords(new Map());
-    setQuestionRecords(new Map());
-    permissionRepliesInFlightRef.current = new Set();
-    setPermissionRepliesInFlight(new Set());
-    reset();
+    if (!submissionControllerRef.current || submissionSessionRef.current !== sessionId) {
+      submissionControllerRef.current?.abort();
+      submissionControllerRef.current = null;
+      submissionRequestRef.current = null;
+      setIsSubmitting(false);
+      lastEventSeqRef.current = 0;
+      runsRevisionRef.current++;
+      setRuns([]);
+      setFailedRun(null);
+      setToolActivities(new Map());
+      setPermissionRequestRecords(new Map());
+      setQuestionRecords(new Map());
+      permissionRepliesInFlightRef.current = new Set();
+      setPermissionRepliesInFlight(new Set());
+      reset();
+    }
     return () => {
       eventControllerRef.current?.abort();
       followControllerRef.current?.abort();
@@ -369,11 +407,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     const { signal } = controller;
 
     async function recover() {
-      const runs = (await client.sessions.runs.list(sessionId)) as SessionRun[];
-      const run = latestActiveSessionRun(runs);
+      const run = latestActiveSessionRun(await reloadRuns(sessionId, signal));
       if (signal.aborted || !run || activeRunRef.current || submissionControllerRef.current) return;
       setIsStreaming(true);
-      startRecoveredRun(sessionId, run.id);
+      startRecoveredRun(sessionId, run);
     }
 
     async function watch() {
@@ -413,6 +450,12 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
                 mergeQuestions(previous, [parsed.event.data as Question]),
               );
             }
+            if (parsed.known && parsed.event.type.startsWith("session.run.")) {
+              await recover();
+            }
+            if (parsed.known && isSessionNotice(parsed.event)) {
+              recordNotice(parsed.event);
+            }
             if (!parsed.known || activeRunRef.current || submissionControllerRef.current) continue;
             if (
               parsed.event.type === "session.run.queued" ||
@@ -438,11 +481,28 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
     void watch();
     return () => controller.abort();
-  }, [sessionId, load, resumeRevision, reloadPermissionRequests]);
+  }, [sessionId, load, resumeRevision, reloadPermissionRequests, reloadRuns]);
+
+  const recordNotice = useEffectEvent((event: SessionEvent) => {
+    if (!isSessionNotice(event)) return;
+    setSession((previous) => {
+      if (!previous || previous.id !== event.cursor?.session_id) return previous;
+      const notices = previous.notices ?? [];
+      if (notices.some((notice) => notice.id === event.id)) return previous;
+      return {
+        ...previous,
+        notices: [...notices, event].sort((a, b) => (a.cursor?.seq ?? 0) - (b.cursor?.seq ?? 0)),
+      };
+    });
+  });
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)
       lastEventSeqRef.current = ev.cursor.seq;
+    if (isSessionNotice(ev)) {
+      recordNotice(ev);
+      return;
+    }
     if (ev.type.startsWith("session.question.")) {
       setQuestionRecords((previous) => mergeQuestions(previous, [ev.data as Question]));
       return;
@@ -512,7 +572,10 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
       return;
     }
     if (ev.type === "session.message.created") {
-      const message = ev.data.message as Message;
+      const message = {
+        ...ev.data.message,
+        metadata: { ...ev.data.message.metadata, run_id: ev.data.run_id },
+      } as Message;
       setSession((previous) => {
         if (!previous) return previous;
         const index = message.id
@@ -606,8 +669,8 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     try {
       await followNextSessionRun({
         isCurrent,
-        list: () => client.sessions.runs.list(id) as Promise<SessionRun[]>,
-        start: (next) => start(id, next.id),
+        list: () => reloadRuns(id),
+        start: (next) => start(id, next),
         waitForRetry: (delay) => waitForRetry(delay, followController.signal),
       });
     } finally {
@@ -650,27 +713,30 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   }
 
   function begin(request: SessionRunRequest) {
+    if (submissionControllerRef.current) return null;
     const controller = new AbortController();
     submissionControllerRef.current = controller;
-    requestRef.current = request;
+    submissionSessionRef.current = sessionId;
+    submissionRequestRef.current = request;
+    setIsSubmitting(true);
     setFailedRun(null);
-    setIsStreaming(true);
-    setStreamingParts([]);
-    setLatestRunUsage(undefined);
+    if (!activeRunRef.current) setIsStreaming(true);
     return controller;
   }
 
   async function captureCursor(id: string) {
-    lastEventSeqRef.current = reconcileSessionEventSeq(
-      lastEventSeqRef.current,
-      await latestSessionEventSeq(id),
-      false,
-    );
+    if (activeRunRef.current) return;
+    const cursor = await latestSessionEventSeq(id);
+    if (activeRunRef.current) return;
+    lastEventSeqRef.current = reconcileSessionEventSeq(lastEventSeqRef.current, cursor, false);
   }
 
-  function start(id: string, runID: string) {
+  function start(id: string, run: SessionRun) {
     followControllerRef.current?.abort();
-    activeRunRef.current = { sessionId: id, runId: runID, completed: false };
+    activeRunRef.current = { sessionId: id, runId: run.id, completed: false };
+    requestRef.current = requestForRun(run);
+    clearVolatileStreamState();
+    setLatestRunUsage(undefined);
     setIsStreaming(true);
     const controller = new AbortController();
     eventControllerRef.current?.abort();
@@ -680,6 +746,17 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
         console.error("Failed to load permission requests", err);
     });
     void subscribeAndFinish(id, controller);
+  }
+
+  function requestForRun(run: SessionRun): SessionRunRequest {
+    return {
+      message: run.message,
+      agentId: run.agent.id,
+      modelRef: run.agent.model_ref ?? "",
+      kind: run.kind,
+      action: run.action,
+      input: run.input,
+    };
   }
 
   async function replyPermission(requestID: string, response: "once" | "always" | "reject") {
@@ -706,35 +783,54 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
   }
 
   async function fail(err: unknown, id: string) {
-    const request = requestRef.current;
+    const request = submissionRequestRef.current;
     if (request) setFailedRun({ ...request, error: formatSessionError(err) });
-    reset();
+    if (!activeRunRef.current) setIsStreaming(false);
     await load(id);
+  }
+
+  async function accept(id: string, runID: string) {
+    try {
+      const records = await reloadRuns(id);
+      if (currentSessionRef.current !== id && currentSessionRef.current !== "new") return;
+      const admitted = records.find((run) => run.id === runID);
+      const error = admitted && terminalSessionRunError(admitted);
+      if (admitted && error) setFailedRun({ ...requestForRun(admitted), error });
+      const next = latestActiveSessionRun(records);
+      if (!activeRunRef.current && next) start(id, next);
+      if (!activeRunRef.current && !next) setIsStreaming(false);
+      await load(id);
+    } catch (err) {
+      console.error("Failed to refresh accepted session run", err);
+    }
   }
 
   async function abort(id: string) {
+    const runID = activeRunRef.current?.runId;
+    if (!runID) return;
     try {
-      const runID = activeRunRef.current?.runId;
-      if (runID) {
-        await client.sessions.runs.abort(id, runID);
-      } else {
-        await client.sessions.abort(id);
-      }
+      await client.sessions.runs.abort(id, runID);
     } catch (err) {
       console.error("Abort failed", err);
+      throw err;
     }
-    submissionControllerRef.current?.abort();
-    submissionControllerRef.current = null;
-    reset();
+    if (activeRunRef.current?.runId === runID) reset();
     await load(id);
+    setResumeRevision((revision) => revision + 1);
   }
 
-  function finishSubmission() {
+  function finishSubmission(controller?: AbortController) {
+    if (controller && submissionControllerRef.current !== controller) return;
     submissionControllerRef.current = null;
+    submissionRequestRef.current = null;
+    setIsSubmitting(false);
+    setResumeRevision((revision) => revision + 1);
   }
 
   const permissionRequests = pendingPermissionRequests(permissionRequestRecords);
   return {
+    runs,
+    isSubmitting,
     isStreaming: isStreaming || permissionRequests.length > 0,
     streamingParts,
     streamingText: streamingParts
@@ -760,8 +856,11 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     permissionRepliesInFlight,
     replyPermission,
     begin,
+    attachSession: (id: string) => {
+      submissionSessionRef.current = id;
+    },
     captureCursor,
-    start,
+    accept,
     fail,
     abort,
     finishSubmission,
