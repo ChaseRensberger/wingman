@@ -441,10 +441,11 @@ test("request reload dependencies stay stable until the session changes", () => 
     useEffect: (_effect: unknown, deps: unknown[]) => dependencies.push(deps),
   });
   const loadSession = async () => {};
+  const setSession = () => {};
   function render(sessionId: string) {
     callbackIndex = 0;
     dependencies = [];
-    hook({ sessionId, loadSession, setSession: () => {} });
+    hook({ sessionId, loadSession, setSession });
     return dependencies;
   }
   const initial = render("ses_1");
@@ -455,6 +456,7 @@ test("request reload dependencies stay stable until the session changes", () => 
     0,
     callbacks[1].callback,
     callbacks[0].callback,
+    callbacks[2].callback,
   ]);
   const rerender = render("ses_1");
   expect(rerender[2]).toEqual(initial[2]);
@@ -468,6 +470,7 @@ test("request reload dependencies stay stable until the session changes", () => 
     0,
     callbacks[1].callback,
     callbacks[0].callback,
+    callbacks[2].callback,
   ]);
 });
 

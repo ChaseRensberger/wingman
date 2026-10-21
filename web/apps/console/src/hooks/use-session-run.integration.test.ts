@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { act, createElement, useState } from "react";
+import { act, createElement, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ParsedSessionEvent, SessionEvent } from "@wingman-actor/client";
 
@@ -93,16 +93,21 @@ test("queue submissions preserve streaming, failures preserve the active turn, a
     emit({ id: "", schema_version: 1, type: "session.run.aborted", data: { run_id: runID } });
   }) as typeof original.abort;
   let current!: ReturnType<typeof useSessionRun>;
+  let session: Session | null = null;
   const loadSession = async () => {};
   function Harness() {
-    const [, setSession] = useState<Session | null>({
+    const [state, setSession] = useState<Session | null>({
       id: "s",
       version: 1,
       history: [],
       created_at: "",
       updated_at: "",
     });
-    current = useSessionRun({ sessionId: "s", loadSession, setSession });
+    const run = useSessionRun({ sessionId: "s", loadSession, setSession });
+    useEffect(() => {
+      current = run;
+      session = state;
+    });
     return null;
   }
   const flush = () =>
@@ -120,6 +125,16 @@ test("queue submissions preserve streaming, failures preserve the active turn, a
     await flush();
     await act(async () => emit(text("first", "Working")));
     expect(current.streamingText).toBe("Working");
+    await act(async () =>
+      emit({
+        id: "",
+        schema_version: 1,
+        type: "session.agent.switched",
+        data: { run_id: "first", agent: "plan", name: "Plan" },
+      }),
+    );
+    expect(session?.notices).toHaveLength(1);
+    expect(session?.notices?.[0]?.type).toBe("session.agent.switched");
 
     await act(async () => {
       expect(
@@ -210,6 +225,16 @@ test("queue submissions preserve streaming, failures preserve the active turn, a
       message: "fast failure",
       error: "Provider unavailable",
     });
+    await act(async () =>
+      emit({
+        id: "",
+        schema_version: 1,
+        type: "session.model.switched",
+        data: { run_id: "fast", model_ref: "test/other" },
+      }),
+    );
+    expect(session?.notices).toHaveLength(1);
+    expect(session?.notices?.[0]?.type).toBe("session.model.switched");
 
     const actionInput = { arguments: "keep recent changes", limit: 10 };
     await act(async () => {

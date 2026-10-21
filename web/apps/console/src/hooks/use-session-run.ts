@@ -401,6 +401,22 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
     return () => controller.abort();
   }, [sessionId, reloadPermissionRequests]);
 
+  const recordNotice = useCallback(
+    (event: SessionEvent) => {
+      if (!isSessionNotice(event)) return;
+      setSession((previous) => {
+        if (!previous || previous.id !== event.cursor?.session_id) return previous;
+        const notices = previous.notices ?? [];
+        if (notices.some((notice) => notice.id === event.id)) return previous;
+        return {
+          ...previous,
+          notices: [...notices, event].sort((a, b) => (a.cursor?.seq ?? 0) - (b.cursor?.seq ?? 0)),
+        };
+      });
+    },
+    [setSession],
+  );
+
   useEffect(() => {
     if (sessionId === "new") return;
     const controller = new AbortController();
@@ -481,20 +497,7 @@ export function useSessionRun({ sessionId, loadSession, setSession }: Options) {
 
     void watch();
     return () => controller.abort();
-  }, [sessionId, load, resumeRevision, reloadPermissionRequests, reloadRuns]);
-
-  const recordNotice = useEffectEvent((event: SessionEvent) => {
-    if (!isSessionNotice(event)) return;
-    setSession((previous) => {
-      if (!previous || previous.id !== event.cursor?.session_id) return previous;
-      const notices = previous.notices ?? [];
-      if (notices.some((notice) => notice.id === event.id)) return previous;
-      return {
-        ...previous,
-        notices: [...notices, event].sort((a, b) => (a.cursor?.seq ?? 0) - (b.cursor?.seq ?? 0)),
-      };
-    });
-  });
+  }, [sessionId, load, resumeRevision, reloadPermissionRequests, reloadRuns, recordNotice]);
 
   function applySessionEvent(ev: SessionEvent): string | undefined {
     if (typeof ev.cursor?.seq === "number" && ev.cursor.seq > lastEventSeqRef.current)
