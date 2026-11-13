@@ -16,7 +16,7 @@ type CatalogDTO struct {
 }
 
 func (s *Server) handleCatalogLabLogo(w http.ResponseWriter, r *http.Request) {
-	logo, ok := s.providers.Catalog().LabLogo(chi.URLParam(r, "id"))
+	logo, ok := s.modelProviders().Catalog().LabLogo(chi.URLParam(r, "id"))
 	if !ok {
 		s.writeError(w, http.StatusNotFound, "lab logo not found")
 		return
@@ -26,7 +26,12 @@ func (s *Server) handleCatalogLabLogo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
-	modelCatalog := s.providers.Catalog()
+	registry, release, ok := s.requestProviders(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	modelCatalog := registry.Catalog()
 	writeJSON(w, http.StatusOK, CatalogDTO{
 		Labs:      modelCatalog.ListLabs(),
 		Models:    modelCatalog.ListCanonicalModels(),

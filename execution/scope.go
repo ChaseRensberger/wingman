@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
 
+	agentplugin "github.com/chaserensberger/wingman/agent/plugin"
 	wingmcp "github.com/chaserensberger/wingman/mcp"
 	provider "github.com/chaserensberger/wingman/models/providers"
+	"github.com/chaserensberger/wingman/plugin/protocol"
 	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/tool"
 )
@@ -24,6 +27,7 @@ const defaultCloseTimeout = 30 * time.Second
 type Config struct {
 	RootContext    context.Context
 	PluginDirs     []string
+	PluginState    pluginhost.State
 	DisablePlugins bool
 	MCP            map[string]wingmcp.ServerConfig
 	Providers      *provider.Registry
@@ -55,9 +59,11 @@ type Manager struct {
 	cfg    Config
 	f      factories
 
-	mu     sync.Mutex
-	scopes map[string]*ownedScope
-	closed bool
+	mu             sync.Mutex
+	reloadMu       sync.RWMutex
+	scopes         map[string]*ownedScope
+	closed         bool
+	bundledPlugins func() []agentplugin.Plugin
 }
 
 // Count returns the number of cached execution scopes, including the daemon scope.
@@ -79,13 +85,14 @@ type ownedScope struct {
 
 // Scope is one immutable resource graph for a directory or the directoryless scope.
 type Scope struct {
-	id        string
-	workDir   string
-	providers *provider.Registry
-	native    []tool.Tool
-	plugins   *pluginhost.Manager
-	mcp       *wingmcp.Manager
-	cancel    context.CancelFunc
+	id          string
+	workDir     string
+	providers   *provider.Registry
+	native      []tool.Tool
+	plugins     *pluginhost.Manager
+	pluginState pluginhost.State
+	mcp         *wingmcp.Manager
+	cancel      context.CancelFunc
 
 	closeOnce sync.Once
 	closeErr  error
@@ -109,6 +116,13 @@ func NewManager(cfg Config) (*Manager, error) {
 func newManager(cfg Config, f factories) (*Manager, error) {
 	if cfg.Providers == nil {
 		return nil, fmt.Errorf("provider registry is required")
+	}
+	if cfg.PluginState.Root == "" {
+		var err error
+		cfg.PluginState, err = pluginhost.DefaultState()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := (wingmcp.Config{Servers: cfg.MCP}).Validate(); err != nil {
 		return nil, err
@@ -138,6 +152,8 @@ func newManager(cfg Config, f factories) (*Manager, error) {
 // Acquire returns a lease for workDir's canonical scope. An empty directory
 // selects the daemon's directoryless scope.
 func (m *Manager) Acquire(ctx context.Context, workDir string) (*Lease, error) {
+	m.reloadMu.RLock()
+	defer m.reloadMu.RUnlock()
 	id, canonical, err := canonicalScope(workDir)
 	if err != nil {
 		return nil, err
@@ -192,8 +208,23 @@ func (m *Manager) Acquire(ctx context.Context, workDir string) (*Lease, error) {
 	return &Lease{manager: m, owned: owned}, nil
 }
 
-// Providers returns the immutable provider generation shared by current scopes.
-func (m *Manager) Providers() *provider.Registry { return m.cfg.Providers }
+// BaseProviders returns provider definitions before executable contributions.
+func (m *Manager) BaseProviders() *provider.Registry { return m.cfg.Providers }
+
+// Providers returns the current directoryless provider catalog.
+func (m *Manager) Providers() *provider.Registry {
+	m.mu.Lock()
+	owned := m.scopes[""]
+	m.mu.Unlock()
+	if owned == nil || owned.scope == nil || owned.scope.plugins == nil {
+		return m.cfg.Providers
+	}
+	registry, err := m.cfg.Providers.WithRegistrations(owned.scope.plugins.ProviderRegistrations())
+	if err != nil {
+		panic(fmt.Errorf("invalid staged plugin providers: %w", err))
+	}
+	return registry
+}
 
 func (m *Manager) abandon(owned *ownedScope, id string) {
 	m.mu.Lock()
@@ -248,6 +279,9 @@ func (m *Manager) Close() error {
 
 // CloseContext cancels and closes every scope within one shared deadline.
 func (m *Manager) CloseContext(ctx context.Context) error {
+	m.cancel()
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -289,11 +323,12 @@ func (m *Manager) CloseContext(ctx context.Context) error {
 }
 
 func (m *Manager) construct(ctx context.Context, cancel context.CancelFunc, id, workDir string) (*Scope, error) {
-	s := &Scope{id: id, workDir: workDir, providers: m.cfg.Providers, native: append([]tool.Tool(nil), m.cfg.NativeTools...), cancel: cancel}
+	s := &Scope{id: id, workDir: workDir, providers: m.cfg.Providers, native: append([]tool.Tool(nil), m.cfg.NativeTools...), cancel: cancel, pluginState: m.cfg.PluginState}
 	if !m.cfg.DisablePlugins {
-		dirs := append([]string(nil), m.cfg.PluginDirs...)
-		if local := pluginhost.LocalPluginDir(workDir); local != "" {
-			dirs = append(dirs, local)
+		dirs, err := m.pluginDirs(workDir)
+		if err != nil {
+			cancel()
+			return nil, err
 		}
 		plugins, err := m.f.newPlugins(ctx, dirs)
 		if err != nil {
@@ -303,6 +338,12 @@ func (m *Manager) construct(ctx context.Context, cancel context.CancelFunc, id, 
 		s.plugins = plugins
 	}
 	s.mcp = m.f.newMCP(ctx, wingmcp.Config{Servers: cloneMCP(m.cfg.MCP)})
+	if s.plugins != nil {
+		if err := s.plugins.ValidatePlugins(ctx, m.newBundledPlugins()...); err != nil {
+			_ = closeScope(s)
+			return nil, err
+		}
+	}
 	if _, err := s.ToolCatalog(); err != nil {
 		_ = closeScope(s)
 		return nil, err
@@ -312,6 +353,148 @@ func (m *Manager) construct(ctx context.Context, cancel context.CancelFunc, id, 
 		return nil, err
 	}
 	return s, nil
+}
+
+func (m *Manager) pluginDirs(workDir string) ([]string, error) {
+	dirs := append([]string(nil), m.cfg.PluginDirs...)
+	if local := pluginhost.LocalPluginDir(workDir); local != "" {
+		state := m.cfg.PluginState
+		trusted, err := state.Trusted(workDir)
+		if err != nil {
+			return nil, fmt.Errorf("read project trust: %w", err)
+		}
+		if trusted {
+			dirs = append(dirs, local)
+		}
+	}
+	return dirs, nil
+}
+
+// AcquirePlugins captures plugins after checking the current project-trust decision.
+func (s *Scope) AcquirePlugins(identity protocol.Identity) (*pluginhost.Activation, error) {
+	if s.plugins == nil {
+		return nil, nil
+	}
+	if s.workDir != "" {
+		trusted, err := s.pluginState.Trusted(s.workDir)
+		if err != nil {
+			return nil, err
+		}
+		if !trusted {
+			return s.plugins.Acquire(identity, pluginhost.LocalPluginDir(s.workDir))
+		}
+	}
+	return s.plugins.Acquire(identity)
+}
+
+// ReloadPlugins validates replacements for all cached directories before publishing any.
+func (m *Manager) ReloadPlugins(ctx context.Context) error {
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+	return m.reloadPlugins(ctx)
+}
+
+// UpdatePlugins publishes a package change and rolls it back on reload failure before new scopes can observe it.
+func (m *Manager) UpdatePlugins(ctx context.Context, change, rollback func() error) error {
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := change(); err != nil {
+		return err
+	}
+	if err := m.reloadPlugins(ctx); err != nil {
+		return errors.Join(err, rollback())
+	}
+	return nil
+}
+
+func (m *Manager) reloadPlugins(ctx context.Context) error {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return fmt.Errorf("execution scope manager is closed")
+	}
+	var scopes []*Scope
+	for _, owned := range m.scopes {
+		if owned.scope != nil && owned.scope.plugins != nil {
+			scopes = append(scopes, owned.scope)
+		}
+	}
+	m.mu.Unlock()
+	sort.Slice(scopes, func(i, j int) bool { return scopes[i].id < scopes[j].id })
+	var prepared []*pluginhost.PreparedReload
+	for _, scope := range scopes {
+		dirs, err := m.pluginDirs(scope.workDir)
+		if err != nil {
+			for _, p := range prepared {
+				p.Abort()
+			}
+			return err
+		}
+		candidate, err := scope.plugins.PrepareReload(ctx, dirs)
+		if err != nil {
+			for _, p := range prepared {
+				p.Abort()
+			}
+			return err
+		}
+		prepared = append(prepared, candidate)
+		if err := candidate.ValidatePlugins(ctx, m.newBundledPlugins()...); err != nil {
+			for _, p := range prepared {
+				p.Abort()
+			}
+			return err
+		}
+		if _, err := scope.ToolCatalogWith(candidate.Tools()); err != nil {
+			for _, p := range prepared {
+				p.Abort()
+			}
+			return err
+		}
+	}
+	for _, p := range prepared {
+		p.Commit()
+	}
+	return nil
+}
+
+// SetBundledPlugins supplies fresh bundled instances for contribution validation.
+func (m *Manager) SetBundledPlugins(factory func() []agentplugin.Plugin) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bundledPlugins = factory
+}
+
+func (m *Manager) newBundledPlugins() []agentplugin.Plugin {
+	m.mu.Lock()
+	factory := m.bundledPlugins
+	m.mu.Unlock()
+	if factory == nil {
+		return nil
+	}
+	return factory()
+}
+
+// ValidatePlugins checks cached contributions before the server starts recovery.
+func (m *Manager) ValidatePlugins(ctx context.Context) error {
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+	m.mu.Lock()
+	var scopes []*Scope
+	for _, owned := range m.scopes {
+		if owned.scope != nil && owned.scope.plugins != nil {
+			scopes = append(scopes, owned.scope)
+		}
+	}
+	m.mu.Unlock()
+	for _, scope := range scopes {
+		if err := scope.plugins.ValidatePlugins(ctx, m.newBundledPlugins()...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *Manager) release(owned *ownedScope) {
@@ -366,10 +549,17 @@ func (s *Scope) MCP() *wingmcp.Manager { return s.mcp }
 
 // ToolCatalog composes one immutable tool catalog from current owned generations.
 func (s *Scope) ToolCatalog() (*tool.Registry, error) {
-	tools := append([]tool.Tool(nil), s.native...)
+	var plugins []tool.Tool
 	if s.plugins != nil {
-		tools = append(tools, s.plugins.Tools()...)
+		plugins = s.plugins.Tools()
 	}
+	return s.ToolCatalogWith(plugins)
+}
+
+// ToolCatalogWith composes captured plugin tools with the scope's other tools.
+func (s *Scope) ToolCatalogWith(plugins []tool.Tool) (*tool.Registry, error) {
+	tools := append([]tool.Tool(nil), s.native...)
+	tools = append(tools, plugins...)
 	if s.mcp != nil {
 		tools = append(tools, s.mcp.Tools()...)
 	}
@@ -378,6 +568,45 @@ func (s *Scope) ToolCatalog() (*tool.Registry, error) {
 		return nil, fmt.Errorf("compose tool catalog for scope %q: %w", s.id, err)
 	}
 	return registry, nil
+}
+
+// TransformedTools captures plugin MCP definitions and owns changed connections until release.
+func (s *Scope) TransformedTools(ctx context.Context, activation *pluginhost.Activation) (*tool.Registry, func(context.Context) error, error) {
+	manager, release, err := s.TransformedMCP(ctx, activation)
+	if err != nil {
+		return nil, nil, err
+	}
+	tools := append([]tool.Tool(nil), s.native...)
+	tools = append(tools, activation.Tools()...)
+	tools = append(tools, manager.Tools()...)
+	catalog, err := tool.Compose(tools)
+	if err != nil {
+		_ = release(context.Background())
+		return nil, nil, err
+	}
+	return catalog, release, nil
+}
+
+// TransformedMCP captures fresh MCP configuration and owns any changed connections until release.
+func (s *Scope) TransformedMCP(ctx context.Context, activation *pluginhost.Activation) (*wingmcp.Manager, func(context.Context) error, error) {
+	noop := func(context.Context) error { return nil }
+	if activation == nil || !activation.HasTransforms() {
+		return s.mcp, noop, nil
+	}
+	base := s.mcp.Configuration()
+	var servers protocol.MCPServers
+	if err := activation.Transform(ctx, "mcp", base.Servers, &servers); err != nil {
+		return nil, nil, err
+	}
+	if reflect.DeepEqual(map[string]wingmcp.ServerConfig(servers), base.Servers) {
+		return s.mcp, noop, nil
+	}
+	cfg := wingmcp.Config{Servers: servers}
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, err
+	}
+	manager := wingmcp.New(ctx, cfg)
+	return manager, manager.CloseContext, nil
 }
 
 func (s *Scope) close(ctx context.Context) error {

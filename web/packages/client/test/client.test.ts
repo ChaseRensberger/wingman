@@ -65,6 +65,48 @@ test("RPC plugin operations use their separate endpoints", async () => {
   ]);
 });
 
+test("plugin sign-in and cancellable event polling retain client ownership", async () => {
+  const requests: Request[] = [];
+  let polling!: () => void;
+  const started = new Promise<void>((resolve) => {
+    polling = resolve;
+  });
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    password: "secret",
+    clientName: "console",
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (new URL(request.url).pathname === "/rpc-plugins/events") {
+        return new Promise<Response>((_, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+            once: true,
+          });
+          polling();
+        });
+      }
+      return Response.json({});
+    },
+  });
+  await client.rpcPlugins.auth.methods("/project with spaces");
+  await client.rpcPlugins.auth.execute({ operation: "complete", attempt: "auth-1" });
+  const controller = new AbortController();
+  const waiting = client.rpcPlugins.events({ operation: "next", id: "sub-1" }, controller.signal);
+  await started;
+  controller.abort();
+  await expect(waiting).rejects.toThrow();
+  expect(new URL(requests[0].url).searchParams.get("working_directory")).toBe(
+    "/project with spaces",
+  );
+  expect(await requests[1].json()).toEqual({ operation: "complete", attempt: "auth-1" });
+  expect(await requests[2].json()).toEqual({ operation: "next", id: "sub-1" });
+  for (const request of requests) {
+    expect(request.headers.get("X-Wingman-Client")).toBe("console");
+    expect(request.headers.get("Authorization")).toBe("Basic d2luZ21hbjpzZWNyZXQ=");
+  }
+});
+
 test("parses known and unknown event envelopes", () => {
   const session = parseSessionEvent({
     id: "evt-1",
@@ -487,6 +529,22 @@ test("newActionAdmission creates and preserves request IDs", () => {
   const generated = newActionAdmission({ agent_id: "agt_1" });
   expect(generated.request_id).toBeTruthy();
   expect(newActionAdmission(generated)).toBe(generated);
+});
+
+test("action discovery passes the project directory through the generated query", async () => {
+  const directory = "/projects/project & notes";
+  let request: Request | undefined;
+  const client = createWingmanClient({
+    baseUrl: "https://wingman.test",
+    fetch: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json({ actions: [{ id: "project.action", command: "project-action" }] });
+    },
+  });
+  await expect(client.actions.list(directory)).resolves.toEqual([
+    { id: "project.action", command: "project-action" },
+  ]);
+  expect(new URL(request!.url).searchParams.get("working_directory")).toBe(directory);
 });
 
 test("admit requires a request ID", () => {

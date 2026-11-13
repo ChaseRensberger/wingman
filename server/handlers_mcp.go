@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,7 +12,7 @@ type mcpResponse struct {
 }
 
 func (s *Server) handleListMCP(w http.ResponseWriter, r *http.Request) {
-	scope, release, err := s.executionScope(r.Context(), "")
+	scope, release, err := s.executionScope(r.Context(), r.URL.Query().Get("working_directory"))
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -21,7 +22,19 @@ func (s *Server) handleListMCP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, mcpResponse{Servers: []any{}})
 		return
 	}
-	writeJSON(w, http.StatusOK, mcpResponse{Servers: scope.MCP().Status()})
+	activation, releasePlugins, err := s.requestPluginActivation(r, r.URL.Query().Get("working_directory"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer releasePlugins()
+	manager, releaseMCP, err := scope.TransformedMCP(r.Context(), activation)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer releaseMCP(context.Background())
+	writeJSON(w, http.StatusOK, mcpResponse{Servers: manager.Status()})
 }
 
 func (s *Server) handleConnectMCP(w http.ResponseWriter, r *http.Request) {

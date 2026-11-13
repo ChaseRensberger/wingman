@@ -25,6 +25,9 @@ export type RunStreamEvent = components["schemas"]["RunStreamEvent"];
 export type Session = components["schemas"]["Session"];
 export type SessionDetail = components["schemas"]["SessionDetail"];
 export type PluginsResponse = components["schemas"]["PluginsResponse"];
+export type PluginAuthRequest = components["schemas"]["PluginAuthRequest"];
+export type PluginAuthStatus = components["schemas"]["PluginAuthStatus"];
+export type PluginEventRequest = components["schemas"]["PluginEventRequest"];
 export type SessionEvent = components["schemas"]["SessionEvent"];
 export type SessionRun = components["schemas"]["SessionRun"];
 export type CompletionOptions = components["schemas"]["CompletionOptions"];
@@ -331,12 +334,25 @@ export function createWingmanClient(options: WingmanClientOptions) {
 
   return {
     actions: {
-      list: async () => (await requestData(api.GET("/actions"))).actions ?? [],
+      list: async (workingDirectory?: string) =>
+        (
+          await requestData(
+            api.GET("/actions", { params: { query: { working_directory: workingDirectory } } }),
+          )
+        ).actions ?? [],
     },
     agents: {
-      list: () => requestData(api.GET("/agents")),
+      list: (workingDirectory?: string) =>
+        requestData(
+          api.GET("/agents", { params: { query: { working_directory: workingDirectory } } }),
+        ),
       create: (request: CreateAgentRequest) => requestData(api.POST("/agents", { body: request })),
-      get: (id: string) => requestData(api.GET("/agents/{id}", { params: { path: { id } } })),
+      get: (id: string, workingDirectory?: string) =>
+        requestData(
+          api.GET("/agents/{id}", {
+            params: { path: { id }, query: { working_directory: workingDirectory } },
+          }),
+        ),
       update: (id: string, request: components["schemas"]["UpdateAgentRequest"]) =>
         requestData(api.PUT("/agents/{id}", { params: { path: { id } }, body: request })),
       delete: (id: string) => requestData(api.DELETE("/agents/{id}", { params: { path: { id } } })),
@@ -562,7 +578,10 @@ export function createWingmanClient(options: WingmanClientOptions) {
       },
     },
     catalog: {
-      get: () => requestData(api.GET("/catalog")),
+      get: (workingDirectory?: string) =>
+        requestData(
+          api.GET("/catalog", { params: { query: { working_directory: workingDirectory } } }),
+        ),
       logo: (id: string) =>
         requestData(api.GET("/catalog/labs/{id}/logo", { params: { path: { id } } })),
     },
@@ -589,7 +608,10 @@ export function createWingmanClient(options: WingmanClientOptions) {
     },
     logs: { list: () => requestData(api.GET("/logs")) },
     mcp: {
-      list: () => requestData(api.GET("/mcp")),
+      list: (workingDirectory?: string) =>
+        requestData(
+          api.GET("/mcp", { params: { query: { working_directory: workingDirectory } } }),
+        ),
       authorize: (name: string) =>
         requestData(api.POST("/mcp/{name}/auth", { params: { path: { name } } })),
       logout: (name: string) =>
@@ -605,9 +627,24 @@ export function createWingmanClient(options: WingmanClientOptions) {
     rpcPlugins: {
       list: () => requestData(api.GET("/rpc-plugins")),
       reload: () => requestData(api.POST("/rpc-plugins/reload")),
+      auth: {
+        methods: (workingDirectory?: string) =>
+          requestData(
+            api.GET("/rpc-plugins/auth", {
+              params: { query: { working_directory: workingDirectory } },
+            }),
+          ),
+        execute: (request: PluginAuthRequest, signal?: AbortSignal) =>
+          requestData(api.POST("/rpc-plugins/auth", { body: request, signal })),
+      },
+      events: (request: PluginEventRequest, signal?: AbortSignal) =>
+        requestData(api.POST("/rpc-plugins/events", { body: request, signal })),
     },
     providers: {
-      list: () => requestData(api.GET("/provider")),
+      list: (workingDirectory?: string) =>
+        requestData(
+          api.GET("/provider", { params: { query: { working_directory: workingDirectory } } }),
+        ),
       auth: {
         get: () => requestData(api.GET("/provider/auth")),
         set: (request: components["schemas"]["SetProvidersAuthRequest"]) =>
@@ -619,15 +656,23 @@ export function createWingmanClient(options: WingmanClientOptions) {
             }),
           ),
       },
-      get: (name: string) =>
-        requestData(api.GET("/provider/{name}", { params: { path: { name } } })),
+      get: (name: string, workingDirectory?: string) =>
+        requestData(
+          api.GET("/provider/{name}", {
+            params: { path: { name }, query: { working_directory: workingDirectory } },
+          }),
+        ),
       models: {
-        list: (name: string) =>
-          requestData(api.GET("/provider/{name}/models", { params: { path: { name } } })),
-        get: (name: string, model: string) =>
+        list: (name: string, workingDirectory?: string) =>
+          requestData(
+            api.GET("/provider/{name}/models", {
+              params: { path: { name }, query: { working_directory: workingDirectory } },
+            }),
+          ),
+        get: (name: string, model: string, workingDirectory?: string) =>
           requestData(
             api.GET("/provider/{name}/models/{model}", {
-              params: { path: { name, model } },
+              params: { path: { name, model }, query: { working_directory: workingDirectory } },
             }),
           ),
       },
@@ -653,7 +698,12 @@ export function createWingmanClient(options: WingmanClientOptions) {
           ),
       },
     },
-    tools: { list: () => requestData(api.GET("/tools")) },
+    tools: {
+      list: (workingDirectory?: string) =>
+        requestData(
+          api.GET("/tools", { params: { query: { working_directory: workingDirectory } } }),
+        ),
+    },
   };
 }
 

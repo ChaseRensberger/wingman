@@ -13,10 +13,15 @@ import (
 )
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
-	providers := s.providers.List()
+	registry, release, ok := s.requestProviders(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	providers := registry.List()
 	dtos := make([]ProviderDTO, 0, len(providers))
 	for _, meta := range providers {
-		dtos = append(dtos, s.providerToDTO(meta))
+		dtos = append(dtos, s.providerToDTO(registry, meta))
 	}
 	writeJSON(w, http.StatusOK, dtos)
 }
@@ -24,13 +29,18 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	meta, err := s.providers.Get(name)
+	registry, release, ok := s.requestProviders(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	meta, err := registry.Get(name)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, s.providerToDTO(meta))
+	writeJSON(w, http.StatusOK, s.providerToDTO(registry, meta))
 }
 
 type ProviderDTO struct {
@@ -54,25 +64,25 @@ type ProviderRouteDTO struct {
 	AuthSource    string `json:"auth_source"`
 }
 
-func (s *Server) providerToDTO(meta provider.ProviderMeta) ProviderDTO {
+func (s *Server) providerToDTO(registry *provider.Registry, meta provider.ProviderMeta) ProviderDTO {
 	return ProviderDTO{
 		ID:        meta.ID,
 		Name:      meta.Name,
 		AuthTypes: meta.AuthTypes,
-		Auth:      s.providerAuthStatus(meta.ID),
-		Route:     s.providerRoute(meta.ID),
+		Auth:      s.providerAuthStatus(registry, meta.ID),
+		Route:     s.providerRoute(registry, meta.ID),
 	}
 }
 
-func (s *Server) providerRoute(providerID string) ProviderRouteDTO {
-	baseURL, _ := s.providers.Catalog().GetProviderBaseURL(providerID)
+func (s *Server) providerRoute(registry *provider.Registry, providerID string) ProviderRouteDTO {
+	baseURL, _ := registry.Catalog().GetProviderBaseURL(providerID)
 	route := ProviderRouteDTO{
 		BaseURL:       baseURL,
 		BaseURLSource: "catalog",
 		AuthEnabled:   true,
 		AuthSource:    "default",
 	}
-	if cfg, ok := s.providers.Config(providerID); ok {
+	if cfg, ok := registry.Config(providerID); ok {
 		if cfg.Options.BaseURL != "" {
 			route.BaseURL = cfg.Options.BaseURL
 			route.BaseURLSource = "config"
@@ -85,8 +95,8 @@ func (s *Server) providerRoute(providerID string) ProviderRouteDTO {
 	return route
 }
 
-func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
-	if cfg, ok := s.providers.Config(providerID); ok && cfg.Options.Auth != nil && !*cfg.Options.Auth {
+func (s *Server) providerAuthStatus(registry *provider.Registry, providerID string) ProviderAuthStatusDTO {
+	if cfg, ok := registry.Config(providerID); ok && cfg.Options.Auth != nil && !*cfg.Options.Auth {
 		return ProviderAuthStatusDTO{Configured: false, Source: "disabled"}
 	}
 
@@ -99,7 +109,7 @@ func (s *Server) providerAuthStatus(providerID string) ProviderAuthStatusDTO {
 		}
 	}
 
-	if models, ok := s.providers.Catalog().GetModels(providerID); ok {
+	if models, ok := registry.Catalog().GetModels(providerID); ok {
 		for _, model := range models {
 			for _, env := range model.Env {
 				if os.Getenv(env) != "" {
@@ -173,8 +183,9 @@ func (s *Server) handleSetProvidersAuth(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	registry := s.modelProviders()
 	for name, cred := range req.Providers {
-		if !s.providers.IsValid(name) {
+		if !registry.IsValid(name) {
 			s.writeError(w, http.StatusBadRequest, "unknown provider: "+name)
 			return
 		}
@@ -196,7 +207,7 @@ func (s *Server) handleDeleteProviderAuth(w http.ResponseWriter, r *http.Request
 	}
 	providerName := chi.URLParam(r, "provider")
 
-	if !s.providers.IsValid(providerName) {
+	if !s.modelProviders().IsValid(providerName) {
 		s.writeError(w, http.StatusBadRequest, "unknown provider: "+providerName)
 		return
 	}
@@ -263,16 +274,21 @@ func modelToDTO(info models.ModelInfo) ModelDTO {
 func (s *Server) handleListProviderModels(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
-	if !s.providers.IsValid(name) {
+	registry, release, ok := s.requestProviders(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	if !registry.IsValid(name) {
 		s.writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
-	rawModels, _ := s.providers.Catalog().GetModels(name)
+	rawModels, _ := registry.Catalog().GetModels(name)
 
 	dtos := make(map[string]ModelDTO, len(rawModels))
 	for id := range rawModels {
-		if info, ok := s.providers.Catalog().Get(name, id); ok {
+		if info, ok := registry.Catalog().Get(name, id); ok {
 			dtos[id] = modelToDTO(info)
 		}
 	}
@@ -284,12 +300,17 @@ func (s *Server) handleGetProviderModel(w http.ResponseWriter, r *http.Request) 
 	name := chi.URLParam(r, "name")
 	modelID := chi.URLParam(r, "model")
 
-	if !s.providers.IsValid(name) {
+	registry, release, ok := s.requestProviders(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+	if !registry.IsValid(name) {
 		s.writeError(w, http.StatusNotFound, "unknown provider: "+name)
 		return
 	}
 
-	info, ok := s.providers.Catalog().Get(name, modelID)
+	info, ok := registry.Catalog().Get(name, modelID)
 	if !ok {
 		s.writeError(w, http.StatusNotFound, "model not found: "+name+"/"+modelID)
 		return

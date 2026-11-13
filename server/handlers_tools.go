@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
 
 	"github.com/chaserensberger/wingman/execution"
+	"github.com/chaserensberger/wingman/mcp"
+	"github.com/chaserensberger/wingman/pluginhost"
 	"github.com/chaserensberger/wingman/tool"
 )
 
@@ -29,13 +32,29 @@ type toolCatalogItem struct {
 }
 
 func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
-	scope, release, err := s.executionScope(r.Context(), "")
+	scope, release, err := s.executionScope(r.Context(), r.URL.Query().Get("working_directory"))
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer release()
-	_, items, err := s.toolCatalog(scope)
+	activation, releasePlugins, err := s.requestPluginActivation(r, r.URL.Query().Get("working_directory"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer releasePlugins()
+	var manager *mcp.Manager
+	if scope != nil {
+		var closeMCP func(context.Context) error
+		manager, closeMCP, err = scope.TransformedMCP(r.Context(), activation)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		defer closeMCP(context.Background())
+	}
+	_, items, err := s.capturedToolCatalog(scope, activation, manager)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -44,6 +63,14 @@ func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) toolCatalog(scope *execution.Scope) (*tool.Registry, []toolCatalogItem, error) {
+	var manager *mcp.Manager
+	if scope != nil {
+		manager = scope.MCP()
+	}
+	return s.capturedToolCatalog(scope, nil, manager)
+}
+
+func (s *Server) capturedToolCatalog(scope *execution.Scope, activation *pluginhost.Activation, manager *mcp.Manager) (*tool.Registry, []toolCatalogItem, error) {
 	var tools []tool.Tool
 	items := make(map[string]toolCatalogItem)
 	add := func(t tool.Tool, item toolCatalogItem) {
@@ -69,6 +96,9 @@ func (s *Server) toolCatalog(scope *execution.Scope) (*tool.Registry, []toolCata
 			}
 		}
 		pluginTools := scope.Plugins().Tools()
+		if activation != nil {
+			pluginTools = activation.Tools()
+		}
 		sort.Slice(pluginTools, func(i, j int) bool { return pluginTools[i].Name() < pluginTools[j].Name() })
 		for _, t := range pluginTools {
 			item := catalogItem(t, "plugin")
@@ -77,9 +107,9 @@ func (s *Server) toolCatalog(scope *execution.Scope) (*tool.Registry, []toolCata
 		}
 	}
 
-	if scope != nil && scope.MCP() != nil {
+	if manager != nil {
 		infos := make(map[string]toolCatalogItem)
-		for _, info := range scope.MCP().ToolInfos() {
+		for _, info := range manager.ToolInfos() {
 			if info.Status != "connected" {
 				continue
 			}
@@ -89,7 +119,7 @@ func (s *Server) toolCatalog(scope *execution.Scope) (*tool.Registry, []toolCata
 				RemoteName: info.RemoteName, Status: info.Status,
 			}
 		}
-		for _, t := range scope.MCP().Tools() {
+		for _, t := range manager.Tools() {
 			item, ok := infos[t.Name()]
 			if !ok {
 				item = catalogItem(t, "mcp")

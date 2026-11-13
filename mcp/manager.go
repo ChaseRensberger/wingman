@@ -179,6 +179,9 @@ func (m *Manager) Status() []Status {
 	return out
 }
 
+// Configuration returns an owned copy of the configured server definitions.
+func (m *Manager) Configuration() Config { return cloneConfig(m.cfg) }
+
 // Tools returns all connected MCP tools as Wingman runtime tools.
 func (m *Manager) Tools() []tool.Tool {
 	m.mu.RLock()

@@ -481,3 +481,26 @@ func TestSSEDecoderRejectsOversizedEvent(t *testing.T) {
 		t.Fatal("Err() = nil")
 	}
 }
+
+func TestListActionsProjectQuery(t *testing.T) {
+	directory := "/projects/project & notes"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/actions" || request.URL.Query().Get("working_directory") != directory {
+			t.Errorf("action request = %s", request.URL.String())
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"actions":[]}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.ListActionsWithResponse(t.Context(), &ListActionsParams{WorkingDirectory: &directory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.JSON200 == nil {
+		t.Fatalf("actions response = %#v", result)
+	}
+}

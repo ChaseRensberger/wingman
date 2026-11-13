@@ -143,8 +143,9 @@ func TestManagerKeepsProjectPluginDirectoriesScopeLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	global := t.TempDir()
+	state := pluginhost.State{Root: t.TempDir()}
 	var discovered [][]string
-	m, err := newManager(Config{Providers: registry, PluginDirs: []string{global}}, factories{
+	m, err := newManager(Config{Providers: registry, PluginDirs: []string{global}, PluginState: state}, factories{
 		newPlugins: func(ctx context.Context, dirs []string) (*pluginhost.Manager, error) {
 			discovered = append(discovered, append([]string(nil), dirs...))
 			return pluginhost.New(ctx, nil)
@@ -157,6 +158,11 @@ func TestManagerKeepsProjectPluginDirectoriesScopeLocal(t *testing.T) {
 	t.Cleanup(func() { _ = m.Close() })
 	firstDir := t.TempDir()
 	secondDir := t.TempDir()
+	for _, dir := range []string{firstDir, secondDir} {
+		if err := state.Trust(t.Context(), dir, true); err != nil {
+			t.Fatal(err)
+		}
+	}
 	first, err := m.Acquire(context.Background(), firstDir)
 	if err != nil {
 		t.Fatal(err)

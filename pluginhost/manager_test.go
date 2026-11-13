@@ -40,13 +40,13 @@ func TestManagerRPCProcessHelper(t *testing.T) {
 	id, _ := plugin["id"].(string)
 	invalidInitialize := false
 	if scenario == "bad-protocol" {
-		respond(init, map[string]any{"protocol_version": 2, "plugin": map[string]any{"id": id}})
+		respond(init, map[string]any{"protocol_version": ProtocolVersion + 1, "plugin": map[string]any{"id": id}})
 		invalidInitialize = true
 	} else if scenario == "bad-id" {
-		respond(init, map[string]any{"protocol_version": 1, "plugin": map[string]any{"id": "other"}})
+		respond(init, map[string]any{"protocol_version": ProtocolVersion, "plugin": map[string]any{"id": "other"}})
 		invalidInitialize = true
 	} else if scenario == "unsupported-capability" {
-		respond(init, map[string]any{"protocol_version": 1, "plugin": map[string]any{"id": id}, "capabilities": []string{"nope"}})
+		respond(init, map[string]any{"protocol_version": ProtocolVersion, "plugin": map[string]any{"id": id}, "capabilities": []string{"nope"}})
 		invalidInitialize = true
 	}
 	if invalidInitialize {
@@ -68,7 +68,7 @@ func TestManagerRPCProcessHelper(t *testing.T) {
 		capabilities = []string{CapabilityProgress}
 	}
 	respond(init, map[string]any{
-		"protocol_version": 1,
+		"protocol_version": ProtocolVersion,
 		"plugin":           map[string]any{"id": id, "name": "Initialized " + id, "version": "1.2.3"},
 		"capabilities":     capabilities,
 		"contributions":    map[string]any{"tools": []any{map[string]any{"name": name, "description": "helper", "input_schema": map[string]any{"type": "object"}}}},

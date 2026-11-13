@@ -22,6 +22,7 @@ import (
 const defaultSessionEventLimit = 100
 
 type sessionEventBroker struct {
+	observe   func(store.SessionEvent)
 	mu        sync.RWMutex
 	subs      map[string]map[*sessionEventSubscription]struct{}
 	overflows atomic.Int64
@@ -101,6 +102,9 @@ func (b *sessionEventBroker) closeSession(sessionID string) {
 }
 
 func (b *sessionEventBroker) publish(event store.SessionEvent) {
+	if b.observe != nil {
+		b.observe(event)
+	}
 	b.mu.RLock()
 	subs := b.subs[event.SessionID]
 	for sub := range subs {

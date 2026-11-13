@@ -21,6 +21,8 @@ import (
 	"github.com/chaserensberger/wingman/models/catalog"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/plugin/protocol"
+	"github.com/chaserensberger/wingman/plugins/orientation"
 	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/store"
 	"github.com/chaserensberger/wingman/tool"
@@ -422,7 +424,16 @@ func (s *Server) handleMessageSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
-	built, err := s.pluginActions()
+	clientID := ""
+	if !s.Ephemeral() {
+		var err error
+		clientID, err = s.resolveClientID(r)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	built, err := s.pluginActionsFor(r.Context(), protocol.Identity{ClientID: clientID, WorkDir: r.URL.Query().Get("working_directory")})
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -435,7 +446,27 @@ func (s *Server) handleListActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pluginActions() ([]plugin.Action, error) {
+	return s.pluginActionsFor(context.Background(), protocol.Identity{})
+}
+
+func (s *Server) pluginActionsFor(ctx context.Context, identity protocol.Identity) ([]plugin.Action, error) {
 	plugins := s.runtimePlugins()
+	scope, release, err := s.executionScope(ctx, identity.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if scope != nil {
+		identity.WorkDir = scope.WorkDir()
+	}
+	activation, err := s.acquirePlugins(ctx, scope, identity)
+	if err != nil {
+		return nil, err
+	}
+	if activation != nil {
+		defer activation.Close(ctx)
+		plugins = append(plugins, activation.Plugins()...)
+	}
 	if len(plugins) == 0 {
 		return []plugin.Action{}, nil
 	}
@@ -474,13 +505,13 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "input must be JSON")
 		return
 	}
-	stored, err := s.store.GetAgent(req.AgentID)
+	stored, pluginAgent, err := s.agentForRun(r, sess.WorkDir, req.AgentID)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
 		return
 	}
 	effective := s.agentWithRequestModel(stored, req.ModelRef, req.ModelRoute)
-	availableActions, err := s.pluginActions()
+	availableActions, err := s.pluginActionsFor(r.Context(), protocol.Identity{ClientID: sess.ClientID, SessionID: sess.ID, WorkDir: sess.WorkDir})
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -507,21 +538,14 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, api.ActionSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
 		return
 	}
-	instructions, sources, err := s.resolveInstructions(effective, sess.WorkDir)
+	skills, _, err := s.resolveSkills(effective, sess.WorkDir)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	skills, catalog, err := s.resolveSkills(effective, sess.WorkDir)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if catalog != "" {
-		instructions += "\n\n" + catalog
 	}
 	runtimeAgent := *effective
-	validation, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
+	draft := sessionDraft{PluginAgent: pluginAgent}
+	validation, err := s.buildSessionWithStore(r.Context(), &runtimeAgent, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), skills, &draft)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -548,7 +572,10 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	candidate.EffectiveInstructions, candidate.InstructionSources, candidate.Skills = instructions, sources, skills
+	if err := s.captureRunDraft(&candidate, draft, sess.WorkDir); err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	admission, err := s.store.AdmitSessionRun(r.Context(), candidate)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
@@ -565,6 +592,13 @@ func (s *Server) handleActionSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, sess *store.Session, req api.MessageSessionRequest) {
 	id := sess.ID
+	// Serialize retries before plugin preparation so one request cannot repeat hook side effects.
+	unlock, err := s.lockAdmission(r.Context(), id, req.RequestID)
+	if err != nil {
+		s.writeError(w, http.StatusRequestTimeout, err.Error())
+		return
+	}
+	defer unlock()
 	if req.Message == "" {
 		s.writeError(w, http.StatusBadRequest, "message is required")
 		return
@@ -584,7 +618,7 @@ func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 
-	storedAgent, err := s.store.GetAgent(req.AgentID)
+	storedAgent, pluginAgent, err := s.agentForRun(r, sess.WorkDir, req.AgentID)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
 		return
@@ -622,37 +656,20 @@ func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, ses
 		writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
 		return
 	}
-	effectiveInstructions, instructionSources, err := s.resolveInstructions(effectiveAgent, sess.WorkDir)
-	if err != nil {
-		existing, retryErr := s.findAdmissionRetry(r.Context(), sess, candidate)
-		if retryErr != nil {
-			if errors.Is(retryErr, store.ErrSessionRunAdmissionConflict) {
-				s.writeError(w, http.StatusConflict, retryErr.Error())
-			} else {
-				s.writeError(w, http.StatusInternalServerError, retryErr.Error())
-			}
-			return
-		}
-		if existing != nil {
-			if existing.Status == store.SessionRunStatusQueued {
-				s.runs.wake(id)
-			}
-			writeJSON(w, http.StatusAccepted, api.MessageSessionResponse{RunID: existing.ID, Status: existing.Status, SessionVersion: sess.AggregateVersion})
-			return
-		}
-		s.writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	skills, skillCatalog, err := s.resolveSkills(effectiveAgent, sess.WorkDir)
+	prepared, err := s.preparePluginPrompt(r.Context(), sess, req.AgentID, req.RequestID, req.Message)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if skillCatalog != "" {
-		effectiveInstructions += "\n\n" + skillCatalog
+	candidate.PreparedMessage = &prepared
+	skills, _, err := s.resolveSkills(effectiveAgent, sess.WorkDir)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	runtimeAgent := *effectiveAgent
-	validationSession, err := s.buildSessionWithSkills(r.Context(), &runtimeAgent, sess, skills)
+	draft := sessionDraft{PluginAgent: pluginAgent}
+	validationSession, err := s.buildSessionWithStore(r.Context(), &runtimeAgent, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), skills, &draft)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -664,9 +681,10 @@ func (s *Server) admitSessionMessage(w http.ResponseWriter, r *http.Request, ses
 		s.writeError(w, http.StatusInternalServerError, "close admission validation session")
 		return
 	}
-	candidate.EffectiveInstructions = effectiveInstructions
-	candidate.InstructionSources = instructionSources
-	candidate.Skills = skills
+	if err := s.captureRunDraft(&candidate, draft, sess.WorkDir); err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	admission, err := s.store.AdmitSessionRun(r.Context(), candidate)
 	if err != nil {
 		if errors.Is(err, store.ErrSessionRunAdmissionConflict) {
@@ -841,17 +859,19 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedAgent *store.Agent
+	var pluginAgent bool
 	if req.AgentID != "" {
 		if s.Ephemeral() {
 			s.writeError(w, http.StatusBadRequest, "agent_id is not supported in ephemeral mode; provide an inline agent spec")
 			return
 		}
-		a, err := s.store.GetAgent(req.AgentID)
+		a, external, err := s.agentForRun(r, req.WorkingDirectory, req.AgentID)
 		if err != nil {
 			s.writeError(w, http.StatusNotFound, "agent not found: "+req.AgentID)
 			return
 		}
 		storedAgent = a
+		pluginAgent = external
 	} else if req.Agent != nil {
 		storedAgent = storeAgent(req.Agent)
 	} else {
@@ -860,10 +880,6 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storedAgent = s.agentWithRequestModel(storedAgent, req.ModelRef, req.ModelRoute)
-	if storedAgent.ModelRef == "" {
-		s.writeError(w, http.StatusBadRequest, "model_ref is required when agent has no model_ref")
-		return
-	}
 
 	workDir, err := session.ResolveWorkDir(req.WorkingDirectory)
 	if err != nil {
@@ -876,6 +892,18 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		Title:   "ephemeral",
 		WorkDir: workDir,
 	}
+	if !s.Ephemeral() {
+		sess.ClientID, err = s.resolveClientID(r)
+		if err != nil {
+			s.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	req.Message, err = s.preparePluginPrompt(r.Context(), sess, storedAgent.ID, "", req.Message)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	_, _, err = s.resolveInstructions(storedAgent, workDir)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
@@ -887,7 +915,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runSession, err := s.buildEphemeralSessionWithSkills(r.Context(), storedAgent, sess, skills)
+	runSession, err := s.buildSessionWithStore(r.Context(), storedAgent, sess, nil, "", nil, skills, &sessionDraft{PluginAgent: pluginAgent})
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1080,33 +1108,26 @@ func writeRunStreamError(w http.ResponseWriter, flusher http.Flusher, err error)
 // via WithStore so the session loads its history from disk on Run and
 // persists every new message back as it lands.
 func (s *Server) buildSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), nil)
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), nil, nil)
 }
 
 func (s *Server) buildSessionWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, skills []skill.Skill) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), skills)
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, "", s.permissionRequests.prompter(sess.ID, ""), skills, nil)
 }
 
 func (s *Server) buildSessionForRun(ctx context.Context, stored *store.Agent, sess *store.Session, runID string) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), nil)
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), nil, nil)
 }
 
 func (s *Server) buildSessionForRunWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, runID string, skills []skill.Skill) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), skills)
+	return s.buildSessionWithStore(ctx, stored, sess, s.store, runID, s.permissionRequests.prompter(sess.ID, runID), skills, nil)
 }
 
 func (s *Server) buildEphemeralSession(ctx context.Context, stored *store.Agent, sess *store.Session) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil, nil)
+	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil, nil, nil)
 }
 
-func (s *Server) buildEphemeralSessionWithSkills(ctx context.Context, stored *store.Agent, sess *store.Session, skills []skill.Skill) (*session.Session, error) {
-	return s.buildSessionWithStore(ctx, stored, sess, nil, "", nil, skills)
-}
-
-func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter, skills []skill.Skill) (*session.Session, error) {
-	if stored.ModelRef == "" {
-		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
-	}
+func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent, sess *store.Session, st store.Store, runID string, prompter run.PermissionPrompter, skills []skill.Skill, draft *sessionDraft) (*session.Session, error) {
 	executionScope, releaseScope, err := s.executionScope(ctx, sess.WorkDir)
 	if err != nil {
 		return nil, err
@@ -1123,10 +1144,45 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 		providers = executionScope.Providers()
 		workDir = executionScope.WorkDir()
 	}
+	external, err := s.acquirePlugins(ctx, executionScope, protocol.Identity{ClientID: sess.ClientID, SessionID: sess.ID, RunID: runID, AgentID: stored.ID, WorkDir: workDir})
+	if err != nil {
+		return nil, err
+	}
+	keepPlugins := false
+	defer func() {
+		if external != nil && !keepPlugins {
+			_ = external.Close(context.Background())
+		}
+	}()
+	if draft != nil && draft.PluginAgent && (external == nil || !external.HasTransforms()) {
+		return nil, fmt.Errorf("agent %q is unavailable after plugin transforms", stored.ID)
+	}
+	if external != nil {
+		providers, err = external.ProviderRegistry(ctx, providers)
+		if err != nil {
+			return nil, err
+		}
+		if external.HasTransforms() && runID == "" {
+			stored, err = s.transformAgent(ctx, external, stored, draft != nil && draft.PluginAgent)
+			if err != nil {
+				return nil, err
+			}
+			skills, err = transformSkills(ctx, external, skills)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
+	if stored.ModelRef == "" {
+		return nil, fmt.Errorf("model_ref is required when agent has no model_ref")
+	}
 	modelRef, modelInfo, client, err := s.buildModelClient(stored, providers)
 	if err != nil {
 		return nil, err
+	}
+	if external != nil {
+		client = external.WrapHTTP(client)
 	}
 
 	logger := s.logger.With("session_id", sess.ID, "agent_id", stored.ID, "model_ref", modelRef.Ref())
@@ -1157,6 +1213,17 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	}
 	opts = append(opts, session.WithInstructionResolver(resolveInstructions))
 	plugins := s.runtimePlugins()
+	if external != nil && external.HasTransforms() {
+		references, err := s.transformReferences(ctx, external)
+		if err != nil {
+			return nil, err
+		}
+		for i, p := range plugins {
+			if p.Name() == "orientation" {
+				plugins[i] = orientation.New(orientation.Config{References: references})
+			}
+		}
+	}
 	if st != nil {
 		opts = append(opts, session.WithStore(st))
 	}
@@ -1183,9 +1250,34 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 			opts = append(opts, session.WithRunRecovery())
 		}
 	}
-	tools, err := s.resolveTools(executionScope, stored.Tools)
+	var tools []tool.Tool
+	if external != nil {
+		catalog, release, captureErr := executionScope.TransformedTools(ctx, external)
+		if captureErr != nil {
+			return nil, captureErr
+		}
+		defer func() {
+			if !keepPlugins {
+				_ = release(context.Background())
+			}
+		}()
+		opts = append(opts, session.WithCleanup(release))
+		for _, name := range stored.Tools {
+			t, lookupErr := catalog.Get(name)
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			tools = append(tools, t)
+		}
+	} else {
+		tools, err = s.resolveTools(executionScope, stored.Tools)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if external != nil {
+		plugins = append(plugins, external.Plugins()...)
+		opts = append(opts, session.WithCleanup(external.Close))
 	}
 	for i := 0; i < len(tools); i++ {
 		if tools[i].Name() != "question" {
@@ -1223,6 +1315,10 @@ func (s *Server) buildSessionWithStore(ctx context.Context, stored *store.Agent,
 	}))
 
 	keepScope = true
+	keepPlugins = true
+	if draft != nil {
+		draft.Agent, draft.Skills = *stored, skills
+	}
 	return session.New(opts...), nil
 }
 
@@ -1270,6 +1366,9 @@ func (s *Server) buildModelClient(stored *store.Agent, providers *provider.Regis
 }
 
 func (s *Server) resolveModelInfo(modelCatalog *catalog.Catalog, ref models.ModelRef, options map[string]any) (models.ModelInfo, error) {
+	if modelCatalog.Excluded(ref.Provider, ref.ID) {
+		return models.ModelInfo{}, fmt.Errorf("model is unavailable after plugin transforms: %s", ref.Ref())
+	}
 	if info, ok := modelCatalog.Get(ref.Provider, ref.ID); ok {
 		if ref.Variant != "" {
 			if _, exists := info.Variant(ref.Variant); !exists {
@@ -1346,11 +1445,15 @@ func (s *Server) agentWithRequestModel(stored *store.Agent, modelRef string, rou
 
 // resolveTools maps stored names to one validated live catalog. A configured
 // tool becoming unavailable is an explicit session construction error.
-func (s *Server) resolveTools(scope *execution.Scope, toolNames []string) ([]tool.Tool, error) {
+func (s *Server) resolveTools(scope *execution.Scope, toolNames []string, captured ...[]tool.Tool) ([]tool.Tool, error) {
 	var registry *tool.Registry
 	var err error
 	if scope != nil {
-		registry, err = scope.ToolCatalog()
+		if len(captured) > 0 {
+			registry, err = scope.ToolCatalogWith(captured[0])
+		} else {
+			registry, err = scope.ToolCatalog()
+		}
 	} else {
 		registry, _, err = s.toolCatalog(nil)
 	}

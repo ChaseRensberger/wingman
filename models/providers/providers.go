@@ -80,6 +80,7 @@ type Registry struct {
 	catalog   *catalog.Catalog
 	configs   map[string]ProviderConfig
 	routes    map[string]func(RouteConfig) (route.Route, error)
+	clients   map[string]func(Credential, ProviderOptions) models.Client
 }
 
 // Credential is one provider credential resolved by a caller-owned auth store.
@@ -259,6 +260,13 @@ func NewClientWithCredentials(credentials map[string]Credential, refresh func(co
 
 // Prepare lowers a request into provider-native JSON without sending it.
 func (c *Client) Prepare(ctx context.Context, req models.Request) (*models.PreparedRequest, error) {
+	client, err := c.external(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	if client != nil {
+		return client.Prepare(ctx, req)
+	}
 	m, err := c.model(req.Model)
 	if err != nil {
 		return nil, err
@@ -277,11 +285,51 @@ func (c *Client) LoweredOptions(ctx context.Context, req models.Request) models.
 
 // Stream sends the request to the selected provider route.
 func (c *Client) Stream(ctx context.Context, req models.Request) (*models.EventStream[models.StreamPart, *models.Message], error) {
+	client, err := c.external(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	if client != nil {
+		return client.Stream(ctx, req)
+	}
 	m, err := c.model(req.Model)
 	if err != nil {
 		return nil, err
 	}
 	return m.Stream(ctx, req)
+}
+
+func (c *Client) external(ref models.ModelRef) (models.Client, error) {
+	factory := c.registry.clients[ref.Provider]
+	if factory == nil {
+		return nil, nil
+	}
+	info, err := resolveModelInfo(c.registry.catalog, ref)
+	if err != nil {
+		return nil, err
+	}
+	if ref.Variant != "" {
+		if _, exists := info.Variant(ref.Variant); !exists {
+			return nil, fmt.Errorf("variant unavailable for %s/%s: %s", ref.Provider, ref.ID, ref.Variant)
+		}
+	}
+	options := cloneOptions(c.registry.configs[ref.Provider].Options)
+	if options.Auth != nil && !*options.Auth {
+		return factory(Credential{}, options), nil
+	}
+	credential := c.Credentials[ref.Provider]
+	if credential.Type == "" && c.Auth[ref.Provider] != "" {
+		credential = Credential{Type: "api_key", Key: c.Auth[ref.Provider]}
+	}
+	if credential.Type == "" {
+		for _, name := range info.Env {
+			if key := os.Getenv(name); key != "" {
+				credential = Credential{Type: "api_key", Key: key}
+				break
+			}
+		}
+	}
+	return factory(credential, options), nil
 }
 
 // Generate drains Stream and returns the final assistant message.
@@ -342,6 +390,9 @@ func (c *Client) model(ref models.ModelRef) (*route.Model, error) {
 }
 
 func resolveModelInfo(c *catalog.Catalog, ref models.ModelRef) (models.ModelInfo, error) {
+	if c.Excluded(ref.Provider, ref.ID) {
+		return models.ModelInfo{}, fmt.Errorf("model is unavailable after plugin transforms: %s", ref.Ref())
+	}
 	if ref.Provider == "" || ref.ID == "" {
 		return models.ModelInfo{}, fmt.Errorf("model ref is required")
 	}
@@ -370,11 +421,7 @@ func cloneMeta(meta ProviderMeta) ProviderMeta {
 
 func cloneConfig(cfg ProviderConfig) ProviderConfig {
 	cfg.AuthTypes = append([]AuthType(nil), cfg.AuthTypes...)
-	cfg.Options.Query = cloneStrings(cfg.Options.Query)
-	if cfg.Options.Auth != nil {
-		auth := *cfg.Options.Auth
-		cfg.Options.Auth = &auth
-	}
+	cfg.Options = cloneOptions(cfg.Options)
 	modelsByID := cfg.Models
 	cfg.Models = make(map[string]models.ModelInfo, len(modelsByID))
 	for id, info := range modelsByID {
@@ -383,6 +430,15 @@ func cloneConfig(cfg ProviderConfig) ProviderConfig {
 		cfg.Models[id] = info
 	}
 	return cfg
+}
+
+func cloneOptions(options ProviderOptions) ProviderOptions {
+	options.Query = cloneStrings(options.Query)
+	if options.Auth != nil {
+		auth := *options.Auth
+		options.Auth = &auth
+	}
+	return options
 }
 
 func cloneVariants(in []models.ModelVariant) []models.ModelVariant {

@@ -174,6 +174,10 @@ func (u ToolUse) MarshalJSON() ([]byte, error) {
 // SessionRun is a durably admitted prompt and its immutable effective agent
 // configuration. Runs are claimed in sequence order per session.
 type SessionRun struct {
+	// PreparedMessage replaces Message after the original admission hash is computed.
+	PreparedMessage *string `json:"-"`
+	// PreparedAgent replaces Agent after the original admission hash is computed.
+	PreparedAgent         *Agent              `json:"-"`
 	Completion            CompletionOptions   `json:"completion,omitempty"`
 	Completions           []Completion        `json:"completions,omitempty"`
 	RecoveryAttempts      int                 `json:"recovery_attempts,omitempty"`

@@ -25,10 +25,8 @@
 //
 // # Loading model
 //
-// v0.1 plugins are compile-time only: a Plugin is a Go value the
-// program builds and passes to session.WithPlugin. Future versions may
-// add MCP-style external plugins (for tools) and Yaegi-script plugins
-// (for hooks), loaded from local files or package distributions.
+// Embedded plugins are Go values passed to session.WithPlugin. Independently
+// compiled executables use the public plugin SDK and pluginhost adapters.
 //
 // # Authoring
 //
@@ -104,6 +102,30 @@ type Registry struct {
 	contextBoundary   string
 	built             bool
 	owner             string
+	turnStart         []func(context.Context, int) error
+	turnEnd           []func(context.Context, int, run.Turn) error
+}
+
+// RegisterOnTurnStart observes the start of a model-loop step.
+func (r *Registry) RegisterOnTurnStart(h func(context.Context, int) error) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if h != nil {
+		r.turnStart = append(r.turnStart, h)
+	}
+	return nil
+}
+
+// RegisterOnTurnEnd observes a completed model-loop step.
+func (r *Registry) RegisterOnTurnEnd(h func(context.Context, int, run.Turn) error) error {
+	if err := r.mutable(); err != nil {
+		return err
+	}
+	if h != nil {
+		r.turnEnd = append(r.turnEnd, h)
+	}
+	return nil
 }
 
 // Action is a synchronous, plugin-owned session operation.
@@ -508,6 +530,28 @@ func (r *Registry) build() (Built, models.PartDecoders, error) {
 		return Built{}, models.PartDecoders{}, err
 	}
 	hooks := run.Hooks{}
+	if len(r.turnStart) > 0 {
+		callbacks := append([]func(context.Context, int) error(nil), r.turnStart...)
+		hooks.OnTurnStart = func(ctx context.Context, step int) error {
+			for _, callback := range callbacks {
+				if err := callback(ctx, step); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+	if len(r.turnEnd) > 0 {
+		callbacks := append([]func(context.Context, int, run.Turn) error(nil), r.turnEnd...)
+		hooks.OnTurnEnd = func(ctx context.Context, step int, turn run.Turn) error {
+			for _, callback := range callbacks {
+				if err := callback(ctx, step, turn); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
 	if len(r.transformSystem) > 0 {
 		transforms := append([]run.TransformSystemHook(nil), r.transformSystem...)
 		hooks.TransformSystem = func(ctx context.Context, info run.TransformSystemInfo) (string, error) {

@@ -60,6 +60,10 @@ func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skil
 		skills = append(skills, entry)
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i].ID < skills[j].ID })
+	return skills, s.skillCatalog(agent, skills), nil
+}
+
+func (s *Server) skillCatalog(agent *store.Agent, skills []skill.Skill) string {
 	var lines []string
 	for _, entry := range skills {
 		if entry.Description == "" || permission.Evaluate("skill", entry.ID, s.effectivePermissions(agent), permission.EffectAllow).Effect == permission.EffectDeny {
@@ -68,9 +72,9 @@ func (s *Server) resolveSkills(agent *store.Agent, workDir string) ([]skill.Skil
 		lines = append(lines, skillSummary(entry))
 	}
 	if len(lines) == 0 {
-		return skills, "", nil
+		return ""
 	}
-	return skills, skillCatalogHeader + strings.Join(lines, "\n"), nil
+	return skillCatalogHeader + strings.Join(lines, "\n")
 }
 
 func (s *Server) instructionResolver(ctx context.Context, data store.Store, sess *store.Session, agent *store.Agent, skills []skill.Skill) (run.InstructionResolver, error) {

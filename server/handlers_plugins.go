@@ -53,6 +53,14 @@ func (s *Server) handleListRPCPlugins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReloadRPCPlugins(w http.ResponseWriter, r *http.Request) {
+	if s.scopes != nil {
+		if err := s.scopes.ReloadPlugins(r.Context()); err != nil {
+			s.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.handleListRPCPlugins(w, r)
+		return
+	}
 	scope, release, err := s.executionScope(r.Context(), "")
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())

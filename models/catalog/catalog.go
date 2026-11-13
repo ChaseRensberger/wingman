@@ -93,18 +93,21 @@ type RouteInfo struct {
 
 // ProviderOverlay supplies per-generation provider defaults and model routes.
 type ProviderOverlay struct {
+	Name    string
 	BaseURL string
 	Models  map[string]models.ModelInfo
 }
 
 // Catalog is an immutable snapshot of model routes and provider defaults.
 type Catalog struct {
-	byRef           map[string]models.ModelInfo
-	byProv          map[string]map[string]models.ModelInfo
-	byDefault       map[string]providerFile
-	labs            map[string]LabInfo
-	canonicalModels map[string]ModelMetadata
-	routes          []RouteInfo
+	excludedProviders map[string]bool
+	excludedModels    map[string]bool
+	byRef             map[string]models.ModelInfo
+	byProv            map[string]map[string]models.ModelInfo
+	byDefault         map[string]providerFile
+	labs              map[string]LabInfo
+	canonicalModels   map[string]ModelMetadata
+	routes            []RouteInfo
 }
 
 var (
@@ -316,6 +319,9 @@ func New(overlays map[string]ProviderOverlay) (*Catalog, error) {
 		}
 		overlay := overlays[id]
 		defaults := c.byDefault[id]
+		if overlay.Name != "" {
+			defaults.Name = overlay.Name
+		}
 		if overlay.BaseURL != "" {
 			defaults.BaseURL = overlay.BaseURL
 			for _, info := range c.byProv[id] {
@@ -351,6 +357,78 @@ func New(overlays map[string]ProviderOverlay) (*Catalog, error) {
 		}
 	}
 	return c, nil
+}
+
+// WithInventory replaces routes and provider defaults while retaining descriptive model metadata.
+func (c *Catalog) WithInventory(inventory map[string]ProviderOverlay) (*Catalog, error) {
+	next := c.clone()
+	next.excludedProviders = map[string]bool{}
+	next.excludedModels = map[string]bool{}
+	for id, excluded := range c.excludedProviders {
+		next.excludedProviders[id] = excluded
+	}
+	for id, excluded := range c.excludedModels {
+		next.excludedModels[id] = excluded
+	}
+	for id := range c.byDefault {
+		if _, ok := inventory[id]; !ok {
+			next.excludedProviders[id] = true
+		}
+	}
+	for _, info := range c.byRef {
+		if _, ok := inventory[info.Provider].Models[info.ID]; !ok {
+			next.excludedModels[info.Provider+"/"+info.ID] = true
+		}
+	}
+	next.byRef = map[string]models.ModelInfo{}
+	next.byProv = map[string]map[string]models.ModelInfo{}
+	next.byDefault = map[string]providerFile{}
+	next.routes = nil
+	ids := make([]string, 0, len(inventory))
+	for id := range inventory {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		delete(next.excludedProviders, id)
+		source := inventory[id]
+		defaults := c.byDefault[id]
+		defaults.Name = source.Name
+		if source.BaseURL != "" {
+			defaults.BaseURL = source.BaseURL
+		}
+		next.byDefault[id] = defaults
+		keys := make([]string, 0, len(source.Models))
+		for key := range source.Models {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			delete(next.excludedModels, id+"/"+key)
+			info := source.Models[key]
+			if id == "" || key == "" || info.ID != key || info.Provider != id {
+				return nil, fmt.Errorf("invalid model identity %s/%s", id, key)
+			}
+			if info.BaseURL == "" {
+				info.BaseURL = defaults.BaseURL
+			}
+			if info.BaseURL == "" {
+				return nil, fmt.Errorf("model %s/%s requires a base URL", id, key)
+			}
+			if err := validateVariants(info.Variants); err != nil {
+				return nil, err
+			}
+			baseModel := ""
+			for _, route := range c.routes {
+				if route.Provider == id && route.ID == key {
+					baseModel = route.BaseModel
+					break
+				}
+			}
+			next.addRoute(info, baseModel)
+		}
+	}
+	return next, nil
 }
 
 func validateVariants(variants []models.ModelVariant) error {
@@ -390,6 +468,8 @@ func (c *Catalog) clone() *Catalog {
 		v.Env = append([]string(nil), v.Env...)
 		out.byDefault[k] = v
 	}
+	out.excludedProviders = c.excludedProviders
+	out.excludedModels = c.excludedModels
 	for k, v := range c.labs {
 		out.labs[k] = v
 	}
@@ -397,6 +477,11 @@ func (c *Catalog) clone() *Catalog {
 		out.canonicalModels[k] = v
 	}
 	return out
+}
+
+// Excluded reports whether an inventory policy removed a provider or model.
+func (c *Catalog) Excluded(provider, model string) bool {
+	return c.excludedProviders[provider] || c.excludedModels[provider+"/"+model]
 }
 
 // GetRef returns metadata for a provider-qualified model ref.

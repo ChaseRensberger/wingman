@@ -487,6 +487,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rpc-plugins/auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List plugin sign-in methods */
+        get: operations["listPluginAuthMethods"];
+        put?: never;
+        /** Start, inspect, complete, or cancel plugin sign-in */
+        post: operations["authenticatePlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Call a plugin-defined operation */
+        post: operations["callPluginMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the plugin release catalog */
+        get: operations["searchPluginCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Subscribe to client-owned public and plugin events */
+        post: operations["pluginEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/manage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install, update, or remove a plugin */
+        post: operations["managePluginPackages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List installed plugin packages */
+        get: operations["listPluginPackages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rpc-plugins/reload": {
         parameters: {
             query?: never;
@@ -498,6 +601,23 @@ export interface paths {
         put?: never;
         /** Reload RPC plugins */
         post: operations["reloadRPCPlugins"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rpc-plugins/trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or revoke project plugin execution */
+        post: operations["setPluginProjectTrust"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1066,6 +1186,10 @@ export interface components {
             previous_name: string;
             run_id: string;
         };
+        Artifact: {
+            sha256: string;
+            url: string;
+        };
         AuthCredential: {
             access?: string;
             account_id?: string;
@@ -1074,6 +1198,13 @@ export interface components {
             key?: string;
             refresh?: string;
             type: string;
+        };
+        AuthMethod: {
+            id: string;
+            integration: string;
+            /** @enum {string} */
+            kind: "key" | "oauth" | "command";
+            label: string;
         };
         AuthType: {
             name?: string;
@@ -1315,6 +1446,11 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["Error"];
         };
+        Event: {
+            context: components["schemas"]["Identity"];
+            data: unknown;
+            type: string;
+        };
         EventsResyncRequiredEventData: {
             /** Format: int64 */
             cursor: number;
@@ -1337,6 +1473,13 @@ export interface components {
                 [key: string]: string;
             };
         };
+        Identity: {
+            agent_id?: string;
+            client_id?: string;
+            run_id?: string;
+            session_id?: string;
+            work_dir?: string;
+        };
         ImagePart: {
             base64?: string;
             id?: string;
@@ -1347,6 +1490,16 @@ export interface components {
             /** @constant */
             type: "image";
             url?: string;
+        };
+        Installation: {
+            artifact: components["schemas"]["Artifact"];
+            catalog: string;
+            id: string;
+            /** Format: date-time */
+            installed_at: string;
+            platform: string;
+            requested: string;
+            version: string;
         };
         InstructionSnapshot: {
             call_id?: string;
@@ -1594,6 +1747,13 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        Package: {
+            description: string;
+            id: string;
+            name: string;
+            releases: components["schemas"]["Release"][] | null;
+            repository: string;
+        };
         /** Message part */
         Part: components["schemas"]["TextPart"] | components["schemas"]["ImagePart"] | components["schemas"]["ReasoningPart"] | components["schemas"]["ToolPart"] | components["schemas"]["ToolCallPart"] | components["schemas"]["ToolResultPart"] | ({
             type: string;
@@ -1652,6 +1812,54 @@ export interface components {
         PermissionTarget: {
             action: string;
             resource_fields?: string[] | null;
+        };
+        PluginAuthRequest: {
+            attempt?: string;
+            input?: unknown;
+            method?: string;
+            /** @enum {string} */
+            operation: "start" | "status" | "complete" | "cancel";
+            plugin?: string;
+            working_directory?: string;
+        };
+        PluginAuthStatus: {
+            id: string;
+            instructions?: string;
+            integration: string;
+            method: string;
+            plugin: string;
+            /** @enum {string} */
+            status: "pending" | "connected" | "cancelled" | "failed";
+            url?: string;
+        };
+        PluginCallRequest: {
+            input: unknown;
+            method: string;
+            plugin: string;
+            working_directory?: string;
+        };
+        PluginEventRequest: {
+            id?: string;
+            /** @enum {string} */
+            operation: "subscribe" | "next" | "close";
+            types?: string[] | null;
+        };
+        PluginEventResponse: {
+            events?: components["schemas"]["Event"][] | null;
+            id?: string;
+        };
+        PluginPackageRequest: {
+            /** @enum {string} */
+            operation: "install" | "update" | "remove";
+            source: string;
+        };
+        PluginPackageResponse: {
+            installation?: components["schemas"]["Installation"];
+            status: string;
+        };
+        PluginTrustRequest: {
+            directory: string;
+            trusted: boolean;
         };
         PluginsResponse: {
             plugins: components["schemas"]["RegisteredPlugin"][] | null;
@@ -1792,6 +2000,15 @@ export interface components {
         RegisteredPlugin: {
             enabled: boolean;
             id: string;
+        };
+        Release: {
+            artifacts: {
+                [key: string]: components["schemas"]["Artifact"];
+            };
+            minimum_wingman?: string;
+            /** Format: int64 */
+            protocol: number;
+            version: string;
         };
         RenameSessionRequest: {
             /** Format: int64 */
@@ -2542,7 +2759,10 @@ export interface operations {
     };
     listActions: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for action discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -2574,7 +2794,10 @@ export interface operations {
     };
     listAgents: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -2642,7 +2865,10 @@ export interface operations {
     };
     getAgent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -2748,7 +2974,10 @@ export interface operations {
     };
     getModelCatalog: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3079,7 +3308,10 @@ export interface operations {
     };
     listMCPServers: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3261,7 +3493,10 @@ export interface operations {
     };
     listProviders: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3395,7 +3630,10 @@ export interface operations {
     };
     getProvider: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3429,7 +3667,10 @@ export interface operations {
     };
     listProviderModels: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3465,7 +3706,10 @@ export interface operations {
     };
     getProviderModel: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;
@@ -3679,6 +3923,254 @@ export interface operations {
             };
         };
     };
+    listPluginAuthMethods: {
+        parameters: {
+            query?: {
+                /** @description Project directory for sign-in methods */
+                working_directory?: string;
+            };
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["AuthMethod"][] | null;
+                    };
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    authenticatePlugin: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginAuthRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginAuthStatus"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    callPluginMethod: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginCallRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    searchPluginCatalog: {
+        parameters: {
+            query?: {
+                /** @description Search package identities, names, and descriptions */
+                query?: string;
+            };
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Package"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    pluginEvents: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginEventRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginEventResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    managePluginPackages: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginPackageRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPackageResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPluginPackages: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Installation"][] | null;
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     reloadRPCPlugins: {
         parameters: {
             query?: never;
@@ -3698,6 +4190,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RpcPluginsResponse"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setPluginProjectTrust: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Client identity for resource attribution and scoping */
+                "X-Wingman-Client"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginTrustRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Request failed */
@@ -4764,7 +5292,10 @@ export interface operations {
     };
     listTools: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project directory for runtime discovery */
+                working_directory?: string;
+            };
             header?: {
                 /** @description Client identity for resource attribution and scoping */
                 "X-Wingman-Client"?: string;

@@ -7,7 +7,10 @@ description: "Extension methods for Go and external plugins."
 
 Go plugins add tools, hooks, actions, and custom message parts to embedded sessions.
 A hook is a function called at a session event.
-External RPC plugins support tools, progress, cancellation, and health reports. They do not support session hooks or actions.
+Native executable plugins use the [Go SDK](/extend/go-executable-plugins). They support tools, the hooks listed below, actions, model providers, custom operations, progress, cancellation, and health reports.
+Custom message parts cross the process boundary as opaque JSON. The executable declares their names and can declare a context boundary.
+
+Executable plugins also support [runtime transforms, prompt and HTTP hooks, sign-in methods, and event subscriptions](/extend/plugin-runtime).
 
 ## Go registration methods
 
@@ -17,6 +20,8 @@ Register extensions through `plugin.Registry` during `Activate`:
 | ------------------------------------- | --------------------------------------------------- |
 | `RegisterBeforeRun`                   | Supply initial history before a run.                |
 | `RegisterAfterRun`                    | Observe the run result and failure.                 |
+| `RegisterOnTurnStart`                 | Observe the start of a model-loop step.             |
+| `RegisterOnTurnEnd`                   | Observe a completed model-loop step.                |
 | `RegisterBeforeComplete`              | Accept an answer or request another iteration.      |
 | `RegisterTransformHistory`            | Replace active history before a model step.         |
 | `RegisterTransformContext`            | Change messages for one model request.              |
