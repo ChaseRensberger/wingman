@@ -209,6 +209,22 @@
         ],
         "type": "object"
       },
+      "Artifact": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "AuthCredential": {
         "additionalProperties": false,
         "properties": {
@@ -234,6 +250,35 @@
         },
         "required": [
           "type"
+        ],
+        "type": "object"
+      },
+      "AuthMethod": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "integration": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "key",
+              "oauth",
+              "command"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "integration",
+          "label",
+          "kind"
         ],
         "type": "object"
       },
@@ -1097,6 +1142,24 @@
         ],
         "type": "object"
       },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/Identity"
+          },
+          "data": {},
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "context",
+          "type",
+          "data"
+        ],
+        "type": "object"
+      },
       "EventsResyncRequiredEventData": {
         "additionalProperties": false,
         "properties": {
@@ -1154,6 +1217,27 @@
         },
         "type": "object"
       },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "work_dir": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ImagePart": {
         "additionalProperties": false,
         "properties": {
@@ -1180,6 +1264,43 @@
         },
         "required": [
           "type"
+        ],
+        "type": "object"
+      },
+      "Installation": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/Artifact"
+          },
+          "catalog": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "requested": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "requested",
+          "catalog",
+          "artifact",
+          "platform",
+          "installed_at"
         ],
         "type": "object"
       },
@@ -1983,6 +2104,40 @@
         ],
         "type": "object"
       },
+      "Package": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/Release"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "repository",
+          "releases"
+        ],
+        "type": "object"
+      },
       "Part": {
         "anyOf": [
           {
@@ -2209,6 +2364,197 @@
         },
         "required": [
           "action"
+        ],
+        "type": "object"
+      },
+      "PluginAuthRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "type": "string"
+          },
+          "input": {},
+          "method": {
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "start",
+              "status",
+              "complete",
+              "cancel"
+            ],
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "working_directory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "type": "object"
+      },
+      "PluginAuthStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": "string"
+          },
+          "integration": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "connected",
+              "cancelled",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "plugin",
+          "method",
+          "integration",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PluginCallRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {},
+          "method": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "working_directory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "method",
+          "input"
+        ],
+        "type": "object"
+      },
+      "PluginEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "subscribe",
+              "next",
+              "close"
+            ],
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "type": "object"
+      },
+      "PluginEventResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PluginPackageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "enum": [
+              "install",
+              "update",
+              "remove"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "source"
+        ],
+        "type": "object"
+      },
+      "PluginPackageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "installation": {
+            "$ref": "#/components/schemas/Installation"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "PluginTrustRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "directory": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "directory",
+          "trusted"
         ],
         "type": "object"
       },
@@ -2776,6 +3122,33 @@
         "required": [
           "id",
           "enabled"
+        ],
+        "type": "object"
+      },
+      "Release": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Artifact"
+            },
+            "type": "object"
+          },
+          "minimum_wingman": {
+            "type": "string"
+          },
+          "protocol": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "protocol",
+          "artifacts"
         ],
         "type": "object"
       },
@@ -5226,6 +5599,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project directory for action discovery",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5266,6 +5647,14 @@
             "description": "Client identity for resource attribution and scoping",
             "in": "header",
             "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
             "schema": {
               "type": "string"
             }
@@ -5426,6 +5815,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5525,6 +5922,14 @@
             "description": "Client identity for resource attribution and scoping",
             "in": "header",
             "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
             "schema": {
               "type": "string"
             }
@@ -6000,6 +6405,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6268,6 +6681,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6470,6 +6891,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6518,6 +6947,14 @@
             "in": "path",
             "name": "name",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
             "schema": {
               "type": "string"
             }
@@ -6580,6 +7017,14 @@
             "in": "path",
             "name": "model",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
             "schema": {
               "type": "string"
             }
@@ -6888,6 +7333,380 @@
         "summary": "List RPC plugin status"
       }
     },
+    "/rpc-plugins/auth": {
+      "get": {
+        "operationId": "listPluginAuthMethods",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for sign-in methods",
+            "in": "query",
+            "name": "working_directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "$ref": "#/components/schemas/AuthMethod"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "List plugin sign-in methods"
+      },
+      "post": {
+        "operationId": "authenticatePlugin",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginAuthStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Start, inspect, complete, or cancel plugin sign-in"
+      }
+    },
+    "/rpc-plugins/call": {
+      "post": {
+        "operationId": "callPluginMethod",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Call a plugin-defined operation"
+      }
+    },
+    "/rpc-plugins/catalog": {
+      "get": {
+        "operationId": "searchPluginCatalog",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Search package identities, names, and descriptions",
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Package"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Search the plugin release catalog"
+      }
+    },
+    "/rpc-plugins/events": {
+      "post": {
+        "operationId": "pluginEvents",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginEventResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Subscribe to client-owned public and plugin events"
+      }
+    },
+    "/rpc-plugins/manage": {
+      "post": {
+        "operationId": "managePluginPackages",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginPackageResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Install, update, or remove a plugin"
+      }
+    },
+    "/rpc-plugins/packages": {
+      "get": {
+        "operationId": "listPluginPackages",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Installation"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "List installed plugin packages"
+      }
+    },
     "/rpc-plugins/reload": {
       "post": {
         "operationId": "reloadRPCPlugins",
@@ -6929,6 +7748,59 @@
           }
         ],
         "summary": "Reload RPC plugins"
+      }
+    },
+    "/rpc-plugins/trust": {
+      "post": {
+        "operationId": "setPluginProjectTrust",
+        "parameters": [
+          {
+            "description": "Client identity for resource attribution and scoping",
+            "in": "header",
+            "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginTrustRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request failed"
+          }
+        },
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "summary": "Approve or revoke project plugin execution"
       }
     },
     "/run": {
@@ -8664,6 +9536,14 @@
             "description": "Client identity for resource attribution and scoping",
             "in": "header",
             "name": "X-Wingman-Client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Project directory for runtime discovery",
+            "in": "query",
+            "name": "working_directory",
             "schema": {
               "type": "string"
             }

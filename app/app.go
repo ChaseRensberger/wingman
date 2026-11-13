@@ -29,6 +29,7 @@ import (
 	_ "github.com/chaserensberger/wingman/models/providers/openrouter"
 	"github.com/chaserensberger/wingman/permission"
 	"github.com/chaserensberger/wingman/pluginhost"
+	"github.com/chaserensberger/wingman/pluginhub"
 	"github.com/chaserensberger/wingman/plugins/compaction"
 	"github.com/chaserensberger/wingman/plugins/orientation"
 	"github.com/chaserensberger/wingman/plugins/wingcode"
@@ -48,6 +49,8 @@ type Config struct {
 	LogWriter         io.Writer
 	Logger            *slog.Logger
 	PluginDirs        []string
+	PluginCatalog     string
+	PluginState       pluginhost.State
 	DefaultPluginDir  string
 	GlobalSkillDirs   []string
 	References        []orientation.Reference
@@ -178,7 +181,8 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 	}
 	a.scopes, err = f.newScopes(execution.Config{
 		RootContext: root, PluginDirs: dirs, DisablePlugins: cfg.DisablePlugins,
-		MCP: cfg.MCP, Providers: providers, NativeTools: execution.BuiltinTools(),
+		PluginState: cfg.PluginState,
+		MCP:         cfg.MCP, Providers: providers, NativeTools: execution.BuiltinTools(),
 	})
 	if err != nil {
 		return fail(fmt.Errorf("initialize execution scopes: %w", err))
@@ -209,13 +213,23 @@ func newWithFactories(ctx context.Context, cfg Config, f factories) (*App, error
 			{ID: "compaction", Enabled: true, Factory: func() plugin.Plugin { return compaction.New() }},
 			{ID: "wingcode", Enabled: true, Factory: func() plugin.Plugin { return wingcode.New() }},
 		},
-		RequestRestart: cfg.RequestRestart,
+		PluginState:     cfg.PluginState,
+		PluginInstaller: &pluginhub.Installer{Root: defaultPluginInstallDir(cfg), CatalogURL: cfg.PluginCatalog, WingmanVersion: cfg.Version, Update: a.scopes.manager.UpdatePlugins},
+		RequestRestart:  cfg.RequestRestart,
 	})
 	rollback = append(rollback, func() error { return a.server.Close(context.Background()) })
 	if err := a.server.Start(ctx); err != nil {
 		return fail(fmt.Errorf("start application: %w", err))
 	}
 	return a, nil
+}
+
+func defaultPluginInstallDir(cfg Config) string {
+	if cfg.DefaultPluginDir != "" {
+		return cfg.DefaultPluginDir
+	}
+	dir, _ := pluginhost.DefaultGlobalDir()
+	return dir
 }
 
 // Handler returns the daemon HTTP adapter.

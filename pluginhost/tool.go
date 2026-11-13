@@ -2,13 +2,16 @@ package pluginhost
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/chaserensberger/wingman/tool"
 )
 
 type rpcTool struct {
-	plugin *loadedPlugin
-	spec   ToolSpec
+	plugin     *loadedPlugin
+	spec       ToolSpec
+	pinned     bool
+	activation *Activation
 }
 
 func (t *rpcTool) Name() string { return t.spec.Name }
@@ -29,5 +32,11 @@ func (t *rpcTool) Definition() tool.Definition {
 }
 
 func (t *rpcTool) Execute(ctx context.Context, inv tool.Invocation) (tool.Result, error) {
-	return t.plugin.executeTool(ctx, t.spec.Name, inv)
+	if t.activation != nil && t.activation.closed.Load() {
+		return tool.Result{}, fmt.Errorf("plugin activation is closed")
+	}
+	if t.pinned {
+		ctx = t.activation.context(ctx)
+	}
+	return t.plugin.executeToolPinned(ctx, t.spec.Name, inv, t.pinned)
 }

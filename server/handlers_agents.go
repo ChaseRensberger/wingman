@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 
@@ -58,11 +59,22 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 		s.ephemeralNotImplemented(w)
 		return
 	}
-	agents, err := s.store.ListAgents()
+	activation, release, err := s.requestPluginActivation(r, r.URL.Query().Get("working_directory"))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer release()
+	draft, err := s.transformedAgents(r.Context(), activation, nil)
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	agents := make([]*store.Agent, 0, len(draft))
+	for _, agent := range draft {
+		agents = append(agents, &agent)
+	}
+	sort.Slice(agents, func(i, j int) bool { return agents[i].ID < agents[j].ID })
 	writeJSON(w, http.StatusOK, apiAgents(agents))
 }
 
@@ -73,13 +85,23 @@ func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 
-	a, err := s.store.GetAgent(id)
+	activation, release, err := s.requestPluginActivation(r, r.URL.Query().Get("working_directory"))
 	if err != nil {
-		s.writeError(w, http.StatusNotFound, err.Error())
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	writeJSON(w, http.StatusOK, apiAgent(a))
+	defer release()
+	agents, err := s.transformedAgents(r.Context(), activation, nil)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	a, ok := agents[id]
+	if !ok {
+		s.writeError(w, http.StatusNotFound, "agent not found: "+id)
+		return
+	}
+	writeJSON(w, http.StatusOK, apiAgent(&a))
 }
 
 func (s *Server) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {

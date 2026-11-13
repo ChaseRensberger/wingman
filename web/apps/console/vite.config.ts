@@ -87,6 +87,7 @@ export default defineConfig({
       "/service": daemonProxy(),
       "/auth": daemonProxy(),
       "/provider": daemonProxy(),
+      "/catalog": daemonProxy(),
       "/agents": daemonProxy(),
       "/actions": daemonProxy(),
       "/client": daemonProxy(),

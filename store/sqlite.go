@@ -2364,6 +2364,10 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	if run.ID == "" {
 		run.ID = NewID(PrefixRun)
 	}
+	if run.PreparedAgent != nil {
+		run.Agent = *run.PreparedAgent
+		run.PreparedAgent = nil
+	}
 	agentJSON, err := json.Marshal(run.Agent)
 	if err != nil {
 		return SessionRunAdmission{}, fmt.Errorf("marshal run agent: %w", err)
@@ -2382,6 +2386,10 @@ func (s *SQLiteStore) AdmitSessionRun(ctx context.Context, run SessionRun) (Sess
 	}
 	now := time.Now().UTC()
 	run.Sequence, run.Status, run.RequestHash = next, SessionRunStatusQueued, hash
+	if run.PreparedMessage != nil {
+		run.Message = *run.PreparedMessage
+		run.PreparedMessage = nil
+	}
 	run.AdmittedVersion = session.AggregateVersion + 1
 	run.CreatedAt, run.UpdatedAt = now, now
 	aggregateEvent, err := NewSessionRunAdmittedEvent(run)

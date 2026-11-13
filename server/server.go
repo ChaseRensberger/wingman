@@ -30,6 +30,9 @@ import (
 	"github.com/chaserensberger/wingman/internal/observability"
 	provider "github.com/chaserensberger/wingman/models/providers"
 	"github.com/chaserensberger/wingman/permission"
+	"github.com/chaserensberger/wingman/plugin/protocol"
+	"github.com/chaserensberger/wingman/pluginhost"
+	"github.com/chaserensberger/wingman/pluginhub"
 	"github.com/chaserensberger/wingman/plugins/orientation"
 	"github.com/chaserensberger/wingman/question"
 	"github.com/chaserensberger/wingman/store"
@@ -58,6 +61,13 @@ type Server struct {
 	globalInstructionsPath string
 	globalSkillDirs        []string
 	plugins                []PluginRegistration
+	pluginState            pluginhost.State
+	pluginInstaller        *pluginhub.Installer
+	pluginAuthMu           sync.Mutex
+	admissionMu            sync.Mutex
+	admissions             map[admissionKey]*admissionGate
+	pluginAuth             map[string]*pluginAuthAttempt
+	pluginEvents           *pluginEventBus
 	references             []orientation.Reference
 	requestRestart         func()
 	ready                  atomic.Bool
@@ -105,7 +115,9 @@ type Config struct {
 	// GlobalSkillDirs selects daemon-wide skill directories.
 	GlobalSkillDirs []string
 	// Plugins registers bundled plugins in activation order.
-	Plugins []PluginRegistration
+	Plugins         []PluginRegistration
+	PluginState     pluginhost.State
+	PluginInstaller *pluginhub.Installer
 	// References advertises additional directories without granting permissions.
 	References []orientation.Reference
 	// RequestRestart asks the process owner to replace this daemon. A nil
@@ -129,7 +141,7 @@ func New(cfg Config) *Server {
 	}
 	var providers *provider.Registry
 	if cfg.Scopes != nil {
-		providers = cfg.Scopes.Providers()
+		providers = cfg.Scopes.BaseProviders()
 	}
 	if providers == nil {
 		providers, _ = provider.NewRegistry(nil)
@@ -158,15 +170,35 @@ func New(cfg Config) *Server {
 		globalInstructionsPath: cfg.GlobalInstructionsPath,
 		globalSkillDirs:        append([]string(nil), cfg.GlobalSkillDirs...),
 		plugins:                append([]PluginRegistration(nil), cfg.Plugins...),
+		pluginState:            cfg.PluginState,
+		pluginInstaller:        cfg.PluginInstaller,
+		pluginAuth:             map[string]*pluginAuthAttempt{},
+		pluginEvents:           &pluginEventBus{subs: map[string]*pluginEventSubscription{}},
 		requestRestart:         cfg.RequestRestart,
 		shutdownCtx:            ctx,
 		shutdownCancel:         cancel,
 	}
 	s.references = append([]orientation.Reference(nil), cfg.References...)
+	s.events.observe = func(event store.SessionEvent) {
+		if s.store == nil {
+			return
+		}
+		sess, err := s.store.GetSession(event.SessionID)
+		if err != nil {
+			return
+		}
+		raw, err := json.Marshal(event)
+		if err == nil {
+			s.pluginEvents.publish(protocol.Event{Identity: protocol.Identity{ClientID: sess.ClientID, SessionID: sess.ID, WorkDir: sess.WorkDir}, Type: event.Type, Data: raw})
+		}
+	}
 	s.plugins = append(s.plugins, PluginRegistration{
 		ID: "orientation", Enabled: true,
 		Factory: func() plugin.Plugin { return orientation.New(orientation.Config{References: s.references}) },
 	})
+	if s.scopes != nil {
+		s.scopes.SetBundledPlugins(s.runtimePlugins)
+	}
 	s.runs = newSessionRunManager(s)
 	if cfg.MaxActiveRuns > 0 {
 		s.runs.limit = cfg.MaxActiveRuns
@@ -326,6 +358,7 @@ func shouldBypassTimeout(r *http.Request) bool {
 }
 
 func (s *Server) setupRoutes() {
+	projectQuery := []*huma.Param{queryParameter("working_directory", huma.TypeString, "Project directory for runtime discovery")}
 	s.registerJSON(http.MethodGet, "/", "getService", "Describe the Wingman service", nil, http.StatusOK, rootResponse{}, s.handleRoot)
 	s.registerJSON(http.MethodGet, "/health", "getHealth", "Check daemon health", nil, http.StatusOK, api.StatusResponse{}, s.handleHealth)
 	s.registerJSONStatuses(http.MethodGet, "/ready", "getReadiness", "Check daemon readiness", nil, map[int]any{http.StatusOK: api.ReadinessResponse{}, http.StatusServiceUnavailable: api.ReadinessResponse{}}, s.handleReadiness)
@@ -335,30 +368,38 @@ func (s *Server) setupRoutes() {
 	s.registerJSON(http.MethodGet, "/plugins", "listPlugins", "List registered plugins", nil, http.StatusOK, api.PluginsResponse{}, s.handleListPlugins)
 	s.registerJSON(http.MethodGet, "/rpc-plugins", "listRPCPlugins", "List RPC plugin status", nil, http.StatusOK, rpcPluginsResponse{}, s.handleListRPCPlugins)
 	s.registerJSON(http.MethodPost, "/rpc-plugins/reload", "reloadRPCPlugins", "Reload RPC plugins", nil, http.StatusOK, rpcPluginsResponse{}, s.handleReloadRPCPlugins)
-	s.registerJSON(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, s.handleListMCP)
+	s.registerJSON(http.MethodGet, "/rpc-plugins/packages", "listPluginPackages", "List installed plugin packages", nil, http.StatusOK, []pluginhub.Installation{}, s.handlePluginPackages)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/manage", "managePluginPackages", "Install, update, or remove a plugin", pluginPackageRequest{}, http.StatusOK, pluginPackageResponse{}, s.handleManagePluginPackage)
+	s.registerJSONWithParameters(http.MethodGet, "/rpc-plugins/catalog", "searchPluginCatalog", "Search the plugin release catalog", nil, http.StatusOK, []pluginhub.Package{}, []*huma.Param{queryParameter("query", huma.TypeString, "Search package identities, names, and descriptions")}, s.handlePluginCatalog)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/trust", "setPluginProjectTrust", "Approve or revoke project plugin execution", pluginTrustRequest{}, http.StatusOK, api.StatusResponse{}, s.handlePluginTrust)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/call", "callPluginMethod", "Call a plugin-defined operation", pluginCallRequest{}, http.StatusOK, json.RawMessage{}, s.handlePluginCall)
+	s.registerJSONWithParameters(http.MethodGet, "/rpc-plugins/auth", "listPluginAuthMethods", "List plugin sign-in methods", nil, http.StatusOK, map[string][]protocol.AuthMethod{}, []*huma.Param{queryParameter("working_directory", huma.TypeString, "Project directory for sign-in methods")}, s.handlePluginAuthMethods)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/auth", "authenticatePlugin", "Start, inspect, complete, or cancel plugin sign-in", pluginAuthRequest{}, http.StatusOK, pluginAuthStatus{}, s.handlePluginAuth)
+	s.registerJSON(http.MethodPost, "/rpc-plugins/events", "pluginEvents", "Subscribe to client-owned public and plugin events", pluginEventRequest{}, http.StatusOK, pluginEventResponse{}, s.handlePluginEvents)
+	s.registerJSONWithParameters(http.MethodGet, "/mcp", "listMCPServers", "List MCP server status", nil, http.StatusOK, mcpResponse{}, projectQuery, s.handleListMCP)
 	s.registerJSON(http.MethodPost, "/mcp/{name}/connect", "connectMCPServer", "Connect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleConnectMCP)
 	s.registerJSON(http.MethodPost, "/mcp/{name}/disconnect", "disconnectMCPServer", "Disconnect an MCP server", nil, http.StatusOK, mcpResponse{}, s.handleDisconnectMCP)
 	s.registerErrorOnly(http.MethodPost, "/mcp/{name}/auth", "authorizeMCPServer", "Authorize an MCP server", s.handleAuthMCP)
 	s.registerErrorOnly(http.MethodDelete, "/mcp/{name}/auth", "logoutMCPServer", "Remove MCP authorization", s.handleLogoutMCP)
-	s.registerJSON(http.MethodGet, "/tools", "listTools", "List available tools", nil, http.StatusOK, toolCatalogResponse{}, s.handleListTools)
-	s.registerJSON(http.MethodGet, "/actions", "listActions", "List available actions", nil, http.StatusOK, api.ActionsResponse{}, s.handleListActions)
-	s.registerJSON(http.MethodGet, "/catalog", "getModelCatalog", "Get the model catalog", nil, http.StatusOK, CatalogDTO{}, s.handleCatalog)
+	s.registerJSONWithParameters(http.MethodGet, "/tools", "listTools", "List available tools", nil, http.StatusOK, toolCatalogResponse{}, projectQuery, s.handleListTools)
+	s.registerJSONWithParameters(http.MethodGet, "/actions", "listActions", "List available actions", nil, http.StatusOK, api.ActionsResponse{}, []*huma.Param{queryParameter("working_directory", huma.TypeString, "Project directory for action discovery")}, s.handleListActions)
+	s.registerJSONWithParameters(http.MethodGet, "/catalog", "getModelCatalog", "Get the model catalog", nil, http.StatusOK, CatalogDTO{}, projectQuery, s.handleCatalog)
 	s.registerBinary(http.MethodGet, "/catalog/labs/{id}/logo", "getCatalogLabLogo", "Get a catalog lab logo", "image/svg+xml", s.handleCatalogLabLogo)
 
-	s.registerJSON(http.MethodGet, "/provider", "listProviders", "List model providers", nil, http.StatusOK, []ProviderDTO{}, s.handleListProviders)
+	s.registerJSONWithParameters(http.MethodGet, "/provider", "listProviders", "List model providers", nil, http.StatusOK, []ProviderDTO{}, projectQuery, s.handleListProviders)
 	s.registerJSON(http.MethodGet, "/provider/auth", "getProviderAuth", "Get provider credential status", nil, http.StatusOK, ProvidersAuthResponse{}, s.handleGetProvidersAuth)
 	s.registerJSON(http.MethodPut, "/provider/auth", "setProviderAuth", "Set provider credentials", SetProvidersAuthRequest{}, http.StatusOK, api.StatusResponse{}, s.handleSetProvidersAuth)
 	s.registerJSON(http.MethodDelete, "/provider/auth/{provider}", "deleteProviderAuth", "Delete provider credentials", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteProviderAuth)
 	s.registerJSON(http.MethodPost, "/provider/{name}/oauth/authorize", "authorizeProviderOAuth", "Start provider OAuth", providerOAuthRequest{}, http.StatusAccepted, oauthAttemptDTO{}, s.handleProviderOAuthAuthorize)
 	s.registerJSON(http.MethodGet, "/provider/{name}/oauth/{attempt}", "getProviderOAuthAttempt", "Get provider OAuth status", nil, http.StatusOK, oauthAttemptDTO{}, s.handleProviderOAuthStatus)
 	s.registerJSON(http.MethodDelete, "/provider/{name}/oauth/{attempt}", "cancelProviderOAuthAttempt", "Cancel provider OAuth", nil, http.StatusOK, api.StatusResponse{}, s.handleProviderOAuthCancel)
-	s.registerJSON(http.MethodGet, "/provider/{name}", "getProvider", "Get a model provider", nil, http.StatusOK, ProviderDTO{}, s.handleGetProvider)
-	s.registerJSON(http.MethodGet, "/provider/{name}/models", "listProviderModels", "List provider models", nil, http.StatusOK, map[string]ModelDTO{}, s.handleListProviderModels)
-	s.registerJSON(http.MethodGet, "/provider/{name}/models/{model}", "getProviderModel", "Get a provider model", nil, http.StatusOK, ModelDTO{}, s.handleGetProviderModel)
+	s.registerJSONWithParameters(http.MethodGet, "/provider/{name}", "getProvider", "Get a model provider", nil, http.StatusOK, ProviderDTO{}, projectQuery, s.handleGetProvider)
+	s.registerJSONWithParameters(http.MethodGet, "/provider/{name}/models", "listProviderModels", "List provider models", nil, http.StatusOK, map[string]ModelDTO{}, projectQuery, s.handleListProviderModels)
+	s.registerJSONWithParameters(http.MethodGet, "/provider/{name}/models/{model}", "getProviderModel", "Get a provider model", nil, http.StatusOK, ModelDTO{}, projectQuery, s.handleGetProviderModel)
 
-	s.registerJSON(http.MethodGet, "/agents", "listAgents", "List agents", nil, http.StatusOK, []api.Agent{}, s.handleListAgents)
+	s.registerJSONWithParameters(http.MethodGet, "/agents", "listAgents", "List agents", nil, http.StatusOK, []api.Agent{}, projectQuery, s.handleListAgents)
 	s.registerJSON(http.MethodPost, "/agents", "createAgent", "Create an agent", api.CreateAgentRequest{}, http.StatusCreated, api.Agent{}, s.handleCreateAgent)
-	s.registerJSON(http.MethodGet, "/agents/{id}", "getAgent", "Get an agent", nil, http.StatusOK, api.Agent{}, s.handleGetAgent)
+	s.registerJSONWithParameters(http.MethodGet, "/agents/{id}", "getAgent", "Get an agent", nil, http.StatusOK, api.Agent{}, projectQuery, s.handleGetAgent)
 	s.registerJSON(http.MethodPut, "/agents/{id}", "updateAgent", "Update an agent", api.UpdateAgentRequest{}, http.StatusOK, api.Agent{}, s.handleUpdateAgent)
 	s.registerJSON(http.MethodDelete, "/agents/{id}", "deleteAgent", "Delete an agent", nil, http.StatusOK, api.StatusResponse{}, s.handleDeleteAgent)
 
@@ -505,7 +546,10 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startMu.Unlock()
 
 	var err error
-	if s.store != nil {
+	if s.scopes != nil {
+		err = s.scopes.ValidatePlugins(ctx)
+	}
+	if err == nil && s.store != nil {
 		err = s.recoverStartup(ctx)
 	}
 
@@ -590,6 +634,9 @@ func (s *Server) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		s.ready.Store(false)
 		s.shutdownCancel()
+		if s.pluginEvents != nil {
+			s.pluginEvents.shutdown()
+		}
 		if s.runs != nil {
 			s.runs.stop()
 		}
@@ -606,6 +653,7 @@ func (s *Server) Close(ctx context.Context) error {
 		errs = append(errs, s.oauth.Close(ctx))
 	}
 	errs = append(errs, s.waitInflight(ctx))
+	errs = append(errs, s.waitPluginAuth(ctx))
 	return errors.Join(errs...)
 }
 

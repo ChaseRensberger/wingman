@@ -72,6 +72,7 @@ func newCommand(cfg daemonconfig.Config) *cli.Command {
 		Commands: []*cli.Command{
 			apiCommand(),
 			skillsCommand(),
+			pluginsCommand(),
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
@@ -268,7 +269,8 @@ func runServe(cfg daemonconfig.Config) cli.ActionFunc {
 			defer func() { _, _ = state.RemoveRegistration(instanceID) }()
 		}
 		application, err := app.New(serveCtx, app.Config{
-			Ephemeral: cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
+			PluginCatalog: effective.Plugins.Catalog,
+			Ephemeral:     cmd.Bool("ephemeral"), DBPath: effective.Server.DB,
 			ConsoleDevURL: cmd.String("console-dev-url"), LogFormat: effective.Server.LogFormat, LogLevel: effective.Server.LogLevel, LogWriter: logWriter,
 			PluginDirs: effective.Plugins.Dirs, DefaultPluginDir: effective.Plugins.DefaultDir, DisablePlugins: cmd.Bool("no-plugins"),
 			GlobalSkillDirs: effective.Skills.Dirs,

@@ -17,6 +17,27 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AuthMethodKind.
+const (
+	Command AuthMethodKind = "command"
+	Key     AuthMethodKind = "key"
+	Oauth   AuthMethodKind = "oauth"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodKind enum.
+func (e AuthMethodKind) Valid() bool {
+	switch e {
+	case Command:
+		return true
+	case Key:
+		return true
+	case Oauth:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompletionDecisionAction.
 const (
 	Accept   CompletionDecisionAction = "accept"
@@ -44,6 +65,96 @@ const (
 func (e ImagePartType) Valid() bool {
 	switch e {
 	case Image:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PluginAuthRequestOperation.
+const (
+	Cancel   PluginAuthRequestOperation = "cancel"
+	Complete PluginAuthRequestOperation = "complete"
+	Start    PluginAuthRequestOperation = "start"
+	Status   PluginAuthRequestOperation = "status"
+)
+
+// Valid indicates whether the value is a known member of the PluginAuthRequestOperation enum.
+func (e PluginAuthRequestOperation) Valid() bool {
+	switch e {
+	case Cancel:
+		return true
+	case Complete:
+		return true
+	case Start:
+		return true
+	case Status:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PluginAuthStatusStatus.
+const (
+	Cancelled PluginAuthStatusStatus = "cancelled"
+	Connected PluginAuthStatusStatus = "connected"
+	Failed    PluginAuthStatusStatus = "failed"
+	Pending   PluginAuthStatusStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the PluginAuthStatusStatus enum.
+func (e PluginAuthStatusStatus) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case Connected:
+		return true
+	case Failed:
+		return true
+	case Pending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PluginEventRequestOperation.
+const (
+	Close     PluginEventRequestOperation = "close"
+	Next      PluginEventRequestOperation = "next"
+	Subscribe PluginEventRequestOperation = "subscribe"
+)
+
+// Valid indicates whether the value is a known member of the PluginEventRequestOperation enum.
+func (e PluginEventRequestOperation) Valid() bool {
+	switch e {
+	case Close:
+		return true
+	case Next:
+		return true
+	case Subscribe:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PluginPackageRequestOperation.
+const (
+	Install PluginPackageRequestOperation = "install"
+	Remove  PluginPackageRequestOperation = "remove"
+	Update  PluginPackageRequestOperation = "update"
+)
+
+// Valid indicates whether the value is a known member of the PluginPackageRequestOperation enum.
+func (e PluginPackageRequestOperation) Valid() bool {
+	switch e {
+	case Install:
+		return true
+	case Remove:
+		return true
+	case Update:
 		return true
 	default:
 		return false
@@ -206,6 +317,12 @@ type AgentSwitchedEventData struct {
 	RunId        string `json:"run_id"`
 }
 
+// Artifact defines model for Artifact.
+type Artifact struct {
+	Sha256 string `json:"sha256"`
+	Url    string `json:"url"`
+}
+
 // AuthCredential defines model for AuthCredential.
 type AuthCredential struct {
 	Access    *string `json:"access,omitempty"`
@@ -215,6 +332,17 @@ type AuthCredential struct {
 	Refresh   *string `json:"refresh,omitempty"`
 	Type      string  `json:"type"`
 }
+
+// AuthMethod defines model for AuthMethod.
+type AuthMethod struct {
+	Id          string         `json:"id"`
+	Integration string         `json:"integration"`
+	Kind        AuthMethodKind `json:"kind"`
+	Label       string         `json:"label"`
+}
+
+// AuthMethodKind defines model for AuthMethod.Kind.
+type AuthMethodKind string
 
 // AuthType defines model for AuthType.
 type AuthType struct {
@@ -486,6 +614,13 @@ type ErrorResponse struct {
 	Error Error `json:"error"`
 }
 
+// Event defines model for Event.
+type Event struct {
+	Context Identity    `json:"context"`
+	Data    interface{} `json:"data"`
+	Type    string      `json:"type"`
+}
+
 // EventsResyncRequiredEventData defines model for EventsResyncRequiredEventData.
 type EventsResyncRequiredEventData struct {
 	Cursor int64  `json:"cursor"`
@@ -505,6 +640,15 @@ type HTTPOptions struct {
 	Query   *map[string]string      `json:"query,omitempty"`
 }
 
+// Identity defines model for Identity.
+type Identity struct {
+	AgentId   *string `json:"agent_id,omitempty"`
+	ClientId  *string `json:"client_id,omitempty"`
+	RunId     *string `json:"run_id,omitempty"`
+	SessionId *string `json:"session_id,omitempty"`
+	WorkDir   *string `json:"work_dir,omitempty"`
+}
+
 // ImagePart defines model for ImagePart.
 type ImagePart struct {
 	Base64           *string                 `json:"base64,omitempty"`
@@ -517,6 +661,17 @@ type ImagePart struct {
 
 // ImagePartType defines model for ImagePart.Type.
 type ImagePartType string
+
+// Installation defines model for Installation.
+type Installation struct {
+	Artifact    Artifact  `json:"artifact"`
+	Catalog     string    `json:"catalog"`
+	Id          string    `json:"id"`
+	InstalledAt time.Time `json:"installed_at"`
+	Platform    string    `json:"platform"`
+	Requested   string    `json:"requested"`
+	Version     string    `json:"version"`
+}
 
 // InstructionSnapshot defines model for InstructionSnapshot.
 type InstructionSnapshot struct {
@@ -774,6 +929,15 @@ type OutputSchema struct {
 	Schema map[string]interface{} `json:"schema"`
 }
 
+// Package defines model for Package.
+type Package struct {
+	Description string     `json:"description"`
+	Id          string     `json:"id"`
+	Name        string     `json:"name"`
+	Releases    *[]Release `json:"releases"`
+	Repository  string     `json:"repository"`
+}
+
 // Part defines model for Part.
 type Part struct {
 	union json.RawMessage
@@ -839,6 +1003,78 @@ type PermissionRequest struct {
 type PermissionTarget struct {
 	Action         string    `json:"action"`
 	ResourceFields *[]string `json:"resource_fields,omitempty"`
+}
+
+// PluginAuthRequest defines model for PluginAuthRequest.
+type PluginAuthRequest struct {
+	Attempt          *string                    `json:"attempt,omitempty"`
+	Input            interface{}                `json:"input,omitempty"`
+	Method           *string                    `json:"method,omitempty"`
+	Operation        PluginAuthRequestOperation `json:"operation"`
+	Plugin           *string                    `json:"plugin,omitempty"`
+	WorkingDirectory *string                    `json:"working_directory,omitempty"`
+}
+
+// PluginAuthRequestOperation defines model for PluginAuthRequest.Operation.
+type PluginAuthRequestOperation string
+
+// PluginAuthStatus defines model for PluginAuthStatus.
+type PluginAuthStatus struct {
+	Id           string                 `json:"id"`
+	Instructions *string                `json:"instructions,omitempty"`
+	Integration  string                 `json:"integration"`
+	Method       string                 `json:"method"`
+	Plugin       string                 `json:"plugin"`
+	Status       PluginAuthStatusStatus `json:"status"`
+	Url          *string                `json:"url,omitempty"`
+}
+
+// PluginAuthStatusStatus defines model for PluginAuthStatus.Status.
+type PluginAuthStatusStatus string
+
+// PluginCallRequest defines model for PluginCallRequest.
+type PluginCallRequest struct {
+	Input            interface{} `json:"input"`
+	Method           string      `json:"method"`
+	Plugin           string      `json:"plugin"`
+	WorkingDirectory *string     `json:"working_directory,omitempty"`
+}
+
+// PluginEventRequest defines model for PluginEventRequest.
+type PluginEventRequest struct {
+	Id        *string                     `json:"id,omitempty"`
+	Operation PluginEventRequestOperation `json:"operation"`
+	Types     *[]string                   `json:"types,omitempty"`
+}
+
+// PluginEventRequestOperation defines model for PluginEventRequest.Operation.
+type PluginEventRequestOperation string
+
+// PluginEventResponse defines model for PluginEventResponse.
+type PluginEventResponse struct {
+	Events *[]Event `json:"events,omitempty"`
+	Id     *string  `json:"id,omitempty"`
+}
+
+// PluginPackageRequest defines model for PluginPackageRequest.
+type PluginPackageRequest struct {
+	Operation PluginPackageRequestOperation `json:"operation"`
+	Source    string                        `json:"source"`
+}
+
+// PluginPackageRequestOperation defines model for PluginPackageRequest.Operation.
+type PluginPackageRequestOperation string
+
+// PluginPackageResponse defines model for PluginPackageResponse.
+type PluginPackageResponse struct {
+	Installation *Installation `json:"installation,omitempty"`
+	Status       string        `json:"status"`
+}
+
+// PluginTrustRequest defines model for PluginTrustRequest.
+type PluginTrustRequest struct {
+	Directory string `json:"directory"`
+	Trusted   bool   `json:"trusted"`
 }
 
 // PluginsResponse defines model for PluginsResponse.
@@ -1007,6 +1243,14 @@ type RecordedOutputSchema struct {
 type RegisteredPlugin struct {
 	Enabled bool   `json:"enabled"`
 	Id      string `json:"id"`
+}
+
+// Release defines model for Release.
+type Release struct {
+	Artifacts      map[string]Artifact `json:"artifacts"`
+	MinimumWingman *string             `json:"minimum_wingman,omitempty"`
+	Protocol       int64               `json:"protocol"`
+	Version        string              `json:"version"`
 }
 
 // RenameSessionRequest defines model for RenameSessionRequest.
@@ -1521,12 +1765,18 @@ type GetServiceParams struct {
 
 // ListActionsParams defines parameters for ListActions.
 type ListActionsParams struct {
+	// WorkingDirectory Project directory for action discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
 // ListAgentsParams defines parameters for ListAgents.
 type ListAgentsParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1545,6 +1795,9 @@ type DeleteAgentParams struct {
 
 // GetAgentParams defines parameters for GetAgent.
 type GetAgentParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1557,6 +1810,9 @@ type UpdateAgentParams struct {
 
 // GetModelCatalogParams defines parameters for GetModelCatalog.
 type GetModelCatalogParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1620,6 +1876,9 @@ type ListLogsParams struct {
 
 // ListMCPServersParams defines parameters for ListMCPServers.
 type ListMCPServersParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1656,6 +1915,9 @@ type ListPluginsParams struct {
 
 // ListProvidersParams defines parameters for ListProviders.
 type ListProvidersParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1680,18 +1942,27 @@ type DeleteProviderAuthParams struct {
 
 // GetProviderParams defines parameters for GetProvider.
 type GetProviderParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
 // ListProviderModelsParams defines parameters for ListProviderModels.
 type ListProviderModelsParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
 // GetProviderModelParams defines parameters for GetProviderModel.
 type GetProviderModelParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1726,8 +1997,62 @@ type ListRPCPluginsParams struct {
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
 
+// ListPluginAuthMethodsParams defines parameters for ListPluginAuthMethods.
+type ListPluginAuthMethodsParams struct {
+	// WorkingDirectory Project directory for sign-in methods
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// AuthenticatePluginParams defines parameters for AuthenticatePlugin.
+type AuthenticatePluginParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// CallPluginMethodParams defines parameters for CallPluginMethod.
+type CallPluginMethodParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// SearchPluginCatalogParams defines parameters for SearchPluginCatalog.
+type SearchPluginCatalogParams struct {
+	// Query Search package identities, names, and descriptions
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// PluginEventsParams defines parameters for PluginEvents.
+type PluginEventsParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ManagePluginPackagesParams defines parameters for ManagePluginPackages.
+type ManagePluginPackagesParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// ListPluginPackagesParams defines parameters for ListPluginPackages.
+type ListPluginPackagesParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
 // ReloadRPCPluginsParams defines parameters for ReloadRPCPlugins.
 type ReloadRPCPluginsParams struct {
+	// XWingmanClient Client identity for resource attribution and scoping
+	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
+}
+
+// SetPluginProjectTrustParams defines parameters for SetPluginProjectTrust.
+type SetPluginProjectTrustParams struct {
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1893,6 +2218,9 @@ type ListSessionToolUsesParams struct {
 
 // ListToolsParams defines parameters for ListTools.
 type ListToolsParams struct {
+	// WorkingDirectory Project directory for runtime discovery
+	WorkingDirectory *string `form:"working_directory,omitempty" json:"working_directory,omitempty"`
+
 	// XWingmanClient Client identity for resource attribution and scoping
 	XWingmanClient *string `json:"X-Wingman-Client,omitempty"`
 }
@@ -1947,6 +2275,21 @@ type SetProviderAuthJSONRequestBody = SetProvidersAuthRequest
 
 // AuthorizeProviderOAuthJSONRequestBody defines body for AuthorizeProviderOAuth for application/json ContentType.
 type AuthorizeProviderOAuthJSONRequestBody = ProviderOAuthRequest
+
+// AuthenticatePluginJSONRequestBody defines body for AuthenticatePlugin for application/json ContentType.
+type AuthenticatePluginJSONRequestBody = PluginAuthRequest
+
+// CallPluginMethodJSONRequestBody defines body for CallPluginMethod for application/json ContentType.
+type CallPluginMethodJSONRequestBody = PluginCallRequest
+
+// PluginEventsJSONRequestBody defines body for PluginEvents for application/json ContentType.
+type PluginEventsJSONRequestBody = PluginEventRequest
+
+// ManagePluginPackagesJSONRequestBody defines body for ManagePluginPackages for application/json ContentType.
+type ManagePluginPackagesJSONRequestBody = PluginPackageRequest
+
+// SetPluginProjectTrustJSONRequestBody defines body for SetPluginProjectTrust for application/json ContentType.
+type SetPluginProjectTrustJSONRequestBody = PluginTrustRequest
 
 // RunAgentJSONRequestBody defines body for RunAgent for application/json ContentType.
 type RunAgentJSONRequestBody = RunRequest
@@ -2539,10 +2882,95 @@ type ClientInterface interface {
 	// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
 	ListRPCPlugins(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListPluginAuthMethods List plugin sign-in methods
+	//
+	// Corresponds with GET /rpc-plugins/auth (the `ListPluginAuthMethods` operationId).
+	ListPluginAuthMethods(ctx context.Context, params *ListPluginAuthMethodsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthenticatePluginWithBody Start, inspect, complete, or cancel plugin sign-in
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+	AuthenticatePluginWithBody(ctx context.Context, params *AuthenticatePluginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AuthenticatePlugin Start, inspect, complete, or cancel plugin sign-in
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+	AuthenticatePlugin(ctx context.Context, params *AuthenticatePluginParams, body AuthenticatePluginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CallPluginMethodWithBody Call a plugin-defined operation
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+	CallPluginMethodWithBody(ctx context.Context, params *CallPluginMethodParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CallPluginMethod Call a plugin-defined operation
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+	CallPluginMethod(ctx context.Context, params *CallPluginMethodParams, body CallPluginMethodJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchPluginCatalog Search the plugin release catalog
+	//
+	// Corresponds with GET /rpc-plugins/catalog (the `SearchPluginCatalog` operationId).
+	SearchPluginCatalog(ctx context.Context, params *SearchPluginCatalogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PluginEventsWithBody Subscribe to client-owned public and plugin events
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+	PluginEventsWithBody(ctx context.Context, params *PluginEventsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PluginEvents Subscribe to client-owned public and plugin events
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+	PluginEvents(ctx context.Context, params *PluginEventsParams, body PluginEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ManagePluginPackagesWithBody Install, update, or remove a plugin
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+	ManagePluginPackagesWithBody(ctx context.Context, params *ManagePluginPackagesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ManagePluginPackages Install, update, or remove a plugin
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+	ManagePluginPackages(ctx context.Context, params *ManagePluginPackagesParams, body ManagePluginPackagesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPluginPackages List installed plugin packages
+	//
+	// Corresponds with GET /rpc-plugins/packages (the `ListPluginPackages` operationId).
+	ListPluginPackages(ctx context.Context, params *ListPluginPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReloadRPCPlugins Reload RPC plugins
 	//
 	// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
 	ReloadRPCPlugins(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPluginProjectTrustWithBody Approve or revoke project plugin execution
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+	SetPluginProjectTrustWithBody(ctx context.Context, params *SetPluginProjectTrustParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPluginProjectTrust Approve or revoke project plugin execution
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+	SetPluginProjectTrust(ctx context.Context, params *SetPluginProjectTrustParams, body SetPluginProjectTrustJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RunAgentWithBody Run one ephemeral agent turn
 	//
@@ -3452,11 +3880,226 @@ func (c *GeneratedClient) ListRPCPlugins(ctx context.Context, params *ListRPCPlu
 	return c.Client.Do(req)
 }
 
+// ListPluginAuthMethods List plugin sign-in methods
+//
+// Corresponds with GET /rpc-plugins/auth (the `ListPluginAuthMethods` operationId).
+func (c *GeneratedClient) ListPluginAuthMethods(ctx context.Context, params *ListPluginAuthMethodsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPluginAuthMethodsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AuthenticatePluginWithBody Start, inspect, complete, or cancel plugin sign-in
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+func (c *GeneratedClient) AuthenticatePluginWithBody(ctx context.Context, params *AuthenticatePluginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthenticatePluginRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AuthenticatePlugin Start, inspect, complete, or cancel plugin sign-in
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+func (c *GeneratedClient) AuthenticatePlugin(ctx context.Context, params *AuthenticatePluginParams, body AuthenticatePluginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAuthenticatePluginRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CallPluginMethodWithBody Call a plugin-defined operation
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+func (c *GeneratedClient) CallPluginMethodWithBody(ctx context.Context, params *CallPluginMethodParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCallPluginMethodRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CallPluginMethod Call a plugin-defined operation
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+func (c *GeneratedClient) CallPluginMethod(ctx context.Context, params *CallPluginMethodParams, body CallPluginMethodJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCallPluginMethodRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SearchPluginCatalog Search the plugin release catalog
+//
+// Corresponds with GET /rpc-plugins/catalog (the `SearchPluginCatalog` operationId).
+func (c *GeneratedClient) SearchPluginCatalog(ctx context.Context, params *SearchPluginCatalogParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchPluginCatalogRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PluginEventsWithBody Subscribe to client-owned public and plugin events
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+func (c *GeneratedClient) PluginEventsWithBody(ctx context.Context, params *PluginEventsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPluginEventsRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PluginEvents Subscribe to client-owned public and plugin events
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+func (c *GeneratedClient) PluginEvents(ctx context.Context, params *PluginEventsParams, body PluginEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPluginEventsRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ManagePluginPackagesWithBody Install, update, or remove a plugin
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+func (c *GeneratedClient) ManagePluginPackagesWithBody(ctx context.Context, params *ManagePluginPackagesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewManagePluginPackagesRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ManagePluginPackages Install, update, or remove a plugin
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+func (c *GeneratedClient) ManagePluginPackages(ctx context.Context, params *ManagePluginPackagesParams, body ManagePluginPackagesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewManagePluginPackagesRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPluginPackages List installed plugin packages
+//
+// Corresponds with GET /rpc-plugins/packages (the `ListPluginPackages` operationId).
+func (c *GeneratedClient) ListPluginPackages(ctx context.Context, params *ListPluginPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPluginPackagesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReloadRPCPlugins Reload RPC plugins
 //
 // Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
 func (c *GeneratedClient) ReloadRPCPlugins(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReloadRPCPluginsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPluginProjectTrustWithBody Approve or revoke project plugin execution
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+func (c *GeneratedClient) SetPluginProjectTrustWithBody(ctx context.Context, params *SetPluginProjectTrustParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPluginProjectTrustRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPluginProjectTrust Approve or revoke project plugin execution
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+func (c *GeneratedClient) SetPluginProjectTrust(ctx context.Context, params *SetPluginProjectTrustParams, body SetPluginProjectTrustJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPluginProjectTrustRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4285,6 +4928,33 @@ func NewListActionsRequest(server string, params *ListActionsParams) (*http.Requ
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -4325,6 +4995,33 @@ func NewListAgentsRequest(server string, params *ListAgentsParams) (*http.Reques
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -4480,6 +5177,33 @@ func NewGetAgentRequest(server string, id string, params *GetAgentParams) (*http
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -4582,6 +5306,33 @@ func NewGetModelCatalogRequest(server string, params *GetModelCatalogParams) (*h
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5058,6 +5809,33 @@ func NewListMCPServersRequest(server string, params *ListMCPServersParams) (*htt
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -5338,6 +6116,33 @@ func NewListProvidersRequest(server string, params *ListProvidersParams) (*http.
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -5533,6 +6338,33 @@ func NewGetProviderRequest(server string, name string, params *GetProviderParams
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -5580,6 +6412,33 @@ func NewListProviderModelsRequest(server string, name string, params *ListProvid
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5636,6 +6495,33 @@ func NewGetProviderModelRequest(server string, name string, model string, params
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5919,6 +6805,406 @@ func NewListRPCPluginsRequest(server string, params *ListRPCPluginsParams) (*htt
 	return req, nil
 }
 
+// NewListPluginAuthMethodsRequest constructs an http.Request for the ListPluginAuthMethods method
+func NewListPluginAuthMethodsRequest(server string, params *ListPluginAuthMethodsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/auth")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewAuthenticatePluginRequest calls the generic AuthenticatePlugin builder with application/json body
+func NewAuthenticatePluginRequest(server string, params *AuthenticatePluginParams, body AuthenticatePluginJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAuthenticatePluginRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewAuthenticatePluginRequestWithBody constructs an http.Request for the AuthenticatePlugin method, with any body, and a specified content type
+func NewAuthenticatePluginRequestWithBody(server string, params *AuthenticatePluginParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/auth")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCallPluginMethodRequest calls the generic CallPluginMethod builder with application/json body
+func NewCallPluginMethodRequest(server string, params *CallPluginMethodParams, body CallPluginMethodJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCallPluginMethodRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewCallPluginMethodRequestWithBody constructs an http.Request for the CallPluginMethod method, with any body, and a specified content type
+func NewCallPluginMethodRequestWithBody(server string, params *CallPluginMethodParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/call")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewSearchPluginCatalogRequest constructs an http.Request for the SearchPluginCatalog method
+func NewSearchPluginCatalogRequest(server string, params *SearchPluginCatalogParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/catalog")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Query != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "query", *params.Query, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewPluginEventsRequest calls the generic PluginEvents builder with application/json body
+func NewPluginEventsRequest(server string, params *PluginEventsParams, body PluginEventsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPluginEventsRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewPluginEventsRequestWithBody constructs an http.Request for the PluginEvents method, with any body, and a specified content type
+func NewPluginEventsRequestWithBody(server string, params *PluginEventsParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewManagePluginPackagesRequest calls the generic ManagePluginPackages builder with application/json body
+func NewManagePluginPackagesRequest(server string, params *ManagePluginPackagesParams, body ManagePluginPackagesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewManagePluginPackagesRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewManagePluginPackagesRequestWithBody constructs an http.Request for the ManagePluginPackages method, with any body, and a specified content type
+func NewManagePluginPackagesRequestWithBody(server string, params *ManagePluginPackagesParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/manage")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewListPluginPackagesRequest constructs an http.Request for the ListPluginPackages method
+func NewListPluginPackagesRequest(server string, params *ListPluginPackagesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/packages")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewReloadRPCPluginsRequest constructs an http.Request for the ReloadRPCPlugins method
 func NewReloadRPCPluginsRequest(server string, params *ReloadRPCPluginsParams) (*http.Request, error) {
 	var err error
@@ -5942,6 +7228,61 @@ func NewReloadRPCPluginsRequest(server string, params *ReloadRPCPluginsParams) (
 	if err != nil {
 		return nil, err
 	}
+
+	if params != nil {
+
+		if params.XWingmanClient != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Wingman-Client", *params.XWingmanClient, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Wingman-Client", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewSetPluginProjectTrustRequest calls the generic SetPluginProjectTrust builder with application/json body
+func NewSetPluginProjectTrustRequest(server string, params *SetPluginProjectTrustParams, body SetPluginProjectTrustJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPluginProjectTrustRequestWithBody(server, params, "application/json", bodyReader)
+}
+
+// NewSetPluginProjectTrustRequestWithBody constructs an http.Request for the SetPluginProjectTrust method, with any body, and a specified content type
+func NewSetPluginProjectTrustRequestWithBody(server string, params *SetPluginProjectTrustParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/rpc-plugins/trust")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	if params != nil {
 
@@ -7491,6 +8832,33 @@ func NewListToolsRequest(server string, params *ListToolsParams) (*http.Request,
 		return nil, err
 	}
 
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WorkingDirectory != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "working_directory", *params.WorkingDirectory, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
@@ -8144,12 +9512,103 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /rpc-plugins (the `ListRPCPlugins` operationId).
 	ListRPCPluginsWithResponse(ctx context.Context, params *ListRPCPluginsParams, reqEditors ...RequestEditorFn) (*ListRPCPluginsHTTPResponse, error)
 
+	// ListPluginAuthMethodsWithResponse List plugin sign-in methods
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /rpc-plugins/auth (the `ListPluginAuthMethods` operationId).
+	ListPluginAuthMethodsWithResponse(ctx context.Context, params *ListPluginAuthMethodsParams, reqEditors ...RequestEditorFn) (*ListPluginAuthMethodsHTTPResponse, error)
+
+	// AuthenticatePluginWithBodyWithResponse Start, inspect, complete, or cancel plugin sign-in
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+	AuthenticatePluginWithBodyWithResponse(ctx context.Context, params *AuthenticatePluginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthenticatePluginHTTPResponse, error)
+
+	// AuthenticatePluginWithResponse Start, inspect, complete, or cancel plugin sign-in
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+	AuthenticatePluginWithResponse(ctx context.Context, params *AuthenticatePluginParams, body AuthenticatePluginJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthenticatePluginHTTPResponse, error)
+
+	// CallPluginMethodWithBodyWithResponse Call a plugin-defined operation
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+	CallPluginMethodWithBodyWithResponse(ctx context.Context, params *CallPluginMethodParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CallPluginMethodHTTPResponse, error)
+
+	// CallPluginMethodWithResponse Call a plugin-defined operation
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+	CallPluginMethodWithResponse(ctx context.Context, params *CallPluginMethodParams, body CallPluginMethodJSONRequestBody, reqEditors ...RequestEditorFn) (*CallPluginMethodHTTPResponse, error)
+
+	// SearchPluginCatalogWithResponse Search the plugin release catalog
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /rpc-plugins/catalog (the `SearchPluginCatalog` operationId).
+	SearchPluginCatalogWithResponse(ctx context.Context, params *SearchPluginCatalogParams, reqEditors ...RequestEditorFn) (*SearchPluginCatalogHTTPResponse, error)
+
+	// PluginEventsWithBodyWithResponse Subscribe to client-owned public and plugin events
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+	PluginEventsWithBodyWithResponse(ctx context.Context, params *PluginEventsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PluginEventsHTTPResponse, error)
+
+	// PluginEventsWithResponse Subscribe to client-owned public and plugin events
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+	PluginEventsWithResponse(ctx context.Context, params *PluginEventsParams, body PluginEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*PluginEventsHTTPResponse, error)
+
+	// ManagePluginPackagesWithBodyWithResponse Install, update, or remove a plugin
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+	ManagePluginPackagesWithBodyWithResponse(ctx context.Context, params *ManagePluginPackagesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ManagePluginPackagesHTTPResponse, error)
+
+	// ManagePluginPackagesWithResponse Install, update, or remove a plugin
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+	ManagePluginPackagesWithResponse(ctx context.Context, params *ManagePluginPackagesParams, body ManagePluginPackagesJSONRequestBody, reqEditors ...RequestEditorFn) (*ManagePluginPackagesHTTPResponse, error)
+
+	// ListPluginPackagesWithResponse List installed plugin packages
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /rpc-plugins/packages (the `ListPluginPackages` operationId).
+	ListPluginPackagesWithResponse(ctx context.Context, params *ListPluginPackagesParams, reqEditors ...RequestEditorFn) (*ListPluginPackagesHTTPResponse, error)
+
 	// ReloadRPCPluginsWithResponse Reload RPC plugins
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /rpc-plugins/reload (the `ReloadRPCPlugins` operationId).
 	ReloadRPCPluginsWithResponse(ctx context.Context, params *ReloadRPCPluginsParams, reqEditors ...RequestEditorFn) (*ReloadRPCPluginsHTTPResponse, error)
+
+	// SetPluginProjectTrustWithBodyWithResponse Approve or revoke project plugin execution
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+	SetPluginProjectTrustWithBodyWithResponse(ctx context.Context, params *SetPluginProjectTrustParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPluginProjectTrustHTTPResponse, error)
+
+	// SetPluginProjectTrustWithResponse Approve or revoke project plugin execution
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+	SetPluginProjectTrustWithResponse(ctx context.Context, params *SetPluginProjectTrustParams, body SetPluginProjectTrustJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPluginProjectTrustHTTPResponse, error)
 
 	// RunAgentWithBodyWithResponse Run one ephemeral agent turn
 	//
@@ -10147,6 +11606,342 @@ func (r ListRPCPluginsHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListPluginAuthMethodsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *map[string]*[]AuthMethod
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPluginAuthMethodsHTTPResponse) GetJSON200() *map[string]*[]AuthMethod {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListPluginAuthMethodsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPluginAuthMethodsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPluginAuthMethodsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPluginAuthMethodsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPluginAuthMethodsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AuthenticatePluginHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PluginAuthStatus
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AuthenticatePluginHTTPResponse) GetJSON200() *PluginAuthStatus {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r AuthenticatePluginHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AuthenticatePluginHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AuthenticatePluginHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AuthenticatePluginHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AuthenticatePluginHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CallPluginMethodHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *interface{}
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CallPluginMethodHTTPResponse) GetJSON200() *interface{} {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r CallPluginMethodHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CallPluginMethodHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CallPluginMethodHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CallPluginMethodHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CallPluginMethodHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SearchPluginCatalogHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Package
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SearchPluginCatalogHTTPResponse) GetJSON200() *[]Package {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SearchPluginCatalogHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SearchPluginCatalogHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchPluginCatalogHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchPluginCatalogHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SearchPluginCatalogHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PluginEventsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PluginEventResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PluginEventsHTTPResponse) GetJSON200() *PluginEventResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r PluginEventsHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PluginEventsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PluginEventsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PluginEventsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PluginEventsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ManagePluginPackagesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PluginPackageResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ManagePluginPackagesHTTPResponse) GetJSON200() *PluginPackageResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ManagePluginPackagesHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ManagePluginPackagesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ManagePluginPackagesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ManagePluginPackagesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ManagePluginPackagesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListPluginPackagesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Installation
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPluginPackagesHTTPResponse) GetJSON200() *[]Installation {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r ListPluginPackagesHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPluginPackagesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPluginPackagesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPluginPackagesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPluginPackagesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ReloadRPCPluginsHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10189,6 +11984,54 @@ func (r ReloadRPCPluginsHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReloadRPCPluginsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetPluginProjectTrustHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *StatusResponse
+	// JSONDefault the response for an HTTP default `application/json` response
+	JSONDefault *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPluginProjectTrustHTTPResponse) GetJSON200() *StatusResponse {
+	return r.JSON200
+}
+
+// GetJSONDefault returns the response for an HTTP default `application/json` response
+func (r SetPluginProjectTrustHTTPResponse) GetJSONDefault() *ErrorResponse {
+	return r.JSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPluginProjectTrustHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPluginProjectTrustHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPluginProjectTrustHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPluginProjectTrustHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12347,6 +14190,149 @@ func (c *ClientWithResponses) ListRPCPluginsWithResponse(ctx context.Context, pa
 	return ParseListRPCPluginsHTTPResponse(rsp)
 }
 
+// ListPluginAuthMethodsWithResponse List plugin sign-in methods
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /rpc-plugins/auth (the `ListPluginAuthMethods` operationId).
+func (c *ClientWithResponses) ListPluginAuthMethodsWithResponse(ctx context.Context, params *ListPluginAuthMethodsParams, reqEditors ...RequestEditorFn) (*ListPluginAuthMethodsHTTPResponse, error) {
+	rsp, err := c.ListPluginAuthMethods(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPluginAuthMethodsHTTPResponse(rsp)
+}
+
+// AuthenticatePluginWithBodyWithResponse Start, inspect, complete, or cancel plugin sign-in
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+func (c *ClientWithResponses) AuthenticatePluginWithBodyWithResponse(ctx context.Context, params *AuthenticatePluginParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthenticatePluginHTTPResponse, error) {
+	rsp, err := c.AuthenticatePluginWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthenticatePluginHTTPResponse(rsp)
+}
+
+// AuthenticatePluginWithResponse Start, inspect, complete, or cancel plugin sign-in
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/auth (the `AuthenticatePlugin` operationId).
+func (c *ClientWithResponses) AuthenticatePluginWithResponse(ctx context.Context, params *AuthenticatePluginParams, body AuthenticatePluginJSONRequestBody, reqEditors ...RequestEditorFn) (*AuthenticatePluginHTTPResponse, error) {
+	rsp, err := c.AuthenticatePlugin(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAuthenticatePluginHTTPResponse(rsp)
+}
+
+// CallPluginMethodWithBodyWithResponse Call a plugin-defined operation
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+func (c *ClientWithResponses) CallPluginMethodWithBodyWithResponse(ctx context.Context, params *CallPluginMethodParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CallPluginMethodHTTPResponse, error) {
+	rsp, err := c.CallPluginMethodWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCallPluginMethodHTTPResponse(rsp)
+}
+
+// CallPluginMethodWithResponse Call a plugin-defined operation
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/call (the `CallPluginMethod` operationId).
+func (c *ClientWithResponses) CallPluginMethodWithResponse(ctx context.Context, params *CallPluginMethodParams, body CallPluginMethodJSONRequestBody, reqEditors ...RequestEditorFn) (*CallPluginMethodHTTPResponse, error) {
+	rsp, err := c.CallPluginMethod(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCallPluginMethodHTTPResponse(rsp)
+}
+
+// SearchPluginCatalogWithResponse Search the plugin release catalog
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /rpc-plugins/catalog (the `SearchPluginCatalog` operationId).
+func (c *ClientWithResponses) SearchPluginCatalogWithResponse(ctx context.Context, params *SearchPluginCatalogParams, reqEditors ...RequestEditorFn) (*SearchPluginCatalogHTTPResponse, error) {
+	rsp, err := c.SearchPluginCatalog(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchPluginCatalogHTTPResponse(rsp)
+}
+
+// PluginEventsWithBodyWithResponse Subscribe to client-owned public and plugin events
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+func (c *ClientWithResponses) PluginEventsWithBodyWithResponse(ctx context.Context, params *PluginEventsParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PluginEventsHTTPResponse, error) {
+	rsp, err := c.PluginEventsWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePluginEventsHTTPResponse(rsp)
+}
+
+// PluginEventsWithResponse Subscribe to client-owned public and plugin events
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/events (the `PluginEvents` operationId).
+func (c *ClientWithResponses) PluginEventsWithResponse(ctx context.Context, params *PluginEventsParams, body PluginEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*PluginEventsHTTPResponse, error) {
+	rsp, err := c.PluginEvents(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePluginEventsHTTPResponse(rsp)
+}
+
+// ManagePluginPackagesWithBodyWithResponse Install, update, or remove a plugin
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+func (c *ClientWithResponses) ManagePluginPackagesWithBodyWithResponse(ctx context.Context, params *ManagePluginPackagesParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ManagePluginPackagesHTTPResponse, error) {
+	rsp, err := c.ManagePluginPackagesWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseManagePluginPackagesHTTPResponse(rsp)
+}
+
+// ManagePluginPackagesWithResponse Install, update, or remove a plugin
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/manage (the `ManagePluginPackages` operationId).
+func (c *ClientWithResponses) ManagePluginPackagesWithResponse(ctx context.Context, params *ManagePluginPackagesParams, body ManagePluginPackagesJSONRequestBody, reqEditors ...RequestEditorFn) (*ManagePluginPackagesHTTPResponse, error) {
+	rsp, err := c.ManagePluginPackages(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseManagePluginPackagesHTTPResponse(rsp)
+}
+
+// ListPluginPackagesWithResponse List installed plugin packages
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /rpc-plugins/packages (the `ListPluginPackages` operationId).
+func (c *ClientWithResponses) ListPluginPackagesWithResponse(ctx context.Context, params *ListPluginPackagesParams, reqEditors ...RequestEditorFn) (*ListPluginPackagesHTTPResponse, error) {
+	rsp, err := c.ListPluginPackages(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPluginPackagesHTTPResponse(rsp)
+}
+
 // ReloadRPCPluginsWithResponse Reload RPC plugins
 //
 // Returns a wrapper object for the known response body format(s).
@@ -12358,6 +14344,32 @@ func (c *ClientWithResponses) ReloadRPCPluginsWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseReloadRPCPluginsHTTPResponse(rsp)
+}
+
+// SetPluginProjectTrustWithBodyWithResponse Approve or revoke project plugin execution
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+func (c *ClientWithResponses) SetPluginProjectTrustWithBodyWithResponse(ctx context.Context, params *SetPluginProjectTrustParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPluginProjectTrustHTTPResponse, error) {
+	rsp, err := c.SetPluginProjectTrustWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPluginProjectTrustHTTPResponse(rsp)
+}
+
+// SetPluginProjectTrustWithResponse Approve or revoke project plugin execution
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /rpc-plugins/trust (the `SetPluginProjectTrust` operationId).
+func (c *ClientWithResponses) SetPluginProjectTrustWithResponse(ctx context.Context, params *SetPluginProjectTrustParams, body SetPluginProjectTrustJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPluginProjectTrustHTTPResponse, error) {
+	rsp, err := c.SetPluginProjectTrust(ctx, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPluginProjectTrustHTTPResponse(rsp)
 }
 
 // RunAgentWithBodyWithResponse Run one ephemeral agent turn
@@ -14112,6 +16124,237 @@ func ParseListRPCPluginsHTTPResponse(rsp *http.Response) (*ListRPCPluginsHTTPRes
 	return response, nil
 }
 
+// ParseListPluginAuthMethodsHTTPResponse parses an HTTP response from a ListPluginAuthMethodsWithResponse call
+func ParseListPluginAuthMethodsHTTPResponse(rsp *http.Response) (*ListPluginAuthMethodsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPluginAuthMethodsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]*[]AuthMethod
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAuthenticatePluginHTTPResponse parses an HTTP response from a AuthenticatePluginWithResponse call
+func ParseAuthenticatePluginHTTPResponse(rsp *http.Response) (*AuthenticatePluginHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AuthenticatePluginHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PluginAuthStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCallPluginMethodHTTPResponse parses an HTTP response from a CallPluginMethodWithResponse call
+func ParseCallPluginMethodHTTPResponse(rsp *http.Response) (*CallPluginMethodHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CallPluginMethodHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSearchPluginCatalogHTTPResponse parses an HTTP response from a SearchPluginCatalogWithResponse call
+func ParseSearchPluginCatalogHTTPResponse(rsp *http.Response) (*SearchPluginCatalogHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchPluginCatalogHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Package
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePluginEventsHTTPResponse parses an HTTP response from a PluginEventsWithResponse call
+func ParsePluginEventsHTTPResponse(rsp *http.Response) (*PluginEventsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PluginEventsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PluginEventResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseManagePluginPackagesHTTPResponse parses an HTTP response from a ManagePluginPackagesWithResponse call
+func ParseManagePluginPackagesHTTPResponse(rsp *http.Response) (*ManagePluginPackagesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ManagePluginPackagesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PluginPackageResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPluginPackagesHTTPResponse parses an HTTP response from a ListPluginPackagesWithResponse call
+func ParseListPluginPackagesHTTPResponse(rsp *http.Response) (*ListPluginPackagesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPluginPackagesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Installation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseReloadRPCPluginsHTTPResponse parses an HTTP response from a ReloadRPCPluginsWithResponse call
 func ParseReloadRPCPluginsHTTPResponse(rsp *http.Response) (*ReloadRPCPluginsHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14128,6 +16371,39 @@ func ParseReloadRPCPluginsHTTPResponse(rsp *http.Response) (*ReloadRPCPluginsHTT
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest RpcPluginsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPluginProjectTrustHTTPResponse parses an HTTP response from a SetPluginProjectTrustWithResponse call
+func ParseSetPluginProjectTrustHTTPResponse(rsp *http.Response) (*SetPluginProjectTrustHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPluginProjectTrustHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatusResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

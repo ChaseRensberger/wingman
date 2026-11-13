@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -44,6 +45,19 @@ func (t HTTP) Open(ctx context.Context, deployment Route, prepared *models.Prepa
 	if client == nil {
 		client = http.DefaultClient
 	}
+	hooks, _ := ctx.Value(httpHooksKey{}).(HTTPHooks)
+	if hooks.Request != nil {
+		original := req
+		req, err = hooks.Request(ctx, prepared.Model, req)
+		if err != nil {
+			_ = original.Body.Close()
+			return nil, err
+		}
+		if req == nil {
+			_ = original.Body.Close()
+			return nil, fmt.Errorf("HTTP request hook returned no request")
+		}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		failure := transportError(prepared.Model.Provider, err)
@@ -52,6 +66,18 @@ func (t HTTP) Open(ctx context.Context, deployment Route, prepared *models.Prepa
 	}
 	if resp.Request == nil {
 		resp.Request = req
+	}
+	if hooks.Response != nil {
+		original := resp
+		resp, err = hooks.Response(ctx, prepared.Model, req, resp)
+		if err != nil {
+			_ = original.Body.Close()
+			return nil, err
+		}
+		if resp == nil || resp.Body == nil {
+			_ = original.Body.Close()
+			return nil, fmt.Errorf("HTTP response hook returned no body")
+		}
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil

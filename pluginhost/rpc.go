@@ -9,12 +9,16 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/chaserensberger/wingman/internal/pluginrpc"
+	"github.com/chaserensberger/wingman/plugin/protocol"
 )
 
 const (
 	// ProtocolVersion is the current Wingman plugin protocol version.
-	ProtocolVersion = 1
+	ProtocolVersion = protocol.Version
 
 	InitializeMethod = "plugin.initialize"
 	ShutdownMethod   = "plugin.shutdown"
@@ -61,11 +65,7 @@ type InitializedPlugin struct {
 }
 
 // PluginContributions contains the contribution domains negotiated at startup.
-// Protocol v1 activates tools; additional domains require owned daemon
-// generations before they can be added here.
-type PluginContributions struct {
-	Tools []ToolSpec `json:"tools,omitempty"`
-}
+type PluginContributions = protocol.Contributions
 
 // HealthResult describes plugin health reported by plugin.health.
 type HealthResult struct {
@@ -118,6 +118,10 @@ type rpcClient struct {
 
 	capabilities map[string]bool
 	initialized  bool
+	processCtx   context.Context
+	bindings     map[string]context.Context
+	hostHandler  func(context.Context, string, json.RawMessage) (any, error)
+	hostCalls    map[string]context.CancelFunc
 
 	diagnostics      []diagnosticEntry
 	diagnosticsBytes int
@@ -128,8 +132,38 @@ type rpcClient struct {
 }
 
 type pendingCall struct {
-	response chan rpcResponse
-	progress func(ToolProgressParams)
+	callbacksMu   sync.Mutex
+	callbacks     sync.WaitGroup
+	closing       bool
+	emitMu        sync.Mutex
+	response      chan rpcResponse
+	failure       chan error
+	progress      chan progressUpdate
+	progressBytes atomic.Int64
+	ctx           context.Context
+	stream        func(json.RawMessage) error
+}
+
+type progressUpdate struct {
+	params ToolProgressParams
+	bytes  int64
+}
+
+func (p *pendingCall) beginCallback() bool {
+	p.callbacksMu.Lock()
+	defer p.callbacksMu.Unlock()
+	if p.closing {
+		return false
+	}
+	p.callbacks.Add(1)
+	return true
+}
+
+func (p *pendingCall) finishCallbacks() {
+	p.callbacksMu.Lock()
+	p.closing = true
+	p.callbacksMu.Unlock()
+	p.callbacks.Wait()
 }
 
 type diagnosticEntry struct {
@@ -157,10 +191,7 @@ type rpcResponse struct {
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
+type rpcError = pluginrpc.Error
 
 type rpcEnvelope struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -193,6 +224,9 @@ func startRPC(ctx context.Context, command []string) (*rpcClient, error) {
 	}
 
 	c := &rpcClient{
+		processCtx:   ctx,
+		bindings:     map[string]context.Context{},
+		hostCalls:    map[string]context.CancelFunc{},
 		cmd:          cmd,
 		stdin:        stdin,
 		enc:          json.NewEncoder(stdin),
@@ -261,6 +295,8 @@ func (c *rpcClient) call(ctx context.Context, method string, params any, out any
 }
 
 func (c *rpcClient) callWithProgress(ctx context.Context, method string, params any, out any, progress func(ToolProgressParams)) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	c.mu.Lock()
 	if c.closed {
 		err := c.err
@@ -272,9 +308,17 @@ func (c *rpcClient) callWithProgress(ctx context.Context, method string, params 
 	}
 	c.nextID++
 	id := c.nextID
-	pending := &pendingCall{response: make(chan rpcResponse, 1), progress: progress}
+	pending := &pendingCall{response: make(chan rpcResponse, 1), failure: make(chan error, 1), ctx: ctx}
+	if progress != nil {
+		// The caller drains progress so observers can make RPCs while a progress callback blocks.
+		pending.progress = make(chan progressUpdate, 256)
+	}
+	if sink, ok := ctx.Value(streamKey{}).(func(json.RawMessage) error); ok {
+		pending.stream = sink
+	}
 	c.pending[id] = pending
 	c.mu.Unlock()
+	defer func() { cancel(); pending.finishCallbacks() }()
 
 	if err := c.write(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}); err != nil {
 		c.failPending(id, pending)
@@ -282,33 +326,54 @@ func (c *rpcClient) callWithProgress(ctx context.Context, method string, params 
 		return fmt.Errorf("send plugin request: %w", err)
 	}
 
-	select {
-	case <-ctx.Done():
-		if c.removePending(id, pending) && c.hasCapability(CapabilityCancellation) {
-			_ = c.notify(CancelRequestMethod, map[string]int64{"id": id})
+	deliverProgress := func(update progressUpdate) {
+		pending.progressBytes.Add(-update.bytes)
+		progress(update.params)
+	}
+	drainProgress := func() {
+		for len(pending.progress) > 0 && ctx.Err() == nil {
+			deliverProgress(<-pending.progress)
 		}
-		return ctx.Err()
-	case response := <-pending.response:
-		return decodeResponse(response, out)
-	case <-c.done:
-		c.removePending(id, pending)
+	}
+	for {
 		select {
+		case update := <-pending.progress:
+			deliverProgress(update)
+		case <-ctx.Done():
+			if c.removePending(id, pending) && c.hasCapability(CapabilityCancellation) {
+				_ = c.notify(CancelRequestMethod, map[string]int64{"id": id})
+			}
+			return ctx.Err()
 		case response := <-pending.response:
+			drainProgress()
 			return decodeResponse(response, out)
-		default:
-		}
-		if err := c.Err(); err != nil {
+		case err := <-pending.failure:
+			if c.hasCapability(CapabilityCancellation) {
+				_ = c.notify(CancelRequestMethod, map[string]int64{"id": id})
+			}
+			drainProgress()
 			return err
+		case <-c.done:
+			c.removePending(id, pending)
+			drainProgress()
+			select {
+			case response := <-pending.response:
+				return decodeResponse(response, out)
+			default:
+			}
+			if err := c.Err(); err != nil {
+				return err
+			}
+			return errors.New("plugin transport is closed")
 		}
-		return errors.New("plugin transport is closed")
 	}
 }
 
 func decodeResponse(response rpcResponse, out any) error {
 	if response.Error != nil {
-		return fmt.Errorf("plugin error: %s", response.Error.Message)
+		return fmt.Errorf("plugin error: %w", response.Error)
 	}
-	if out == nil || len(response.Result) == 0 || string(response.Result) == "null" {
+	if out == nil || len(response.Result) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(response.Result, out); err != nil {
@@ -352,18 +417,19 @@ func (c *rpcClient) failPending(id int64, pending *pendingCall) {
 }
 
 func (c *rpcClient) readStdout(stdout io.Reader) {
-	dec := json.NewDecoder(bufio.NewReader(stdout))
-	for {
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			if c.isClosing() {
-				return
-			}
-			c.terminate(fmt.Errorf("read plugin message: %w", err))
-			return
-		}
-		c.handleMessage(raw)
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 4096), 16<<20)
+	for scanner.Scan() {
+		c.handleMessage(scanner.Bytes())
 	}
+	if c.isClosing() {
+		return
+	}
+	err := scanner.Err()
+	if err == nil {
+		err = io.EOF
+	}
+	c.terminate(fmt.Errorf("read plugin message: %w", err))
 }
 
 func (c *rpcClient) handleMessage(raw json.RawMessage) {
@@ -378,7 +444,11 @@ func (c *rpcClient) handleMessage(raw json.RawMessage) {
 	}
 	if envelope.Method != "" {
 		if len(envelope.ID) != 0 && string(envelope.ID) != "null" {
-			c.respondMethodNotFound(envelope.ID, envelope.Method)
+			if envelope.Method == "host.call" {
+				c.dispatchHostCall(envelope)
+			} else {
+				c.respondMethodNotFound(envelope.ID, envelope.Method)
+			}
 			return
 		}
 		c.handleNotification(envelope.Method, envelope.Params)
@@ -406,6 +476,34 @@ func (c *rpcClient) handleMessage(raw json.RawMessage) {
 
 func (c *rpcClient) handleNotification(method string, params json.RawMessage) {
 	switch method {
+	case CancelRequestMethod:
+		var input struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if json.Unmarshal(params, &input) != nil {
+			return
+		}
+		c.mu.Lock()
+		cancel := c.hostCalls[string(input.ID)]
+		c.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+	case "provider.stream":
+		var update protocol.StreamUpdate
+		if json.Unmarshal(params, &update) != nil {
+			return
+		}
+		c.mu.Lock()
+		pending := c.pending[update.RequestID]
+		c.mu.Unlock()
+		if pending != nil && pending.stream != nil {
+			if err := pending.stream(update.Part); err != nil {
+				if c.removePending(update.RequestID, pending) {
+					pending.failure <- err
+				}
+			}
+		}
 	case ToolProgressMethod:
 		var progress ToolProgressParams
 		if err := json.Unmarshal(params, &progress); err != nil {
@@ -416,7 +514,18 @@ func (c *rpcClient) handleNotification(method string, params json.RawMessage) {
 		pending := c.pending[progress.RequestID]
 		c.mu.Unlock()
 		if pending != nil && pending.progress != nil {
-			pending.progress(progress)
+			size := int64(len(params))
+			if pending.progressBytes.Add(size) <= 8<<20 {
+				select {
+				case pending.progress <- progressUpdate{params: progress, bytes: size}:
+					return
+				default:
+				}
+			}
+			pending.progressBytes.Add(-size)
+			if c.removePending(progress.RequestID, pending) {
+				pending.failure <- errors.New("plugin tool progress consumer is too slow")
+			}
 		}
 	case PluginLogMethod:
 		var log PluginLogParams
@@ -498,6 +607,9 @@ func (c *rpcClient) terminate(err error) {
 	c.closed = true
 	c.err = err
 	c.pending = make(map[int64]*pendingCall)
+	for _, cancel := range c.hostCalls {
+		cancel()
+	}
 	close(c.done)
 	c.mu.Unlock()
 }
@@ -543,32 +655,21 @@ func (c *rpcClient) closeWithContext(ctx context.Context) error {
 	terminated := c.closed
 	c.closing = true
 	c.mu.Unlock()
+	var shutdownErr error
 	if initialized && !terminated {
-		_ = c.requestShutdown()
+		shutdownErr = c.call(ctx, ShutdownMethod, nil, nil)
 	}
 	_ = c.stdin.Close()
 	select {
 	case <-c.done:
-		return c.Err()
+		return errors.Join(shutdownErr, c.Err())
 	case <-ctx.Done():
 		if c.cmd.Process != nil {
 			_ = c.cmd.Process.Kill()
 		}
 		<-c.done
-		return ctx.Err()
+		return errors.Join(shutdownErr, ctx.Err())
 	}
-}
-
-func (c *rpcClient) requestShutdown() error {
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		return c.err
-	}
-	c.nextID++
-	id := c.nextID
-	c.mu.Unlock()
-	return c.write(rpcRequest{JSONRPC: "2.0", ID: id, Method: ShutdownMethod})
 }
 
 // close preserves the manager's existing no-context call site.

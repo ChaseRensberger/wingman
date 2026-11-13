@@ -41,6 +41,7 @@ type ServerConfig struct {
 // PluginConfig contains additional global plugin directories.
 type PluginConfig struct {
 	Dirs       []string `json:"dirs"`
+	Catalog    string   `json:"catalog,omitempty"`
 	DefaultDir string   `json:"-"`
 }
 

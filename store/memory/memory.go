@@ -106,6 +106,14 @@ func (s *Store) AdmitSessionRun(ctx context.Context, run store.SessionRun) (stor
 	now := time.Now().UTC()
 	run.Sequence = next
 	run.Status, run.RequestHash = store.SessionRunStatusQueued, hash
+	if run.PreparedMessage != nil {
+		run.Message = *run.PreparedMessage
+		run.PreparedMessage = nil
+	}
+	if run.PreparedAgent != nil {
+		run.Agent = *run.PreparedAgent
+		run.PreparedAgent = nil
+	}
 	run.AdmittedVersion = session.AggregateVersion + 1
 	run.CreatedAt = now
 	run.UpdatedAt = now

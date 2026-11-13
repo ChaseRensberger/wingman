@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/chaserensberger/wingman/plugin/protocol"
 	"github.com/chaserensberger/wingman/skill"
 	"github.com/chaserensberger/wingman/tool"
 )
@@ -22,28 +23,24 @@ const (
 // Manifest declares the bootstrap data for one out-of-process plugin executable.
 // Commands are executed directly; shell expansion is not applied.
 type Manifest struct {
-	ID      string         `json:"id"`
-	Name    string         `json:"name,omitempty"`
-	Command []string       `json:"command"`
-	Config  map[string]any `json:"config,omitempty"`
-	Path    string         `json:"-"`
+	ID       string          `json:"id"`
+	Name     string          `json:"name,omitempty"`
+	Command  []string        `json:"command"`
+	Config   map[string]any  `json:"config,omitempty"`
+	Disabled bool            `json:"disabled,omitempty"`
+	Package  json.RawMessage `json:"package,omitempty"`
+	Path     string          `json:"-"`
 }
 
 // ToolSpec is the manifest shape for a plugin-contributed LLM tool.
-type ToolSpec struct {
-	Name            string                 `json:"name"`
-	Description     string                 `json:"description"`
-	InputSchema     map[string]any         `json:"input_schema"`
-	OutputSchema    map[string]any         `json:"output_schema,omitempty"`
-	Sequential      bool                   `json:"sequential,omitempty"`
-	DirectoryScoped bool                   `json:"directory_scoped,omitempty"`
-	Permission      *tool.PermissionTarget `json:"permission,omitempty"`
-}
+type ToolSpec = protocol.Tool
 
 func discoverManifests(dirs []string) ([]Manifest, []LoadError) {
 	var manifests []Manifest
 	var errs []LoadError
 	seen := make(map[string]struct{})
+	byID := make(map[string]int)
+	sourceByID := make(map[string]string)
 
 	for _, dir := range dirs {
 		if dir == "" {
@@ -64,7 +61,13 @@ func discoverManifests(dirs []string) ([]Manifest, []LoadError) {
 				errs = append(errs, LoadError{Path: p, Error: err.Error()})
 				continue
 			}
-			manifests = append(manifests, m)
+			if index, exists := byID[m.ID]; exists && sourceByID[m.ID] != dir && filepath.Base(filepath.Dir(dir)) == localDirName {
+				manifests[index] = m
+			} else {
+				byID[m.ID] = len(manifests)
+				manifests = append(manifests, m)
+			}
+			sourceByID[m.ID] = dir
 		}
 	}
 	sort.Slice(manifests, func(i, j int) bool { return manifests[i].ID < manifests[j].ID })
@@ -81,6 +84,9 @@ func manifestPaths(dir string) ([]string, error) {
 	}
 	var paths []string
 	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 		p := filepath.Join(dir, entry.Name())
 		if entry.IsDir() {
 			candidate := filepath.Join(p, manifestName)
@@ -117,7 +123,7 @@ func validateManifest(m Manifest) error {
 	if m.ID == "" {
 		return fmt.Errorf("plugin id is required")
 	}
-	if len(m.Command) == 0 || m.Command[0] == "" {
+	if !m.Disabled && (len(m.Command) == 0 || m.Command[0] == "") {
 		return fmt.Errorf("plugin command is required")
 	}
 	return nil

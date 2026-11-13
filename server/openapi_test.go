@@ -27,7 +27,20 @@ func TestOpenAPIRepresentativeContract(t *testing.T) {
 		t.Fatalf("openapi = %v", document["openapi"])
 	}
 	paths := document["paths"].(map[string]any)
-	for _, path := range []string{"/health", "/service/restart", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/sessions/{id}/macros", "/run"} {
+	for _, query := range []struct{ path, name string }{{"/rpc-plugins/catalog", "query"}, {"/actions", "working_directory"}, {"/agents", "working_directory"}, {"/provider", "working_directory"}, {"/catalog", "working_directory"}, {"/tools", "working_directory"}, {"/mcp", "working_directory"}, {"/rpc-plugins/auth", "working_directory"}} {
+		operation := paths[query.path].(map[string]any)["get"].(map[string]any)
+		foundQuery := false
+		for _, raw := range operation["parameters"].([]any) {
+			parameter := raw.(map[string]any)
+			if parameter["in"] == "query" && parameter["name"] == query.name {
+				foundQuery = parameter["schema"].(map[string]any)["type"] == "string"
+			}
+		}
+		if !foundQuery {
+			t.Fatalf("%s query %s is missing from OpenAPI", query.path, query.name)
+		}
+	}
+	for _, path := range []string{"/health", "/service/restart", "/client", "/clients", "/agents", "/agents/{id}", "/sessions/{id}/events", "/sessions/{id}/events/history", "/sessions/{id}/macros", "/run", "/rpc-plugins/auth", "/rpc-plugins/events"} {
 		if paths[path] == nil {
 			t.Errorf("missing path %s", path)
 		}
